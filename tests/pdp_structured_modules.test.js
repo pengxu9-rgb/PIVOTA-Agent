@@ -567,6 +567,55 @@ describe('pdpBuilder structured PDP modules', () => {
     );
   });
 
+  test('excludes structured content images from external seed media gallery', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_content_gallery_guard',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Barrier Relief Serum',
+        category: 'Serum',
+        image_url: 'https://cdn.example.com/barrier-hero.jpg',
+        images: [
+          'https://cdn.example.com/barrier-hero.jpg',
+          'https://cdn.example.com/barrier-ingredients.jpg',
+          'https://cdn.example.com/barrier-how-to.jpg',
+        ],
+        content_image_urls: [
+          'https://cdn.example.com/barrier-ingredients.jpg',
+          'https://cdn.example.com/barrier-how-to.jpg',
+        ],
+        price: { amount: 28, currency: 'USD' },
+        pdp_details_sections: [
+          {
+            heading: 'Key Ingredients',
+            body: 'Tamanu oil and ceramides help support the skin barrier.',
+          },
+          {
+            heading: 'How To Use',
+            body: 'Apply after cleansing and before moisturizer.',
+          },
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    expect(findModule(payload, 'media_gallery')?.data?.items).toEqual([
+      expect.objectContaining({ url: 'https://cdn.example.com/barrier-hero.jpg' }),
+    ]);
+    expect(findModule(payload, 'product_facts')?.data?.sections).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          media_urls: ['https://cdn.example.com/barrier-ingredients.jpg'],
+        }),
+      ]),
+    );
+    expect(findModule(payload, 'how_to_use')?.data?.image_urls).toEqual([
+      'https://cdn.example.com/barrier-how-to.jpg',
+    ]);
+  });
+
   test('renders a clean captured external seed PDP description as overview details', () => {
     const payload = buildPdpPayload({
       product: {

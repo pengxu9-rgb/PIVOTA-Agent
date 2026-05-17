@@ -1747,6 +1747,11 @@ function buildMediaItems(product, variants) {
     : Array.isArray(product.image_urls)
       ? product.image_urls
       : [];
+  const structuredContentImageKeys = new Set(
+    collectStructuredContentImageUrls(product)
+      .map((url) => buildPdpImageDedupeKey(url) || normalizePdpImageUrl(url))
+      .filter(Boolean),
+  );
   const primaryVariant =
     Array.isArray(variants) && variants.length > 0 && variants[0] && typeof variants[0] === 'object'
       ? variants[0]
@@ -1755,7 +1760,7 @@ function buildMediaItems(product, variants) {
   const pushImageItem = (rawUrl, extra = {}) => {
     const url = normalizePdpImageUrl(rawUrl);
     const key = buildPdpImageDedupeKey(url);
-    if (!url || !key || isDecorativePdpMediaUrl(url) || seenMediaKeys.has(key)) return;
+    if (!url || !key || structuredContentImageKeys.has(key) || isDecorativePdpMediaUrl(url) || seenMediaKeys.has(key)) return;
     seenMediaKeys.add(key);
     items.push({
       type: 'image',
