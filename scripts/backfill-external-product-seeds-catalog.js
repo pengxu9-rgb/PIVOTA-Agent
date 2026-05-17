@@ -616,6 +616,61 @@ function applySanitizedNestedVariantImages(nextRow) {
   };
 }
 
+function sanitizeStoredVariantDescription(value) {
+  const raw = normalizeNonEmptyString(value);
+  if (!raw) return '';
+  const normalized = raw.replace(/\s+/g, ' ').trim();
+  if (!normalized) return '';
+  const sectionMarkerCount = (
+    raw.match(/\b(?:OVERVIEW|HOW TO USE|FAQ|STUDY RESULTS|FORMULATED WITHOUT|INGREDIENTS|BENEFITS)\b/g) || []
+  ).length;
+  const looksLikePageSoup =
+    /<!--\s*split\s*-->|<\s*style\b|<\s*script\b|\.section-[a-z0-9_-]+|display\s*:\s*none|{\s*display\s*:/i.test(
+      raw,
+    ) ||
+    sectionMarkerCount >= 2;
+  if (looksLikePageSoup) return '';
+  if (normalized.length > 320) return '';
+  return normalized;
+}
+
+function sanitizeStoredSeedVariantDescriptions(seedData) {
+  const nextSeedData = ensureJsonObject(seedData);
+  const snapshot = ensureJsonObject(nextSeedData.snapshot);
+  let changed = false;
+  const sanitizeList = (variants) => {
+    if (!Array.isArray(variants)) return variants;
+    return variants.map((variant) => {
+      if (!variant || typeof variant !== 'object' || Array.isArray(variant)) return variant;
+      const rawDescription = normalizeNonEmptyString(
+        variant.description || variant.description_html || variant.summary || variant.body_html,
+      );
+      if (!rawDescription) return variant;
+      const sanitized = sanitizeStoredVariantDescription(rawDescription);
+      if (sanitized === rawDescription) return variant;
+      changed = true;
+      const nextVariant = { ...variant };
+      if (sanitized) nextVariant.description = sanitized;
+      else delete nextVariant.description;
+      delete nextVariant.description_html;
+      delete nextVariant.summary;
+      delete nextVariant.body_html;
+      return nextVariant;
+    });
+  };
+  const nextRootVariants = sanitizeList(nextSeedData.variants);
+  const nextSnapshotVariants = sanitizeList(snapshot.variants);
+  if (!changed) return nextSeedData;
+  return {
+    ...nextSeedData,
+    ...(Array.isArray(nextRootVariants) ? { variants: nextRootVariants } : {}),
+    snapshot: {
+      ...snapshot,
+      ...(Array.isArray(nextSnapshotVariants) ? { variants: nextSnapshotVariants } : {}),
+    },
+  };
+}
+
 function collectProductImageUrls(product, options = {}) {
   return sanitizeSeedImageUrls(
     [
@@ -4219,6 +4274,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   if (!description && suppressStaleDescriptionFallback) {
     delete nextSeedData.description;
   }
+  nextSeedData = sanitizeStoredSeedVariantDescriptions(nextSeedData);
 
   const nextRow = {
     title,
