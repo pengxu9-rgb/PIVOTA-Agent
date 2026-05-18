@@ -59,6 +59,9 @@ const {
   resolveProductExternalRedirectUrl,
 } = require('./pdpBuilder');
 const {
+  enrichProductWithCatalogFashionFields,
+} = require('./services/catalogFashionFields');
+const {
   buildPdpImageDedupeKey,
   normalizePdpImageUrl,
 } = require('./utils/pdpImageUrls');
@@ -30696,6 +30699,28 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         markPdpV2Module('similar_card_enrichment', similarCardEnrichmentStartedAt);
       }
 
+      // Phase O-5b durable fix: catalog_products is the source of truth
+      // for derived fashion fields (material/care/size_guide + provenance).
+      // products_cache only stores the Shopify payload, so anything an
+      // extractor writes to catalog_products needs to be merged in here
+      // at read time. Race-free vs the old bridge-into-products_cache
+      // pattern: a sync overwrite of products_cache doesn't touch
+      // catalog_products fashion columns.
+      try {
+        await enrichProductWithCatalogFashionFields(canonicalProductForPdp, {
+          merchantId: canonicalProductForPdp?.merchant_id || canonicalProductRef?.merchant_id,
+          sourceProductId:
+            canonicalProductForPdp?.source_product_id ||
+            canonicalProductForPdp?.platform_product_id ||
+            canonicalProductRef?.product_id,
+        });
+      } catch (err) {
+        logger.warn(
+          { err: err?.message || String(err) },
+          'enrichProductWithCatalogFashionFields failed; PDP renders without merge',
+        );
+      }
+
       const pdpPayload = buildPdpPayload({
         product: canonicalProductForPdp,
         relatedProducts,
@@ -31685,6 +31710,20 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           );
           relatedProducts = [];
         }
+      }
+
+      // Same read-through merge as the get_pdp_v2 path — see comment
+      // at the other buildPdpPayload call site.
+      try {
+        await enrichProductWithCatalogFashionFields(product, {
+          merchantId: product?.merchant_id,
+          sourceProductId: product?.source_product_id || product?.platform_product_id,
+        });
+      } catch (err) {
+        logger.warn(
+          { err: err?.message || String(err) },
+          'enrichProductWithCatalogFashionFields failed; PDP renders without merge',
+        );
       }
 
       const pdpPayload = buildPdpPayload({
