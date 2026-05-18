@@ -111,7 +111,7 @@ describe('find_similar_products mainline wrapper', () => {
         {
           product_id: 'ext_sim_1',
           merchant_id: 'external_seed',
-          pivota_signature_id: 'sig_sim_1',
+          pivota_signature_id: 'sig_sim1',
           title: 'Similar Product 1',
           image_url: 'https://cdn.example.test/sim-1.jpg',
           card_highlight: 'Same category with a comparable finish.',
@@ -158,7 +158,7 @@ describe('find_similar_products mainline wrapper', () => {
     );
     expect(res.body.products[0]).toEqual(
       expect.objectContaining({
-        product_id: 'sig_sim_1',
+        product_id: 'sig_sim1',
         source_product_id: 'ext_sim_1',
       }),
     );
