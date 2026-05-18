@@ -3,9 +3,15 @@ const assert = require('node:assert/strict');
 const Module = require('node:module');
 const { EventEmitter } = require('node:events');
 const { execFileSync } = require('node:child_process');
+const path = require('node:path');
 
 process.env.AURORA_BFF_USE_MOCK = 'true';
 process.env.AURORA_DECISION_BASE_URL = '';
+process.env.AURORA_PRODUCT_GROUNDING_STABLE_ALIAS_PATH = path.join(
+  __dirname,
+  'fixtures',
+  'product_grounding_stable_aliases.test.json',
+);
 
 function loadRouteInternals() {
   const moduleId = require.resolve('../src/auroraBff/routes');
