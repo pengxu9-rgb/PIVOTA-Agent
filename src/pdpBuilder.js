@@ -1920,8 +1920,49 @@ function readVariantPriceAmount(variant = {}) {
   );
 }
 
+function collectSelectedProductLineOptionKeys(product = {}) {
+  const options = Array.isArray(product.product_line_options)
+    ? product.product_line_options
+    : Array.isArray(product.productLineOptions)
+      ? product.productLineOptions
+      : [];
+  return uniqueNonEmptyStrings(
+    options
+      .filter((option) => option?.selected === true)
+      .flatMap((option) => [
+        option.label,
+        option.value,
+        option.title,
+        option.option_value,
+        option.optionValue,
+      ])
+      .map(normalizeTextKey),
+  );
+}
+
+function variantMatchesProductLineOption(variant = {}, selectedOptionKeys = []) {
+  if (!selectedOptionKeys.length) return false;
+  const variantKeys = uniqueNonEmptyStrings([
+    variant.title,
+    variant.display_label,
+    variant.option_value,
+    variant.optionValue,
+    ...(Array.isArray(variant.options)
+      ? variant.options.flatMap((option) => [option?.value, option?.label, option?.name])
+      : []),
+  ].map(normalizeTextKey));
+  return variantKeys.some((key) => selectedOptionKeys.includes(key));
+}
+
 function pickDefaultVariant(product = {}, variants = []) {
   if (!Array.isArray(variants) || variants.length === 0) return null;
+  const selectedProductLineOptionKeys = collectSelectedProductLineOptionKeys(product);
+  if (selectedProductLineOptionKeys.length) {
+    const productLineMatch = variants.find((variant) =>
+      variantMatchesProductLineOption(variant, selectedProductLineOptionKeys),
+    );
+    if (productLineMatch) return productLineMatch;
+  }
   const explicitId = asNonEmptyString(product.default_variant_id || product.defaultVariantId);
   if (explicitId) {
     const explicit = variants.find((variant) => {

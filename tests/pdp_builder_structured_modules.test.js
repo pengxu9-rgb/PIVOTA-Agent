@@ -1412,6 +1412,66 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     expect(priceModule?.data?.price).toEqual({ amount: 115, currency: 'USD' });
   });
 
+  test('uses selected product-line option to override a stale default variant id', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_pro_c_full',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Pro C Serum',
+        category: 'Serum',
+        image_url: 'https://example.com/pro-c-full.png',
+        price: { amount: 64, currency: 'USD' },
+        default_variant_id: 'v_refill',
+        product_line_option_name: 'Size',
+        product_line_options: [
+          {
+            option_id: 'external_seed:ext_pro_c_full',
+            option_name: 'Size',
+            axis: 'size',
+            label: 'Full Size',
+            value: 'full size',
+            product_id: 'ext_pro_c_full',
+            merchant_id: 'external_seed',
+            selected: true,
+          },
+          {
+            option_id: 'external_seed:ext_pro_c_refill',
+            option_name: 'Size',
+            axis: 'size',
+            label: 'Refill',
+            value: 'refill',
+            product_id: 'ext_pro_c_refill',
+            merchant_id: 'external_seed',
+            selected: false,
+          },
+        ],
+        variants: [
+          {
+            id: 'v_refill',
+            title: 'Refill',
+            options: [{ name: 'Format', value: 'Refill', axis_kind: 'format' }],
+            price: { amount: 56, currency: 'USD' },
+          },
+          {
+            id: 'v_full',
+            title: 'Full Size',
+            options: [{ name: 'Format', value: 'Full Size', axis_kind: 'format' }],
+            price: { amount: 64, currency: 'USD' },
+          },
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const variantSelector = payload.modules.find((module) => module.type === 'variant_selector');
+    const priceModule = payload.modules.find((module) => module.type === 'price_promo');
+    expect(payload.product.default_variant_id).toBe('v_full');
+    expect(variantSelector?.data?.selected_variant_id).toBe('v_full');
+    expect(priceModule?.data?.price).toEqual({ amount: 64, currency: 'USD' });
+  });
+
   test('hides captured single external-seed Format: Single item selector labels', () => {
     const payload = buildPdpPayload({
       product: {
