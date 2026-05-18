@@ -2002,4 +2002,87 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     });
     expect(payload.product.fashion_meta.size_fit_chart.rows).toHaveLength(1);
   });
+
+  // ----- Phase O-5b followup: pdpBuilder reads Shopify metafields too -----
+
+  test('extracts fashion_meta from platform_metadata.metafields (Shopify shape)', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'sig_metafield_only',
+        merchant_id: 'm',
+        title: 'Linen Dress',
+        // No upstream fashion_meta — the gateway has to pull from metafields.
+        platform_metadata: {
+          metafields: [
+            { namespace: 'custom', key: 'material', value: '100% organic linen',
+              type: 'single_line_text_field' },
+            { namespace: 'shopify', key: 'care_instructions',
+              value: 'Hand wash cold.', type: 'single_line_text_field' },
+          ],
+        },
+        variants: [{ id: 'v', title: 'M', price: { amount: 89, currency: 'USD' } }],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+    expect(payload.product.fashion_meta).toBeDefined();
+    expect(payload.product.fashion_meta.material).toBe('100% organic linen');
+    expect(payload.product.fashion_meta.care).toBe('Hand wash cold.');
+  });
+
+  test('upstream fashion_meta wins over metafield extraction', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'sig_upstream_wins',
+        merchant_id: 'm',
+        title: 'Item',
+        fashion_meta: { material: 'UPSTREAM AUTHORITATIVE' },
+        platform_metadata: {
+          metafields: [
+            { namespace: 'custom', key: 'material', value: 'METAFIELD_LOSES' },
+          ],
+        },
+        variants: [{ id: 'v', title: 'one', price: { amount: 1, currency: 'USD' } }],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+    expect(payload.product.fashion_meta.material).toBe('UPSTREAM AUTHORITATIVE');
+  });
+
+  test('size_guide metafield with json_string parses into structured object', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'sig_size_chart_json',
+        merchant_id: 'm',
+        title: 'Tee',
+        platform_metadata: {
+          metafields: [
+            { namespace: 'custom', key: 'size_guide',
+              value: JSON.stringify({ columns: ['Size', 'Bust'], rows: [{ label: 'M' }] }),
+              type: 'json_string' },
+          ],
+        },
+        variants: [{ id: 'v', title: 'M', price: { amount: 1, currency: 'USD' } }],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+    expect(payload.product.fashion_meta.size_fit_chart.columns).toEqual(['Size', 'Bust']);
+  });
+
+  test('no metafields + no upstream + no sample → no fashion_meta key', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'sig_nothing',
+        merchant_id: 'm',
+        title: 'Plain item',
+        platform_metadata: { handle: 'plain', metafields: [] },
+        variants: [{ id: 'v', title: 'one', price: { amount: 1, currency: 'USD' } }],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+    expect(payload.product.fashion_meta).toBeUndefined();
+  });
 });
