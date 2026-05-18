@@ -7560,25 +7560,38 @@ async function discoverCatalogSyncMerchantIdsFromDb(limit = 5000) {
     String(process.env.CATALOG_SYNC_DISCOVERY_RELAXED || '').trim().toLowerCase() === 'true';
 
   try {
-    const shopifyStoresRes = await query(
+    const activeStoresRes = await query(
       `
-        SELECT DISTINCT merchant_id
+        SELECT DISTINCT merchant_id, lower(COALESCE(platform, '')) AS platform
         FROM merchant_stores
         WHERE COALESCE(NULLIF(trim(merchant_id), ''), '') <> ''
-          AND lower(COALESCE(platform, '')) = 'shopify'
+          AND lower(COALESCE(platform, '')) IN ('shopify', 'wix')
           AND lower(COALESCE(status, '')) = 'active'
           AND COALESCE(NULLIF(trim(domain), ''), '') <> ''
           AND COALESCE(NULLIF(trim(api_key), ''), '') <> ''
-        ORDER BY merchant_id ASC
+        ORDER BY merchant_id ASC, platform ASC
         LIMIT $1
       `,
       [normalizedLimit],
     );
-    const shopifyStoreMerchantIds = uniqueStrings(
-      (shopifyStoresRes.rows || []).map((row) => row?.merchant_id),
-    );
-    if (shopifyStoreMerchantIds.length) {
-      return { merchantIds: shopifyStoreMerchantIds, source: 'merchant_stores_shopify_active' };
+    const activeStoreTargets = [];
+    const seenTargets = new Set();
+    for (const row of activeStoresRes.rows || []) {
+      const merchantId = String(row?.merchant_id || '').trim();
+      const platform = String(row?.platform || '').trim().toLowerCase();
+      if (!merchantId || !platform) continue;
+      const key = `${merchantId}:${platform}`;
+      if (seenTargets.has(key)) continue;
+      seenTargets.add(key);
+      activeStoreTargets.push({ merchant_id: merchantId, platform });
+    }
+    const activeStoreMerchantIds = uniqueStrings(activeStoreTargets.map((target) => target.merchant_id));
+    if (activeStoreTargets.length) {
+      return {
+        merchantIds: activeStoreMerchantIds,
+        targets: activeStoreTargets,
+        source: 'merchant_stores_active_platforms',
+      };
     }
   } catch (err) {
     logger.warn(
@@ -7809,9 +7822,59 @@ function getCatalogSyncSuppressionStatus(merchantId, nowMs = Date.now()) {
   };
 }
 
+function normalizeCatalogSyncTargets(target) {
+  const rawTargets = Array.isArray(target?.targets) ? target.targets : [];
+  const sourceMerchantIds = Array.isArray(target?.merchantIds) ? target.merchantIds : [];
+  const out = [];
+  const seen = new Set();
+
+  for (const raw of rawTargets) {
+    const merchantId = String(raw?.merchant_id || raw?.merchantId || '').trim();
+    const platform = String(raw?.platform || '').trim().toLowerCase() || null;
+    if (!merchantId) continue;
+    const key = `${merchantId}:${platform || 'default'}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ merchant_id: merchantId, platform });
+  }
+
+  if (!out.length) {
+    for (const merchantId of sourceMerchantIds) {
+      const mid = String(merchantId || '').trim();
+      if (!mid) continue;
+      const key = `${mid}:default`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ merchant_id: mid, platform: null });
+    }
+  }
+
+  return out;
+}
+
+function buildCatalogSyncTargetKey(target) {
+  const merchantId = String(target?.merchant_id || target?.merchantId || '').trim();
+  const platform = String(target?.platform || '').trim().toLowerCase();
+  return platform ? `${merchantId}:${platform}` : merchantId;
+}
+
+function buildCatalogSyncProductsUrl({ merchantId, platform, limit, ttlSeconds }) {
+  const pf = String(platform || '').trim().toLowerCase();
+  if (pf && pf !== 'shopify') {
+    return `${PIVOTA_API_BASE}/agent/internal/platform/products/sync/${encodeURIComponent(
+      merchantId,
+    )}?platform=${encodeURIComponent(pf)}&limit=${encodeURIComponent(String(limit))}`;
+  }
+  return `${PIVOTA_API_BASE}/agent/internal/shopify/products/sync/${encodeURIComponent(
+    merchantId,
+  )}?limit=${encodeURIComponent(String(limit))}&ttl_seconds=${encodeURIComponent(String(ttlSeconds))}`;
+}
+
 function summarizeCatalogSyncMerchantState() {
-  const rows = Object.entries(catalogSyncState.per_merchant || {}).map(([merchantId, state]) => ({
-    merchant_id: merchantId,
+  const rows = Object.entries(catalogSyncState.per_merchant || {}).map(([targetKey, state]) => ({
+    target_key: targetKey,
+    merchant_id: state?.merchant_id || targetKey,
+    platform: state?.platform || null,
     ok: state?.ok === true,
     skipped: state?.skipped === true,
     invalid_merchant: state?.invalid_merchant === true,
@@ -7842,19 +7905,23 @@ async function runCreatorCatalogAutoSync() {
   }
 
   const merchantTarget = await resolveCatalogSyncMerchantIds();
-  const resolvedMerchantIds = merchantTarget.merchantIds;
+  const resolvedTargets = normalizeCatalogSyncTargets(merchantTarget);
   const nowMs = Date.now();
-  const merchantIds = [];
-  const suppressedMerchants = [];
-  for (const merchantId of resolvedMerchantIds) {
-    const suppression = getCatalogSyncSuppressionStatus(merchantId, nowMs);
+  const eligibleTargets = [];
+  const suppressedTargets = [];
+  for (const target of resolvedTargets) {
+    const merchantId = target.merchant_id;
+    const targetKey = buildCatalogSyncTargetKey(target);
+    const suppression = getCatalogSyncSuppressionStatus(targetKey, nowMs);
     if (!suppression.suppressed) {
-      merchantIds.push(merchantId);
+      eligibleTargets.push(target);
       continue;
     }
-    const existingState = catalogSyncState.per_merchant[merchantId];
-    catalogSyncState.per_merchant[merchantId] = {
+    const existingState = catalogSyncState.per_merchant[targetKey];
+    catalogSyncState.per_merchant[targetKey] = {
       ...(existingState && typeof existingState === 'object' ? existingState : {}),
+      merchant_id: merchantId,
+      platform: target.platform || null,
       ok: false,
       skipped: true,
       last_run_at: new Date().toISOString(),
@@ -7868,25 +7935,27 @@ async function runCreatorCatalogAutoSync() {
       blocked_until_ms: Number(existingState?.blocked_until_ms || 0) || null,
       blocked_until: suppression.blocked_until,
     };
-    suppressedMerchants.push({
+    suppressedTargets.push({
+      target_key: targetKey,
       merchant_id: merchantId,
+      platform: target.platform || null,
       reason: suppression.reason,
       blocked_until: suppression.blocked_until,
       invalid_merchant: suppression.invalid_merchant,
     });
   }
   catalogSyncState.target_source = merchantTarget.source || null;
-  catalogSyncState.target_count = resolvedMerchantIds.length;
-  catalogSyncState.target_eligible_count = merchantIds.length;
-  catalogSyncState.target_suppressed_count = suppressedMerchants.length;
-  catalogSyncState.target_sample = resolvedMerchantIds.slice(0, 20);
-  catalogSyncState.target_suppressed_sample = suppressedMerchants.slice(0, 20);
-  if (!merchantIds.length) {
+  catalogSyncState.target_count = resolvedTargets.length;
+  catalogSyncState.target_eligible_count = eligibleTargets.length;
+  catalogSyncState.target_suppressed_count = suppressedTargets.length;
+  catalogSyncState.target_sample = resolvedTargets.slice(0, 20);
+  catalogSyncState.target_suppressed_sample = suppressedTargets.slice(0, 20);
+  if (!eligibleTargets.length) {
     logger.warn(
       {
         target_source: merchantTarget.source || null,
-        target_count: resolvedMerchantIds.length,
-        suppressed_count: suppressedMerchants.length,
+        target_count: resolvedTargets.length,
+        suppressed_count: suppressedTargets.length,
       },
       'CREATOR_CATALOG_AUTO_SYNC_ENABLED is true but no sync target merchants were resolved',
     );
@@ -7900,11 +7969,12 @@ async function runCreatorCatalogAutoSync() {
   catalogSyncState.last_run_at = new Date().toISOString();
   catalogSyncState.last_error = null;
 
-  for (const merchantId of merchantIds) {
-    const existingState = catalogSyncState.per_merchant[merchantId];
-    const url = `${PIVOTA_API_BASE}/agent/internal/shopify/products/sync/${encodeURIComponent(
-      merchantId,
-    )}?limit=${encodeURIComponent(String(limit))}&ttl_seconds=${encodeURIComponent(String(ttlSeconds))}`;
+  for (const target of eligibleTargets) {
+    const merchantId = target.merchant_id;
+    const platform = target.platform || null;
+    const targetKey = buildCatalogSyncTargetKey(target);
+    const existingState = catalogSyncState.per_merchant[targetKey];
+    const url = buildCatalogSyncProductsUrl({ merchantId, platform, limit, ttlSeconds });
     const startedAtMs = Date.now();
     let attempt = 0;
     let res = null;
@@ -7953,7 +8023,9 @@ async function runCreatorCatalogAutoSync() {
     }
 
     if (!err && res) {
-      catalogSyncState.per_merchant[merchantId] = {
+      catalogSyncState.per_merchant[targetKey] = {
+        merchant_id: merchantId,
+        platform,
         ok: true,
         skipped: false,
         last_run_at: new Date().toISOString(),
@@ -7972,6 +8044,7 @@ async function runCreatorCatalogAutoSync() {
       logger.info(
         {
           merchantId,
+          platform,
           limit,
           ttl_seconds: ttlSeconds,
           attempts: attempt,
@@ -7999,7 +8072,9 @@ async function runCreatorCatalogAutoSync() {
             : CREATOR_CATALOG_AUTO_SYNC_NON_RETRYABLE_COOLDOWN_SECONDS) *
             1000
         : null;
-      catalogSyncState.per_merchant[merchantId] = {
+      catalogSyncState.per_merchant[targetKey] = {
+        merchant_id: merchantId,
+        platform,
         ok: false,
         skipped: false,
         last_run_at: new Date().toISOString(),
@@ -8013,10 +8088,11 @@ async function runCreatorCatalogAutoSync() {
         blocked_until_ms: blockedUntilMs,
         blocked_until: blockedUntilMs ? new Date(blockedUntilMs).toISOString() : null,
       };
-      catalogSyncState.last_error = `${merchantId}: ${message}`;
+      catalogSyncState.last_error = `${targetKey}: ${message}`;
       logger.warn(
         {
           merchantId,
+          platform,
           status,
           message,
           attempts: attempt,
@@ -27713,6 +27789,9 @@ app.get('/api/admin/catalog-cache-diagnostics', requireAdmin, async (req, res) =
         merchants: Array.isArray(syncTargetMerchants.merchantIds)
           ? syncTargetMerchants.merchantIds
           : [],
+        targets: Array.isArray(syncTargetMerchants.targets)
+          ? syncTargetMerchants.targets
+          : [],
       },
       merchants_top: (byMerchantRes.rows || []).map((row) => ({
         merchant_id: row.merchant_id || null,
@@ -27746,6 +27825,7 @@ app.post('/api/admin/catalog-sync/run', requireAdmin, async (req, res) => {
   const startedAt = Date.now();
   const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
   const requestedMerchantId = String(body.merchant_id || body.merchantId || '').trim();
+  const requestedPlatform = String(body.platform || '').trim().toLowerCase();
   const ignoreSuppression = body.ignore_suppression === true;
   const requestedLimit = Number(body.limit_override);
   const limitConfig = getCreatorCatalogAutoSyncLimitConfig();
@@ -27771,20 +27851,28 @@ app.post('/api/admin/catalog-sync/run', requireAdmin, async (req, res) => {
 
   try {
     const target = requestedMerchantId
-      ? { merchantIds: [requestedMerchantId], source: 'manual_single' }
+      ? {
+          merchantIds: [requestedMerchantId],
+          targets: [{ merchant_id: requestedMerchantId, platform: requestedPlatform || null }],
+          source: requestedPlatform ? 'manual_single_platform' : 'manual_single',
+        }
       : await resolveCatalogSyncMerchantIds();
 
-    const targetMerchantIds = Array.isArray(target?.merchantIds) ? target.merchantIds : [];
+    const targetTargets = normalizeCatalogSyncTargets(target);
     const nowMs = Date.now();
-    const eligibleMerchantIds = [];
-    const suppressedMerchants = [];
-    for (const merchantId of targetMerchantIds) {
-      const suppression = getCatalogSyncSuppressionStatus(merchantId, nowMs);
+    const eligibleTargets = [];
+    const suppressedTargets = [];
+    for (const syncTarget of targetTargets) {
+      const merchantId = syncTarget.merchant_id;
+      const targetKey = buildCatalogSyncTargetKey(syncTarget);
+      const suppression = getCatalogSyncSuppressionStatus(targetKey, nowMs);
       if (ignoreSuppression || !suppression.suppressed) {
-        eligibleMerchantIds.push(merchantId);
+        eligibleTargets.push(syncTarget);
       } else {
-        suppressedMerchants.push({
+        suppressedTargets.push({
+          target_key: targetKey,
           merchant_id: merchantId,
+          platform: syncTarget.platform || null,
           reason: suppression.reason,
           blocked_until: suppression.blocked_until,
           invalid_merchant: suppression.invalid_merchant,
@@ -27794,18 +27882,19 @@ app.post('/api/admin/catalog-sync/run', requireAdmin, async (req, res) => {
 
     const requested = {
       merchant_id: requestedMerchantId || null,
+      platform: requestedPlatform || null,
       limit_override: Number.isFinite(requestedLimit) ? limitEffective : null,
       ignore_suppression: ignoreSuppression,
     };
 
     catalogSyncState.target_source = target?.source || null;
-    catalogSyncState.target_count = targetMerchantIds.length;
-    catalogSyncState.target_eligible_count = eligibleMerchantIds.length;
-    catalogSyncState.target_suppressed_count = suppressedMerchants.length;
-    catalogSyncState.target_sample = targetMerchantIds.slice(0, 20);
-    catalogSyncState.target_suppressed_sample = suppressedMerchants.slice(0, 20);
+    catalogSyncState.target_count = targetTargets.length;
+    catalogSyncState.target_eligible_count = eligibleTargets.length;
+    catalogSyncState.target_suppressed_count = suppressedTargets.length;
+    catalogSyncState.target_sample = targetTargets.slice(0, 20);
+    catalogSyncState.target_suppressed_sample = suppressedTargets.slice(0, 20);
 
-    if (!eligibleMerchantIds.length) {
+    if (!eligibleTargets.length) {
       return res.json({
         ok: true,
         requested,
@@ -27813,9 +27902,9 @@ app.post('/api/admin/catalog-sync/run', requireAdmin, async (req, res) => {
           ok: true,
           trigger_source: 'admin_manual',
           target_source: target?.source || null,
-          target_count: targetMerchantIds.length,
+          target_count: targetTargets.length,
           target_eligible_count: 0,
-          target_suppressed_count: suppressedMerchants.length,
+          target_suppressed_count: suppressedTargets.length,
           limit_effective: limitEffective,
           ttl_seconds: ttlSeconds,
           timing_ms: Math.max(0, Date.now() - startedAt),
@@ -27825,10 +27914,10 @@ app.post('/api/admin/catalog-sync/run', requireAdmin, async (req, res) => {
     }
 
     const perMerchant = [];
-    for (const merchantId of eligibleMerchantIds) {
-      const url = `${PIVOTA_API_BASE}/agent/internal/shopify/products/sync/${encodeURIComponent(
-        merchantId,
-      )}?limit=${encodeURIComponent(String(limitEffective))}&ttl_seconds=${encodeURIComponent(String(ttlSeconds))}`;
+    for (const syncTarget of eligibleTargets) {
+      const merchantId = syncTarget.merchant_id;
+      const platform = syncTarget.platform || null;
+      const url = buildCatalogSyncProductsUrl({ merchantId, platform, limit: limitEffective, ttlSeconds });
       const runStartedAt = Date.now();
       try {
         const upstream = await axios.post(
@@ -27841,6 +27930,7 @@ app.post('/api/admin/catalog-sync/run', requireAdmin, async (req, res) => {
         );
         perMerchant.push({
           merchant_id: merchantId,
+          platform,
           ok: true,
           status: Number.isFinite(Number(upstream?.status)) ? Number(upstream.status) : 200,
           duration_ms: Math.max(0, Date.now() - runStartedAt),
@@ -27850,6 +27940,7 @@ app.post('/api/admin/catalog-sync/run', requireAdmin, async (req, res) => {
         const invalidMerchant = isCatalogSyncInvalidMerchantError(err);
         perMerchant.push({
           merchant_id: merchantId,
+          platform,
           ok: false,
           status: Number.isFinite(Number(err?.response?.status)) ? Number(err.response.status) : null,
           duration_ms: Math.max(0, Date.now() - runStartedAt),
@@ -27864,7 +27955,10 @@ app.post('/api/admin/catalog-sync/run', requireAdmin, async (req, res) => {
     catalogSyncState.last_run_at = new Date(startedAt).toISOString();
     for (const item of perMerchant) {
       if (!item?.merchant_id) continue;
-      catalogSyncState.per_merchant[item.merchant_id] = {
+      const targetKey = buildCatalogSyncTargetKey(item);
+      catalogSyncState.per_merchant[targetKey] = {
+        merchant_id: item.merchant_id,
+        platform: item.platform || null,
         ok: item.ok === true,
         skipped: false,
         last_run_at: completedAt,
@@ -27886,7 +27980,7 @@ app.post('/api/admin/catalog-sync/run', requireAdmin, async (req, res) => {
     } else {
       const firstError = perMerchant.find((item) => item && item.ok !== true);
       catalogSyncState.last_error = firstError
-        ? `${firstError.merchant_id}: ${firstError.error || 'Manual catalog sync failed'}`
+        ? `${buildCatalogSyncTargetKey(firstError)}: ${firstError.error || 'Manual catalog sync failed'}`
         : 'Manual catalog sync failed';
     }
 
@@ -27898,9 +27992,9 @@ app.post('/api/admin/catalog-sync/run', requireAdmin, async (req, res) => {
         ok: allOk,
         trigger_source: 'admin_manual',
         target_source: target?.source || null,
-        target_count: targetMerchantIds.length,
-        target_eligible_count: eligibleMerchantIds.length,
-        target_suppressed_count: suppressedMerchants.length,
+        target_count: targetTargets.length,
+        target_eligible_count: eligibleTargets.length,
+        target_suppressed_count: suppressedTargets.length,
         limit_effective: limitEffective,
         ttl_seconds: ttlSeconds,
         timing_ms: Math.max(0, Date.now() - startedAt),

@@ -107,4 +107,34 @@ describe('POST /api/admin/catalog-sync/run', () => {
       }),
     );
   });
+
+  test('runs scoped Wix sync through generic platform endpoint', async () => {
+    const axiosPost = jest.fn().mockResolvedValue({
+      status: 200,
+      data: { summary: { status: 'success', products_synced: 12, platform: 'wix' } },
+    });
+    jest.doMock('axios', () => buildAxiosMock(axiosPost));
+
+    const app = require('../src/server');
+    const resp = await request(app)
+      .post('/api/admin/catalog-sync/run')
+      .set('X-ADMIN-KEY', 'admin_test_key')
+      .send({
+        merchant_id: 'merch_wix_1',
+        platform: 'wix',
+        limit_override: 25,
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.requested).toEqual(
+      expect.objectContaining({
+        merchant_id: 'merch_wix_1',
+        platform: 'wix',
+      }),
+    );
+    expect(axiosPost).toHaveBeenCalledTimes(1);
+    expect(axiosPost.mock.calls[0][0]).toBe(
+      'https://example-pivota.test/agent/internal/platform/products/sync/merch_wix_1?platform=wix&limit=25',
+    );
+  });
 });

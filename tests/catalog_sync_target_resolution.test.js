@@ -72,14 +72,15 @@ describe('catalog sync merchant target resolution', () => {
     expect(queryMock).not.toHaveBeenCalled();
   });
 
-  test('discovers merchants with active shopify store credentials', async () => {
+  test('discovers merchants with active platform store credentials', async () => {
     const queryMock = jest.fn(async (sql) => {
       const text = String(sql || '');
       if (text.includes('FROM merchant_stores')) {
         return {
           rows: [
-            { merchant_id: 'merch_live_1' },
-            { merchant_id: 'merch_live_2' },
+            { merchant_id: 'merch_live_1', platform: 'shopify' },
+            { merchant_id: 'merch_live_2', platform: 'wix' },
+            { merchant_id: 'merch_live_2', platform: 'wix' },
           ],
         };
       }
@@ -95,7 +96,11 @@ describe('catalog sync merchant target resolution', () => {
 
     expect(result).toEqual({
       merchantIds: ['merch_live_1', 'merch_live_2'],
-      source: 'merchant_stores_shopify_active',
+      targets: [
+        { merchant_id: 'merch_live_1', platform: 'shopify' },
+        { merchant_id: 'merch_live_2', platform: 'wix' },
+      ],
+      source: 'merchant_stores_active_platforms',
     });
   });
 
@@ -125,7 +130,7 @@ describe('catalog sync merchant target resolution', () => {
     });
   });
 
-  test('falls back to creator configs when db discovery is empty', async () => {
+  test('returns empty strict result when db discovery is empty', async () => {
     const queryMock = jest.fn(async () => ({ rows: [] }));
     jest.doMock('../src/db', () => ({ query: queryMock }));
 
@@ -135,9 +140,10 @@ describe('catalog sync merchant target resolution', () => {
     const app = require('../src/server');
     const result = await app._debug.resolveCatalogSyncMerchantIds();
 
-    expect(result.source).toBe('creator_configs_fallback');
-    expect(Array.isArray(result.merchantIds)).toBe(true);
-    expect(result.merchantIds).toContain('merch_efbc46b4619cfbdf');
+    expect(result).toEqual({
+      merchantIds: [],
+      source: 'merchant_stores_empty',
+    });
   });
 
   test('keeps strict mode and ignores onboarding-only merchants', async () => {
@@ -160,7 +166,7 @@ describe('catalog sync merchant target resolution', () => {
     const app = require('../src/server');
     const result = await app._debug.resolveCatalogSyncMerchantIds();
 
-    expect(result.source).toBe('creator_configs_fallback');
+    expect(result.source).toBe('merchant_stores_empty');
     expect(result.merchantIds).not.toContain('merch_not_shopify_ready');
   });
 });
