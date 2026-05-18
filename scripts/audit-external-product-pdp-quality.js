@@ -382,10 +382,11 @@ function buildProbeFailureResponse(error, { operation = '', probe = '' } = {}) {
   const code = normalizeNonEmptyString(error?.code);
   const message = normalizeNonEmptyString(error?.message || error);
   const timedOut = code === 'ECONNABORTED' || /timeout/i.test(message);
+  const aborted = /stream has been aborted|socket hang up|connection (?:reset|aborted)/i.test(message);
   return {
     status: 'error',
     error: {
-      code: timedOut ? 'PROBE_TIMEOUT' : code || 'PROBE_FAILED',
+      code: timedOut ? 'PROBE_TIMEOUT' : aborted ? 'PROBE_ABORTED' : code || 'PROBE_FAILED',
       message: timedOut ? message || 'Probe timed out' : message || 'Probe failed',
       details: {
         operation,
@@ -393,6 +394,26 @@ function buildProbeFailureResponse(error, { operation = '', probe = '' } = {}) {
       },
     },
   };
+}
+
+function isTransientProbeFailureResponse(response = {}) {
+  const error = ensureJsonObject(response?.error);
+  const code = normalizeNonEmptyString(error.code || response?.code).toUpperCase();
+  const message = normalizeNonEmptyString(error.message || response?.message || response?.detail || response?.error);
+  if (['PROBE_TIMEOUT', 'PROBE_ABORTED', 'ECONNRESET', 'ETIMEDOUT', 'EAI_AGAIN'].includes(code)) {
+    return true;
+  }
+  return /stream has been aborted|socket hang up|timeout|connection (?:reset|aborted)|temporarily unavailable/i.test(message);
+}
+
+function resolveProbeMaxAttempts(options = {}) {
+  const requested = Number(options.maxAttempts || process.env.EXTERNAL_PDP_QUALITY_PROBE_MAX_ATTEMPTS || 1);
+  if (!Number.isFinite(requested) || requested <= 1) return 1;
+  return Math.max(1, Math.min(4, Math.floor(requested)));
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function invokeGateway(gatewayUrl, operation, payload, options = {}) {
@@ -418,14 +439,43 @@ async function invokeGateway(gatewayUrl, operation, payload, options = {}) {
 }
 
 async function invokeGatewayProbe(gatewayUrl, operation, payload, options = {}) {
-  try {
-    return await invokeGateway(gatewayUrl, operation, payload, options);
-  } catch (error) {
-    return buildProbeFailureResponse(error, {
-      operation,
-      probe: normalizeNonEmptyString(options.probe) || operation,
+  const maxAttempts = resolveProbeMaxAttempts(options);
+  const retryErrors = [];
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    let response;
+    try {
+      response = await invokeGateway(gatewayUrl, operation, payload, options);
+    } catch (error) {
+      response = buildProbeFailureResponse(error, {
+        operation,
+        probe: normalizeNonEmptyString(options.probe) || operation,
+      });
+    }
+    if (!isTransientProbeFailureResponse(response) || attempt >= maxAttempts) {
+      if (retryErrors.length > 0) {
+        const error = ensureJsonObject(response?.error);
+        return {
+          ...response,
+          error: {
+            ...error,
+            details: {
+              ...ensureJsonObject(error.details),
+              retry_attempts: attempt,
+              retry_errors: retryErrors,
+            },
+          },
+        };
+      }
+      return response;
+    }
+    retryErrors.push({
+      attempt,
+      code: normalizeNonEmptyString(response?.error?.code || response?.code) || null,
+      message: normalizeNonEmptyString(response?.error?.message || response?.message || response?.error) || null,
     });
+    await sleep(Math.min(2500, 250 * attempt));
   }
+  return buildProbeFailureResponse(new Error('Probe retry loop exhausted'), { operation, probe: options.probe });
 }
 
 async function probeImageUrl(url) {
@@ -606,6 +656,7 @@ async function auditRow(row, {
         }, {
           timeoutMs: effectiveCorePdpTimeoutMs,
           probe: 'pdp_core',
+          maxAttempts: 3,
         })
       : Promise.resolve({ error: 'missing_product_id' }),
     productId
@@ -615,6 +666,7 @@ async function auditRow(row, {
         }, {
           timeoutMs: effectiveDetailsPdpTimeoutMs,
           probe: 'pdp_details',
+          maxAttempts: 3,
         })
       : Promise.resolve({ error: 'missing_product_id' }),
     similarEnabled && productId
@@ -625,6 +677,7 @@ async function auditRow(row, {
         }, {
           timeoutMs: effectiveSimilarTimeoutMs,
           probe: 'similar_slow',
+          maxAttempts: 2,
         })
       : Promise.resolve({ skipped: true, reason: similarEnabled ? 'missing_product_id' : 'similar_probe_disabled' }),
   ]);
@@ -823,6 +876,8 @@ module.exports = {
   buildAuthoritativePayload,
   buildPublicGatewayPayload,
   buildProbeFailureResponse,
+  isTransientProbeFailureResponse,
+  resolveProbeMaxAttempts,
   writeOutput,
   invokeGatewayProbe,
   isAuthoritativeInvokeUrl,

@@ -11,6 +11,8 @@ const {
   buildPublicGatewayPayload,
   buildExtractorProbeFailure,
   buildProbeFailureResponse,
+  isTransientProbeFailureResponse,
+  resolveProbeMaxAttempts,
   mergePdpProbeResponses,
   unwrapLivePdpPayload,
   resolveExpectedLivePdpPrice,
@@ -174,6 +176,23 @@ describe('audit-external-product-pdp-quality helpers', () => {
         },
       },
     });
+  });
+
+  test('classifies stream abort probe failures as transient retry candidates', () => {
+    const response = buildProbeFailureResponse(
+      new Error('stream has been aborted'),
+      { operation: 'get_pdp_v2', probe: 'pdp_core' },
+    );
+
+    expect(response.error.code).toBe('PROBE_ABORTED');
+    expect(isTransientProbeFailureResponse(response)).toBe(true);
+    expect(isTransientProbeFailureResponse({ status: 'error', error: { code: 'NOT_FOUND', message: 'missing product' } })).toBe(false);
+  });
+
+  test('caps PDP quality probe retry attempts to a small bounded value', () => {
+    expect(resolveProbeMaxAttempts({ maxAttempts: 3 })).toBe(3);
+    expect(resolveProbeMaxAttempts({ maxAttempts: 99 })).toBe(4);
+    expect(resolveProbeMaxAttempts({ maxAttempts: 0 })).toBe(1);
   });
 
   test('wraps catalog extractor DNS failures as row-level extractor failures', () => {
