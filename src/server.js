@@ -21119,9 +21119,24 @@ function buildInvokeUpstreamAuthHeaders({
 }
 
 function isPromoActive(promo, nowTs) {
-  const start = new Date(promo.startAt).getTime();
-  const end = new Date(promo.endAt).getTime();
-  return nowTs >= start && nowTs <= end && !promo.deletedAt;
+  if (!promo || promo.deletedAt) return false;
+  // Soft-deleted via DB column maps to `deletedAt`; older callers may use snake_case.
+  if (promo.deleted_at) return false;
+  // startAt: null/missing/invalid means "already started" (open-start).
+  // `new Date(null)` returns epoch 0, which would let any future nowTs through anyway,
+  // but invalid date strings produce NaN — Number.isFinite guards both.
+  if (promo.startAt != null) {
+    const start = new Date(promo.startAt).getTime();
+    if (Number.isFinite(start) && nowTs < start) return false;
+  }
+  // endAt: null/missing means "no end" (open-ended). Previously `new Date(null)` → 0,
+  // which trivially failed `nowTs <= 0` and silently filtered out every open-ended
+  // promo (FREESHIP, COMBO_B, AUDIT_*). Treat null/undefined as "no upper bound".
+  if (promo.endAt != null) {
+    const end = new Date(promo.endAt).getTime();
+    if (Number.isFinite(end) && nowTs > end) return false;
+  }
+  return true;
 }
 
 function matchesScope(promo, product) {
