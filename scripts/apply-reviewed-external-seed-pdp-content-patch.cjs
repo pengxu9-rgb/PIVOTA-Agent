@@ -12,6 +12,8 @@ const REVIEW_CONTRACT_VERSION = 'external_seed.reviewed_pdp_content_patch.v1';
 
 const POLLUTED_COPY_RE =
   /\b(contact us|customer service|customer support|support center|support page|privacy policy|terms(?: and conditions)?|terms of use|shipping policy|return policy|about us|about jurlique|our farm|sustainability|brand ambassador program|blog|blogs|store locator|official|social highlights)\b/i;
+const INGREDIENT_POLLUTION_RE =
+  /\b(?:function|const\s+[a-z0-9_$]+\s*=|document\.|querySelector|MutationObserver|shadowRoot|monitorShadowContent|join_stories_generic_widget_integration|<\s*script\b|javascript:)\b/i;
 
 function argValue(name, fallback = '') {
   const idx = process.argv.indexOf(`--${name}`);
@@ -83,6 +85,11 @@ function sectionBody(section) {
 
 function isPolluted(value) {
   return POLLUTED_COPY_RE.test(text(value));
+}
+
+function isIngredientPolluted(value) {
+  const normalized = text(value);
+  return isPolluted(normalized) || INGREDIENT_POLLUTION_RE.test(normalized);
 }
 
 function cleanSections(seedData, manifest) {
@@ -175,6 +182,9 @@ function readManifestEntries(raw) {
     evidence: text(entry.evidence || root.evidence),
     source_url: text(entry.source_url || entry.canonical_url),
     description: text(entry.description || entry.pdp_description_raw),
+    pdp_ingredients_raw: text(
+      entry.pdp_ingredients_raw || entry.raw_ingredient_text_clean || entry.ingredients_raw,
+    ),
   }));
 }
 
@@ -183,6 +193,11 @@ function validateEntry(entry) {
   if (!entry.external_product_id) blockers.push('missing_external_product_id');
   if (!entry.description || entry.description.length < 60) blockers.push('description_too_short');
   if (isPolluted(entry.description)) blockers.push('description_polluted');
+  if (entry.pdp_ingredients_raw) {
+    if (entry.pdp_ingredients_raw.length < 80) blockers.push('ingredients_too_short');
+    if (isIngredientPolluted(entry.pdp_ingredients_raw)) blockers.push('ingredients_polluted');
+    if (!/,/.test(entry.pdp_ingredients_raw)) blockers.push('ingredients_not_inci_like');
+  }
   if (!entry.evidence || entry.evidence.length < 20) blockers.push('missing_review_evidence');
   if (!entry.reviewed_by) blockers.push('missing_reviewer');
   return blockers;
@@ -198,9 +213,11 @@ function buildNextSeedData(row, entry, now) {
   }
 
   const cleanDescription = entry.description;
+  const cleanIngredients = entry.pdp_ingredients_raw;
   const sections = cleanSections(seedData, entry);
   const fields = ['description', 'pdp_description_raw'];
   if (sections.length) fields.push('pdp_details_sections');
+  if (cleanIngredients) fields.push('pdp_ingredients_raw', 'raw_ingredient_text_clean');
 
   seedData.description = cleanDescription;
   seedData.pdp_description_raw = cleanDescription;
@@ -212,6 +229,26 @@ function buildNextSeedData(row, entry, now) {
   if (sections.length) {
     seedData.pdp_details_sections = sections;
     snapshot.pdp_details_sections = sections;
+  }
+
+  if (cleanIngredients) {
+    const patchIngredients = (target) => {
+      if (!target || typeof target !== 'object') return;
+      target.pdp_ingredients_raw = cleanIngredients;
+      target.raw_ingredient_text_clean = cleanIngredients;
+      target.inci_list = cleanIngredients;
+      const ingredientIntel = asObject(target.ingredient_intel);
+      target.ingredient_intel = {
+        ...ingredientIntel,
+        raw_ingredient_text_clean: cleanIngredients,
+        inci_raw: cleanIngredients,
+        inci_list: cleanIngredients,
+      };
+      delete target.ingredient_intel.inci_normalized;
+      delete target.ingredient_intel.authoritative;
+    };
+    patchIngredients(seedData);
+    patchIngredients(snapshot);
   }
 
   const quality = buildQualitySummary(seedData, fields, now, entry);
@@ -247,6 +284,10 @@ function buildServingPatch(seedData) {
     pdp_field_quality_summary: seedData.pdp_field_quality_summary,
     external_seed_snapshot_contract: seedData.external_seed_snapshot_contract,
     reviewed_pdp_content_patch_v1: seedData.reviewed_pdp_content_patch_v1,
+    pdp_ingredients_raw: seedData.pdp_ingredients_raw,
+    raw_ingredient_text_clean: seedData.raw_ingredient_text_clean,
+    inci_list: seedData.inci_list,
+    ingredient_intel: seedData.ingredient_intel,
   };
 }
 
@@ -376,6 +417,13 @@ async function main() {
         before: {
           description: text(row.seed_data?.description || row.seed_data?.snapshot?.description),
           pdp_description_raw: text(row.seed_data?.pdp_description_raw || row.seed_data?.snapshot?.pdp_description_raw),
+          pdp_ingredients_raw: text(row.seed_data?.pdp_ingredients_raw || row.seed_data?.snapshot?.pdp_ingredients_raw),
+          ingredients_polluted: isIngredientPolluted(
+            row.seed_data?.pdp_ingredients_raw ||
+              row.seed_data?.raw_ingredient_text_clean ||
+              row.seed_data?.snapshot?.pdp_ingredients_raw ||
+              row.seed_data?.snapshot?.raw_ingredient_text_clean,
+          ),
           polluted_detail_section_count: [
             ...asArray(row.seed_data?.pdp_details_sections),
             ...asArray(row.seed_data?.snapshot?.pdp_details_sections),
@@ -384,6 +432,8 @@ async function main() {
         after: {
           description: next.seedData?.description || '',
           pdp_description_raw: next.seedData?.pdp_description_raw || '',
+          pdp_ingredients_raw: next.seedData?.pdp_ingredients_raw || '',
+          ingredients_polluted: isIngredientPolluted(next.seedData?.pdp_ingredients_raw),
           detail_section_count: asArray(next.seedData?.pdp_details_sections).length,
           polluted_detail_section_count: asArray(next.seedData?.pdp_details_sections).filter((section) =>
             isPolluted(sectionBody(section)),
