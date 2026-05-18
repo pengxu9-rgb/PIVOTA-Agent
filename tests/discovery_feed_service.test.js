@@ -2410,13 +2410,14 @@ describe('discovery feed service', () => {
     );
 
     expect(response.products.map((product) => product.product_id)).toEqual([
-      'gbr_external',
+      'sig_krave_gbr_45ml',
       'oat_cream',
     ]);
     expect(response.products[0]).toEqual(
       expect.objectContaining({
         merchant_id: 'external_seed',
-        product_id: 'gbr_external',
+        product_id: 'sig_krave_gbr_45ml',
+        pivota_signature_id: 'sig_krave_gbr_45ml',
         sellable_item_group_id: 'sig_krave_gbr_45ml',
         product_line_id: 'pl_krave_gbr',
         review_family_id: 'rf_krave_gbr',

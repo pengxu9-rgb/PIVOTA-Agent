@@ -9679,6 +9679,7 @@ function annotateIdentityDiscoveryCandidate(candidate, row, groupMembers) {
     ...candidate,
     raw: {
       ...(candidate.raw || {}),
+      pivota_signature_id: row.sellable_item_group_id,
       sellable_item_group_id: row.sellable_item_group_id,
       product_line_id: row.product_line_id,
       review_family_id: row.review_family_id,
