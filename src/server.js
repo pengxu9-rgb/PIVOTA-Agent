@@ -21323,9 +21323,23 @@ function enrichProductsWithDeals(products, promotions, now = new Date(), creator
       promotions,
       creatorId
     );
-    const allDeals = applicablePromos.map((p) =>
+    const allDealsRaw = applicablePromos.map((p) =>
       promotionToDealPayload(p, product.price || product.price_cents || product.unit_price)
     );
+    // Dedupe by visible label so a merchant who provisions multiple
+    // identically-labeled promos (e.g. several AUDIT runs of the same
+    // MULTI_BUY_DISCOUNT, or repeated FREE_SHIPPING entries) doesn't surface
+    // N copies of the same chip in `all_deals`. Preserves first-seen order;
+    // bestDeal selection below still operates on the deduped list and stays
+    // deterministic.
+    const seenLabels = new Set();
+    const allDeals = allDealsRaw.filter((deal) => {
+      const key = String(deal?.label || '').trim();
+      if (!key) return true;
+      if (seenLabels.has(key)) return false;
+      seenLabels.add(key);
+      return true;
+    });
 
     let bestDeal = null;
     if (allDeals.length) {
