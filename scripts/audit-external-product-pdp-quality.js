@@ -11,7 +11,7 @@ const { classifyExternalSeedProductKind } = require('../src/services/externalSee
 const { resolveExternalSeedRecallDoc } = require('../src/services/externalSeedRecall');
 const {
   buildSeedGate,
-  buildExtractorGate,
+  buildSourceUnavailableExtractorGate,
   buildIdentityGate,
   buildProductIntelGate,
   buildLivePdpGate,
@@ -637,9 +637,10 @@ async function auditRow(row, {
   const audit = auditExternalSeedRow(row);
   const productKind = classifyExternalSeedProductKind(row);
   const seedGate = buildSeedGate(audit);
-  const extractorGate = buildExtractorGate({
+  const extractorGate = buildSourceUnavailableExtractorGate({
     extractorResponse: extractor.response,
     extractorProduct: extractor.product || {},
+    seedData,
   });
   const livePdpGate = buildLivePdpGate({
     extractorProduct: extractor.product || {},

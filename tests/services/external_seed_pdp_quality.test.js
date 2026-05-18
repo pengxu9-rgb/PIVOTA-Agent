@@ -1,6 +1,7 @@
 const {
   buildSeedGate,
   buildExtractorGate,
+  buildSourceUnavailableExtractorGate,
   buildProductIntelGate,
   buildLivePdpGate,
   buildSimilarGate,
@@ -66,6 +67,27 @@ describe('externalSeedPdpQuality', () => {
         'similar_underfill',
       ]),
     );
+  });
+
+  test('treats extractor misses as terminal for reviewed source-unavailable seeds', () => {
+    const extractorGate = buildSourceUnavailableExtractorGate({
+      extractorResponse: {
+        diagnostics: {
+          failure_category: 'no_product_urls',
+        },
+      },
+      extractorProduct: {},
+      seedData: {
+        source_unavailable_v1: {
+          status: 'source_unavailable',
+          reason: 'official PDP returns 404',
+        },
+      },
+    });
+
+    expect(extractorGate.status).toBe('terminal_source_unavailable');
+    expect(extractorGate.source_unavailable).toBe(true);
+    expect(extractorGate.failure_reasons).toEqual([]);
   });
 
   test('flags polluted live description and details independently from facts', () => {

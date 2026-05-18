@@ -740,6 +740,29 @@ function buildExtractorGate({ extractorResponse = {}, extractorProduct = {} } = 
   };
 }
 
+function hasSourceUnavailableMarker(seedData = {}) {
+  const snapshot = ensureJsonObject(seedData?.snapshot);
+  return [seedData, snapshot].some((source) => {
+    const marker = ensureJsonObject(source?.source_unavailable_v1);
+    const blocker = ensureJsonObject(source?.transaction_readiness_blocker_v1);
+    return (
+      normalizeNonEmptyString(marker.status).toLowerCase() === 'source_unavailable' ||
+      normalizeNonEmptyString(blocker.status).toLowerCase() === 'source_unavailable'
+    );
+  });
+}
+
+function buildSourceUnavailableExtractorGate({ extractorResponse = {}, extractorProduct = {}, seedData = {} } = {}) {
+  const gate = buildExtractorGate({ extractorResponse, extractorProduct });
+  if (!hasSourceUnavailableMarker(seedData)) return gate;
+  return {
+    ...gate,
+    status: gate.failure_category ? 'terminal_source_unavailable' : gate.status,
+    source_unavailable: true,
+    failure_reasons: [],
+  };
+}
+
 function buildLivePdpGate({
   extractorProduct = {},
   livePayload = {},
@@ -1164,6 +1187,8 @@ module.exports = {
   extractProbeError,
   buildSeedGate,
   buildExtractorGate,
+  buildSourceUnavailableExtractorGate,
+  hasSourceUnavailableMarker,
   buildIdentityGate,
   buildProductIntelGate,
   buildLivePdpGate,
