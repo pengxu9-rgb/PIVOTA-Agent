@@ -365,6 +365,23 @@ jobs:
           TARGET_COMMIT="${GITHUB_SHA:0:12}" \
           bash scripts/verify_deployed_commit_matches.sh
 
+      - name: Warm production search runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          AUTH_TOKEN="$COMMERCE_CORE_PROD_AUTH_TOKEN" \
+          AGENT_API_KEY="$COMMERCE_CORE_PROD_AGENT_API_KEY" \
+          node scripts/warm_find_products_multi_runtime.js \
+            --base-url "$PROD_SMOKE_BASE_URL" \
+            --endpoint "$PROD_SMOKE_ENDPOINT" \
+            --auth-token "$COMMERCE_CORE_PROD_AUTH_TOKEN" \
+            --agent-api-key "$COMMERCE_CORE_PROD_AGENT_API_KEY" \
+            --query serum \
+            --source search \
+            --attempts 2 \
+            --delay-ms 3000 \
+            --timeout-ms 25000
+
       - name: Production discovery smoke
         shell: bash
         run: |
@@ -372,6 +389,7 @@ jobs:
           BASE_URL="$PROD_SMOKE_BASE_URL" \
           ENDPOINT="$PROD_SMOKE_ENDPOINT" \
           AGENT_API_KEY="$COMMERCE_CORE_PROD_AGENT_API_KEY" \
+          AUTH_TOKEN="$COMMERCE_CORE_PROD_AUTH_TOKEN" \
           VERIFY_DEPLOY=0 \
           TIMEOUT_MS=60000 \
           bash scripts/smoke_discovery_feed_prod.sh
