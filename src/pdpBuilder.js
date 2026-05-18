@@ -3099,7 +3099,9 @@ function buildActiveIngredients(product, ingredientsInci) {
     }, ingredientsInci, {
       inferSunscreenActives: !isExplicitPdpActiveBlock,
     });
-    data.items = filterDisplayableActiveIngredients(product, data, ingredientsInci);
+    data.items = reviewedActiveContract
+      ? uniqueNonEmptyStrings(data.items)
+      : filterDisplayableActiveIngredients(product, data, ingredientsInci);
     if (!Array.isArray(data.items) || !data.items.length) continue;
     if (shouldSuppressLowConfidenceActiveIngredients(product, candidate, data, ingredientsInci)) {
       return null;

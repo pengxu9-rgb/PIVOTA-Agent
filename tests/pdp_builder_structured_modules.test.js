@@ -1010,6 +1010,64 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     expect(activeIngredients?.data?.source_quality_status).toBe('high');
   });
 
+  test('keeps reviewed external seed key active labels even when they are not hero-regex terms', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_fab_kp_scrub_strawberry',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'KP Bump Eraser Body Scrub 10% AHA Fresh Strawberry',
+        category: 'Body Scrub',
+        description: 'A body scrub with 10% AHA for rough bumps and texture.',
+        image_url: 'https://example.com/fab-kp.png',
+        price: { amount: 30, currency: 'USD' },
+        pdp_active_ingredients_raw:
+          'Pumice Buffing Beads: Natural exfoliating particles\n\nGlycolic & Lactic Acids: Alpha hydroxy acids\n\nBisabolol: A botanical extract\n\nVitamin E: Antioxidant support',
+        active_ingredients: [
+          'Pumice Buffing Beads',
+          'Glycolic & Lactic Acids',
+          'Bisabolol',
+          'Vitamin E',
+        ],
+        reviewed_active_ingredients_v1: {
+          contract_version: 'external_seed.reviewed_active_ingredients.v1',
+          status: 'approved',
+          active_ingredients: [
+            'Pumice Buffing Beads',
+            'Glycolic & Lactic Acids',
+            'Bisabolol',
+            'Vitamin E',
+          ],
+          source_url: 'https://www.firstaidbeauty.com/products/kp-bump-eraser-body-scrub-aha-fresh-strawberry',
+          reviewed_by: 'codex',
+          reviewed_at: '2026-05-18T00:00:00.000Z',
+        },
+        ingredients_inci: {
+          items: [
+            'Pumice',
+            'Glycolic Acid',
+            'Lactic Acid',
+            'Bisabolol',
+            'Tocopherol',
+          ],
+        },
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const activeIngredients = payload.modules.find((module) => module.type === 'active_ingredients');
+
+    expect(activeIngredients?.data?.items).toEqual([
+      'Pumice Buffing Beads',
+      'Glycolic & Lactic Acids',
+      'Bisabolol',
+      'Vitamin E',
+    ]);
+    expect(activeIngredients?.data?.source_origin).toBe('reviewed_active_ingredients');
+    expect(activeIngredients?.data?.source_quality_status).toBe('high');
+  });
+
   test('keeps source-backed PDRN as a displayable skincare active', () => {
     const payload = buildPdpPayload({
       product: {

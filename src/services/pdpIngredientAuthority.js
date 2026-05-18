@@ -631,6 +631,12 @@ function filterDisplayableActiveItems(product, items) {
   );
 }
 
+function displayableActiveItemsForSource(product, items, sourceOrigin = '') {
+  const normalized = uniqueStrings(Array.isArray(items) ? items : []);
+  if (asString(sourceOrigin) === 'reviewed_active_ingredients') return normalized;
+  return filterDisplayableActiveItems(product, normalized);
+}
+
 function classifySuppressedActiveItems(items) {
   const source = Array.isArray(items) ? items : [];
   if (!source.length) return null;
@@ -1218,7 +1224,11 @@ function buildAuthoritativeIngredientView(product, options = {}) {
   }
 
   if (activeItems.length) {
-    const displayableActiveItems = filterDisplayableActiveItems(product, activeItems)
+    const displayableActiveItems = displayableActiveItemsForSource(
+      product,
+      activeItems,
+      activeCandidateResult.source_origin,
+    )
       .filter((item) => {
         if (!activeCandidateResult.validateAgainstIngredients) return true;
         return hasExplicitActiveRoleContext(product, item);
@@ -1348,15 +1358,20 @@ function buildStructuredPdpIngredientModules(product, options = {}) {
                 }),
           }
       : null;
+  const displayableAuthorityActiveItems = displayableActiveItemsForSource(
+    product,
+    authority.active_items,
+    authority.active_source_origin,
+  );
   const activeIngredientsData =
-    Array.isArray(authority.active_items) && filterDisplayableActiveItems(product, authority.active_items).length
+    Array.isArray(authority.active_items) && displayableAuthorityActiveItems.length
       ? {
           title: 'Active Ingredients',
-          items: filterDisplayableActiveItems(product, authority.active_items),
+          items: displayableAuthorityActiveItems,
           source_origin: authority.active_source_origin || authority.source_origin || 'active_block',
           source_quality_status: authority.active_source_origin === 'reviewed_active_ingredients'
             ? 'high'
-            : filterDisplayableActiveItems(product, authority.active_items).some((item) => REGULATORY_ACTIVE_RE.test(item))
+            : displayableAuthorityActiveItems.some((item) => REGULATORY_ACTIVE_RE.test(item))
             ? 'regulatory_active'
             : authority.purity_status === 'suppressed'
               ? 'captured'
