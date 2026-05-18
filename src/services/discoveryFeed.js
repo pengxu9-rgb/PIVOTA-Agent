@@ -6584,11 +6584,22 @@ function buildProviderBreakdown(results = []) {
     const skipped = attempted && recallSummary.every((step) => step?.skipped === true);
     const latencyMs = recallSummary.reduce((sum, step) => sum + Math.max(0, Number(step?.latency_ms || 0)), 0);
     const skipReason = recallSummary.find((step) => typeof step?.skip_reason === 'string')?.skip_reason || null;
-    const failureReason =
-      recallSummary.find((step) => typeof step?.failure_reason === 'string')?.failure_reason ||
-      (['missing_database', 'schema_missing', 'query_error', 'budget_truncated'].includes(skipReason)
+    // A step-level failure_reason should only surface as a provider-level
+    // failure_reason when the provider actually failed - i.e. no step
+    // succeeded. Otherwise the provider can be reported as `successful:
+    // true, returned: N, failure_reason: timeout` simultaneously, which is
+    // self-contradictory and trips the discovery smoke validator's
+    // disallowed-failure-reason check on what is functionally a healthy
+    // provider that just had one slow recall step.
+    const stepFailureReason =
+      recallSummary.find((step) => typeof step?.failure_reason === 'string')?.failure_reason || null;
+    const skipReasonAsFailure =
+      ['missing_database', 'schema_missing', 'query_error', 'budget_truncated'].includes(skipReason)
         ? skipReason
-        : null);
+        : null;
+    const failureReason = successfulSteps.length > 0
+      ? skipReasonAsFailure
+      : (stepFailureReason || skipReasonAsFailure);
     let zeroRecallReason = null;
     if (attempted && !skipped && (Array.isArray(result?.products) ? result.products.length : 0) === 0) {
       if (recallSummary.some((step) => step?.truncated_by_budget === true)) {
