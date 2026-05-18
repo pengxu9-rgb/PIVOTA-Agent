@@ -13,6 +13,10 @@ const {
   buildProbeFailureResponse,
   isTransientProbeFailureResponse,
   resolveProbeMaxAttempts,
+  isTransientExtractorProbeResult,
+  resolveExtractorProbeMaxAttempts,
+  isTransientImageProbeResult,
+  resolveImageProbeMaxAttempts,
   mergePdpProbeResponses,
   unwrapLivePdpPayload,
   resolveExpectedLivePdpPrice,
@@ -195,6 +199,13 @@ describe('audit-external-product-pdp-quality helpers', () => {
     expect(resolveProbeMaxAttempts({ maxAttempts: 0 })).toBe(1);
   });
 
+  test('classifies image probe timeouts as retryable without hiding real bad statuses', () => {
+    expect(isTransientImageProbeResult({ ok: false, error: 'ECONNABORTED' })).toBe(true);
+    expect(isTransientImageProbeResult({ ok: false, error: 'bad_status', status: 404 })).toBe(false);
+    expect(resolveImageProbeMaxAttempts({ maxAttempts: 3 })).toBe(3);
+    expect(resolveImageProbeMaxAttempts({ maxAttempts: 12 })).toBe(4);
+  });
+
   test('wraps catalog extractor DNS failures as row-level extractor failures', () => {
     const response = buildExtractorProbeFailure(
       Object.assign(new Error('getaddrinfo ENOTFOUND pivota-catalog-intelligence-production.up.railway.app'), {
@@ -214,6 +225,17 @@ describe('audit-external-product-pdp-quality helpers', () => {
       },
       product: null,
     });
+  });
+
+  test('retries extractor probe transport failures but not source-unavailable blockers', () => {
+    expect(isTransientExtractorProbeResult({
+      response: { diagnostics: { failure_category: 'extractor_probe_failed', error_code: 'ECONNRESET' } },
+    })).toBe(true);
+    expect(isTransientExtractorProbeResult({
+      response: { diagnostics: { failure_category: 'source_unavailable_404' } },
+    })).toBe(false);
+    expect(resolveExtractorProbeMaxAttempts({ maxAttempts: 3 })).toBe(3);
+    expect(resolveExtractorProbeMaxAttempts({ maxAttempts: 10 })).toBe(4);
   });
 
   test('builds public get_pdp_v2 payloads with audit-owned includes', () => {
@@ -575,6 +597,40 @@ describe('audit-external-product-pdp-quality helpers', () => {
         category: 'Skincare',
         product_type: 'Balm',
         snapshot: { title: 'Dewy Balm Stick' },
+      },
+      livePayload,
+      liveResponse: { modules: [{ type: 'canonical', data: { pdp_payload: livePayload } }] },
+    });
+
+    expect(gate.failure_reasons).not.toContain('wrong_axis_for_category');
+    expect(gate.failure_reasons).not.toContain('makeup_shade_missing_visual');
+  });
+
+  test('allows visual shade axis for shimmer body-care variants', () => {
+    const livePayload = {
+      product: {
+        product_id: 'ext_butta_drop_shimmer',
+        merchant_id: 'external_seed',
+        title: 'Butta Drop Whipped Oil Body Cream with Tropical Oils + Shea Butter - Fenty Fresh Shimmering',
+        category: 'Skincare',
+        product_type: 'Body Cream',
+        variants: [
+          {
+            variant_id: 'v_fenty_fresh_shimmering',
+            title: 'Fenty Fresh Shimmering',
+            swatch_image_url: 'https://example.com/fenty-fresh-shimmering.png',
+            options: [{ name: 'Shade', value: 'Fenty Fresh Shimmering', axis_kind: 'shade' }],
+          },
+        ],
+      },
+      modules: [{ type: 'variant_selector', data: { selected_variant_id: 'v_fenty_fresh_shimmering' } }],
+    };
+
+    const gate = buildVariantGate({
+      seedData: {
+        category: 'Skincare',
+        product_type: 'Body Cream',
+        snapshot: { title: 'Butta Drop Whipped Oil Body Cream with Tropical Oils + Shea Butter - Fenty Fresh Shimmering' },
       },
       livePayload,
       liveResponse: { modules: [{ type: 'canonical', data: { pdp_payload: livePayload } }] },

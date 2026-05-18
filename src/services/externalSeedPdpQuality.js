@@ -169,7 +169,7 @@ function collectVariantAuditContext(seedData = {}, livePayload = {}) {
 }
 
 function allowsShadeAxis(contextText = '') {
-  return /\b(tinted?|skin tint|shade|color[-\s]?correct|colour[-\s]?correct|tone[-\s]?up|tone[-\s]?correct|lip tint|lipstick|lip gloss|lip oil|lip balm|lip treatment|lip scrub|pout preserve|balm stick|dewy balm|glow balm|foundation|concealer|bronzer|blush|highlighter|powder|eyeshadow|eyeliner|brow|mascara|makeup|cosmetic)\b/i.test(
+  return /\b(tinted?|skin tint|shade|color[-\s]?correct|colour[-\s]?correct|tone[-\s]?up|tone[-\s]?correct|lip tint|lipstick|lip gloss|lip oil|lip balm|lip treatment|lip scrub|pout preserve|balm stick|dewy balm|glow balm|foundation|concealer|bronzer|blush|highlighter|powder|eyeshadow|eyeliner|brow|mascara|makeup|cosmetic|shimmer(?:ing)?|luminizer|illuminator)\b/i.test(
     contextText,
   );
 }

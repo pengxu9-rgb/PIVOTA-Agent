@@ -325,29 +325,59 @@ async function fetchExtractorTruth(row, baseUrl, options = {}) {
       product: null,
     };
   }
-  try {
-    const response = await axios.post(
-      `${baseUrl.replace(/\/$/, '')}/api/extract`,
-      buildExtractRequestBody(targetUrl, row),
-      {
-        timeout: parsePositiveInt(
-          options.timeoutMs,
-          Number(process.env.CATALOG_INTELLIGENCE_TIMEOUT_MS || 90000),
-          1000,
-          300000,
-        ),
-        headers: { 'Content-Type': 'application/json' },
-      },
-    );
-    const data = response.data || {};
-    return {
-      target_url: targetUrl,
-      response: data,
-      product: Array.isArray(data.products) && data.products.length > 0 ? data.products[0] : null,
-    };
-  } catch (error) {
-    return buildExtractorProbeFailure(error, targetUrl);
+  const maxAttempts = resolveExtractorProbeMaxAttempts(options);
+  const retryErrors = [];
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    let result;
+    try {
+      const response = await axios.post(
+        `${baseUrl.replace(/\/$/, '')}/api/extract`,
+        buildExtractRequestBody(targetUrl, row),
+        {
+          timeout: parsePositiveInt(
+            options.timeoutMs,
+            Number(process.env.CATALOG_INTELLIGENCE_TIMEOUT_MS || 90000),
+            1000,
+            300000,
+          ),
+          headers: { 'Content-Type': 'application/json' },
+        },
+      );
+      const data = response.data || {};
+      result = {
+        target_url: targetUrl,
+        response: data,
+        product: Array.isArray(data.products) && data.products.length > 0 ? data.products[0] : null,
+      };
+    } catch (error) {
+      result = buildExtractorProbeFailure(error, targetUrl);
+    }
+    if (!isTransientExtractorProbeResult(result) || attempt >= maxAttempts) {
+      if (retryErrors.length > 0) {
+        return {
+          ...result,
+          response: {
+            ...ensureJsonObject(result.response),
+            diagnostics: {
+              ...ensureJsonObject(result.response?.diagnostics),
+              retry_attempts: attempt,
+              retry_errors: retryErrors,
+            },
+          },
+        };
+      }
+      return result;
+    }
+    const diagnostics = ensureJsonObject(result.response?.diagnostics);
+    retryErrors.push({
+      attempt,
+      failure_category: normalizeNonEmptyString(diagnostics.failure_category) || null,
+      error_code: normalizeNonEmptyString(diagnostics.error_code) || null,
+      error_message: normalizeNonEmptyString(diagnostics.error_message) || null,
+    });
+    await sleep(Math.min(2500, 300 * attempt));
   }
+  return buildExtractorProbeFailure(new Error('Extractor retry loop exhausted'), targetUrl);
 }
 
 function buildExtractorProbeFailure(error, targetUrl = '') {
@@ -376,6 +406,26 @@ function buildExtractorProbeFailure(error, targetUrl = '') {
     },
     product: null,
   };
+}
+
+function isTransientExtractorProbeResult(result = {}) {
+  const diagnostics = ensureJsonObject(result?.response?.diagnostics);
+  const category = normalizeNonEmptyString(diagnostics.failure_category);
+  const code = normalizeNonEmptyString(diagnostics.error_code).toUpperCase();
+  const message = normalizeNonEmptyString(diagnostics.error_message);
+  if (!category) return false;
+  if (/source_unavailable|captcha|login|paywall|bot|blocked|http_4\d\d/i.test(category)) return false;
+  if (['extractor_probe_timeout', 'extractor_probe_dns_failure', 'extractor_probe_failed'].includes(category)) {
+    return true;
+  }
+  return ['ECONNABORTED', 'ETIMEDOUT', 'ECONNRESET', 'EAI_AGAIN', 'ENOTFOUND'].includes(code) ||
+    /timeout|temporarily unavailable|socket hang up|connection (?:reset|aborted)|network/i.test(message);
+}
+
+function resolveExtractorProbeMaxAttempts(options = {}) {
+  const requested = Number(options.maxAttempts || process.env.EXTERNAL_PDP_QUALITY_EXTRACTOR_MAX_ATTEMPTS || 2);
+  if (!Number.isFinite(requested) || requested <= 1) return 1;
+  return Math.max(1, Math.min(4, Math.floor(requested)));
 }
 
 function buildProbeFailureResponse(error, { operation = '', probe = '' } = {}) {
@@ -478,7 +528,19 @@ async function invokeGatewayProbe(gatewayUrl, operation, payload, options = {}) 
   return buildProbeFailureResponse(new Error('Probe retry loop exhausted'), { operation, probe: options.probe });
 }
 
-async function probeImageUrl(url) {
+function isTransientImageProbeResult(result = {}) {
+  const error = normalizeNonEmptyString(result.error).toUpperCase();
+  return ['ECONNABORTED', 'ETIMEDOUT', 'ECONNRESET', 'EAI_AGAIN'].includes(error) ||
+    /timeout|temporarily unavailable|socket hang up|connection (?:reset|aborted)/i.test(normalizeNonEmptyString(result.error));
+}
+
+function resolveImageProbeMaxAttempts(options = {}) {
+  const requested = Number(options.maxAttempts || process.env.EXTERNAL_PDP_QUALITY_IMAGE_MAX_ATTEMPTS || 2);
+  if (!Number.isFinite(requested) || requested <= 1) return 1;
+  return Math.max(1, Math.min(4, Math.floor(requested)));
+}
+
+async function probeImageUrlOnce(url) {
   const target = normalizeUrlLike(url);
   if (!target) {
     return { url, ok: false, status: null, content_type: null, error: 'invalid_url' };
@@ -527,6 +589,30 @@ async function probeImageUrl(url) {
   }
 }
 
+async function probeImageUrl(url, options = {}) {
+  const maxAttempts = resolveImageProbeMaxAttempts(options);
+  const retryErrors = [];
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const result = await probeImageUrlOnce(url);
+    if (!isTransientImageProbeResult(result) || attempt >= maxAttempts) {
+      if (retryErrors.length > 0 && !result.ok) {
+        return {
+          ...result,
+          retry_attempts: attempt,
+          retry_errors: retryErrors,
+        };
+      }
+      return result;
+    }
+    retryErrors.push({
+      attempt,
+      error: normalizeNonEmptyString(result.error) || null,
+    });
+    await sleep(Math.min(1500, 200 * attempt));
+  }
+  return { url, ok: false, status: null, content_type: null, error: 'image_probe_retry_loop_exhausted' };
+}
+
 async function probeImageHealth(urls, options = {}) {
   if (options.skip) {
     return {
@@ -544,7 +630,7 @@ async function probeImageHealth(urls, options = {}) {
   const selectedUrls = uniqueUrls.slice(0, limit);
   const results = [];
   for (const url of selectedUrls) {
-    results.push(await probeImageUrl(url));
+    results.push(await probeImageUrl(url, { maxAttempts: options.maxAttempts }));
   }
   const broken = results.filter((result) => !result.ok);
   return {
@@ -878,6 +964,10 @@ module.exports = {
   buildProbeFailureResponse,
   isTransientProbeFailureResponse,
   resolveProbeMaxAttempts,
+  isTransientExtractorProbeResult,
+  resolveExtractorProbeMaxAttempts,
+  isTransientImageProbeResult,
+  resolveImageProbeMaxAttempts,
   writeOutput,
   invokeGatewayProbe,
   isAuthoritativeInvokeUrl,
