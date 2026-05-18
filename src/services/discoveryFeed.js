@@ -9435,8 +9435,40 @@ function buildDiscoveryCardPayload(raw, candidate) {
   };
 }
 
+function isDiscoveryPivotaSignatureProductId(value) {
+  return /^sig[_:]/i.test(String(value || '').trim());
+}
+
+function isDiscoveryExternalSeedProductId(value) {
+  return /^ext[_:]/i.test(String(value || '').trim());
+}
+
+function firstDiscoveryExternalSeedProductId(...values) {
+  for (const value of values) {
+    const candidate = String(value || '').trim();
+    if (isDiscoveryExternalSeedProductId(candidate)) return candidate;
+  }
+  return '';
+}
+
+function resolveDiscoveryVisibleProductId(raw = {}, candidate = {}) {
+  const sigId = String(raw.pivota_signature_id || raw.signature_id || '').trim();
+  if (isDiscoveryPivotaSignatureProductId(sigId)) return sigId;
+  return String(raw.product_id || raw.id || candidate.productId || '').trim();
+}
+
 function formatDiscoveryResponseProduct(candidate, request = null) {
   const { __discovery_provider, ...raw } = candidate.raw || {};
+  const visibleProductId = resolveDiscoveryVisibleProductId(raw, candidate);
+  const sourceProductId = firstDiscoveryExternalSeedProductId(
+    raw.source_product_id,
+    raw.external_product_id,
+    raw.external_seed_product_id,
+    raw.platform_product_id,
+    raw.product_id,
+    raw.id,
+    candidate.productId,
+  );
   if (request?.response_detail === 'card') {
     const imageUrl = String(raw.image_url || raw.imageUrl || '').trim();
     const title = String(raw.title || raw.name || '').trim();
@@ -9461,8 +9493,8 @@ function formatDiscoveryResponseProduct(candidate, request = null) {
     };
 
     return {
-      id: raw.id || candidate.productId,
-      product_id: raw.product_id || candidate.productId,
+      id: visibleProductId || candidate.productId,
+      product_id: visibleProductId || candidate.productId,
       merchant_id: raw.merchant_id || candidate.merchantId,
       ...(raw.merchant_name ? { merchant_name: raw.merchant_name } : {}),
       ...(raw.external_redirect_url ? { external_redirect_url: raw.external_redirect_url } : {}),
@@ -9471,9 +9503,9 @@ function formatDiscoveryResponseProduct(candidate, request = null) {
       ...(raw.disclosure_text ? { disclosure_text: raw.disclosure_text } : {}),
       ...(raw.platform ? { platform: raw.platform } : {}),
       ...(raw.platform_product_id ? { platform_product_id: raw.platform_product_id } : {}),
-      ...(raw.source_product_id ? { source_product_id: raw.source_product_id } : {}),
-      ...(raw.external_product_id ? { external_product_id: raw.external_product_id } : {}),
-      ...(raw.external_seed_product_id ? { external_seed_product_id: raw.external_seed_product_id } : {}),
+      ...(sourceProductId ? { source_product_id: raw.source_product_id || sourceProductId } : {}),
+      ...(sourceProductId ? { external_product_id: raw.external_product_id || sourceProductId } : {}),
+      ...(sourceProductId ? { external_seed_product_id: raw.external_seed_product_id || sourceProductId } : {}),
       ...(raw.pivota_signature_id ? { pivota_signature_id: raw.pivota_signature_id } : {}),
       ...(raw.pivota_canonical_url ? { pivota_canonical_url: raw.pivota_canonical_url } : {}),
       ...(raw.merchant_canonical_url ? { merchant_canonical_url: raw.merchant_canonical_url } : {}),
@@ -9537,8 +9569,11 @@ function formatDiscoveryResponseProduct(candidate, request = null) {
 
   return {
     ...raw,
-    id: raw.id || candidate.productId,
-    product_id: raw.product_id || candidate.productId,
+    id: visibleProductId || candidate.productId,
+    product_id: visibleProductId || candidate.productId,
+    ...(sourceProductId ? { source_product_id: raw.source_product_id || sourceProductId } : {}),
+    ...(sourceProductId ? { external_product_id: raw.external_product_id || sourceProductId } : {}),
+    ...(sourceProductId ? { external_seed_product_id: raw.external_seed_product_id || sourceProductId } : {}),
     merchant_id: raw.merchant_id || candidate.merchantId,
     ...(raw.brand ? {} : candidate.brand ? { brand: candidate.brand } : {}),
     ...(raw.category ? {} : candidate.category ? { category: candidate.category } : {}),

@@ -8348,7 +8348,9 @@ function projectFindProductsMultiTransportResponse(responseBody, { operation = n
     return responseBody;
   }
   const stats = { trimmed_offers: 0, trimmed_variants: 0 };
-  const products = responseBody.products.map((product) => projectSearchTransportProduct(product, stats));
+  const products = responseBody.products
+    .map((product) => promoteVisibleSimilarProductSigId(product))
+    .map((product) => projectSearchTransportProduct(product, stats));
   const metadata =
     responseBody.metadata && typeof responseBody.metadata === 'object' && !Array.isArray(responseBody.metadata)
       ? responseBody.metadata
@@ -20272,23 +20274,99 @@ async function enrichSimilarProductsForPdpCards({
   return attachSimilarCardEnrichmentMetadata(result, metadata);
 }
 
+function collectExternalSeedIdCandidatesForVisibleCatalogHydration(product = {}) {
+  if (!product || typeof product !== 'object' || Array.isArray(product)) return [];
+  return Array.from(
+    new Set(
+      [
+        product.product_id,
+        product.productId,
+        product.id,
+        product.source_product_id,
+        product.sourceProductId,
+        product.external_product_id,
+        product.externalProductId,
+        product.external_seed_product_id,
+        product.externalSeedProductId,
+        product.platform_product_id,
+        product.platformProductId,
+      ]
+        .map((value) => firstNonEmptyString(value))
+        .filter((value) => isExternalSeedProductId(value)),
+    ),
+  );
+}
+
+function identityReviewRequiredForVisibleSig(product = {}) {
+  return (
+    product.review_required === true ||
+    product.identity_review_required === true ||
+    product.pdp_identity_review_required === true ||
+    product.identity?.review_required === true
+  );
+}
+
+function visibleApprovedGroupSigId(product = {}) {
+  const sigId = firstNonEmptyString(product.sellable_item_group_id, product.product_group_id);
+  if (!isPivotaSignatureProductId(sigId)) return null;
+
+  const identityStatus = String(
+    firstNonEmptyString(
+      product.identity_status,
+      product.pdp_identity_status,
+      product.identity?.identity_status,
+    ) || '',
+  ).toLowerCase();
+  if (identityStatus !== 'approved') return null;
+  if (identityReviewRequiredForVisibleSig(product)) return null;
+
+  const liveReadValue = firstNonEmptyString(
+    product.live_read_enabled,
+    product.identity_live_read_enabled,
+    product.pdp_identity_live_read_enabled,
+    product.identity?.live_read_enabled,
+  );
+  if (liveReadValue === false || String(liveReadValue).toLowerCase() === 'false') return null;
+  return sigId;
+}
+
+function resolveVisibleSimilarProductSigId(product = {}) {
+  const signatureFieldSigId = firstNonEmptyString(product.pivota_signature_id, product.signature_id);
+  if (isPivotaSignatureProductId(signatureFieldSigId)) return signatureFieldSigId;
+
+  const visibleIdSigId = firstNonEmptyString(product.product_id, product.productId, product.id);
+  if (isPivotaSignatureProductId(visibleIdSigId) && !identityReviewRequiredForVisibleSig(product)) {
+    return visibleIdSigId;
+  }
+  return visibleApprovedGroupSigId(product);
+}
+
 function promoteVisibleSimilarProductSigId(product) {
   if (!product || typeof product !== 'object' || Array.isArray(product)) return product;
-  const sigId = firstNonEmptyString(
-    product.pivota_signature_id,
-    product.signature_id,
-    product.sellable_item_group_id,
-    product.product_group_id,
-  );
-  if (!/^sig[_:]/i.test(sigId)) return product;
+  const sigId = resolveVisibleSimilarProductSigId(product);
+  if (!isPivotaSignatureProductId(sigId)) return product;
 
   const currentProductId = firstNonEmptyString(product.product_id, product.productId, product.id);
+  const sourceProductId = firstNonEmptyString(
+    product.source_product_id,
+    product.external_product_id,
+    product.external_seed_product_id,
+    product.platform_product_id,
+    ...collectExternalSeedIdCandidatesForVisibleCatalogHydration(product),
+    currentProductId,
+  );
   if (currentProductId === sigId) {
     return {
       ...product,
       product_id: sigId,
       id: sigId,
       pivota_signature_id: product.pivota_signature_id || sigId,
+      ...(isExternalSeedProductId(sourceProductId)
+        ? {
+            source_product_id: product.source_product_id || sourceProductId,
+            external_product_id: product.external_product_id || sourceProductId,
+          }
+        : {}),
     };
   }
 
@@ -20297,11 +20375,11 @@ function promoteVisibleSimilarProductSigId(product) {
     product_id: sigId,
     id: sigId,
     pivota_signature_id: product.pivota_signature_id || sigId,
-    ...(currentProductId ? { source_product_id: product.source_product_id || currentProductId } : {}),
-    ...(currentProductId && isExternalSeedProductId(currentProductId)
-      ? { external_product_id: product.external_product_id || currentProductId }
+    ...(sourceProductId ? { source_product_id: product.source_product_id || sourceProductId } : {}),
+    ...(isExternalSeedProductId(sourceProductId)
+      ? { external_product_id: product.external_product_id || sourceProductId }
       : {}),
-    platform_product_id: product.platform_product_id || currentProductId || sigId,
+    platform_product_id: product.platform_product_id || sourceProductId || currentProductId || sigId,
   };
 }
 
@@ -20316,7 +20394,7 @@ async function hydrateVisibleSimilarProductSigIdsFromCatalog(products) {
   const unresolvedExternalIds = Array.from(
     new Set(
       promoted
-        .map((product) => firstNonEmptyString(product?.product_id, product?.id, product?.source_product_id))
+        .flatMap((product) => collectExternalSeedIdCandidatesForVisibleCatalogHydration(product))
         .filter((productId) => isExternalSeedProductId(productId)),
     ),
   );
@@ -20344,8 +20422,9 @@ async function hydrateVisibleSimilarProductSigIdsFromCatalog(products) {
     );
     if (!sigBySourceProductId.size) return promoted;
     return promoted.map((product) => {
-      const productId = firstNonEmptyString(product?.product_id, product?.id, product?.source_product_id);
-      const sigId = sigBySourceProductId.get(productId);
+      const sigId = collectExternalSeedIdCandidatesForVisibleCatalogHydration(product)
+        .map((productId) => sigBySourceProductId.get(productId))
+        .find((candidate) => isPivotaSignatureProductId(candidate));
       return sigId
         ? promoteVisibleSimilarProductSigId({
             ...product,
@@ -38337,6 +38416,8 @@ module.exports._debug = {
   resolvePublicBeautyCompoundIntent,
   shouldBridgePublicBeautySearchToDiscovery,
   filterSimilarProductsWithCardHighlights,
+  collectExternalSeedIdCandidatesForVisibleCatalogHydration,
+  resolveVisibleSimilarProductSigId,
   promoteVisibleSimilarProductSigId,
   promoteVisibleSimilarProductSigIds,
   hydrateVisibleSimilarProductSigIdsFromCatalog,

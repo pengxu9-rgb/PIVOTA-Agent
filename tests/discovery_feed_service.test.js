@@ -26,6 +26,11 @@ function makeProduct({
   canonical_url,
   destination_url,
   url,
+  pivota_signature_id,
+  pivota_canonical_url,
+  source_product_id,
+  external_product_id,
+  external_seed_product_id,
 } = {}) {
   return {
     merchant_id,
@@ -41,6 +46,11 @@ function makeProduct({
     ...(canonical_url ? { canonical_url } : {}),
     ...(destination_url ? { destination_url } : {}),
     ...(url ? { url } : {}),
+    ...(pivota_signature_id ? { pivota_signature_id } : {}),
+    ...(pivota_canonical_url ? { pivota_canonical_url } : {}),
+    ...(source_product_id ? { source_product_id } : {}),
+    ...(external_product_id ? { external_product_id } : {}),
+    ...(external_seed_product_id ? { external_seed_product_id } : {}),
     status: 'active',
   };
 }
@@ -3636,6 +3646,45 @@ describe('discovery feed service', () => {
     expect(response.metadata.discovery_strategy).toBe('personalized_interest');
     expect(ids).not.toContain('exact_viewed');
     expect(alphaCount).toBeLessThanOrEqual(2);
+  });
+
+  test('home_hot_deals exposes sig product ids when catalog signatures are present', async () => {
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'home_hot_deals',
+        limit: 1,
+        response_detail: 'card',
+        context: {
+          auth_state: 'authenticated',
+          locale: 'en-US',
+        },
+      },
+      {
+        candidateProducts: [
+          makeProduct({
+            merchant_id: 'external_seed',
+            product_id: 'ext_7202e72bf7892c9ca5b6a80a',
+            source_product_id: 'ext_7202e72bf7892c9ca5b6a80a',
+            external_product_id: 'ext_7202e72bf7892c9ca5b6a80a',
+            pivota_signature_id: 'sig_5ff9c1f1657886217e5ae75f',
+            title: 'Cherry Dub Pore Purifyr Gel Cleanser',
+            brand: 'Cherry Dub',
+            category: 'Skincare',
+            product_type: 'Cleanser',
+          }),
+        ],
+      },
+    );
+
+    expect(response.products[0]).toEqual(
+      expect.objectContaining({
+        id: 'sig_5ff9c1f1657886217e5ae75f',
+        product_id: 'sig_5ff9c1f1657886217e5ae75f',
+        pivota_signature_id: 'sig_5ff9c1f1657886217e5ae75f',
+        source_product_id: 'ext_7202e72bf7892c9ca5b6a80a',
+        external_product_id: 'ext_7202e72bf7892c9ca5b6a80a',
+      }),
+    );
   });
 
   test('brand-scoped browse keeps matching viewed items, filters other brands, and supports price sort', async () => {
