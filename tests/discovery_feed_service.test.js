@@ -2317,6 +2317,15 @@ describe('discovery feed service', () => {
           }),
           makeProduct({
             merchant_id: 'external_seed',
+            product_id: 'ext_fenty_lip_liner',
+            pivota_signature_id: 'sig_fenty_lip_liner',
+            title: "Trace'd Out Longwear Waterproof Pencil Lip Liner - Bubble-tini",
+            brand: 'Fenty Beauty',
+            category: 'Lipstick',
+            product_type: 'Lipstick',
+          }),
+          makeProduct({
+            merchant_id: 'external_seed',
             product_id: 'ext_fenty_body_lava',
             pivota_signature_id: 'sig_fenty_body_lava',
             title: 'Body Lava Body Luminizer - Who Needs Clothes?!',
@@ -2333,7 +2342,7 @@ describe('discovery feed service', () => {
       'sig_fenty_lipstick_red',
     ]);
     expect(response.products.every((product) => String(product.product_id || '').startsWith('sig_'))).toBe(true);
-    expect(response.metadata.rank_debug.filter_counts.filtered_query_text).toBe(3);
+    expect(response.metadata.rank_debug.filter_counts.filtered_query_text).toBe(4);
   });
 
   test('brand-scoped discovery dedupes repeated external seed products by canonical identity', async () => {
@@ -6523,10 +6532,22 @@ describe('discovery feed service', () => {
       }),
       2,
     );
+    const liner = _internals.normalizeCandidateProduct(
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'fenty_lip_liner',
+        title: "Trace'd Out Longwear Waterproof Pencil Lip Liner",
+        brand: 'Fenty Beauty',
+        category: 'Lipstick',
+        product_type: 'Lipstick',
+      }),
+      3,
+    );
 
     expect(_internals.matchesStrictLipstickQueryCandidate(lipstick, 'fenty beauty lipsticks')).toBe(true);
     expect(_internals.matchesStrictLipstickQueryCandidate(gloss, 'fenty beauty lipsticks')).toBe(false);
     expect(_internals.matchesStrictLipstickQueryCandidate(bronzer, 'fenty beauty lipsticks')).toBe(false);
+    expect(_internals.matchesStrictLipstickQueryCandidate(liner, 'fenty beauty lipsticks')).toBe(false);
     expect(_internals.shouldFilterBrowseCandidateByQueryText(gloss, 'fenty beauty lipsticks')).toBe(true);
   });
 
