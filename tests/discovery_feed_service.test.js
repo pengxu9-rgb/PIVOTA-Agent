@@ -2259,6 +2259,83 @@ describe('discovery feed service', () => {
     );
   });
 
+  test('brand-scoped strict lipstick browse filters same-brand non-lipstick products', async () => {
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        sort: 'popular',
+        debug: true,
+        query: {
+          text: 'fenty beauty lipsticks',
+        },
+        scope: {
+          brand_names: ['Fenty Beauty'],
+        },
+        context: {
+          locale: 'en-US',
+        },
+      },
+      {
+        candidateProducts: [
+          makeProduct({
+            merchant_id: 'external_seed',
+            product_id: 'ext_fenty_gloss',
+            pivota_signature_id: 'sig_fenty_gloss',
+            title: 'Gloss Bomb Heat Universal Lip Luminizer + Plumper - Fenty Glow Heat',
+            brand: 'Fenty Beauty',
+            category: 'Lipstick',
+            product_type: 'Lipstick',
+          }),
+          makeProduct({
+            merchant_id: 'external_seed',
+            product_id: 'ext_fenty_bronzer',
+            pivota_signature_id: 'sig_fenty_bronzer',
+            title: 'Cheeks Out Freestyle Cream Bronzer - Teddy',
+            brand: 'Fenty Beauty',
+            category: 'Bronzer',
+            product_type: 'Bronzer',
+          }),
+          makeProduct({
+            merchant_id: 'external_seed',
+            product_id: 'ext_fenty_lipstick_black',
+            pivota_signature_id: 'sig_fenty_lipstick_black',
+            title: 'Fenty Icon The Case Semi-Matte Refillable Lipstick - Matte Black',
+            brand: 'Fenty Beauty',
+            category: 'Lipstick',
+            product_type: 'Lipstick',
+          }),
+          makeProduct({
+            merchant_id: 'external_seed',
+            product_id: 'ext_fenty_lipstick_red',
+            pivota_signature_id: 'sig_fenty_lipstick_red',
+            title: 'Fenty Icon Semi-Matte Refillable Lipstick - Red Edition',
+            brand: 'Fenty Beauty',
+            category: 'Lipstick',
+            product_type: 'Lipstick',
+          }),
+          makeProduct({
+            merchant_id: 'external_seed',
+            product_id: 'ext_fenty_body_lava',
+            pivota_signature_id: 'sig_fenty_body_lava',
+            title: 'Body Lava Body Luminizer - Who Needs Clothes?!',
+            brand: 'Fenty Beauty',
+            category: 'Highlighter',
+            product_type: 'Highlighter',
+          }),
+        ],
+      },
+    );
+
+    expect(response.products.map((product) => product.product_id)).toEqual([
+      'sig_fenty_lipstick_black',
+      'sig_fenty_lipstick_red',
+    ]);
+    expect(response.products.every((product) => String(product.product_id || '').startsWith('sig_'))).toBe(true);
+    expect(response.metadata.rank_debug.filter_counts.filtered_query_text).toBe(3);
+  });
+
   test('brand-scoped discovery dedupes repeated external seed products by canonical identity', async () => {
     const response = await getDiscoveryFeed(
       {
@@ -6410,6 +6487,47 @@ describe('discovery feed service', () => {
     expect(_internals.matchesQueryTextCandidate(powderBrush, 'makeup sponge')).toBe(false);
     expect(_internals.matchesQueryTextCandidate(hydratingMask, 'hydrating mask')).toBe(true);
     expect(_internals.matchesQueryTextCandidate(hydratingPad, 'hydrating mask')).toBe(false);
+  });
+
+  test('strict lipstick query intent rejects lip gloss and face makeup despite brand token overlap', () => {
+    const lipstick = _internals.normalizeCandidateProduct(
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'fenty_icon',
+        title: 'Fenty Icon Semi-Matte Refillable Lipstick',
+        brand: 'Fenty Beauty',
+        category: 'Lipstick',
+        product_type: 'Lipstick',
+      }),
+      0,
+    );
+    const gloss = _internals.normalizeCandidateProduct(
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'fenty_gloss',
+        title: 'Gloss Bomb Heat Universal Lip Luminizer + Plumper',
+        brand: 'Fenty Beauty',
+        category: 'Lipstick',
+        product_type: 'Lipstick',
+      }),
+      1,
+    );
+    const bronzer = _internals.normalizeCandidateProduct(
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'fenty_bronzer',
+        title: 'Cheeks Out Freestyle Cream Bronzer',
+        brand: 'Fenty Beauty',
+        category: 'Bronzer',
+        product_type: 'Bronzer',
+      }),
+      2,
+    );
+
+    expect(_internals.matchesStrictLipstickQueryCandidate(lipstick, 'fenty beauty lipsticks')).toBe(true);
+    expect(_internals.matchesStrictLipstickQueryCandidate(gloss, 'fenty beauty lipsticks')).toBe(false);
+    expect(_internals.matchesStrictLipstickQueryCandidate(bronzer, 'fenty beauty lipsticks')).toBe(false);
+    expect(_internals.shouldFilterBrowseCandidateByQueryText(gloss, 'fenty beauty lipsticks')).toBe(true);
   });
 
   test('exact beauty phrase hints skip broad category and vertical stages for narrow explicit queries', () => {

@@ -34,6 +34,9 @@ const {
   normalizeBrandText,
 } = require('../findProductsMulti/brandLexicon');
 const {
+  isStrictLipstickQuery,
+} = require('../findProductsMulti/queryUnderstanding');
+const {
   buildDisplayableProofBadge,
   filterDisplayableMarketSignalBadges,
   normalizeMarketSignalBadges,
@@ -610,6 +613,54 @@ const EXPLICIT_BEAUTY_EXACT_PHRASE_STRUCTURED_RULES = Object.freeze({
     negativeTitleTokens: ['mist', 'balm'],
   }),
 });
+const STRICT_LIPSTICK_TITLE_POSITIVE_TERMS = Object.freeze([
+  'lipstick',
+  'lipsticks',
+  'lip stick',
+  'lip sticks',
+  'liquid lip',
+  'liquid lips',
+  'lip color',
+  'lip colors',
+  'lip colour',
+  'lip colours',
+  'lip paint',
+  'lip paints',
+  'rouge',
+]);
+const STRICT_LIPSTICK_TITLE_NEGATIVE_TERMS = Object.freeze([
+  'lip gloss',
+  'lip glosses',
+  'gloss bomb',
+  'lip luminizer',
+  'lip luminiser',
+  'luminizer',
+  'luminiser',
+  'plumper',
+  'lip plumper',
+  'lip oil',
+  'lip balm',
+  'lip treatment',
+  'lip mask',
+  'bronzer',
+  'highlighter',
+  'body luminizer',
+  'body luminiser',
+  'foundation',
+  'concealer',
+  'mascara',
+  'blush',
+  'powder',
+  'eyeshadow',
+  'eye shadow',
+  'perfume',
+  'fragrance',
+  'brush',
+  'gift set',
+  'set',
+  'kit',
+  'bundle',
+]);
 const EXPLICIT_BEAUTY_COMPOUND_INTENT_RULES = Object.freeze({
   face_wash: Object.freeze({
     id: 'face_wash',
@@ -7530,6 +7581,42 @@ function shouldRejectExplicitExactBeautyStructuredQueryText(candidate, queryText
   return hasAnyNormalizedClassToken(titleText, exactRule.negativeTitleTokens || []);
 }
 
+function buildDiscoveryCandidateTitleFilterText(candidate) {
+  const raw = candidate?.raw || {};
+  return normalizeText(
+    [
+      raw.title,
+      raw.name,
+      raw.external_seed_recall?.retrieval_title,
+      candidate?.title,
+      candidate?.name,
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+}
+
+function matchesStrictLipstickQueryCandidate(candidate, queryText) {
+  if (!isStrictLipstickQuery(queryText)) return true;
+  if (candidate?.domain !== 'beauty' && !candidate?.beautyBucket) return true;
+
+  const titleText = buildDiscoveryCandidateTitleFilterText(candidate);
+  const structuredText = buildDiscoveryCandidateStructuredFilterText(candidate);
+  const combinedText = normalizeText([titleText, structuredText].filter(Boolean).join(' '));
+  if (!combinedText) return false;
+
+  if (titleText && hasAnyNormalizedClassToken(titleText, STRICT_LIPSTICK_TITLE_NEGATIVE_TERMS)) {
+    return false;
+  }
+  if (titleText && hasAnyNormalizedClassToken(titleText, STRICT_LIPSTICK_TITLE_POSITIVE_TERMS)) {
+    return true;
+  }
+  if (!structuredText || !hasAnyNormalizedClassToken(structuredText, ['lipstick', 'lip stick'])) {
+    return false;
+  }
+  return !hasAnyNormalizedClassToken(combinedText, STRICT_LIPSTICK_TITLE_NEGATIVE_TERMS);
+}
+
 function shouldRejectExplicitExactBeautyTextQueryCandidate(candidate, request, recallTerms = {}) {
   const exactPhraseHint = resolveExplicitExactBeautyPhraseHint(request, recallTerms);
   if (!exactPhraseHint || !Array.isArray(exactPhraseHint.negativeTextTerms)) return false;
@@ -7989,6 +8076,7 @@ function matchesExplicitExactPhraseTextQueryCandidate(candidate, request, recall
 
 function shouldFilterBrowseCandidateByQueryText(candidate, queryText, options = {}) {
   if (!String(queryText || '').trim()) return false;
+  if (!matchesStrictLipstickQueryCandidate(candidate, queryText)) return true;
   const exactPhraseTextQueryMatch = matchesExplicitExactPhraseTextQueryCandidate(
     candidate,
     { surface: 'browse_products', query: { text: queryText } },
@@ -10699,6 +10787,7 @@ module.exports = {
     loadCatalogCandidates,
     hydrateDiscoveryCandidateProductIntel,
     matchesQueryTextCandidate,
+    matchesStrictLipstickQueryCandidate,
     matchesBeautyCompoundQueryIntent,
     resolveExplicitBeautyCompoundIntent,
     resolveExplicitBrowseStageQueryCap,
