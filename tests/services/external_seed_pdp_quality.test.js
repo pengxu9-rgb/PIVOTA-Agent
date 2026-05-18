@@ -67,6 +67,7 @@ describe('externalSeedPdpQuality', () => {
         'similar_underfill',
       ]),
     );
+    expect(result.status).toBe('failed');
   });
 
   test('treats extractor misses as terminal for reviewed source-unavailable seeds', () => {
@@ -88,6 +89,23 @@ describe('externalSeedPdpQuality', () => {
     expect(extractorGate.status).toBe('terminal_source_unavailable');
     expect(extractorGate.source_unavailable).toBe(true);
     expect(extractorGate.failure_reasons).toEqual([]);
+  });
+
+  test('marks quality result passed when all gates have no failure reasons', () => {
+    const result = buildExternalSeedQualityResult({
+      seedId: 'eps_ok',
+      externalProductId: 'ext_ok',
+      seedGate: { status: 'passed', failure_reasons: [] },
+      extractorGate: { status: 'terminal_source_unavailable', failure_reasons: [] },
+      identityGate: { status: 'passed', failure_reasons: [] },
+      productIntelGate: { status: 'passed', failure_reasons: [] },
+      livePdpGate: { status: 'passed', failure_reasons: [] },
+      similarGate: { status: 'skipped', failure_reasons: [] },
+      variantGate: { status: 'passed', failure_reasons: [] },
+    });
+
+    expect(result.status).toBe('passed');
+    expect(result.failure_reasons).toEqual([]);
   });
 
   test('flags polluted live description and details independently from facts', () => {

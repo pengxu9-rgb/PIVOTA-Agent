@@ -1157,6 +1157,7 @@ function buildExternalSeedQualityResult({
     rootCauseClassification.push('variant_contract_issue');
   }
   return {
+    status: failureReasons.length > 0 ? 'failed' : 'passed',
     seed_id: normalizeNonEmptyString(seedId),
     external_product_id: normalizeNonEmptyString(externalProductId),
     market: normalizeNonEmptyString(market),
