@@ -2902,17 +2902,19 @@ function deriveCatalogExtractBrand(targetUrl, row) {
   return normalizeNonEmptyString(row?.domain || row?.title || row?.external_product_id || row?.id);
 }
 
-function buildExtractRequestBody(targetUrl, row) {
+function buildExtractRequestBody(targetUrl, row, options = {}) {
   const seedData = ensureJsonObject(row?.seed_data);
   const snapshot = ensureJsonObject(seedData.snapshot);
-  const normalizedTargetUrl = normalizeShopifyDuplicateProductUrl(
-    targetUrl,
-    row?.title,
-    row?.name,
-    seedData.title,
-    snapshot.title,
-    snapshot.name,
-  );
+  const normalizedTargetUrl = options.normalizeDuplicateHandle === false
+    ? normalizeUrlLike(targetUrl)
+    : normalizeShopifyDuplicateProductUrl(
+        targetUrl,
+        row?.title,
+        row?.name,
+        seedData.title,
+        snapshot.title,
+        snapshot.name,
+      );
   const requestBody = {
     brand: deriveCatalogExtractBrand(normalizedTargetUrl, row) || row?.id,
     domain: normalizedTargetUrl,

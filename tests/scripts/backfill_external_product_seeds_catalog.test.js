@@ -937,6 +937,26 @@ Contains four types of peptides`,
 
     expect(
       buildExtractRequestBody(
+        'https://www.jurlique.com/products/rose-hand-cream-1',
+        {
+          brand: 'Jurlique',
+          market: 'US',
+          title: 'Rose Hand Cream',
+          canonical_url: 'https://www.jurlique.com/products/rose-hand-cream-1',
+          destination_url: 'https://www.jurlique.com/products/rose-hand-cream-1',
+          seed_data: {
+            snapshot: {
+              canonical_url: 'https://www.jurlique.com/products/rose-hand-cream-1',
+              title: 'Rose Hand Cream',
+            },
+          },
+        },
+        { normalizeDuplicateHandle: false },
+      ).domain,
+    ).toBe('https://www.jurlique.com/products/rose-hand-cream-1');
+
+    expect(
+      buildExtractRequestBody(
         'https://anua.com/products/zero-cast-moisturizing-sunscreen-spf-50',
         {
           ...row,

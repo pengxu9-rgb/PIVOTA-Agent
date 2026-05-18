@@ -332,7 +332,7 @@ async function fetchExtractorTruth(row, baseUrl, options = {}) {
     try {
       const response = await axios.post(
         `${baseUrl.replace(/\/$/, '')}/api/extract`,
-        buildExtractRequestBody(targetUrl, row),
+        buildExtractRequestBody(targetUrl, row, { normalizeDuplicateHandle: false }),
         {
           timeout: parsePositiveInt(
             options.timeoutMs,
