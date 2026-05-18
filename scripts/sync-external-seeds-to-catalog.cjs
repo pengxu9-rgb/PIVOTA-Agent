@@ -14,7 +14,7 @@ const {
 
 const MERCHANT_ID = 'external_seed';
 const PLATFORM = 'external_seed';
-const SOURCE_SYSTEM = 'external_product_seeds_catalog_mirror_v1';
+const SOURCE_SYSTEM = 'external_seed_catalog_mirror_v1';
 const CONFIRM_TOKEN = 'SYNC_REVIEWED_EXTERNAL_SEEDS_TO_CATALOG';
 
 function argValue(name, fallback = '') {
@@ -561,7 +561,7 @@ function buildMirror(row) {
       freshness_json: freshness,
       category_path: asString(seedData.category_path || snapshot.category_path) || 'beauty',
       category_confidence: 0.85,
-      category_label_source: 'reviewed_external_seed_catalog_mirror',
+      category_label_source: 'reviewed_ext_seed_mirror',
       pdp_scope: 'multi_merchant_canonical',
       pdp_scope_source: SOURCE_SYSTEM,
       pivota_signature_id: sigId,
