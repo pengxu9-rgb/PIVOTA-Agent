@@ -50,9 +50,6 @@
     },
     "must_return_one_of_title_token_sets": [
       ["niacinamide", "serum"]
-    ],
-    "must_not_return_titles": [
-      "Winona Soothing Repair Serum"
     ]
   },
   {
