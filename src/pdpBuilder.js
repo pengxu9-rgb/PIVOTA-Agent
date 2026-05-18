@@ -1495,6 +1495,20 @@ function buildVariantSelectorVariants(variants) {
         label_image_url:
           normalizePdpImageUrl(variant.label_image_url || variant.swatch_image_url || variant.thumbnail_url) ||
           undefined,
+        swatch_image_url:
+          normalizePdpImageUrl(
+            variant.swatch_image_url ||
+              variant.swatch?.image_url ||
+              variant.swatch?.imageUrl ||
+              variant.swatch?.url,
+          ) || undefined,
+        swatch_color:
+          normalizeHexColor(
+            variant.swatch_color ||
+              variant.color_hex ||
+              variant.shade_hex ||
+              variant.swatch?.hex,
+          ) || undefined,
         swatch: variant.swatch,
         axis_kind: asNonEmptyString(variant.axis_kind || variant.axisKind) || undefined,
         source_quality_status:
@@ -1502,6 +1516,35 @@ function buildVariantSelectorVariants(variants) {
       };
     })
     .filter((variant) => variant && variant.variant_id);
+}
+
+function buildVariantSelectorOptionValueVisualFields(variant) {
+  const swatchImageUrl =
+    normalizePdpImageUrl(
+      variant?.swatch_image_url ||
+        variant?.swatch?.image_url ||
+        variant?.swatch?.imageUrl ||
+        variant?.swatch?.url,
+    ) || undefined;
+  const labelImageUrl =
+    normalizePdpImageUrl(
+      variant?.label_image_url ||
+        swatchImageUrl ||
+        variant?.thumbnail_url ||
+        variant?.thumbnailUrl,
+    ) || undefined;
+  const swatchColor =
+    normalizeHexColor(
+      variant?.swatch_color ||
+        variant?.color_hex ||
+        variant?.shade_hex ||
+        variant?.swatch?.hex,
+    ) || undefined;
+  return {
+    ...(swatchImageUrl ? { swatch_image_url: swatchImageUrl } : {}),
+    ...(labelImageUrl ? { label_image_url: labelImageUrl } : {}),
+    ...(swatchColor ? { swatch_color: swatchColor, color_hex: swatchColor, swatch: { hex: swatchColor } } : {}),
+  };
 }
 
 function buildVariantSelectorOptions(selectorVariants, defaultVariant) {
@@ -1529,6 +1572,7 @@ function buildVariantSelectorOptions(selectorVariants, defaultVariant) {
           label: value,
           variant_ids: [],
           selected: false,
+          ...buildVariantSelectorOptionValueVisualFields(variant),
         });
       }
       const row = group.values.get(valueKey);
@@ -1707,11 +1751,20 @@ function buildVariants(product) {
     }
 
     const swatchHex =
+      v.swatch_color ||
+      v.swatchColor ||
       v.color_hex ||
       v.swatch?.hex ||
       v.beauty_meta?.shade_hex ||
       v.shade_hex ||
       v.hex;
+    const swatchImageUrl = normalizePdpImageUrl(
+      v.swatch_image_url ||
+        v.swatchImageUrl ||
+        v.swatch?.image_url ||
+        v.swatch?.imageUrl ||
+        v.swatch?.url,
+    );
 
     const availability = {};
     if (inStock !== undefined) availability.in_stock = inStock;
@@ -1742,7 +1795,7 @@ function buildVariants(product) {
       image_url: variantImages[0],
       label_image_url: normalizePdpImageUrl(
         v.label_image_url ||
-          v.swatch_image_url ||
+          swatchImageUrl ||
           v.thumbnail_url ||
           v.thumbnail ||
           v.swatch?.image_url ||
@@ -1753,6 +1806,9 @@ function buildVariants(product) {
             ? variantImages[0]
             : undefined),
       ),
+      swatch_image_url: swatchImageUrl || undefined,
+      swatch_color: normalizeHexColor(swatchHex) || undefined,
+      color_hex: normalizeHexColor(swatchHex) || undefined,
       images: variantImages,
       image_urls: variantImages,
       axis_kind: asNonEmptyString(v.axis_kind || v.axisKind),

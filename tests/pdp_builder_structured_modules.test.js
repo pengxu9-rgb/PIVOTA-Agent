@@ -1115,6 +1115,81 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     expect(payload.product.product_line_options).toEqual(variantSelector.data.product_line_options);
   });
 
+  test('propagates source-backed shade visuals onto variant selector option values', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_catkin_lip_balm',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Tinted Glossy Lip Balm',
+        brand: 'Catkin',
+        image_url: 'https://example.com/catkin-hero.jpg',
+        variants: [
+          {
+            id: 'catkin-c01',
+            title: 'C01 Anthurium',
+            options: [{ name: 'Shade', value: 'C01 Anthurium', axis_kind: 'shade' }],
+            axis_kind: 'shade',
+            image_url: 'https://example.com/c01-product.jpg',
+            swatch_image_url: 'https://example.com/c01-swatch.jpg',
+            label_image_url: 'https://example.com/c01-swatch.jpg',
+            price: { current: { amount: 19.99, currency: 'USD' } },
+            availability: { in_stock: true },
+            source_quality_status: 'captured',
+          },
+          {
+            id: 'catkin-c02',
+            title: 'C02 Tulip',
+            options: [{ name: 'Shade', value: 'C02 Tulip', axis_kind: 'shade' }],
+            axis_kind: 'shade',
+            image_url: 'https://example.com/c02-product.jpg',
+            swatch_color: '#d8a098',
+            price: { current: { amount: 19.99, currency: 'USD' } },
+            availability: { in_stock: true },
+            source_quality_status: 'captured',
+          },
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const variantSelector = payload.modules.find((module) => module.type === 'variant_selector');
+    expect(variantSelector).toBeTruthy();
+    expect(variantSelector.data.variants).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          variant_id: 'catkin-c01',
+          swatch_image_url: 'https://example.com/c01-swatch.jpg',
+          label_image_url: 'https://example.com/c01-swatch.jpg',
+        }),
+        expect.objectContaining({
+          variant_id: 'catkin-c02',
+          swatch_color: '#d8a098',
+          swatch: { hex: '#d8a098' },
+        }),
+      ]),
+    );
+    expect(variantSelector.data.options).toEqual([
+      expect.objectContaining({
+        name: 'Shade',
+        values: expect.arrayContaining([
+          expect.objectContaining({
+            value: 'C01 Anthurium',
+            swatch_image_url: 'https://example.com/c01-swatch.jpg',
+            label_image_url: 'https://example.com/c01-swatch.jpg',
+          }),
+          expect.objectContaining({
+            value: 'C02 Tulip',
+            swatch_color: '#d8a098',
+            color_hex: '#d8a098',
+            swatch: { hex: '#d8a098' },
+          }),
+        ]),
+      }),
+    ]);
+  });
+
   test('preserves product-line size detail labels for mini and full-size options', () => {
     const payload = buildPdpPayload({
       product: {
