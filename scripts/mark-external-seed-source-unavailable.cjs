@@ -56,8 +56,45 @@ function cloneJson(value) {
 
 function deletePriceFields(target) {
   if (!target || typeof target !== 'object' || Array.isArray(target)) return;
-  for (const key of ['price', 'price_amount', 'priceAmount', 'currency', 'price_currency', 'priceCurrency']) {
+  for (const key of [
+    'price',
+    'price_amount',
+    'priceAmount',
+    'current_price',
+    'currentPrice',
+    'sale_price',
+    'salePrice',
+    'list_price',
+    'listPrice',
+    'compare_at_price',
+    'compareAtPrice',
+    'merchant_effective_price',
+    'estimated_best_price',
+    'currency',
+    'price_currency',
+    'priceCurrency',
+  ]) {
     delete target[key];
+  }
+}
+
+function markCommerceUnavailable(target) {
+  if (!target || typeof target !== 'object' || Array.isArray(target)) return;
+  deletePriceFields(target);
+  target.availability = 'out_of_stock';
+  target.in_stock = false;
+}
+
+function patchCommerceArrays(target) {
+  if (!target || typeof target !== 'object' || Array.isArray(target)) return;
+  for (const key of ['variants', 'product_variants', 'skus', 'offers']) {
+    if (!Array.isArray(target[key])) continue;
+    target[key] = target[key].map((item) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return item;
+      const next = cloneJson(item);
+      markCommerceUnavailable(next);
+      return next;
+    });
   }
 }
 
@@ -66,13 +103,10 @@ function patchSeedData(seedData, marker) {
   const snapshot = asObject(next.snapshot);
   next.snapshot = snapshot;
 
-  next.availability = 'out_of_stock';
-  next.in_stock = false;
-  snapshot.availability = 'out_of_stock';
-  snapshot.in_stock = false;
-
-  deletePriceFields(next);
-  deletePriceFields(snapshot);
+  markCommerceUnavailable(next);
+  markCommerceUnavailable(snapshot);
+  patchCommerceArrays(next);
+  patchCommerceArrays(snapshot);
 
   next.source_unavailable_v1 = marker;
   snapshot.source_unavailable_v1 = marker;
