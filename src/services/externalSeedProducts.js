@@ -3123,6 +3123,47 @@ function getSeedProductOptionNames(parsedSeedData) {
     const names = normalizeProductOptionNames(candidate);
     if (names.length > 0) return names;
   }
+  const axisNames = normalizeProductOptionNamesFromVariantAxes(parsedSeedData);
+  if (axisNames.length > 0) return axisNames;
+  return [];
+}
+
+function normalizeVariantAxisOptionName(axis) {
+  const normalized = normalizeOptionNameKey(axis);
+  if (!normalized) return '';
+  if (['shade', 'tone', 'hue'].includes(normalized)) return 'Shade';
+  if (['color', 'colour'].includes(normalized)) return 'Color';
+  if (['size', 'volume', 'capacity', 'net_content', 'net size', 'net_size'].includes(normalized)) return 'Size';
+  if (['pack', 'quantity', 'count'].includes(normalized)) return 'Pack';
+  return '';
+}
+
+function normalizeProductOptionNamesFromVariantAxes(parsedSeedData) {
+  const parsed = ensureJsonObject(parsedSeedData);
+  const snapshot = ensureJsonObject(parsed.snapshot);
+  const axisCandidates = [
+    parsed.variant_axis,
+    parsed.variantAxis,
+    snapshot.variant_axis,
+    snapshot.variantAxis,
+  ];
+  for (const axis of axisCandidates) {
+    const name = normalizeVariantAxisOptionName(axis);
+    if (name) return [name];
+  }
+  const axesCandidates = [
+    parsed.variant_axes,
+    parsed.variantAxes,
+    snapshot.variant_axes,
+    snapshot.variantAxes,
+  ];
+  for (const axes of axesCandidates) {
+    const objectAxes = ensureJsonObject(axes);
+    const names = Object.keys(objectAxes)
+      .map(normalizeVariantAxisOptionName)
+      .filter(Boolean);
+    if (names.length > 0) return Array.from(new Set(names));
+  }
   return [];
 }
 
@@ -3705,6 +3746,28 @@ function buildExternalSeedProduct(row, options = {}) {
       : (runtimeSeedData.pdp_field_capture_status && typeof runtimeSeedData.pdp_field_capture_status === 'object')
         ? runtimeSeedData.pdp_field_capture_status
         : undefined;
+  const seedVariantAxis = firstNonEmptyString(
+    runtimeSnapshot.variant_axis,
+    runtimeSnapshot.variantAxis,
+    runtimeSeedData.variant_axis,
+    runtimeSeedData.variantAxis,
+    snapshot.variant_axis,
+    snapshot.variantAxis,
+    seedData.variant_axis,
+    seedData.variantAxis,
+  );
+  const seedVariantAxes = [
+    runtimeSnapshot.variant_axes,
+    runtimeSnapshot.variantAxes,
+    runtimeSeedData.variant_axes,
+    runtimeSeedData.variantAxes,
+    snapshot.variant_axes,
+    snapshot.variantAxes,
+    seedData.variant_axes,
+    seedData.variantAxes,
+  ]
+    .map(ensureJsonObject)
+    .find((item) => Object.keys(item).length > 0);
   const seedDescriptionOrigin = firstNonEmptyString(
     runtimeSnapshot.seed_description_origin,
     runtimeSeedData.seed_description_origin,
@@ -4144,6 +4207,8 @@ function buildExternalSeedProduct(row, options = {}) {
     ...(localityFacts.creator_local_reason ? { creator_local_reason: localityFacts.creator_local_reason } : {}),
     ...(options.matchSource ? { external_seed_match_source: String(options.matchSource).trim() } : {}),
     variants,
+    ...(seedVariantAxis ? { variant_axis: seedVariantAxis } : {}),
+    ...(seedVariantAxes ? { variant_axes: seedVariantAxes } : {}),
     ...(selectedVariant?.variant_id ? { selected_variant_id: selectedVariant.variant_id } : {}),
     ...(selectedVariant?.variant_id ? { default_variant_id: selectedVariant.variant_id } : {}),
     ...(selectedVariant?.title ? { variant_title: String(selectedVariant.title).trim() } : {}),

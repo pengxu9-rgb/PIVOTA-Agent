@@ -3764,4 +3764,66 @@ describe('externalSeedProducts helper', () => {
     expect(product.active_ingredients).not.toContain('Titanium Dioxide');
     expect(product.seed_data.pdp_active_ingredients_raw).toBe(activeBlock);
   });
+
+  test('uses seed variant_axis to preserve source-backed shade selector options', () => {
+    const row = {
+      id: 'eps_catkin_lip_balm',
+      external_product_id: 'ext_catkin_lip_balm',
+      canonical_url: 'https://www.catkin.com/products/catkin-tinted-glossy-lip-balm',
+      destination_url: 'https://www.catkin.com/products/catkin-tinted-glossy-lip-balm',
+      domain: 'catkin.com',
+      title: 'CATKIN Tinted Glossy Lip Balm',
+      price_amount: 19.99,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        brand: 'CATKIN Cosmetics',
+        product_type: 'Lip Balm',
+        variant_axis: 'shade',
+        variant_axes: {
+          shade: ['C01 ANTHURIUM', 'C02 TULIP'],
+        },
+        variants: [
+          {
+            id: '57069266239865',
+            sku: 'K14A60031101-11',
+            option1: 'C01 ANTHURIUM',
+            title: 'C01 ANTHURIUM',
+            price: '19.99',
+            currency: 'USD',
+            available: true,
+            image_url: 'https://cdn.shopify.com/s/files/1/catkin/files/C01.jpg',
+            swatch_image_url: 'https://cdn.shopify.com/s/files/1/catkin/files/C01.jpg',
+          },
+          {
+            id: '57069266272633',
+            sku: 'K14A60031102',
+            option1: 'C02 TULIP',
+            title: 'C02 TULIP',
+            price: '19.99',
+            currency: 'USD',
+            available: true,
+            image_url: 'https://cdn.shopify.com/s/files/1/catkin/files/C02.jpg',
+            swatch_image_url: 'https://cdn.shopify.com/s/files/1/catkin/files/C02.jpg',
+          },
+        ],
+      },
+    };
+
+    const variants = normalizeSeedVariants(row.seed_data, row);
+    expect(variants).toHaveLength(2);
+    expect(variants[0].title).toBe('C01 ANTHURIUM');
+    expect(variants[0].options).toEqual([
+      expect.objectContaining({ name: 'Shade', value: 'C01 ANTHURIUM', axis_kind: 'shade' }),
+    ]);
+    expect(variants[0].label_image_url).toBe('https://cdn.shopify.com/s/files/1/catkin/files/C01.jpg');
+
+    const product = buildExternalSeedProduct(row);
+    expect(product.variant_axis).toBe('shade');
+    expect(product.variant_axes).toEqual({ shade: ['C01 ANTHURIUM', 'C02 TULIP'] });
+    expect(product.variants[1].options).toEqual([
+      expect.objectContaining({ name: 'Shade', value: 'C02 TULIP', axis_kind: 'shade' }),
+    ]);
+    expect(product.variants[1].label_image_url).toBe('https://cdn.shopify.com/s/files/1/catkin/files/C02.jpg');
+  });
 });
