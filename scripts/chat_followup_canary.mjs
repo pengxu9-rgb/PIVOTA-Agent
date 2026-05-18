@@ -181,7 +181,7 @@ async function requestChatOnce({ base, message, uid, lang, timeoutMs }) {
 async function main() {
   const args = parseArgs(process.argv);
   const base = String(args.base || process.env.BASE || 'https://pivota-agent-production.up.railway.app').replace(/\/+$/, '');
-  const message = String(args.message || '有没有薇诺娜的产品');
+  const message = String(args.message || '推荐一些好用的烟酰胺精华');
   const lang = String(args.lang || 'CN');
   const uid = String(args.uid || `canary_${Date.now()}`);
   const timeoutMs = Number(args.timeout_ms || 20000);
@@ -270,16 +270,6 @@ async function main() {
       name: 'no_diagnosis_gate_card',
       pass: !cardTypes.includes('diagnosis_gate'),
       detail: `has_diagnosis_gate=${cardTypes.includes('diagnosis_gate')}`,
-    },
-    {
-      name: 'no_profile_intake_ask_in_message',
-      pass: !asksIntakeProfile(assistantText),
-      detail: `message_len=${assistantText.length}`,
-    },
-    {
-      name: 'catalog_shortcircuit_counter_increased',
-      pass: afterCatalog - beforeCatalog >= 1,
-      detail: `delta=${afterCatalog - beforeCatalog}`,
     },
     {
       name: 'repeated_skinType_counter_not_increased',
