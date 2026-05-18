@@ -529,6 +529,85 @@ const FASHION_META_DERIVED_SOURCES = new Set([
   'variant_aggregate',
 ]);
 
+// Shopify metafield (namespace, key) tuples that map to a fashion_meta
+// field. Mirrors services/fashion_field_payload_extractor.py on the
+// backend (pivota-backend PR #545) — keep in lockstep when changing.
+const FASHION_METAFIELD_KEYS = {
+  material: [
+    ['shopify', 'material'], ['custom', 'material'],
+    ['custom', 'fabric'], ['custom', 'composition'],
+    [null, 'material'], [null, 'fabric'],
+  ],
+  care: [
+    ['shopify', 'care_instructions'], ['custom', 'care_instructions'],
+    ['custom', 'care'], ['custom', 'washing_instructions'],
+    [null, 'care_instructions'], [null, 'care'],
+  ],
+  size_guide: [
+    ['shopify', 'size_chart'], ['custom', 'size_guide'],
+    ['custom', 'size_chart'], ['custom', 'sizing'],
+    [null, 'size_guide'], [null, 'size_chart'],
+  ],
+};
+
+function _findMetafieldValue(metafields, candidates) {
+  if (!Array.isArray(metafields)) return null;
+  for (const [ns, key] of candidates) {
+    for (const mf of metafields) {
+      if (!mf || typeof mf !== 'object') continue;
+      if (mf.key !== key) continue;
+      if (ns !== null && mf.namespace !== ns) continue;
+      const v = mf.value;
+      if (v == null || v === '') continue;
+      return v;
+    }
+  }
+  return null;
+}
+
+/**
+ * Reads merchant-published fashion fields out of a product's
+ * `platform_metadata.metafields` (Shopify shape) and returns a
+ * provenance-tagged fashion_meta blob, OR null if none of the keys
+ * matched. Used to populate fashion_meta when the product dict (from
+ * products_cache) only carries the raw metafields and not the
+ * upstream-extracted catalog_products.material column.
+ *
+ * Mirrors services/fashion_field_payload_extractor.py — the gateway
+ * acts as a last-line consumer in case the backend extractor wasn't
+ * invoked OR the gateway is reading from a products_cache row whose
+ * upstream payload still carries the metafields.
+ */
+function extractFashionMetaFromMetafields(platformMetadata) {
+  if (!platformMetadata || typeof platformMetadata !== 'object') return null;
+  const mfs = Array.isArray(platformMetadata.metafields) ? platformMetadata.metafields : [];
+  if (!mfs.length) return null;
+  const out = {};
+  const material = _findMetafieldValue(mfs, FASHION_METAFIELD_KEYS.material);
+  if (typeof material === 'string' && material.trim()) {
+    out.material = { value: material.trim(), source: 'merchant_payload', confidence: 1.0 };
+  }
+  const care = _findMetafieldValue(mfs, FASHION_METAFIELD_KEYS.care);
+  if (typeof care === 'string' && care.trim()) {
+    out.care = { value: care.trim(), source: 'merchant_payload', confidence: 1.0 };
+  }
+  const sizeGuideRaw = _findMetafieldValue(mfs, FASHION_METAFIELD_KEYS.size_guide);
+  if (sizeGuideRaw != null) {
+    let parsed = null;
+    if (typeof sizeGuideRaw === 'object') parsed = sizeGuideRaw;
+    else if (typeof sizeGuideRaw === 'string' && sizeGuideRaw.trim()) {
+      try {
+        const candidate = JSON.parse(sizeGuideRaw);
+        parsed = candidate && typeof candidate === 'object' ? candidate : { raw: sizeGuideRaw.trim() };
+      } catch {
+        parsed = { raw: sizeGuideRaw.trim() };
+      }
+    }
+    if (parsed) out.size_fit_chart = parsed;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
 /**
  * Read a field from a fashion_meta blob that may carry one of two shapes:
  *   - legacy flat:  { material: "100% cotton" }                (no provenance)
@@ -4426,6 +4505,15 @@ function buildPdpPayload(args) {
       ...(() => {
         const upstream = pickFashionMeta(product.fashion_meta);
         if (upstream) return { fashion_meta: upstream };
+        // Phase O-5b followup: fall back to extracting from
+        // platform_metadata.metafields (Shopify standard shape) so the
+        // gateway surfaces material/care from products_cache rows even
+        // when upstream didn't pre-build product.fashion_meta. Mirrors
+        // pivota-backend services/fashion_field_payload_extractor.py.
+        const fromMetafields = pickFashionMeta(
+          extractFashionMetaFromMetafields(product.platform_metadata),
+        );
+        if (fromMetafields) return { fashion_meta: fromMetafields };
         const sample = pickFashionMeta(lookupSampleFashionMeta(product.product_id || product.id));
         return sample ? { fashion_meta: sample } : {};
       })(),
