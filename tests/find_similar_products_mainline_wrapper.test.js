@@ -458,6 +458,28 @@ describe('find_similar_products mainline wrapper', () => {
     );
   });
 
+  it('skips expensive public PDP similar recall for external sample/sachet products', async () => {
+    const app = require('../src/server');
+
+    expect(app._debug.shouldSkipPdpSimilarFetchForAccessory({
+      product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_sachet',
+        title: 'Mask Fit Red Cushion Sachet',
+      },
+      pdpSchemaProfile: 'beauty_formula',
+    })).toBe(true);
+
+    expect(app._debug.shouldSkipPdpSimilarFetchForAccessory({
+      product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_cushion',
+        title: 'Mask Fit Red Cushion',
+      },
+      pdpSchemaProfile: 'beauty_formula',
+    })).toBe(false);
+  });
+
   it('returns 503 when mainline recommendations fail instead of falling back upstream', async () => {
     const recommendMock = jest.fn().mockRejectedValue(new Error('engine unavailable'));
 
