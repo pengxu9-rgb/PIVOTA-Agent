@@ -640,6 +640,137 @@ describe('external seed product detail hydration', () => {
     );
   });
 
+  test('get_pdp_v2 reuses canonical catalog signature resolution for sig_* external_seed PDPs', async () => {
+    const { app, db } = loadServerWithDb({
+      PIVOTA_API_BASE: 'https://backend.test',
+      PIVOTA_API_KEY: 'test-token',
+    });
+
+    const productKey = 'prod::external_seed::external_seed::ext_seed_db_sig_group_1';
+    const signatureGroupRow = {
+      content_key: 'content::fenty::gloss-bomb-heat',
+      product_key: productKey,
+      merchant_id: 'external_seed',
+      platform: 'external_seed',
+      source_product_id: 'ext_seed_db_sig_group_1',
+      product_title: 'Fenty Beauty Gloss Bomb Heat Universal Lip Luminizer',
+      brand: 'Fenty Beauty',
+      canonical_url: 'https://www.fentybeauty.com/products/gloss-bomb-heat',
+      product_image_url: 'https://cdn.example.com/fenty-heat.jpg',
+      pdp_lifecycle_stage: 'published',
+      pivota_signature_id: 'sig_fentyheat1',
+      pivota_signature_minted_at: '2026-05-01T00:00:00.000Z',
+      merchant_name: 'Fenty Beauty',
+      internal_product_group_id: 'pg_fenty_heat',
+      is_primary: true,
+      offer_count: 1,
+    };
+    const statusRow = {
+      id: 'eps_seed_db_sig_group_1',
+      external_product_id: 'ext_seed_db_sig_group_1',
+      status: 'active',
+    };
+    const detailRow = {
+      ...statusRow,
+      canonical_url: 'https://www.fentybeauty.com/products/gloss-bomb-heat',
+      destination_url: 'https://www.fentybeauty.com/products/gloss-bomb-heat',
+      title: 'Fenty Beauty Gloss Bomb Heat Universal Lip Luminizer',
+      image_url: 'https://cdn.example.com/fenty-heat.jpg',
+      price_amount: '26.00',
+      price_currency: 'USD',
+      availability: 'In Stock',
+      seed_data: {
+        brand: 'Fenty Beauty',
+        description: 'A high-shine lip luminizer with a warming sensation.',
+        snapshot: {
+          canonical_url: 'https://www.fentybeauty.com/products/gloss-bomb-heat',
+          product_id: 'ext_seed_db_sig_group_1',
+          variants: [
+            {
+              variant_id: 'fenty-heat-full-size',
+              title: 'Full Size',
+              price: '26.00',
+              currency: 'USD',
+              stock: 'In Stock',
+            },
+          ],
+        },
+      },
+    };
+
+    db.query.mockImplementation((sql) => {
+      const text = String(sql || '');
+      if (text.includes('WITH offer_stats AS')) {
+        return Promise.resolve({ rows: [signatureGroupRow] });
+      }
+      if (text.includes('FROM catalog_products cp') && text.includes('LEFT JOIN pdp_identity_listing')) {
+        return Promise.resolve({
+          rows: [
+            {
+              merchant_id: 'external_seed',
+              platform: 'external_seed',
+              source_product_id: 'ext_seed_db_sig_group_1',
+              product_key: productKey,
+              pivota_signature_id: 'sig_fentyheat1',
+              category_path: 'beauty/makeup/lip/lip_gloss',
+              sellable_item_group_id: 'sig_fentyheat1',
+              product_line_id: 'line_fenty_gloss_bomb_heat',
+              review_family_id: 'line_fenty_gloss_bomb_heat',
+              identity_confidence: 0.98,
+              match_basis: ['catalog_signature'],
+              identity_status: 'reviewed',
+            },
+          ],
+        });
+      }
+      if (text.includes('FROM external_product_seeds') && text.includes('destination_url')) {
+        return Promise.resolve({ rows: [detailRow] });
+      }
+      if (text.includes('FROM external_product_seeds') && text.includes('status')) {
+        return Promise.resolve({ rows: [statusRow] });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'get_pdp_v2',
+        payload: {
+          product_ref: {
+            merchant_id: 'external_seed',
+            product_id: 'sig_fentyheat1',
+          },
+        },
+      })
+      .expect(200);
+
+    const canonicalGroupCalls = db.query.mock.calls.filter(([sql]) =>
+      String(sql || '').includes('WITH offer_stats AS'),
+    );
+    expect(canonicalGroupCalls).toHaveLength(1);
+    expect(res.body.metadata.identity_resolution).toEqual(
+      expect.objectContaining({
+        requested_product_id: 'sig_fentyheat1',
+        resolved_product_id: 'ext_seed_db_sig_group_1',
+        resolved_merchant_id: 'external_seed',
+        canonicalization_applied: true,
+        canonicalization_reason_code: 'PIVOTA_SIGNATURE_ID',
+        resolution_source: 'canonical_catalog_signature',
+      }),
+    );
+    expect(res.body.metadata.route_health.product_group_resolve_mode).toBe('not_needed');
+    expect(res.body.metadata.route_health.identity_graph_live_mode).toBe(
+      'skipped_sig_external_seed_catalog_identity',
+    );
+    expect(res.body.modules?.find((module) => module?.type === 'canonical')?.data).toEqual(
+      expect.objectContaining({
+        product_group_id: 'sig_fentyheat1',
+        product_line_id: 'line_fenty_gloss_bomb_heat',
+      }),
+    );
+  });
+
   test('preserves rich external seed PDP content when identity graph synthetic product is thinner', () => {
     const { debug } = loadServerWithDb();
     const richProduct = {
