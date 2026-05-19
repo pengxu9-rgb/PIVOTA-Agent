@@ -3703,6 +3703,7 @@ async function resolveLivePdpIdentityGroupForPdp({
           identity_confidence DESC NULLS LAST,
           updated_at DESC NULLS LAST,
           created_at DESC NULLS LAST
+        LIMIT 200
       `,
       [groupId],
     );
