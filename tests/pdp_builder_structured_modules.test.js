@@ -2203,4 +2203,42 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     });
     expect(payload.product.fashion_meta).toBeUndefined();
   });
+
+  test('skips nav and policy link pollution before choosing structured overview content', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_jurlique_light_cream',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Nutri-Define Supreme Restorative Light Cream',
+        brand: 'Jurlique',
+        description:
+          '- About Jurlique - Our Farm - Sustainability - Brand Ambassador Program - Blog - Terms of Use - Privacy Policy',
+        pdp_description_raw:
+          '- About Jurlique - Our Farm - Sustainability - Brand Ambassador Program - Blog - Terms of Use - Privacy Policy',
+        category: 'Moisturizer',
+        image_url: 'https://example.com/light-cream.jpg',
+        variants: [{ id: 'v1', title: '50 mL', price: { amount: 140, currency: 'USD' } }],
+        details_sections: [
+          {
+            heading: 'Key Benefits',
+            body: 'Moisturises and softens skin for renewed radiance.',
+          },
+          {
+            heading: 'Details',
+            body:
+              'This lightweight yet hydrating cream absorbs quickly into the skin to restore its natural luminosity.',
+          },
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const overview = payload.modules.find((module) => module.type === 'product_overview');
+    const overviewText = overview?.data?.sections?.[0]?.content || '';
+    expect(payload.product.description).toContain('lightweight yet hydrating cream');
+    expect(overviewText).toContain('lightweight yet hydrating cream');
+    expect(overviewText).not.toMatch(/Privacy Policy|Terms of Use|Brand Ambassador Program/i);
+  });
 });

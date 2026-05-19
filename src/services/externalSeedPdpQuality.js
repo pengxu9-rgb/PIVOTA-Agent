@@ -1,5 +1,6 @@
 const { ensureJsonObject, normalizeNonEmptyString } = require('./externalSeedRecall');
 const { isDisplayablePdpFaqItem } = require('./pdpFaqQuality');
+const { _internals: ingredientAuthorityInternals = {} } = require('./pdpIngredientAuthority');
 const {
   buildPdpImageDedupeKey,
   classifyShopifyLikeAsset,
@@ -36,6 +37,18 @@ const NON_SURFACEABLE_ACTIVE_STATUS = new Set([
   'reviewed_not_applicable',
   'cleared_stale_non_source_backed',
 ]);
+const isDisplayableActiveItem =
+  typeof ingredientAuthorityInternals.isDisplayableActiveItem === 'function'
+    ? ingredientAuthorityInternals.isDisplayableActiveItem
+    : () => true;
+const splitIngredientText =
+  typeof ingredientAuthorityInternals.splitIngredientText === 'function'
+    ? ingredientAuthorityInternals.splitIngredientText
+    : (value) => normalizeNonEmptyString(value).split(/[,;\n]+/).map((item) => item.trim()).filter(Boolean);
+const normalizeIngredientItems =
+  typeof ingredientAuthorityInternals.normalizeIngredientItems === 'function'
+    ? ingredientAuthorityInternals.normalizeIngredientItems
+    : (items) => Array.from(new Set((Array.isArray(items) ? items : []).map(normalizeNonEmptyString).filter(Boolean)));
 
 function normalizeAmount(value) {
   if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
@@ -329,13 +342,10 @@ function isMakeupComplexionIdentityContext(contextText = '') {
 function seedExpectsActiveIngredients(seedData = {}) {
   if (shouldSuppressSeedActiveExpectation(seedData)) return false;
   const snapshot = ensureJsonObject(seedData?.snapshot);
-  const rawActive = normalizeNonEmptyString(
-    seedData?.pdp_active_ingredients_raw ||
-      snapshot?.pdp_active_ingredients_raw ||
-      seedData?.active_ingredients ||
-      snapshot?.active_ingredients,
-  );
-  if (rawActive) return true;
+  const explicitActiveItems = collectSeedExplicitActiveItems(seedData, snapshot);
+  if (explicitActiveItems.length) {
+    return explicitActiveItems.some((item) => isDisplayableActiveItem(seedData, item));
+  }
   const ingredients = normalizeNonEmptyString(
     seedData?.pdp_ingredients_raw ||
       snapshot?.pdp_ingredients_raw ||
@@ -352,6 +362,22 @@ function seedExpectsActiveIngredients(seedData = {}) {
   return /\b(?:zinc oxide|titanium dioxide|avobenzone|octocrylene|octisalate|homosalate|octinoxate|ensulizole|oxybenzone)\b/i.test(
     ingredients,
   );
+}
+
+function activeCandidateItemsFromValue(value) {
+  if (Array.isArray(value)) return value.map(normalizeNonEmptyString).filter(Boolean);
+  const raw = normalizeNonEmptyString(value);
+  if (!raw) return [];
+  return splitIngredientText(raw);
+}
+
+function collectSeedExplicitActiveItems(seedData = {}, snapshot = ensureJsonObject(seedData?.snapshot)) {
+  return normalizeIngredientItems([
+    ...activeCandidateItemsFromValue(seedData?.pdp_active_ingredients_raw),
+    ...activeCandidateItemsFromValue(snapshot?.pdp_active_ingredients_raw),
+    ...activeCandidateItemsFromValue(seedData?.active_ingredients),
+    ...activeCandidateItemsFromValue(snapshot?.active_ingredients),
+  ]);
 }
 
 function hasDisplayableSimilarCardData(product = {}) {

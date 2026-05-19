@@ -1079,10 +1079,23 @@ function looksLikeCrossSellPairingText(value) {
   return hasPairingFrame && hasCommerceCta;
 }
 
+function looksLikeNavigationPolicyNoiseText(value) {
+  const text = asNonEmptyString(value).replace(/\s+/g, ' ');
+  if (!text) return false;
+  const navMatches = text.match(
+    /\b(?:about\s+(?:us|jurlique)|our farm|sustainability|brand ambassador program|blog|terms of use|terms of service|privacy policy|shipping policy|return policy|store locator|contact us)\b/gi,
+  ) || [];
+  if (navMatches.length < 3) return false;
+  const hasPolicyLink = /\b(?:terms of use|terms of service|privacy policy|shipping policy|return policy)\b/i.test(text);
+  const looksLikeLinkList = /^[-•]\s/.test(text) || (text.match(/\s[-•]\s/g) || []).length >= 2;
+  return hasPolicyLink || looksLikeLinkList;
+}
+
 function looksLikeTransactionalNoiseText(value) {
   const text = asNonEmptyString(value);
   if (!text) return false;
   return (
+    looksLikeNavigationPolicyNoiseText(text) ||
     /\bnotify me\b/i.test(text) ||
     /\bproduct notification\b/i.test(text) ||
     /\byour email\b/i.test(text) ||
@@ -2660,6 +2673,7 @@ function resolveProductDescriptionText(product, detailSections = collectStructur
     !looksLikeSectionSoupText(explicitPdpDescription) &&
     !capturedNarrativeSoup &&
     !looksLikeCrossSellPairingText(explicitPdpDescription) &&
+    !looksLikeTransactionalNoiseText(explicitPdpDescription) &&
     !overlongPromotionalOverview
   ) {
     const overviewContentSection = detailSections.find(
@@ -2685,7 +2699,7 @@ function resolveProductDescriptionText(product, detailSections = collectStructur
     : overlongPromotionalOverview
       ? extractPromotionalOverviewNarrative(explicitPdpDescriptionRaw || explicitPdpDescription)
       : cleanOverviewDescriptionText(explicitPdpDescriptionRaw || explicitPdpDescription);
-  if (cleanedPdpDescription) return cleanedPdpDescription;
+  if (cleanedPdpDescription && !looksLikeTransactionalNoiseText(cleanedPdpDescription)) return cleanedPdpDescription;
 
   const structuredDescription =
     typeof product.description === 'string'
@@ -2694,7 +2708,13 @@ function resolveProductDescriptionText(product, detailSections = collectStructur
         ? product.description.text || product.description.raw_text || ''
         : '';
   const normalizedDescription = stripHtml(structuredDescription || '');
-  if (normalizedDescription && !looksLikeSectionSoupText(normalizedDescription)) return normalizedDescription;
+  if (
+    normalizedDescription &&
+    !looksLikeSectionSoupText(normalizedDescription) &&
+    !looksLikeTransactionalNoiseText(normalizedDescription)
+  ) {
+    return normalizedDescription;
+  }
   return '';
 }
 

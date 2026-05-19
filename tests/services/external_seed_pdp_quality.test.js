@@ -298,6 +298,7 @@ describe('externalSeedPdpQuality', () => {
   test('flags structured sections, merchant FAQ, active ingredients, and thin similar card drift', () => {
     const livePdpGate = buildLivePdpGate({
       seedData: {
+        title: 'Daily Mineral Sunscreen SPF 40',
         pdp_details_sections: [
           { heading: 'Rice-Infused Hydration', content: 'Hydrates skin.' },
           { heading: 'Secret Sebum-Control Layer', content: 'Controls visible oil.' },
@@ -459,6 +460,54 @@ describe('externalSeedPdpQuality', () => {
             type: 'product_details',
             data: {
               sections: [{ heading: 'Overview', content: 'A daily tinted sunscreen.' }],
+            },
+          },
+        ],
+      },
+    });
+
+    expect(livePdpGate.active_ingredients_status.expected).toBe(true);
+    expect(livePdpGate.failure_reasons).toContain('active_ingredients_expected_but_hidden');
+  });
+
+  test('does not expect an active module from low-signal active ingredient arrays', () => {
+    const livePdpGate = buildLivePdpGate({
+      seedData: {
+        title: 'Calendula Cream',
+        category: 'Moisturizer',
+        active_ingredients: ['Glycerin'],
+        pdp_ingredients_raw: 'Aqua, Glycerin, Calendula Officinalis Flower Extract.',
+      },
+      livePayload: {
+        modules: [
+          {
+            type: 'product_details',
+            data: {
+              sections: [{ heading: 'Overview', content: 'A calming moisturizer for sensitive skin.' }],
+            },
+          },
+        ],
+      },
+    });
+
+    expect(livePdpGate.active_ingredients_status.expected).toBe(false);
+    expect(livePdpGate.failure_reasons).not.toContain('active_ingredients_expected_but_hidden');
+  });
+
+  test('still expects an active module when explicit active arrays contain displayable items', () => {
+    const livePdpGate = buildLivePdpGate({
+      seedData: {
+        title: 'Restorative Light Cream',
+        category: 'Moisturizer',
+        active_ingredients: ['Glycerin', 'Squalane'],
+        pdp_ingredients_raw: 'Aqua, Glycerin, Squalane, Tocopherol.',
+      },
+      livePayload: {
+        modules: [
+          {
+            type: 'product_details',
+            data: {
+              sections: [{ heading: 'Overview', content: 'A lightweight cream for dry skin.' }],
             },
           },
         ],

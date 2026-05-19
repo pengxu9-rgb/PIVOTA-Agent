@@ -1394,5 +1394,6 @@ module.exports = {
     splitIngredientText,
     normalizeIngredientItems,
     isLikelyIngredientItem,
+    isDisplayableActiveItem,
   },
 };
