@@ -1,0 +1,1488 @@
+[
+  {
+    "status": "passed",
+    "seed_id": "eps_0b5b8d3bc5054d19b23405b3",
+    "external_product_id": "ext_00f54d92f5865c03f5f90177",
+    "market": "US",
+    "domain": "kyliecosmetics.com",
+    "canonical_url": "https://kyliecosmetics.com/products/hooded-bath-towel",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 0,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 30,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "passed",
+      "product_group_id": "sig_a6e6213fad2508aaea094975",
+      "product_line_id": "pl_9bfa2b6472120ae481fdc59a",
+      "sellable_item_group_id": "sig_a6e6213fad2508aaea094975",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "passed",
+      "has_product_intel": true,
+      "product_intel_status": "ready",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "passed",
+      "price_amount": 30,
+      "has_overview": true,
+      "live_modules": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "reviews_preview",
+        "similar",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "media_gallery",
+        "price_promo"
+      ],
+      "details_status": {
+        "section_count": 1,
+        "section_soup_count": 0,
+        "has_product_facts": false,
+        "seed_section_count": 0,
+        "compressed_structured_sections": false
+      },
+      "questions_status": {
+        "seed_faq_count": 1,
+        "live_question_count": 1
+      },
+      "active_ingredients_status": {
+        "expected": false,
+        "live_item_count": 0,
+        "suppressed_for_product_family": "accessory"
+      },
+      "image_health": {
+        "scanned_count": 1,
+        "total_url_count": 1,
+        "broken_count": 0,
+        "broken_urls": [],
+        "skipped": false,
+        "truncated": false
+      },
+      "gallery_status": {
+        "image_count": 1,
+        "duplicate_count": 0,
+        "content_leak_count": 0,
+        "seed_content_image_count": 0
+      },
+      "snapshot_contract": {
+        "authoritative": true,
+        "legacy_fields_quarantined": true,
+        "replace_strategy": "replace_not_merge"
+      },
+      "image_url_identity_stripped_count": 0,
+      "image_url_identity_stripped_examples": [],
+      "failure_reasons": []
+    },
+    "similar_gate": {
+      "status": "exempt",
+      "similar_count": 0,
+      "card_highlight_missing_count": 0,
+      "exempt": true,
+      "failure_reasons": []
+    },
+    "variant_gate": {
+      "status": "passed",
+      "visible_variant_row_count": 3,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": []
+    },
+    "root_cause_classification": [],
+    "failure_reasons": []
+  },
+  {
+    "status": "failed",
+    "seed_id": "eps_5df888aa1d814b38aab6d1d3",
+    "external_product_id": "ext_036a84bb62330bb32073be6d",
+    "market": "US",
+    "domain": "kyliecosmetics.com",
+    "canonical_url": "https://kyliecosmetics.com/products/cosmic-kylie-jenner-2-0-eau-de-parfum",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 0,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 54,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "passed",
+      "product_group_id": "sig_bf4386004177fcf215e9a19b",
+      "product_line_id": "pl_5391ba5f2da2f949bbb5dda1",
+      "sellable_item_group_id": "sig_bf4386004177fcf215e9a19b",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "passed",
+      "has_product_intel": true,
+      "product_intel_status": "ready",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "passed",
+      "price_amount": 54,
+      "has_overview": true,
+      "live_modules": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "reviews_preview",
+        "similar",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "media_gallery",
+        "price_promo"
+      ],
+      "details_status": {
+        "section_count": 1,
+        "section_soup_count": 0,
+        "has_product_facts": false,
+        "seed_section_count": 2,
+        "compressed_structured_sections": false
+      },
+      "questions_status": {
+        "seed_faq_count": 0,
+        "live_question_count": 0
+      },
+      "active_ingredients_status": {
+        "expected": false,
+        "live_item_count": 0,
+        "suppressed_for_product_family": null
+      },
+      "image_health": {
+        "scanned_count": 1,
+        "total_url_count": 1,
+        "broken_count": 0,
+        "broken_urls": [],
+        "skipped": false,
+        "truncated": false
+      },
+      "gallery_status": {
+        "image_count": 1,
+        "duplicate_count": 0,
+        "content_leak_count": 0,
+        "seed_content_image_count": 0
+      },
+      "snapshot_contract": {
+        "authoritative": true,
+        "legacy_fields_quarantined": true,
+        "replace_strategy": "replace_not_merge"
+      },
+      "image_url_identity_stripped_count": 0,
+      "image_url_identity_stripped_examples": [],
+      "failure_reasons": []
+    },
+    "similar_gate": {
+      "status": "failed",
+      "similar_count": 3,
+      "card_highlight_missing_count": 0,
+      "exempt": false,
+      "failure_reasons": [
+        "similar_underfill"
+      ]
+    },
+    "variant_gate": {
+      "status": "passed",
+      "visible_variant_row_count": 3,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": []
+    },
+    "root_cause_classification": [
+      "similar_issue"
+    ],
+    "failure_reasons": [
+      "similar_underfill"
+    ]
+  },
+  {
+    "status": "failed",
+    "seed_id": "eps_b287118756fa4aa6bfac8e43",
+    "external_product_id": "ext_6ab9e2a3ce855bef6cca15e6",
+    "market": "US",
+    "domain": "kyliecosmetics.com",
+    "canonical_url": "https://kyliecosmetics.com/products/cosmic-by-kylie-jenner-eau-de-parfum-pen-spray",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 0,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 29,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "passed",
+      "product_group_id": "sig_5271d4ecd38afe9d4c181171",
+      "product_line_id": "pl_5b1e774e6d39dd1288db332b",
+      "sellable_item_group_id": "sig_5271d4ecd38afe9d4c181171",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "passed",
+      "has_product_intel": true,
+      "product_intel_status": "ready",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "passed",
+      "price_amount": 29,
+      "has_overview": true,
+      "live_modules": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "reviews_preview",
+        "similar",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "media_gallery",
+        "price_promo"
+      ],
+      "details_status": {
+        "section_count": 1,
+        "section_soup_count": 0,
+        "has_product_facts": false,
+        "seed_section_count": 2,
+        "compressed_structured_sections": false
+      },
+      "questions_status": {
+        "seed_faq_count": 0,
+        "live_question_count": 0
+      },
+      "active_ingredients_status": {
+        "expected": false,
+        "live_item_count": 0,
+        "suppressed_for_product_family": null
+      },
+      "image_health": {
+        "scanned_count": 2,
+        "total_url_count": 2,
+        "broken_count": 0,
+        "broken_urls": [],
+        "skipped": false,
+        "truncated": false
+      },
+      "gallery_status": {
+        "image_count": 2,
+        "duplicate_count": 0,
+        "content_leak_count": 0,
+        "seed_content_image_count": 0
+      },
+      "snapshot_contract": {
+        "authoritative": true,
+        "legacy_fields_quarantined": true,
+        "replace_strategy": "replace_not_merge"
+      },
+      "image_url_identity_stripped_count": 0,
+      "image_url_identity_stripped_examples": [],
+      "failure_reasons": []
+    },
+    "similar_gate": {
+      "status": "failed",
+      "similar_count": 3,
+      "card_highlight_missing_count": 0,
+      "exempt": false,
+      "failure_reasons": [
+        "similar_underfill"
+      ]
+    },
+    "variant_gate": {
+      "status": "passed",
+      "visible_variant_row_count": 1,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": []
+    },
+    "root_cause_classification": [
+      "similar_issue"
+    ],
+    "failure_reasons": [
+      "similar_underfill"
+    ]
+  },
+  {
+    "status": "passed",
+    "seed_id": "eps_c8062bbb5ffc49e1935f4901",
+    "external_product_id": "ext_96a91c64fecb7cf7b098e086",
+    "market": "US",
+    "domain": "kyliecosmetics.com",
+    "canonical_url": "https://kyliecosmetics.com/products/true-brown-kylash-volume-mascara-sample",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 0,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": false,
+      "price_amount": 5,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "passed",
+      "product_group_id": "sig_c6a5e29c9f6b4cc8290bf1dc",
+      "product_line_id": "pl_d32a35b7d7faf4b13b30b986",
+      "sellable_item_group_id": "sig_c6a5e29c9f6b4cc8290bf1dc",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "passed",
+      "has_product_intel": true,
+      "product_intel_status": "ready",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "passed",
+      "price_amount": 5,
+      "has_overview": true,
+      "live_modules": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "reviews_preview",
+        "similar",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "media_gallery",
+        "price_promo"
+      ],
+      "details_status": {
+        "section_count": 1,
+        "section_soup_count": 0,
+        "has_product_facts": false,
+        "seed_section_count": 0,
+        "compressed_structured_sections": false
+      },
+      "questions_status": {
+        "seed_faq_count": 0,
+        "live_question_count": 0
+      },
+      "active_ingredients_status": {
+        "expected": false,
+        "live_item_count": 0,
+        "suppressed_for_product_family": null
+      },
+      "image_health": {
+        "scanned_count": 2,
+        "total_url_count": 2,
+        "broken_count": 0,
+        "broken_urls": [],
+        "skipped": false,
+        "truncated": false
+      },
+      "gallery_status": {
+        "image_count": 2,
+        "duplicate_count": 0,
+        "content_leak_count": 0,
+        "seed_content_image_count": 0
+      },
+      "snapshot_contract": {
+        "authoritative": true,
+        "legacy_fields_quarantined": true,
+        "replace_strategy": "replace_not_merge"
+      },
+      "image_url_identity_stripped_count": 0,
+      "image_url_identity_stripped_examples": [],
+      "failure_reasons": []
+    },
+    "similar_gate": {
+      "status": "exempt",
+      "similar_count": 0,
+      "card_highlight_missing_count": 0,
+      "exempt": true,
+      "failure_reasons": []
+    },
+    "variant_gate": {
+      "status": "passed",
+      "visible_variant_row_count": 0,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": []
+    },
+    "root_cause_classification": [],
+    "failure_reasons": []
+  },
+  {
+    "status": "passed",
+    "seed_id": "eps_beffaf5fa4ed463cb7532195",
+    "external_product_id": "ext_e8db16a595f137bb7a297478",
+    "market": "US",
+    "domain": "kyliecosmetics.com",
+    "canonical_url": "https://kyliecosmetics.com/products/wisp-lash-kylie-jenner-mascara-mini-sample-1ml",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 0,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 5,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "passed",
+      "product_group_id": "sig_db6d6e44bca1784d8389dc8a",
+      "product_line_id": "pl_412f401a8cd4f470d3fbe8a6",
+      "sellable_item_group_id": "sig_db6d6e44bca1784d8389dc8a",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "passed",
+      "has_product_intel": true,
+      "product_intel_status": "ready",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "passed",
+      "price_amount": 5,
+      "has_overview": true,
+      "live_modules": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "reviews_preview",
+        "similar",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "media_gallery",
+        "price_promo"
+      ],
+      "details_status": {
+        "section_count": 3,
+        "section_soup_count": 0,
+        "has_product_facts": false,
+        "seed_section_count": 1,
+        "compressed_structured_sections": false
+      },
+      "questions_status": {
+        "seed_faq_count": 0,
+        "live_question_count": 0
+      },
+      "active_ingredients_status": {
+        "expected": false,
+        "live_item_count": 0,
+        "suppressed_for_product_family": null
+      },
+      "image_health": {
+        "scanned_count": 7,
+        "total_url_count": 7,
+        "broken_count": 0,
+        "broken_urls": [],
+        "skipped": false,
+        "truncated": false
+      },
+      "gallery_status": {
+        "image_count": 7,
+        "duplicate_count": 0,
+        "content_leak_count": 0,
+        "seed_content_image_count": 0
+      },
+      "snapshot_contract": {
+        "authoritative": true,
+        "legacy_fields_quarantined": true,
+        "replace_strategy": "replace_not_merge"
+      },
+      "image_url_identity_stripped_count": 0,
+      "image_url_identity_stripped_examples": [],
+      "failure_reasons": []
+    },
+    "similar_gate": {
+      "status": "exempt",
+      "similar_count": 0,
+      "card_highlight_missing_count": 0,
+      "exempt": true,
+      "failure_reasons": []
+    },
+    "variant_gate": {
+      "status": "passed",
+      "visible_variant_row_count": 1,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": []
+    },
+    "root_cause_classification": [],
+    "failure_reasons": []
+  },
+  {
+    "status": "failed",
+    "seed_id": "eps_4dcfb60eed4fd2932bb1b4d5",
+    "external_product_id": "ext_ad2d369fee7656d7ef63beba",
+    "market": "US",
+    "domain": "tirtir.global",
+    "canonical_url": "https://tirtir.global/products/my-glow-holiday-edition",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 0,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 3,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "passed",
+      "product_group_id": "sig_3f3aea171971cf1eeca4f17e",
+      "product_line_id": "pl_1fa88c1dea45e51e6e77cb74",
+      "sellable_item_group_id": "sig_3f3aea171971cf1eeca4f17e",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "passed",
+      "has_product_intel": true,
+      "product_intel_status": "ready",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "passed",
+      "price_amount": 3,
+      "has_overview": true,
+      "live_modules": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "reviews_preview",
+        "similar",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "media_gallery",
+        "price_promo"
+      ],
+      "details_status": {
+        "section_count": 1,
+        "section_soup_count": 0,
+        "has_product_facts": false,
+        "seed_section_count": 1,
+        "compressed_structured_sections": false
+      },
+      "questions_status": {
+        "seed_faq_count": 0,
+        "live_question_count": 0
+      },
+      "active_ingredients_status": {
+        "expected": false,
+        "live_item_count": 0,
+        "suppressed_for_product_family": null
+      },
+      "image_health": {
+        "scanned_count": 4,
+        "total_url_count": 4,
+        "broken_count": 0,
+        "broken_urls": [],
+        "skipped": false,
+        "truncated": false
+      },
+      "gallery_status": {
+        "image_count": 4,
+        "duplicate_count": 0,
+        "content_leak_count": 0,
+        "seed_content_image_count": 0
+      },
+      "snapshot_contract": {
+        "authoritative": true,
+        "legacy_fields_quarantined": true,
+        "replace_strategy": "replace_not_merge"
+      },
+      "image_url_identity_stripped_count": 0,
+      "image_url_identity_stripped_examples": [],
+      "failure_reasons": []
+    },
+    "similar_gate": {
+      "status": "failed",
+      "similar_count": 0,
+      "card_highlight_missing_count": 0,
+      "exempt": false,
+      "failure_reasons": [
+        "similar_underfill"
+      ]
+    },
+    "variant_gate": {
+      "status": "passed",
+      "visible_variant_row_count": 0,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": []
+    },
+    "root_cause_classification": [
+      "similar_issue"
+    ],
+    "failure_reasons": [
+      "similar_underfill"
+    ]
+  },
+  {
+    "status": "passed",
+    "seed_id": "eps_bb5c2a8165700ddba381494f",
+    "external_product_id": "ext_cb315ad422dd53f36c31904e",
+    "market": "US",
+    "domain": "tirtir.global",
+    "canonical_url": "https://tirtir.global/products/ampoule-mask-packs",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 0,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 24,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "passed",
+      "product_group_id": "sig_06edba7574488b555d60d9a6",
+      "product_line_id": "pl_3abe9cbdbd039be825c8e563",
+      "sellable_item_group_id": "sig_06edba7574488b555d60d9a6",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "passed",
+      "has_product_intel": true,
+      "product_intel_status": "ready",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "passed",
+      "price_amount": 24,
+      "has_overview": true,
+      "live_modules": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "reviews_preview",
+        "similar",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "media_gallery",
+        "price_promo"
+      ],
+      "details_status": {
+        "section_count": 1,
+        "section_soup_count": 0,
+        "has_product_facts": false,
+        "seed_section_count": 2,
+        "compressed_structured_sections": false
+      },
+      "questions_status": {
+        "seed_faq_count": 0,
+        "live_question_count": 0
+      },
+      "active_ingredients_status": {
+        "expected": false,
+        "live_item_count": 0,
+        "suppressed_for_product_family": "set_or_collection"
+      },
+      "image_health": {
+        "scanned_count": 12,
+        "total_url_count": 18,
+        "broken_count": 0,
+        "broken_urls": [],
+        "skipped": false,
+        "truncated": true
+      },
+      "gallery_status": {
+        "image_count": 18,
+        "duplicate_count": 0,
+        "content_leak_count": 0,
+        "seed_content_image_count": 0
+      },
+      "snapshot_contract": {
+        "authoritative": true,
+        "legacy_fields_quarantined": true,
+        "replace_strategy": "replace_not_merge"
+      },
+      "image_url_identity_stripped_count": 0,
+      "image_url_identity_stripped_examples": [],
+      "failure_reasons": []
+    },
+    "similar_gate": {
+      "status": "exempt",
+      "similar_count": 3,
+      "card_highlight_missing_count": 0,
+      "exempt": true,
+      "failure_reasons": []
+    },
+    "variant_gate": {
+      "status": "passed",
+      "visible_variant_row_count": 4,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": []
+    },
+    "root_cause_classification": [],
+    "failure_reasons": []
+  },
+  {
+    "status": "failed",
+    "seed_id": "eps_acaafbb51018bbdcfac3e521",
+    "external_product_id": "ext_daab8cbcc38d218fdb6d7d22",
+    "market": "US",
+    "domain": "tirtir.global",
+    "canonical_url": "https://tirtir.global/products/my-glow-ampoule-highlighter",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 0,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 3,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "passed",
+      "product_group_id": "sig_13c64924cebb756fa2f2bdcd",
+      "product_line_id": "pl_f890ca1d0e0866dc635f676e",
+      "sellable_item_group_id": "sig_13c64924cebb756fa2f2bdcd",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "passed",
+      "has_product_intel": true,
+      "product_intel_status": "ready",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "passed",
+      "price_amount": 3,
+      "has_overview": true,
+      "live_modules": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "reviews_preview",
+        "similar",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "media_gallery",
+        "price_promo"
+      ],
+      "details_status": {
+        "section_count": 1,
+        "section_soup_count": 0,
+        "has_product_facts": false,
+        "seed_section_count": 1,
+        "compressed_structured_sections": false
+      },
+      "questions_status": {
+        "seed_faq_count": 0,
+        "live_question_count": 0
+      },
+      "active_ingredients_status": {
+        "expected": false,
+        "live_item_count": 0,
+        "suppressed_for_product_family": null
+      },
+      "image_health": {
+        "scanned_count": 2,
+        "total_url_count": 2,
+        "broken_count": 0,
+        "broken_urls": [],
+        "skipped": false,
+        "truncated": false
+      },
+      "gallery_status": {
+        "image_count": 2,
+        "duplicate_count": 0,
+        "content_leak_count": 0,
+        "seed_content_image_count": 0
+      },
+      "snapshot_contract": {
+        "authoritative": true,
+        "legacy_fields_quarantined": true,
+        "replace_strategy": "missing_or_placeholder_only_preserve_best_available"
+      },
+      "image_url_identity_stripped_count": 0,
+      "image_url_identity_stripped_examples": [],
+      "failure_reasons": []
+    },
+    "similar_gate": {
+      "status": "failed",
+      "similar_count": 0,
+      "card_highlight_missing_count": 0,
+      "exempt": false,
+      "failure_reasons": [
+        "similar_underfill"
+      ]
+    },
+    "variant_gate": {
+      "status": "passed",
+      "visible_variant_row_count": 1,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": []
+    },
+    "root_cause_classification": [
+      "similar_issue"
+    ],
+    "failure_reasons": [
+      "similar_underfill"
+    ]
+  },
+  {
+    "status": "failed",
+    "seed_id": "eps_33c48de4c8dd4042a63833aa",
+    "external_product_id": "ext_1eb6e1583db6197d8c969915",
+    "market": "US",
+    "domain": "www.jurlique.com",
+    "canonical_url": "https://www.jurlique.com/products/herbal-recovery-face-oil",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 0,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 59,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "passed",
+      "product_group_id": "sig_c0d667cf70584cf44b459e5c",
+      "product_line_id": "pl_e074c2bdfcfc83f8e2b8d1db",
+      "sellable_item_group_id": "sig_c0d667cf70584cf44b459e5c",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "passed",
+      "has_product_intel": true,
+      "product_intel_status": "ready",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "passed",
+      "price_amount": 64,
+      "has_overview": true,
+      "live_modules": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "reviews_preview",
+        "similar",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "media_gallery",
+        "price_promo"
+      ],
+      "details_status": {
+        "section_count": 3,
+        "section_soup_count": 0,
+        "has_product_facts": false,
+        "seed_section_count": 5,
+        "compressed_structured_sections": false
+      },
+      "questions_status": {
+        "seed_faq_count": 0,
+        "live_question_count": 0
+      },
+      "active_ingredients_status": {
+        "expected": true,
+        "live_item_count": 1,
+        "suppressed_for_product_family": null
+      },
+      "image_health": {
+        "scanned_count": 6,
+        "total_url_count": 6,
+        "broken_count": 0,
+        "broken_urls": [],
+        "skipped": false,
+        "truncated": false
+      },
+      "gallery_status": {
+        "image_count": 6,
+        "duplicate_count": 0,
+        "content_leak_count": 0,
+        "seed_content_image_count": 0
+      },
+      "snapshot_contract": {
+        "authoritative": true,
+        "legacy_fields_quarantined": true,
+        "replace_strategy": "replace_not_merge"
+      },
+      "image_url_identity_stripped_count": 0,
+      "image_url_identity_stripped_examples": [],
+      "failure_reasons": []
+    },
+    "similar_gate": {
+      "status": "failed",
+      "similar_count": 1,
+      "card_highlight_missing_count": 0,
+      "exempt": false,
+      "failure_reasons": [
+        "similar_underfill"
+      ]
+    },
+    "variant_gate": {
+      "status": "passed",
+      "visible_variant_row_count": 1,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": []
+    },
+    "root_cause_classification": [
+      "similar_issue"
+    ],
+    "failure_reasons": [
+      "similar_underfill"
+    ]
+  },
+  {
+    "status": "failed",
+    "seed_id": "eps_03137295056942cb8a16c446",
+    "external_product_id": "ext_ad9b9019f5e1cb34573c1185",
+    "market": "US",
+    "domain": "www.jurlique.com",
+    "canonical_url": "https://www.jurlique.com/products/herbal-recovery-eye-cream",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 0,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 52,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "passed",
+      "product_group_id": "sig_d3bbeb1f7a320653d7ff8fde",
+      "product_line_id": "pl_b933bc9af9d2ebbc35cccb98",
+      "sellable_item_group_id": "sig_d3bbeb1f7a320653d7ff8fde",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "passed",
+      "has_product_intel": true,
+      "product_intel_status": "ready",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "passed",
+      "price_amount": 65,
+      "has_overview": true,
+      "live_modules": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "reviews_preview",
+        "similar",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "media_gallery",
+        "price_promo"
+      ],
+      "details_status": {
+        "section_count": 3,
+        "section_soup_count": 0,
+        "has_product_facts": false,
+        "seed_section_count": 5,
+        "compressed_structured_sections": false
+      },
+      "questions_status": {
+        "seed_faq_count": 0,
+        "live_question_count": 0
+      },
+      "active_ingredients_status": {
+        "expected": true,
+        "live_item_count": 3,
+        "suppressed_for_product_family": null
+      },
+      "image_health": {
+        "scanned_count": 6,
+        "total_url_count": 6,
+        "broken_count": 0,
+        "broken_urls": [],
+        "skipped": false,
+        "truncated": false
+      },
+      "gallery_status": {
+        "image_count": 6,
+        "duplicate_count": 0,
+        "content_leak_count": 0,
+        "seed_content_image_count": 0
+      },
+      "snapshot_contract": {
+        "authoritative": true,
+        "legacy_fields_quarantined": true,
+        "replace_strategy": "replace_not_merge"
+      },
+      "image_url_identity_stripped_count": 0,
+      "image_url_identity_stripped_examples": [],
+      "failure_reasons": []
+    },
+    "similar_gate": {
+      "status": "failed",
+      "similar_count": 3,
+      "card_highlight_missing_count": 0,
+      "exempt": false,
+      "failure_reasons": [
+        "similar_underfill"
+      ]
+    },
+    "variant_gate": {
+      "status": "passed",
+      "visible_variant_row_count": 1,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": []
+    },
+    "root_cause_classification": [
+      "similar_issue"
+    ],
+    "failure_reasons": [
+      "similar_underfill"
+    ]
+  },
+  {
+    "status": "failed",
+    "seed_id": "eps_886fbb3063a340609f74118a",
+    "external_product_id": "ext_cae8b7d0c37379805167b178",
+    "market": "US",
+    "domain": "www.jurlique.com",
+    "canonical_url": "https://www.jurlique.com/products/moisture-replenishing-day-cream",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 0,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 100,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "passed",
+      "product_group_id": "sig_dee02736a51e369358b42b5d",
+      "product_line_id": "pl_d9017c2126533997fe23d2a0",
+      "sellable_item_group_id": "sig_dee02736a51e369358b42b5d",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "passed",
+      "has_product_intel": true,
+      "product_intel_status": "ready",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "passed",
+      "price_amount": 100,
+      "has_overview": true,
+      "live_modules": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "reviews_preview",
+        "similar",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "media_gallery",
+        "price_promo"
+      ],
+      "details_status": {
+        "section_count": 3,
+        "section_soup_count": 0,
+        "has_product_facts": false,
+        "seed_section_count": 5,
+        "compressed_structured_sections": false
+      },
+      "questions_status": {
+        "seed_faq_count": 0,
+        "live_question_count": 0
+      },
+      "active_ingredients_status": {
+        "expected": false,
+        "live_item_count": 0,
+        "suppressed_for_product_family": null
+      },
+      "image_health": {
+        "scanned_count": 6,
+        "total_url_count": 6,
+        "broken_count": 0,
+        "broken_urls": [],
+        "skipped": false,
+        "truncated": false
+      },
+      "gallery_status": {
+        "image_count": 6,
+        "duplicate_count": 0,
+        "content_leak_count": 0,
+        "seed_content_image_count": 0
+      },
+      "snapshot_contract": {
+        "authoritative": true,
+        "legacy_fields_quarantined": true,
+        "replace_strategy": "replace_not_merge"
+      },
+      "image_url_identity_stripped_count": 0,
+      "image_url_identity_stripped_examples": [],
+      "failure_reasons": []
+    },
+    "similar_gate": {
+      "status": "failed",
+      "similar_count": 3,
+      "card_highlight_missing_count": 0,
+      "exempt": false,
+      "failure_reasons": [
+        "similar_underfill"
+      ]
+    },
+    "variant_gate": {
+      "status": "passed",
+      "visible_variant_row_count": 1,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": []
+    },
+    "root_cause_classification": [
+      "similar_issue"
+    ],
+    "failure_reasons": [
+      "similar_underfill"
+    ]
+  },
+  {
+    "status": "failed",
+    "seed_id": "eps_85d0602d5c1e42c9b86a4d97",
+    "external_product_id": "ext_faa57baad05db2600e3ddde5",
+    "market": "US",
+    "domain": "www.jurlique.com",
+    "canonical_url": "https://www.jurlique.com/products/rare-rose-face-oil",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 0,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 62,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "passed",
+      "product_group_id": "sig_dffa7740f443a207c173711d",
+      "product_line_id": "pl_5681218f9e23f5bfe42fe9f2",
+      "sellable_item_group_id": "sig_dffa7740f443a207c173711d",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "passed",
+      "has_product_intel": true,
+      "product_intel_status": "ready",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "passed",
+      "price_amount": 62,
+      "has_overview": true,
+      "live_modules": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "reviews_preview",
+        "similar",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "media_gallery",
+        "price_promo"
+      ],
+      "details_status": {
+        "section_count": 3,
+        "section_soup_count": 0,
+        "has_product_facts": false,
+        "seed_section_count": 5,
+        "compressed_structured_sections": false
+      },
+      "questions_status": {
+        "seed_faq_count": 0,
+        "live_question_count": 0
+      },
+      "active_ingredients_status": {
+        "expected": true,
+        "live_item_count": 1,
+        "suppressed_for_product_family": null
+      },
+      "image_health": {
+        "scanned_count": 7,
+        "total_url_count": 7,
+        "broken_count": 0,
+        "broken_urls": [],
+        "skipped": false,
+        "truncated": false
+      },
+      "gallery_status": {
+        "image_count": 7,
+        "duplicate_count": 0,
+        "content_leak_count": 0,
+        "seed_content_image_count": 0
+      },
+      "snapshot_contract": {
+        "authoritative": true,
+        "legacy_fields_quarantined": true,
+        "replace_strategy": "replace_not_merge"
+      },
+      "image_url_identity_stripped_count": 0,
+      "image_url_identity_stripped_examples": [],
+      "failure_reasons": []
+    },
+    "similar_gate": {
+      "status": "failed",
+      "similar_count": 0,
+      "card_highlight_missing_count": 0,
+      "exempt": false,
+      "failure_reasons": [
+        "similar_underfill"
+      ]
+    },
+    "variant_gate": {
+      "status": "passed",
+      "visible_variant_row_count": 2,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": []
+    },
+    "root_cause_classification": [
+      "similar_issue"
+    ],
+    "failure_reasons": [
+      "similar_underfill"
+    ]
+  }
+]

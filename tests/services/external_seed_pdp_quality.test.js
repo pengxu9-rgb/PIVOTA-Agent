@@ -183,6 +183,49 @@ describe('externalSeedPdpQuality', () => {
     expect(similarGate.failure_reasons).toEqual([]);
   });
 
+  test('exempts sample PDPs from similar-count QA without suppressing active evidence', () => {
+    const similarGate = buildSimilarGate({
+      similarResponse: { products: [] },
+      exclusionFlags: { gift_card: false, donation_bundle: false, non_merchandise: false },
+      productFamily: 'sample',
+    });
+    const livePdpGate = buildLivePdpGate({
+      productFamily: 'sample',
+      seedData: {
+        title: 'SPF 40 Sunscreen Deluxe Sample',
+        pdp_ingredients_raw: 'WATER, ZINC OXIDE, TITANIUM DIOXIDE, GLYCERIN.',
+      },
+      livePayload: {
+        modules: [
+          {
+            type: 'product_details',
+            data: {
+              sections: [{ heading: 'Overview', content: 'A sunscreen sample for formula trial.' }],
+            },
+          },
+        ],
+      },
+    });
+
+    expect(similarGate.status).toBe('exempt');
+    expect(similarGate.failure_reasons).toEqual([]);
+    expect(livePdpGate.active_ingredients_status.expected).toBe(true);
+    expect(livePdpGate.failure_reasons).toContain('active_ingredients_expected_but_hidden');
+  });
+
+  test('exempts set, accessory, and sample product families from similar-count QA', () => {
+    for (const productFamily of ['set_or_collection', 'accessory', 'sample']) {
+      const similarGate = buildSimilarGate({
+        similarResponse: { products: [] },
+        exclusionFlags: { gift_card: false, donation_bundle: false, non_merchandise: false },
+        productFamily,
+      });
+
+      expect(similarGate.status).toBe('exempt');
+      expect(similarGate.failure_reasons).toEqual([]);
+    }
+  });
+
   test('treats disabled similar probes as skipped instead of PDP quality failures', () => {
     const similarGate = buildSimilarGate({
       similarResponse: { skipped: true, reason: 'similar_probe_disabled' },

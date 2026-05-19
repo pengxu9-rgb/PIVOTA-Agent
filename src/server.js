@@ -20522,7 +20522,7 @@ function calibrateSimilarMetadataForVisibleProducts({
 }
 
 const PDP_SIMILAR_ACCESSORY_TITLE_RE =
-  /\b(pouch|bag|holder|keychain|keyring|sticker|stickers|soap saver|gua sha|gwalsa|brush|tool|applicator|spatula|mirror|sharpener|headband|puff|sponge|sachet|trial\s*kit|sample)\b/i;
+  /\b(pouch|bag|holder|keychain|keyring|sticker|stickers|soap saver|gua sha|gwalsa|brush|tool|applicator|spatula|mirror|sharpener|headband|puff|sponge|towel|sachet|trial\s*kit|sample)\b/i;
 
 function isAccessoryLikePdpForSimilarSuppression(product = {}, pdpSchemaProfile = '') {
   if (isBeautyToolPdpProfile(pdpSchemaProfile)) return true;
@@ -20530,6 +20530,7 @@ function isAccessoryLikePdpForSimilarSuppression(product = {}, pdpSchemaProfile 
     firstNonEmptyString(product.product_family, product.external_seed_product_family),
   );
   if (productFamily === 'accessory') return true;
+  if (productFamily === 'sample') return true;
   const profile = String(pdpSchemaProfile || '').trim();
   const text = [
     product.title,

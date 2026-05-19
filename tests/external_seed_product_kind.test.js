@@ -1,4 +1,7 @@
-const { classifyExternalSeedProductKind } = require('../src/services/externalSeedProductKind');
+const {
+  classifyExternalSeedProductKind,
+  isIngredientAuthorityEligibleExternalSeed,
+} = require('../src/services/externalSeedProductKind');
 
 describe('external seed product kind classification', () => {
   test('classifies formula refill pouches as single-formula products', () => {
@@ -61,6 +64,36 @@ describe('external seed product kind classification', () => {
       expect.objectContaining({
         family: 'non_merch',
         reasons: expect.arrayContaining(['non_merch_signal']),
+      }),
+    );
+  });
+
+  test('classifies reviewed beauty merch edge cases without suppressing sample ingredients', () => {
+    expect(classifyExternalSeedProductKind({ title: 'Hooded Bath Towel' })).toEqual(
+      expect.objectContaining({
+        family: 'accessory',
+        reasons: expect.arrayContaining(['accessory_signal']),
+      }),
+    );
+
+    const sample = {
+      title: 'Wisp Lash Mascara Mini Deluxe Sample',
+      seed_data: {
+        product_type: 'Mascara',
+      },
+    };
+    expect(classifyExternalSeedProductKind(sample)).toEqual(
+      expect.objectContaining({
+        family: 'sample',
+        reasons: expect.arrayContaining(['sample_like_signal']),
+      }),
+    );
+    expect(isIngredientAuthorityEligibleExternalSeed(sample)).toBe(true);
+
+    expect(classifyExternalSeedProductKind({ title: 'Ampoule Mask Packs' })).toEqual(
+      expect.objectContaining({
+        family: 'set_or_collection',
+        reasons: expect.arrayContaining(['bundle_set_signal']),
       }),
     );
   });

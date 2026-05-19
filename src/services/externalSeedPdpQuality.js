@@ -974,7 +974,7 @@ function buildSimilarGate({
     Boolean(exclusionFlags?.gift_card) ||
     Boolean(exclusionFlags?.donation_bundle) ||
     Boolean(exclusionFlags?.non_merchandise) ||
-    ['set_or_collection', 'non_merch', 'accessory'].includes(normalizeNonEmptyString(productFamily).toLowerCase());
+    ['set_or_collection', 'non_merch', 'accessory', 'sample'].includes(normalizeNonEmptyString(productFamily).toLowerCase());
   const probeError = extractProbeError(similarResponse);
   const failureReasons = [];
   if (probeError) {

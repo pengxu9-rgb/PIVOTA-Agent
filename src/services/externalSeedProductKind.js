@@ -1,12 +1,13 @@
 const ACCESSORY_RE =
-  /\b(accessor(?:y|ies)|brush|sponge|puff|applicator|sharpener|tweezer|curler|scissors|comb|mirror|case|bag|pouch|holder|spatula|tool|tools|gua sha|roller|headband|scrunchie|scarf|hat|cap|tote|clip|clips|lash curler|refill case|soap dish|soap saver|washcloth|cloth|gift wrap|wrapping cloth|blotting paper|keyring|key ring|keychain|key chain|charm)\b/i;
+  /\b(accessor(?:y|ies)|brush|sponge|puff|applicator|sharpener|tweezer|curler|scissors|comb|mirror|case|bag|pouch|holder|spatula|tool|tools|gua sha|roller|headband|scrunchie|scarf|hat|cap|tote|clip|clips|lash curler|refill case|soap dish|soap saver|washcloth|cloth|towel|gift wrap|wrapping cloth|blotting paper|keyring|key ring|keychain|key chain|charm)\b/i;
 const STICKER_ACCESSORY_RE = /\b(stickers?|decals?)\b/i;
 const TREATMENT_STICKER_RE = /\b(?:blemish|acne|pimple|spot|hydrocolloid|patch(?:es)?)\b/i;
+const SAMPLE_LIKE_RE = /\b(?:deluxe\s+sample|sample\s+size|trial\s*kit|sachets?|sachetbook)\b/i;
 const NON_MERCH_RE =
   /\b(?:e[-\s]?gift[-\s]?cards?|gift[-\s]?cards?|donat(?:e|ion)|sample service|appointment|booking|shipping protection|package protection|route protection|order protection|free[-_\s]?gift|bogos(?:\.io)?|bogo bundle|sca[-_\s]?clone[-_\s]?freegift)\b/i;
 
 const STRONG_BUNDLE_RE =
-  /\b(?:bundles?|kits?|duos?|trios?|quartets?|routine|regimen|makeup\s+look|starter\s+set|travel\s+set|mini\s+set|value\s+set|gift\s+set|discovery\s+set|essentials?\s+set|sets?)\b/i;
+  /\b(?:bundles?|kits?|duos?|trios?|quartets?|routine|regimen|makeup\s+look|starter\s+set|travel\s+set|mini\s+set|value\s+set|gift\s+set|discovery\s+set|essentials?\s+set|sets?|(?:mask|ampoule|sheet)\s+packs)\b/i;
 const COLLECTION_BUNDLE_RE =
   /\b(?:collection\s+(?:set|kit|bundle)|(?:complete|holiday|starter|travel|mini|gift|routine|regimen|essentials?|most[-\s]?loved)\s+collection|the\s+[^\n]{2,80}\s+collection)\b/i;
 const COLLECTION_MEMBER_RE = /\bcollection\s*:\s*[^\n]+/i;
@@ -111,6 +112,10 @@ function classifyExternalSeedProductKind(input = {}) {
     reasons.push('non_merch_signal');
     return { family: 'non_merch', reasons };
   }
+  if (SAMPLE_LIKE_RE.test(text)) {
+    reasons.push('sample_like_signal');
+    return { family: 'sample', reasons };
+  }
   if (hasToolCategoryPath(input)) {
     reasons.push('tool_category_path_signal');
     return { family: 'accessory', reasons };
@@ -162,6 +167,7 @@ function isIngredientAuthorityEligibleExternalSeed(input = {}) {
 module.exports = {
   ACCESSORY_RE,
   NON_MERCH_RE,
+  SAMPLE_LIKE_RE,
   STRONG_BUNDLE_RE,
   COLLECTION_BUNDLE_RE,
   COLLECTION_MEMBER_RE,

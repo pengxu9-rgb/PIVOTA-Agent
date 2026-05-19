@@ -337,7 +337,7 @@ const STOPWORDS = new Set([
 ]);
 
 const BEAUTY_ACCESSORY_TITLE_RE =
-  /\b(pouch|bag|holder|keychain|keyring|sticker|stickers|soap saver|gua sha|gwalsa|brush|tool|applicator|spatula|mirror|sharpener|headband|puff|sponge|sachet|trial\s*kit|sample)\b/i;
+  /\b(pouch|bag|holder|keychain|keyring|sticker|stickers|soap saver|gua sha|gwalsa|brush|tool|applicator|spatula|mirror|sharpener|headband|puff|sponge|towel|sachet|trial\s*kit|sample)\b/i;
 const BEAUTY_SET_OR_BUNDLE_TITLE_RE =
   /\b(?:bundle|set|kit|duo|trio|collection|routine|campaign\s+look|look\s+bundle)\b/i;
 const REFILL_TITLE_RE = /\brefill\b/i;
@@ -403,7 +403,7 @@ function getBeautyAccessoryKindFromText(text) {
   if (!normalized || !BEAUTY_ACCESSORY_TITLE_RE.test(normalized)) return '';
   if (/\b(?:puff|sponge|applicator)\b/.test(normalized)) return 'applicator';
   if (/\b(?:brush|tool|spatula|mirror|sharpener|headband|gua sha|gwalsa)\b/.test(normalized)) return 'tool';
-  if (/\b(?:pouch|bag|holder|keychain|keyring|soap saver)\b/.test(normalized)) return 'storage';
+  if (/\b(?:pouch|bag|holder|keychain|keyring|soap saver|towel)\b/.test(normalized)) return 'storage';
   if (/\b(?:sticker|stickers)\b/.test(normalized)) return 'sticker';
   if (/\b(?:sachet|trial\s*kit|sample)\b/.test(normalized)) return 'sample';
   return 'accessory';

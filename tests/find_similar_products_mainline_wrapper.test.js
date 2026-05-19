@@ -478,6 +478,24 @@ describe('find_similar_products mainline wrapper', () => {
       },
       pdpSchemaProfile: 'beauty_formula',
     })).toBe(false);
+
+    expect(app._debug.shouldSkipPdpSimilarFetchForAccessory({
+      product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_towel',
+        title: 'Hooded Bath Towel',
+      },
+      pdpSchemaProfile: 'generic_merch',
+    })).toBe(true);
+
+    expect(app._debug.shouldSkipPdpSimilarFetchForAccessory({
+      product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_deluxe_sample',
+        title: 'Wisp Lash Mascara Mini Deluxe Sample',
+      },
+      pdpSchemaProfile: 'beauty_formula',
+    })).toBe(true);
   });
 
   it('returns 503 when mainline recommendations fail instead of falling back upstream', async () => {
