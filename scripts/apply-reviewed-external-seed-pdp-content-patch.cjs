@@ -126,8 +126,15 @@ function buildQualitySummary(seedData, fields, now, manifest) {
     ...asObject(snapshot.pdp_field_quality_summary),
     ...asObject(seedData.pdp_field_quality_summary),
   };
+  const qualityKeyForField = (field) => {
+    if (field === 'pdp_description_raw') return 'description_raw';
+    if (field === 'pdp_ingredients_raw' || field === 'raw_ingredient_text_clean') return 'ingredients_raw';
+    if (field === 'pdp_how_to_use_raw') return 'how_to_use_raw';
+    if (field === 'pdp_details_sections') return 'details_sections';
+    return field;
+  };
   for (const field of fields) {
-    quality[field] = {
+    quality[qualityKeyForField(field)] = {
       source_origin: 'reviewed_source_backed_pdp_content_patch',
       source_quality_status: 'high',
       source_kinds: uniq([
@@ -182,6 +189,7 @@ function readManifestEntries(raw) {
     evidence: text(entry.evidence || root.evidence),
     source_url: text(entry.source_url || entry.canonical_url),
     description: text(entry.description || entry.pdp_description_raw),
+    pdp_how_to_use_raw: text(entry.pdp_how_to_use_raw || entry.how_to_use_raw || entry.how_to_use),
     pdp_ingredients_raw: text(
       entry.pdp_ingredients_raw || entry.raw_ingredient_text_clean || entry.ingredients_raw,
     ),
@@ -190,9 +198,22 @@ function readManifestEntries(raw) {
 
 function validateEntry(entry) {
   const blockers = [];
+  const patchableFields = [
+    entry.description,
+    entry.pdp_how_to_use_raw,
+    entry.pdp_ingredients_raw,
+    ...asArray(entry.pdp_details_sections).map((section) => sectionBody(section)),
+  ].filter(Boolean);
   if (!entry.external_product_id) blockers.push('missing_external_product_id');
-  if (!entry.description || entry.description.length < 60) blockers.push('description_too_short');
-  if (isPolluted(entry.description)) blockers.push('description_polluted');
+  if (!patchableFields.length) blockers.push('missing_patch_fields');
+  if (entry.description) {
+    if (entry.description.length < 60) blockers.push('description_too_short');
+    if (isPolluted(entry.description)) blockers.push('description_polluted');
+  }
+  if (entry.pdp_how_to_use_raw) {
+    if (entry.pdp_how_to_use_raw.length < 20) blockers.push('how_to_too_short');
+    if (isPolluted(entry.pdp_how_to_use_raw)) blockers.push('how_to_polluted');
+  }
   if (entry.pdp_ingredients_raw) {
     if (entry.pdp_ingredients_raw.length < 80) blockers.push('ingredients_too_short');
     if (isIngredientPolluted(entry.pdp_ingredients_raw)) blockers.push('ingredients_polluted');
@@ -213,20 +234,32 @@ function buildNextSeedData(row, entry, now) {
   }
 
   const cleanDescription = entry.description;
+  const cleanHowTo = entry.pdp_how_to_use_raw;
   const cleanIngredients = entry.pdp_ingredients_raw;
   const sections = cleanSections(seedData, entry);
-  const fields = ['description', 'pdp_description_raw'];
-  if (sections.length) fields.push('pdp_details_sections');
+  const shouldPatchSections =
+    asArray(entry.pdp_details_sections).length > 0 || entry.clean_existing_detail_sections === true;
+  const fields = [];
+  if (cleanDescription) fields.push('description', 'pdp_description_raw');
+  if (cleanHowTo) fields.push('pdp_how_to_use_raw');
+  if (shouldPatchSections && sections.length) fields.push('pdp_details_sections');
   if (cleanIngredients) fields.push('pdp_ingredients_raw', 'raw_ingredient_text_clean');
 
-  seedData.description = cleanDescription;
-  seedData.pdp_description_raw = cleanDescription;
-  seedData.seed_description_origin = 'reviewed_source_backed_pdp_content_patch';
-  snapshot.description = cleanDescription;
-  snapshot.pdp_description_raw = cleanDescription;
-  snapshot.seed_description_origin = 'reviewed_source_backed_pdp_content_patch';
+  if (cleanDescription) {
+    seedData.description = cleanDescription;
+    seedData.pdp_description_raw = cleanDescription;
+    seedData.seed_description_origin = 'reviewed_source_backed_pdp_content_patch';
+    snapshot.description = cleanDescription;
+    snapshot.pdp_description_raw = cleanDescription;
+    snapshot.seed_description_origin = 'reviewed_source_backed_pdp_content_patch';
+  }
 
-  if (sections.length) {
+  if (cleanHowTo) {
+    seedData.pdp_how_to_use_raw = cleanHowTo;
+    snapshot.pdp_how_to_use_raw = cleanHowTo;
+  }
+
+  if (shouldPatchSections && sections.length) {
     seedData.pdp_details_sections = sections;
     snapshot.pdp_details_sections = sections;
   }
@@ -276,19 +309,30 @@ function buildNextSeedData(row, entry, now) {
   };
 }
 
-function buildServingPatch(seedData) {
-  return {
-    description: seedData.description,
-    pdp_description_raw: seedData.pdp_description_raw,
-    pdp_details_sections: seedData.pdp_details_sections,
+function buildServingPatch(seedData, fields = []) {
+  const fieldSet = new Set(asArray(fields));
+  const patch = {
     pdp_field_quality_summary: seedData.pdp_field_quality_summary,
     external_seed_snapshot_contract: seedData.external_seed_snapshot_contract,
     reviewed_pdp_content_patch_v1: seedData.reviewed_pdp_content_patch_v1,
-    pdp_ingredients_raw: seedData.pdp_ingredients_raw,
-    raw_ingredient_text_clean: seedData.raw_ingredient_text_clean,
-    inci_list: seedData.inci_list,
-    ingredient_intel: seedData.ingredient_intel,
   };
+  if (fieldSet.has('description') || fieldSet.has('pdp_description_raw')) {
+    patch.description = seedData.description;
+    patch.pdp_description_raw = seedData.pdp_description_raw;
+  }
+  if (fieldSet.has('pdp_how_to_use_raw')) {
+    patch.pdp_how_to_use_raw = seedData.pdp_how_to_use_raw;
+  }
+  if (fieldSet.has('pdp_details_sections')) {
+    patch.pdp_details_sections = seedData.pdp_details_sections;
+  }
+  if (fieldSet.has('pdp_ingredients_raw') || fieldSet.has('raw_ingredient_text_clean')) {
+    patch.pdp_ingredients_raw = seedData.pdp_ingredients_raw;
+    patch.raw_ingredient_text_clean = seedData.raw_ingredient_text_clean;
+    patch.inci_list = seedData.inci_list;
+    patch.ingredient_intel = seedData.ingredient_intel;
+  }
+  return patch;
 }
 
 async function fetchRows(client, entries) {
@@ -317,18 +361,21 @@ async function applyPlan(client, plan) {
       `,
       [plan.external_product_id, sanitizeJson(plan.next_seed_data)],
     );
-    const servingPatch = buildServingPatch(plan.next_seed_data);
+    const descriptionPatched =
+      asArray(plan.patched_fields).includes('description') ||
+      asArray(plan.patched_fields).includes('pdp_description_raw');
+    const servingPatch = buildServingPatch(plan.next_seed_data, plan.patched_fields);
     const catalog = await client.query(
       `
         UPDATE catalog_products
-        SET description = $2,
+        SET description = CASE WHEN $4::boolean THEN $2 ELSE description END,
             product_payload = COALESCE(product_payload, '{}'::jsonb) || $3::jsonb,
             updated_at = NOW()
         WHERE merchant_id = 'external_seed'
           AND platform = 'external_seed'
           AND source_product_id = $1
       `,
-      [plan.external_product_id, plan.next_seed_data.description, sanitizeJson(servingPatch)],
+      [plan.external_product_id, plan.next_seed_data.description || null, sanitizeJson(servingPatch), descriptionPatched],
     );
     const identity = await client.query(
       `
@@ -418,6 +465,7 @@ async function main() {
           description: text(row.seed_data?.description || row.seed_data?.snapshot?.description),
           pdp_description_raw: text(row.seed_data?.pdp_description_raw || row.seed_data?.snapshot?.pdp_description_raw),
           pdp_ingredients_raw: text(row.seed_data?.pdp_ingredients_raw || row.seed_data?.snapshot?.pdp_ingredients_raw),
+          pdp_how_to_use_raw: text(row.seed_data?.pdp_how_to_use_raw || row.seed_data?.snapshot?.pdp_how_to_use_raw),
           ingredients_polluted: isIngredientPolluted(
             row.seed_data?.pdp_ingredients_raw ||
               row.seed_data?.raw_ingredient_text_clean ||
@@ -432,6 +480,7 @@ async function main() {
         after: {
           description: next.seedData?.description || '',
           pdp_description_raw: next.seedData?.pdp_description_raw || '',
+          pdp_how_to_use_raw: next.seedData?.pdp_how_to_use_raw || '',
           pdp_ingredients_raw: next.seedData?.pdp_ingredients_raw || '',
           ingredients_polluted: isIngredientPolluted(next.seedData?.pdp_ingredients_raw),
           detail_section_count: asArray(next.seedData?.pdp_details_sections).length,
@@ -474,3 +523,12 @@ if (require.main === module) {
     process.exitCode = 1;
   });
 }
+
+module.exports = {
+  _internals: {
+    buildNextSeedData,
+    buildServingPatch,
+    readManifestEntries,
+    validateEntry,
+  },
+};
