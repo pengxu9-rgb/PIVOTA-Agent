@@ -2920,6 +2920,57 @@ Contains four types of peptides`,
     );
   });
 
+  test('drops extractor bundle kind when copy has no source-backed set evidence', () => {
+    const row = {
+      id: 'eps_kylie_highlighter',
+      title: 'King Kylie Loose Powder Highlighter',
+      canonical_url: 'https://kyliecosmetics.com/products/king-kylie-loose-powder-highlighter',
+      destination_url: 'https://kyliecosmetics.com/products/king-kylie-loose-powder-highlighter',
+      image_url: '',
+      price_amount: 26,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        product_kind: 'bundle',
+        bundle_components: [{ name: 'stale description fragment', source_kind: 'legacy' }],
+        snapshot: {
+          product_kind: 'bundle',
+          bundle_components: [{ name: 'stale description fragment', source_kind: 'legacy' }],
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: row.title,
+            url: row.canonical_url,
+            description_raw:
+              'A silky-soft, light-reflecting loose powder highlighter with a high-impact finish.',
+            product_kind: 'bundle',
+            bundle_components: [
+              {
+                name: 'A silky-soft',
+                source_kind: 'bundle_component_description_candidate',
+              },
+            ],
+            variants: [{ id: 'v1', sku: 'KC852', price: '26.00', currency: 'USD', stock: 'In Stock' }],
+          },
+        ],
+        variants: [],
+        diagnostics: { failure_category: null },
+      },
+      row.canonical_url,
+    );
+
+    expect(payload.nextRow.seed_data.product_kind).toBeUndefined();
+    expect(payload.nextRow.seed_data.bundle_components).toBeUndefined();
+    expect(payload.nextRow.seed_data.snapshot.product_kind).toBeUndefined();
+    expect(payload.nextRow.seed_data.snapshot.bundle_components).toBeUndefined();
+  });
+
   test('marks refreshed snapshots authoritative and clears legacy PDP shadow fields on writeback', () => {
     const row = {
       id: 'eps_refresh_authoritative',

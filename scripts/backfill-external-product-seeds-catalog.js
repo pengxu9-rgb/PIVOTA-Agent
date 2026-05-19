@@ -1866,6 +1866,13 @@ function normalizeBundleComponents(value, maxItems = 24) {
   return out;
 }
 
+const SOURCE_BACKED_BUNDLE_EVIDENCE_RE =
+  /\b(?:set\s+includes|includes\s+\d|bundle|kit|duo|trio|quartet|set|calendar|collection|select\s+\d+\s+(?:shades?|powders?|items?|products?))\b/i;
+
+function hasSourceBackedBundleEvidence(...values) {
+  return values.map(normalizeNonEmptyString).filter(Boolean).some((value) => SOURCE_BACKED_BUNDLE_EVIDENCE_RE.test(value));
+}
+
 function stableComparableJson(value) {
   if (Array.isArray(value)) return value.map((item) => stableComparableJson(item));
   if (value && typeof value === 'object') {
@@ -4032,7 +4039,18 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   );
   const existingProductKind = normalizeProductKind(seedData.product_kind || snapshot.product_kind);
   const identityRepairBackfill = isIdentityRepairBackfill(row, seedData, snapshot, targetUrl, representativeProduct);
-  const nextProductKind = extractedProductKind || (identityRepairBackfill ? '' : existingProductKind);
+  const productKindCandidate = extractedProductKind || (identityRepairBackfill ? '' : existingProductKind);
+  const bundleEvidencePresent =
+    productKindCandidate !== 'bundle' ||
+    hasSourceBackedBundleEvidence(
+      representativeProduct?.title,
+      row?.title,
+      representativeProduct?.description,
+      representativeProduct?.description_raw,
+      productDescriptionRaw,
+      ...pdpDetailsSections.map((section) => `${section?.heading || ''} ${section?.body || section?.content || ''}`),
+    );
+  const nextProductKind = bundleEvidencePresent ? productKindCandidate : '';
   const existingSnapshotContract = ensureJsonObject(
     seedData.external_seed_snapshot_contract || snapshot.external_seed_snapshot_contract,
   );
