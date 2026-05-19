@@ -5989,6 +5989,29 @@ function buildPrefetchedOfferProductMap(products) {
   return out;
 }
 
+function hasOfferProductTransactionHold(product = {}) {
+  if (!isPlainObject(product)) return false;
+  const seedData = isPlainObject(product.seed_data) ? product.seed_data : {};
+  const snapshot = isPlainObject(seedData.snapshot) ? seedData.snapshot : {};
+  const family = firstNonEmptyString(product.product_family, product.external_seed_product_family).toLowerCase();
+  const hasContract = (value) => {
+    const contract = isPlainObject(value) ? value : {};
+    return Boolean(firstNonEmptyString(contract.status, contract.reason, contract.contract_version));
+  };
+  return Boolean(
+    product.transaction_ready === false ||
+      family === 'non_merch' ||
+      hasContract(product.transaction_readiness_blocker_v1) ||
+      hasContract(product.non_merch_terminal_hold_v1) ||
+      hasContract(seedData.transaction_readiness_blocker_v1) ||
+      hasContract(snapshot.transaction_readiness_blocker_v1) ||
+      hasContract(seedData.non_merch_terminal_hold_v1) ||
+      hasContract(snapshot.non_merch_terminal_hold_v1) ||
+      hasContract(seedData.source_unavailable_v1) ||
+      hasContract(snapshot.source_unavailable_v1)
+  );
+}
+
 function findPrefetchedSavingsPresentationProduct(product, prefetchedProducts) {
   if (!product || typeof product !== 'object') return null;
   const productKeys = new Set(collectOfferProductRefKeys(product));
@@ -7446,14 +7469,16 @@ async function buildOffersFromGroupMembers(args) {
   }
   timings.fetch_products = Date.now() - fetchProductsStartedAt;
 
-  const products = fetched.map((entry) => entry.product).filter(Boolean);
+  const transactionHeldOfferCount = fetched.filter((entry) => hasOfferProductTransactionHold(entry.product)).length;
+  const offerEligibleFetched = fetched.filter((entry) => !hasOfferProductTransactionHold(entry.product));
+  const products = offerEligibleFetched.map((entry) => entry.product).filter(Boolean);
   if (!products.length) return null;
 
   const storeDiscountStartedAt = Date.now();
   const {
     evidenceByEntryKey: storeDiscountEvidenceByEntryKey,
     diagnostics: storeDiscountDiagnostics,
-  } = await resolveStoreDiscountEvidenceForOfferEntries(fetched);
+  } = await resolveStoreDiscountEvidenceForOfferEntries(offerEligibleFetched);
   timings.store_discount_evidence = Date.now() - storeDiscountStartedAt;
 
   const resolvedProductGroupId =
@@ -7475,7 +7500,7 @@ async function buildOffersFromGroupMembers(args) {
     `pg:pid:${String(canonicalProductRef?.product_id || products[0]?.product_id || products[0]?.id || '').trim()}`;
 
   const buildOfferRowsStartedAt = Date.now();
-  const offers = fetched.map(({ member, product: p }) => {
+  const offers = offerEligibleFetched.map(({ member, product: p }) => {
     const mid = String(p.merchant_id || '').trim();
     const offerSourceKind = firstNonEmptyString(
       member?.source_kind,
@@ -7657,6 +7682,7 @@ async function buildOffersFromGroupMembers(args) {
             merchant_name_lookup_enabled: merchantProfileNameLookupEnabled,
             store_discount_evidence: storeDiscountDiagnostics,
             deduped_offer_count: dedupedOfferCount,
+            transaction_held_offer_count: transactionHeldOfferCount,
           },
         }
       : {}),

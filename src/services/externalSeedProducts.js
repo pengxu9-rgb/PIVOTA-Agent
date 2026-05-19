@@ -3552,6 +3552,41 @@ function canonicalizeExternalSeedSnapshot(seedData, row, options = {}) {
   return nextSeedData;
 }
 
+function resolveExternalSeedTransactionHold(seedData = {}, snapshot = {}) {
+  return [
+    seedData.transaction_readiness_blocker_v1,
+    snapshot.transaction_readiness_blocker_v1,
+    seedData.non_merch_terminal_hold_v1,
+    snapshot.non_merch_terminal_hold_v1,
+    seedData.source_unavailable_v1,
+    snapshot.source_unavailable_v1,
+  ]
+    .map(ensureJsonObject)
+    .find((contract) => Boolean(firstNonEmptyString(contract.status, contract.reason, contract.contract_version))) || null;
+}
+
+function applyTransactionHoldToVariant(variant = {}, currency = 'USD') {
+  const next = {
+    ...variant,
+    price: 0,
+    currency: variant.currency || currency,
+    pricing: {
+      ...ensureJsonObject(variant.pricing),
+      current: {
+        amount: 0,
+        currency: variant.currency || currency,
+      },
+    },
+    inventory_quantity: 0,
+    in_stock: false,
+    available: false,
+    availability: 'out_of_stock',
+  };
+  if (next.price_amount != null) next.price_amount = null;
+  if (next.priceAmount != null) next.priceAmount = null;
+  return next;
+}
+
 function buildExternalSeedProduct(row, options = {}) {
   if (!row || typeof row !== 'object') return null;
 
@@ -3890,6 +3925,9 @@ function buildExternalSeedProduct(row, options = {}) {
     seed_data: seedData,
   });
   const productFamily = productKind.family;
+  const transactionHold = resolveExternalSeedTransactionHold(seedData, snapshot) || productFamily === 'non_merch';
+  const transactionHoldContract =
+    typeof transactionHold === 'object' && transactionHold !== null ? transactionHold : null;
   const forcedCategory =
     productFamily === 'non_merch'
       ? 'Gift Card'
@@ -4006,21 +4044,30 @@ function buildExternalSeedProduct(row, options = {}) {
     row.price_currency || seedData.price_currency || snapshot.price_currency || variants[0]?.currency,
     'USD',
   );
+  if (transactionHold) {
+    variants = variants.map((variant) => applyTransactionHoldToVariant(variant, currency));
+  }
   const rawAmount = row.price_amount ?? seedData.price_amount ?? snapshot.price_amount;
-  let price = normalizeExternalSeedPrice(rawAmount, {
-    ...priceContext,
-    currency,
-  });
+  let price = transactionHold
+    ? 0
+    : normalizeExternalSeedPrice(rawAmount, {
+        ...priceContext,
+        currency,
+      });
   if (!(price > 0) && variants.length > 0) {
     const variantPrices = variants.map((variant) => normalizeAmount(variant.price)).filter((value) => value > 0);
     price = variantPrices.length ? Math.min(...variantPrices) : 0;
   }
 
-  const availability = normalizeSeedAvailability(row.availability || seedData.availability || snapshot.availability);
+  const availability = transactionHold
+    ? 'out_of_stock'
+    : normalizeSeedAvailability(row.availability || seedData.availability || snapshot.availability);
   const variantStates = variants.map((variant) => (typeof variant?.in_stock === 'boolean' ? variant.in_stock : null));
   const explicitVariantStates = variantStates.filter((value) => value !== null);
   const inStock =
-    explicitVariantStates.length > 0
+    transactionHold
+      ? false
+      : explicitVariantStates.length > 0
       ? explicitVariantStates.some(Boolean)
         ? true
         : explicitVariantStates.length === variantStates.length
@@ -4124,7 +4171,7 @@ function buildExternalSeedProduct(row, options = {}) {
     ingredient_intel: runtimeIngredientIntel,
     ...(ingredientRemediation ? { ingredient_remediation_v1: ingredientRemediation } : {}),
   };
-  const authority = isIngredientAuthorityEligibleExternalSeed(authorityInput)
+  const authority = !transactionHold && isIngredientAuthorityEligibleExternalSeed(authorityInput)
     ? buildAuthoritativeIngredientView(authorityInput)
     : {
         items: [],
@@ -4166,6 +4213,16 @@ function buildExternalSeedProduct(row, options = {}) {
     inventory_quantity: inStock === true ? 999 : inStock === false ? 0 : null,
     in_stock: inStock,
     availability: availability || undefined,
+    ...(transactionHold
+      ? {
+          transaction_ready: false,
+          transaction_readiness_blocker_v1: transactionHoldContract || { status: 'transaction_hold' },
+        }
+      : {}),
+    ...(transactionHoldContract?.contract_version === 'external_seed.transaction_readiness_blocker.v1' ||
+    transactionHoldContract?.status
+      ? { non_merch_terminal_hold_v1: transactionHoldContract }
+      : {}),
     product_type: normalizedCategory || 'external',
     source: 'external_seed',
     product_family: productFamily,
@@ -4219,28 +4276,28 @@ function buildExternalSeedProduct(row, options = {}) {
     ...(netContent ? { net_content: netContent } : {}),
     ...(netSize ? { net_size: netSize } : {}),
     ...(sizeDetailLabel ? { size_detail_label: sizeDetailLabel } : {}),
-    ...(rawIngredientTextClean ? { raw_ingredient_text_clean: rawIngredientTextClean } : {}),
-    ...(inciList.length ? { inci_list: inciList } : {}),
-    ...(activeIngredients.length ? { active_ingredients: activeIngredients } : {}),
-    ...(keyIngredients.length ? { key_ingredients: keyIngredients } : {}),
+    ...(!transactionHold && rawIngredientTextClean ? { raw_ingredient_text_clean: rawIngredientTextClean } : {}),
+    ...(!transactionHold && inciList.length ? { inci_list: inciList } : {}),
+    ...(!transactionHold && activeIngredients.length ? { active_ingredients: activeIngredients } : {}),
+    ...(!transactionHold && keyIngredients.length ? { key_ingredients: keyIngredients } : {}),
     ...(isSurfaceablePdpField(pdpFieldQualitySummary, 'description_raw') && pdpDescriptionRaw
       ? { pdp_description_raw: pdpDescriptionRaw }
       : {}),
     ...(pdpDetailsSections.length ? { pdp_details_sections: pdpDetailsSections } : {}),
     ...(contentImageUrls.length ? { content_image_urls: contentImageUrls } : {}),
     ...(bundleComponentRefs.length ? { bundle_component_refs: bundleComponentRefs } : {}),
-    ...(isSurfaceablePdpField(pdpFieldQualitySummary, 'ingredients_raw') && pdpIngredientsRaw
+    ...(!transactionHold && isSurfaceablePdpField(pdpFieldQualitySummary, 'ingredients_raw') && pdpIngredientsRaw
       ? { pdp_ingredients_raw: pdpIngredientsRaw }
       : {}),
-    ...(!suppressActiveEvidence && isSurfaceablePdpField(pdpFieldQualitySummary, 'active_ingredients_raw') && pdpActiveIngredientsRaw
+    ...(!transactionHold && !suppressActiveEvidence && isSurfaceablePdpField(pdpFieldQualitySummary, 'active_ingredients_raw') && pdpActiveIngredientsRaw
       ? { pdp_active_ingredients_raw: pdpActiveIngredientsRaw }
-      : !suppressActiveEvidence && sourceBackedActiveIngredientsRaw
+      : !transactionHold && !suppressActiveEvidence && sourceBackedActiveIngredientsRaw
         ? { pdp_active_ingredients_raw: sourceBackedActiveIngredientsRaw }
       : {}),
-    ...(isSurfaceablePdpField(pdpFieldQualitySummary, 'how_to_use_raw') && pdpHowToUseRaw
+    ...(!transactionHold && isSurfaceablePdpField(pdpFieldQualitySummary, 'how_to_use_raw') && pdpHowToUseRaw
       ? { pdp_how_to_use_raw: pdpHowToUseRaw }
       : {}),
-    ...(isSurfaceablePdpField(pdpFieldQualitySummary, 'faq_items') && pdpFaqItems.length
+    ...(!transactionHold && isSurfaceablePdpField(pdpFieldQualitySummary, 'faq_items') && pdpFaqItems.length
       ? { pdp_faq_items: pdpFaqItems }
       : {}),
     ...(seedDescriptionOrigin ? { seed_description_origin: seedDescriptionOrigin } : {}),
@@ -4250,15 +4307,15 @@ function buildExternalSeedProduct(row, options = {}) {
     ...(reviewSummary ? { review_summary: reviewSummary } : {}),
     ...(pdpFieldCaptureStatus ? { pdp_field_capture_status: pdpFieldCaptureStatus } : {}),
     ...(pdpFieldQualitySummary ? { pdp_field_quality_summary: pdpFieldQualitySummary } : {}),
-    ...(ingredientRemediation ? { ingredient_remediation_v1: ingredientRemediation } : {}),
-    ...(ingredientTokens.length ? { ingredient_tokens: ingredientTokens } : {}),
-    ...(authority.items.length
+    ...(!transactionHold && ingredientRemediation ? { ingredient_remediation_v1: ingredientRemediation } : {}),
+    ...(!transactionHold && ingredientTokens.length ? { ingredient_tokens: ingredientTokens } : {}),
+    ...(!transactionHold && authority.items.length
       ? { ingredients_inci: authority.items }
-      : fallbackIngredientsInci.length && productFamily !== 'set_or_collection'
+      : !transactionHold && fallbackIngredientsInci.length && productFamily !== 'set_or_collection'
         ? { ingredients_inci: fallbackIngredientsInci }
         : {}),
-    ...(displayActiveIngredients.length ? { active_ingredients: displayActiveIngredients } : {}),
-    ...(Object.keys(mergedIngredientIntel).length ? { ingredient_intel: mergedIngredientIntel } : {}),
+    ...(!transactionHold && displayActiveIngredients.length ? { active_ingredients: displayActiveIngredients } : {}),
+    ...(!transactionHold && Object.keys(mergedIngredientIntel).length ? { ingredient_intel: mergedIngredientIntel } : {}),
     ...(brand ? { vendor: brand, brand } : {}),
     ...(normalizedCategory ? { category: normalizedCategory } : {}),
   };

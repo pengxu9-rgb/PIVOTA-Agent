@@ -64,6 +64,35 @@ function normalizeCurrency(value, fallback = 'USD') {
   return value?.currency || value?.currency_code || fallback;
 }
 
+function asSafePlainObject(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+function hasTransactionHoldContract(value) {
+  const object = asSafePlainObject(value);
+  return Boolean(
+    String(object.status || object.reason || object.contract_version || '').trim(),
+  );
+}
+
+function suppressCommerceForPdpProduct(product = {}) {
+  const seedData = asSafePlainObject(product.seed_data);
+  const snapshot = asSafePlainObject(seedData.snapshot);
+  const family = String(product.product_family || product.external_seed_product_family || '').trim().toLowerCase();
+  return Boolean(
+    product.transaction_ready === false ||
+      family === 'non_merch' ||
+      hasTransactionHoldContract(product.transaction_readiness_blocker_v1) ||
+      hasTransactionHoldContract(product.non_merch_terminal_hold_v1) ||
+      hasTransactionHoldContract(seedData.transaction_readiness_blocker_v1) ||
+      hasTransactionHoldContract(snapshot.transaction_readiness_blocker_v1) ||
+      hasTransactionHoldContract(seedData.non_merch_terminal_hold_v1) ||
+      hasTransactionHoldContract(snapshot.non_merch_terminal_hold_v1) ||
+      hasTransactionHoldContract(seedData.source_unavailable_v1) ||
+      hasTransactionHoldContract(snapshot.source_unavailable_v1)
+  );
+}
+
 function normalizeInStock(value) {
   if (typeof value === 'boolean') return value;
   if (typeof value === 'number') return value > 0;
@@ -4265,6 +4294,7 @@ function buildPdpPayload(args) {
   const product = args.product || {};
   const pdpSchemaProfile = resolvePdpSchemaProfile(product);
   const isBeautyFormulaProfile = isBeautyFormulaPdpProfile(pdpSchemaProfile);
+  const commerceSuppressed = suppressCommerceForPdpProduct(product);
   const brandLabel = resolveProductBrandLabel(product);
   const currency = product.currency || 'USD';
   const variants = buildVariants(product);
@@ -4334,17 +4364,17 @@ function buildPdpPayload(args) {
     isBeautyFormulaProfile && isExternalSeedLikeProduct(product)
       ? buildStructuredPdpIngredientModules(product)
       : null;
-  const ingredientsInci = isBeautyFormulaProfile
+  const ingredientsInci = isBeautyFormulaProfile && !commerceSuppressed
     ? externalSeedIngredientAuthority
       ? externalSeedIngredientAuthority.ingredientsInciData
       : buildIngredientsInci(product)
     : null;
-  const activeIngredients = isBeautyFormulaProfile
+  const activeIngredients = isBeautyFormulaProfile && !commerceSuppressed
     ? externalSeedIngredientAuthority
       ? externalSeedIngredientAuthority.activeIngredientsData
       : buildActiveIngredients(product, ingredientsInci)
     : null;
-  const howToUse = buildHowToUse(product, structuredContentImagePlan);
+  const howToUse = commerceSuppressed ? null : buildHowToUse(product, structuredContentImagePlan);
   const genericAttributeModules = isBeautyFormulaProfile
     ? {}
     : buildGenericAttributeModules(product, pdpSchemaProfile, detailSections);
@@ -4407,16 +4437,18 @@ function buildPdpPayload(args) {
       },
     });
   }
-  modules.push({
-    module_id: 'm_price',
-    type: 'price_promo',
-    priority: 90,
-    data: {
-      price: defaultVariant.price?.current || { amount: normalizeAmount(product.price), currency },
-      compare_at: defaultVariant.price?.compare_at,
-      promotions: product.promotions || [],
-    },
-  });
+  if (!commerceSuppressed) {
+    modules.push({
+      module_id: 'm_price',
+      type: 'price_promo',
+      priority: 90,
+      data: {
+        price: defaultVariant.price?.current || { amount: normalizeAmount(product.price), currency },
+        compare_at: defaultVariant.price?.compare_at,
+        promotions: product.promotions || [],
+      },
+    });
+  }
   if (productOverview.length) {
     modules.push({
       module_id: 'm_product_overview',
@@ -4606,8 +4638,8 @@ function buildPdpPayload(args) {
       ...(productLineOptions.length > 1 && productLineOptionName
         ? { product_line_option_name: productLineOptionName }
         : {}),
-      price: defaultVariant.price,
-      availability: productAvailability,
+      price: commerceSuppressed ? undefined : defaultVariant.price,
+      availability: commerceSuppressed ? { in_stock: false, available_quantity: 0 } : productAvailability,
       shipping: product.shipping || undefined,
       returns: product.returns || undefined,
       ...pickSavingsPresentationFields(product),
@@ -4621,10 +4653,12 @@ function buildPdpPayload(args) {
         : {}),
     },
     modules,
-    actions: [
-      { action_type: 'add_to_cart', label: 'Add to Cart', priority: 20, target: {} },
-      { action_type: 'buy_now', label: 'Buy Now', priority: 10, target: {} },
-    ],
+    actions: commerceSuppressed
+      ? []
+      : [
+          { action_type: 'add_to_cart', label: 'Add to Cart', priority: 20, target: {} },
+          { action_type: 'buy_now', label: 'Buy Now', priority: 10, target: {} },
+        ],
   };
 
   return compilePdpPayload(payload, { debug: args.debug });

@@ -1,6 +1,47 @@
 const { buildPdpPayload } = require('../src/pdpBuilder');
 
 describe('pdpBuilder structured modules for external-seed style products', () => {
+  test('suppresses transaction modules and fallback ingredient content for terminal-held external seeds', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_koko_sample',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Koko K Matte Liquid Lipstick Sample',
+        product_family: 'non_merch',
+        external_seed_product_family: 'non_merch',
+        transaction_ready: false,
+        transaction_readiness_blocker_v1: {
+          contract_version: 'external_seed.transaction_readiness_blocker.v1',
+          status: 'sample_terminal_hold',
+        },
+        description:
+          'Kylie source marks this listing as a sample and excludes it from recommendation merchandising.',
+        image_url: 'https://cdn.example.com/koko-sample.jpg',
+        price: 2,
+        in_stock: true,
+        pdp_how_to_use_raw: 'Apply lightly to pulse points such as wrists, neck, or behind the ears.',
+        ingredients_inci: ['Synthetic fallback ingredient'],
+        variants: [
+          {
+            id: 'sample_variant',
+            variant_id: 'sample_variant',
+            title: 'Default',
+            price: { current: { amount: 2, currency: 'USD' } },
+            in_stock: true,
+          },
+        ],
+      },
+    });
+
+    expect(payload.modules.some((module) => module.type === 'price_promo')).toBe(false);
+    expect(payload.modules.some((module) => module.type === 'ingredients_inci')).toBe(false);
+    expect(payload.modules.some((module) => module.type === 'how_to_use')).toBe(false);
+    expect(payload.actions).toEqual([]);
+    expect(payload.product.price).toBeUndefined();
+    expect(payload.product.availability).toEqual({ in_stock: false, available_quantity: 0 });
+  });
+
   test('emits variant selector and structured detail modules from canonical product data', () => {
     const payload = buildPdpPayload({
       product: {

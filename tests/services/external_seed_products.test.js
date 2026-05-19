@@ -3360,6 +3360,65 @@ describe('externalSeedProducts helper', () => {
     expect(product.pdp_field_quality_summary.description_raw.source_quality_status).toBe('quarantined');
   });
 
+  test('terminal-held external seed products do not expose transaction or fallback ingredient content', () => {
+    const product = buildExternalSeedProduct({
+      id: 'eps_koko_sample',
+      external_product_id: 'ext_koko_sample',
+      canonical_url: 'https://kyliecosmetics.com/products/koko-k-matte-liquid-lipstick-sample',
+      destination_url: 'https://kyliecosmetics.com/products/koko-k-matte-liquid-lipstick-sample',
+      title: 'Koko K Matte Liquid Lipstick Sample',
+      price_amount: 2,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        product_kind: 'non_merch',
+        product_family: 'non_merch',
+        description:
+          'Kylie source marks this listing as a sample and excludes it from recommendation merchandising.',
+        pdp_how_to_use_raw: 'Apply lightly to pulse points such as wrists, neck, or behind the ears.',
+        ingredients_inci: ['Synthetic fallback ingredient'],
+        transaction_readiness_blocker_v1: {
+          contract_version: 'external_seed.transaction_readiness_blocker.v1',
+          status: 'sample_terminal_hold',
+          reason: 'official_source_free_sample_no_pdp_content',
+        },
+        variants: [
+          {
+            variant_id: '44511461409010',
+            sku: 'KC509',
+            title: 'Default Title',
+            price: 2,
+            currency: 'USD',
+            in_stock: true,
+            inventory_quantity: 999,
+          },
+        ],
+        snapshot: {
+          product_kind: 'non_merch',
+          product_family: 'non_merch',
+        },
+      },
+    });
+
+    expect(product.product_family).toBe('non_merch');
+    expect(product.transaction_ready).toBe(false);
+    expect(product.price).toBe(0);
+    expect(product.in_stock).toBe(false);
+    expect(product.inventory_quantity).toBe(0);
+    expect(product.pdp_how_to_use_raw).toBeUndefined();
+    expect(product.ingredients_inci).toBeUndefined();
+    expect(product.ingredient_intel).toBeUndefined();
+    expect(product.variants[0]).toEqual(
+      expect.objectContaining({
+        price: 0,
+        in_stock: false,
+        available: false,
+        inventory_quantity: 0,
+        availability: 'out_of_stock',
+      }),
+    );
+  });
+
   test('projects source-backed active arrays when ingredient evidence validates them', () => {
     const product = buildExternalSeedProduct({
       id: 'eps_ole_violet_mask',
