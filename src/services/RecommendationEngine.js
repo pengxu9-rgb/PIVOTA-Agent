@@ -45,6 +45,10 @@ const PDP_RECS_READY_MIN_COUNT = Math.max(
     Number(process.env.PDP_RECS_READY_MIN_COUNT || 6) || 6,
   ),
 );
+const PDP_RECS_EXTERNAL_FOCUSED_TARGET_RATIO = Math.max(
+  0.25,
+  Math.min(1, Number(process.env.PDP_RECS_EXTERNAL_FOCUSED_TARGET_RATIO || 0.65) || 0.65),
+);
 const PDP_RECS_MAX_K = Math.max(
   PDP_RECS_DEFAULT_K,
   Math.min(60, Number(process.env.PDP_RECS_MAX_K || 60) || 60),
@@ -1980,6 +1984,18 @@ function focusedRecallTargetCount(safeMinFocusedCandidates) {
   );
 }
 
+function focusedExternalRecallTargetCount(requestedCount) {
+  const safeRequestedCount = Math.max(1, Math.min(Number(requestedCount || 0) || 0, PDP_RECS_MAX_K));
+  if (!safeRequestedCount) return PDP_RECS_READY_MIN_COUNT;
+  return Math.max(
+    1,
+    Math.min(
+      safeRequestedCount,
+      Math.max(PDP_RECS_READY_MIN_COUNT, Math.ceil(safeRequestedCount * PDP_RECS_EXTERNAL_FOCUSED_TARGET_RATIO)),
+    ),
+  );
+}
+
 function titleIntentMatches(baseFeatures, candidateFeatures) {
   const baseTitle = String(baseFeatures?.normalizedTitle || '').trim();
   const candidateTitle = String(candidateFeatures?.normalizedTitle || '').trim();
@@ -3349,10 +3365,15 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
       .filter((product) => isSellable(product, { inStockOnly: true }))
       .length;
     exactDomainCategoryCandidateCount = displayUniqueCandidateCount(domainCategoryFocusedCandidates);
+    const exactDomainCategoryDisplayCoverageEnough =
+      exactDomainCategoryCandidateCount >= safeMinFocusedCandidates;
     if (
       intentFamilyPattern &&
-      !identityCollapseProtection &&
-      Math.max(exactDomainCategoryCandidateCount, exactDomainCategorySellableCount) >= exactDomainCategoryGoodEnoughCount
+      (
+        !identityCollapseProtection
+          ? Math.max(exactDomainCategoryCandidateCount, exactDomainCategorySellableCount) >= exactDomainCategoryGoodEnoughCount
+          : exactDomainCategoryDisplayCoverageEnough
+      )
     ) {
       return attachExternalFetchStats(domainCategoryFocusedCandidates.slice(0, returnCap));
     }
@@ -4034,6 +4055,7 @@ async function recommend({
     PDP_RECS_EXTERNAL_FETCH_LIMIT_MIN,
     Math.ceil(candidateK * PDP_RECS_EXTERNAL_FETCH_LIMIT_MULTIPLIER),
   );
+  const externalFocusedRecallTarget = focusedExternalRecallTargetCount(safeK);
 
   let internalTimedOut = false;
   let externalTimedOut = false;
@@ -4072,7 +4094,7 @@ async function recommend({
           intentFamilyHint: baseIntentFamily,
           domainHints: baseDomains,
           limit: externalFetchLimit,
-          minFocusedCandidates: safeK,
+          minFocusedCandidates: externalFocusedRecallTarget,
           deepDomainRecall: baseProductIsExternal,
         }),
     effectiveExternalFetchTimeoutMs,
@@ -4283,6 +4305,7 @@ async function recommend({
         base_product_is_external: baseProductIsExternal,
         base_intent_family: baseIntentFamily || null,
         external_fetch_limit: externalFetchLimit,
+        external_focused_recall_target: externalFocusedRecallTarget,
         external_recall_debug: externalFetchStats,
         ready_min_count: finalReadyMinCount,
         requested_count: safeK,
