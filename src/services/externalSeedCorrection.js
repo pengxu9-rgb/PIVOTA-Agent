@@ -1,7 +1,17 @@
 const { query } = require('../db');
 const { auditExternalSeedRow, detectGenericTemplateDescription } = require('./externalSeedContentAudit');
 const { lookupExternalSeedImageOverride } = require('./externalSeedImageOverrides');
-const { ensureJsonObject, collectSeedImageUrls, canonicalizeExternalSeedSnapshot } = require('./externalSeedProducts');
+const {
+  ensureJsonObject,
+  collectSeedImageUrls,
+  normalizeSeedImageUrls,
+  normalizeSeedVariants,
+  canonicalizeExternalSeedSnapshot,
+} = require('./externalSeedProducts');
+const {
+  buildPdpImageDedupeKey,
+  normalizePdpImageUrl,
+} = require('../utils/pdpImageUrls');
 const { enrichExternalSeedRowIngredients } = require('./externalSeedIngredientEnrichment');
 const { buildExternalSeedRecallDoc } = require('./externalSeedRecall');
 const {
@@ -19,6 +29,7 @@ const SEED_CORRECTION_TYPE = Object.freeze({
   applyManualImageOverride: 'apply_manual_image_override',
   clearGenericTemplateDescription: 'clear_generic_template_description',
   normalizeVariantDisplayContract: 'normalize_variant_display_contract',
+  normalizeImageGalleryContract: 'normalize_image_gallery_contract',
   markBlockedNoProductUrls: 'mark_blocked_no_product_urls',
 });
 
@@ -93,6 +104,67 @@ function uniqueStrings(values) {
     out.push(normalized);
   }
   return out;
+}
+
+function appendRawImageUrls(out, value) {
+  if (!value) return;
+  if (typeof value === 'string') {
+    const normalized = normalizeNonEmptyString(value);
+    if (normalized && !out.includes(normalized)) out.push(normalized);
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item) => appendRawImageUrls(out, item));
+    return;
+  }
+  if (typeof value !== 'object') return;
+  appendRawImageUrls(out, value.image_url);
+  appendRawImageUrls(out, value.url);
+  appendRawImageUrls(out, value.src);
+  appendRawImageUrls(out, value.contentUrl);
+}
+
+function collectRawSeedImageUrls(row) {
+  const { seedData, snapshot } = loadSnapshot(row);
+  const out = [];
+  appendRawImageUrls(out, snapshot.image_url);
+  appendRawImageUrls(out, snapshot.image_urls);
+  appendRawImageUrls(out, snapshot.images);
+  appendRawImageUrls(out, row?.image_url);
+  appendRawImageUrls(out, seedData.image_url);
+  appendRawImageUrls(out, seedData.image_urls);
+  appendRawImageUrls(out, seedData.images);
+  return uniqueStrings(out);
+}
+
+function normalizedImageKey(value) {
+  const normalized = normalizePdpImageUrl(value);
+  return normalized ? buildPdpImageDedupeKey(normalized) || normalized.toLowerCase() : '';
+}
+
+function collectPrimaryVariantImageUrls(row) {
+  const variants = normalizeSeedVariants(row?.seed_data, row);
+  const primaryVariant = Array.isArray(variants) ? variants[0] : null;
+  if (!primaryVariant || typeof primaryVariant !== 'object') return [];
+  const out = [];
+  appendRawImageUrls(out, primaryVariant.image_urls);
+  appendRawImageUrls(out, primaryVariant.images);
+  appendRawImageUrls(out, primaryVariant.image_url);
+  return uniqueStrings(out.map(normalizePdpImageUrl).filter(Boolean));
+}
+
+function hasSeedImageGalleryContractDrift(row) {
+  const rawUrls = collectRawSeedImageUrls(row);
+  if (!rawUrls.length) return false;
+  const normalizedUrls = normalizeSeedImageUrls(row?.seed_data, row);
+  if (!normalizedUrls.length) return false;
+  const normalizedKeys = new Set(normalizedUrls.map(normalizedImageKey).filter(Boolean));
+  const rawKeys = rawUrls.map(normalizedImageKey).filter(Boolean);
+  if (!rawKeys.length) return true;
+  if (rawKeys.some((key) => !normalizedKeys.has(key))) return true;
+  const currentRuntimeUrls = collectSeedImageUrls(row?.seed_data, row);
+  const currentRuntimeKeys = currentRuntimeUrls.map(normalizedImageKey).filter(Boolean);
+  return currentRuntimeKeys.join('|') !== Array.from(normalizedKeys).join('|');
 }
 
 function normalizeAmount(value) {
@@ -450,6 +522,45 @@ function applyManualImageOverride(row) {
   return { changed: true, row: nextRow };
 }
 
+function applyImageGalleryContractNormalization(row) {
+  const normalizedSeedImages = normalizeSeedImageUrls(row?.seed_data, row);
+  const primaryVariantImages = collectPrimaryVariantImageUrls(row);
+  const imageUrls =
+    primaryVariantImages.length > 0 && normalizedSeedImages.length <= 1
+      ? primaryVariantImages
+      : normalizedSeedImages;
+  if (!imageUrls.length) return { changed: false, row };
+
+  const currentUrls = collectSeedImageUrls(row?.seed_data, row);
+  const currentKeys = currentUrls.map(normalizedImageKey).filter(Boolean);
+  const nextKeys = imageUrls.map(normalizedImageKey).filter(Boolean);
+  if (currentKeys.join('|') === nextKeys.join('|') && !hasSeedImageGalleryContractDrift(row)) {
+    return { changed: false, row };
+  }
+
+  const nextRow = cloneJson(row);
+  const nextSeedData = ensureJsonObject(nextRow.seed_data);
+  const nextSnapshot = ensureJsonObject(nextSeedData.snapshot);
+  nextRow.image_url = imageUrls[0];
+  nextSeedData.image_url = imageUrls[0];
+  nextSeedData.image_urls = imageUrls;
+  nextSeedData.images = imageUrls;
+  nextSnapshot.image_url = imageUrls[0];
+  nextSnapshot.image_urls = imageUrls;
+  nextSnapshot.images = imageUrls;
+  nextSnapshot.image_gallery_contract_v1 = {
+    contract_version: 'external_seed.image_gallery_contract.v1',
+    source: 'seed_correction_normalize_image_gallery_contract',
+    updated_at: new Date().toISOString(),
+    review_state: 'assistant_reviewed',
+    image_count: imageUrls.length,
+  };
+  nextSeedData.image_gallery_contract_v1 = nextSnapshot.image_gallery_contract_v1;
+  nextSeedData.snapshot = nextSnapshot;
+  nextRow.seed_data = nextSeedData;
+  return { changed: true, row: nextRow };
+}
+
 function applyBlockedNoProductUrls(row) {
   const nextRow = cloneJson(row);
   const { seedData, snapshot } = loadSnapshot(nextRow);
@@ -562,6 +673,9 @@ function buildSeedCorrectionPlan(row, auditResult = auditExternalSeedRow(row)) {
   if (hasVariantDisplayContractDrift(row)) {
     actions.push({ correction_type: SEED_CORRECTION_TYPE.normalizeVariantDisplayContract, auto_applied: true });
   }
+  if (hasSeedImageGalleryContractDrift(row)) {
+    actions.push({ correction_type: SEED_CORRECTION_TYPE.normalizeImageGalleryContract, auto_applied: true });
+  }
 
   return {
     findings,
@@ -611,6 +725,8 @@ async function applySeedCorrectionAction(row, action, options = {}) {
     applied = applyBeautyMinorUnitPriceNormalization(row);
   } else if (correctionType === SEED_CORRECTION_TYPE.normalizeVariantDisplayContract) {
     applied = applyVariantDisplayContractNormalization(row);
+  } else if (correctionType === SEED_CORRECTION_TYPE.normalizeImageGalleryContract) {
+    applied = applyImageGalleryContractNormalization(row);
   } else if (correctionType === SEED_CORRECTION_TYPE.applyManualImageOverride) {
     applied = applyManualImageOverride(row);
   } else if (correctionType === SEED_CORRECTION_TYPE.markBlockedNoProductUrls) {

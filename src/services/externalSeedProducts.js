@@ -1900,6 +1900,7 @@ function isNonProductSeedImageUrl(value) {
   } catch {}
   const explicitFamilyHost = requiresExplicitGalleryFamilyMatch(hostname);
   if (!filename) return true;
+  if (!/[a-z0-9]/i.test(filename)) return true;
   if (
     lower.endsWith('.svg') ||
     lower.includes('.svg?') ||
@@ -1930,6 +1931,7 @@ function isNonProductSeedImageUrl(value) {
     pathname.includes('/heroes-slot') ||
     /(?:^|\/)gnav[-_]/i.test(pathname) ||
     pathname.includes('/cdn/shop/t/') ||
+    /(?:^|[-_ ])nav(?:[-_ ]|$)/i.test(filename) ||
     /(?:^|[-_ ])find[-_ ]shade(?:[-_ ]|$)/i.test(filename) ||
     /(?:^|[-_ ])try[-_ ]shade(?:[-_ ]|$)/i.test(filename) ||
     /(?:^|[-_ ])get[-_ ]the[-_ ]look(?:[-_ ]|$)/i.test(filename) ||

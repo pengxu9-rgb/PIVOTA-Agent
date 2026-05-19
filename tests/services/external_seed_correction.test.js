@@ -381,6 +381,110 @@ describe('externalSeedCorrection', () => {
     );
   });
 
+  test('normalizes polluted image gallery contracts without rerunning extraction', async () => {
+    const productImage =
+      'https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_WLM_23_5ml_Stylized.jpg?v=1712005037';
+    const row = {
+      id: 'eps_kylie_gallery_pollution',
+      market: 'US',
+      domain: 'kyliecosmetics.com',
+      canonical_url: 'https://kyliecosmetics.com/products/mini-wisp-lash-kylie-jenner-mascara',
+      title: 'Mini Wisp Lash Mascara',
+      image_url: productImage,
+      seed_data: {
+        image_urls: [
+          productImage,
+          'https://kyliecosmetics.com/%22%22',
+          'https://kyliecosmetics.com/cdn/shop/files/v1_cosmetics_lips_nav_5e2c0efa.jpg?v=1740598507',
+        ],
+        snapshot: {
+          image_urls: [
+            productImage,
+            'https://kyliecosmetics.com/%22%22',
+            'https://kyliecosmetics.com/cdn/shop/files/v1_cosmetics_lips_nav_5e2c0efa.jpg?v=1740598507',
+          ],
+        },
+      },
+    };
+
+    const plan = buildSeedCorrectionPlan(row);
+    expect(plan.actions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          correction_type: SEED_CORRECTION_TYPE.normalizeImageGalleryContract,
+        }),
+      ]),
+    );
+
+    const result = await applySeedCorrectionAction(
+      row,
+      { correction_type: SEED_CORRECTION_TYPE.normalizeImageGalleryContract },
+      { dryRun: true },
+    );
+
+    expect(processRow).not.toHaveBeenCalled();
+    expect(result.changed).toBe(true);
+    expect(result.row.image_url).toBe(productImage);
+    expect(result.row.seed_data.image_urls).toEqual([productImage]);
+    expect(result.row.seed_data.snapshot.image_urls).toEqual([productImage]);
+    expect(result.row.seed_data.snapshot.image_gallery_contract_v1).toEqual(
+      expect.objectContaining({
+        contract_version: 'external_seed.image_gallery_contract.v1',
+        review_state: 'assistant_reviewed',
+        image_count: 1,
+      }),
+    );
+  });
+
+  test('prefers clean primary variant images when top-level strict gallery cleanup is ambiguous', async () => {
+    const variantPrimary =
+      'https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_WLM_23_5ml_Stylized.jpg?v=1712005037';
+    const variantSecondary =
+      'https://kyliecosmetics.com/cdn/shop/files/KJC_WLM_23_5ml_Stylized.jpg?crop=center&v=1712005037';
+    const unrelatedTopLevel =
+      'https://kyliecosmetics.com/cdn/shop/files/KJC_HOLIDAY_24_Mini_Lip_Kit_Kylie_02_CP_354_Hero_WS.jpg?v=1727108210';
+    const row = {
+      id: 'eps_kylie_ambiguous_gallery_pollution',
+      market: 'US',
+      domain: 'kyliecosmetics.com',
+      canonical_url: 'https://kyliecosmetics.com/products/mini-wisp-lash-kylie-jenner-mascara',
+      title: 'Mini Wisp Lash Mascara',
+      seed_data: {
+        image_urls: [
+          variantPrimary,
+          'https://kyliecosmetics.com/%22%22',
+          unrelatedTopLevel,
+        ],
+        snapshot: {
+          image_urls: [
+            variantPrimary,
+            'https://kyliecosmetics.com/%22%22',
+            unrelatedTopLevel,
+          ],
+          variants: [
+            {
+              variant_id: '45167939322098',
+              option_name: 'Size',
+              option_value: '5 mL',
+              image_url: variantPrimary,
+              image_urls: [variantPrimary, variantSecondary],
+            },
+          ],
+        },
+      },
+    };
+
+    const result = await applySeedCorrectionAction(
+      row,
+      { correction_type: SEED_CORRECTION_TYPE.normalizeImageGalleryContract },
+      { dryRun: true },
+    );
+
+    expect(result.changed).toBe(true);
+    expect(result.row.seed_data.image_urls).toEqual([variantPrimary, variantSecondary]);
+    expect(result.row.seed_data.snapshot.image_urls).toEqual([variantPrimary, variantSecondary]);
+  });
+
   test('strips NUL bytes before persisting corrected seed JSON', async () => {
     query.mockResolvedValue({ rows: [] });
     const row = {

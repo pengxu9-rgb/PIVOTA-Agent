@@ -336,6 +336,30 @@ describe('externalSeedProducts helper', () => {
     ]);
   });
 
+  test('filters quoted empty Shopify image placeholders from runtime gallery', () => {
+    const productImage =
+      'https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_WLM_23_5ml_Stylized.jpg?v=1712005037';
+    const product = buildExternalSeedProduct({
+      id: 'eps_kylie_mini_wisp_lash',
+      external_product_id: 'ext_kylie_mini_wisp_lash',
+      canonical_url: 'https://kyliecosmetics.com/products/mini-wisp-lash-kylie-jenner-mascara',
+      destination_url: 'https://kyliecosmetics.com/products/mini-wisp-lash-kylie-jenner-mascara',
+      domain: 'kyliecosmetics.com',
+      title: 'Mini Wisp Lash Mascara',
+      seed_data: {
+        snapshot: {
+          image_urls: [
+            productImage,
+            'https://kyliecosmetics.com/%22%22',
+            'https://kyliecosmetics.com/""',
+          ],
+        },
+      },
+    });
+
+    expect(product.images).toEqual([productImage]);
+  });
+
   test('keeps only real Fenty product gallery assets and filters shade-finder and award media at runtime', () => {
     const product = buildExternalSeedProduct({
       id: 'eps_fenty_refill_runtime',
