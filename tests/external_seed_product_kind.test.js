@@ -31,6 +31,24 @@ describe('external seed product kind classification', () => {
         family: 'accessory',
       }),
     );
+    expect(
+      classifyExternalSeedProductKind({
+        title: 'Jurlique Lavender Candle',
+        canonical_url: 'https://jurlique.com/products/lavender-candle-gwp-1',
+        seed_data: { product_type: 'Aromatherapy', tags: ['candles'] },
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        family: 'accessory',
+        reasons: expect.arrayContaining(['accessory_signal']),
+      }),
+    );
+    expect(classifyExternalSeedProductKind({ title: 'Aromatherapy Diffuser' })).toEqual(
+      expect.objectContaining({
+        family: 'accessory',
+        reasons: expect.arrayContaining(['accessory_signal']),
+      }),
+    );
   });
 
   test('classifies skincare duo or set as collection even with formula category path', () => {
