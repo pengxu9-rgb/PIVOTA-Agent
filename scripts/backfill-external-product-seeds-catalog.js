@@ -131,6 +131,48 @@ function normalizeNonEmptyString(value) {
   return next || '';
 }
 
+function normalizeCurrencyCode(value) {
+  const code = normalizeNonEmptyString(value).toUpperCase();
+  return /^[A-Z]{3}$/.test(code) ? code : '';
+}
+
+function extractCurrentPricingCurrency(value) {
+  const pricing = ensureJsonObject(value);
+  return normalizeCurrencyCode(
+    pricing?.current?.currency ||
+      pricing?.current?.currencyCode ||
+      pricing?.currency ||
+      pricing?.currencyCode,
+  );
+}
+
+function resolveBackfillCurrency({ selectedSnapshotVariant, effectiveSnapshotVariants, row, seedData, snapshot }) {
+  return (
+    extractCurrentPricingCurrency(seedData?.pricing) ||
+    extractCurrentPricingCurrency(snapshot?.pricing) ||
+    normalizeCurrencyCode(selectedSnapshotVariant?.currency) ||
+    normalizeCurrencyCode(effectiveSnapshotVariants.find((variant) => variant?.currency)?.currency) ||
+    normalizeCurrencyCode(row?.price_currency) ||
+    normalizeCurrencyCode(seedData?.price_currency) ||
+    normalizeCurrencyCode(snapshot?.price_currency) ||
+    'USD'
+  );
+}
+
+function alignVariantCurrencies(variants, currency) {
+  const normalizedCurrency = normalizeCurrencyCode(currency);
+  if (!Array.isArray(variants) || !normalizedCurrency) return variants;
+  return variants.map((variant) => {
+    if (!variant || typeof variant !== 'object') return variant;
+    const variantCurrency = normalizeCurrencyCode(variant.currency);
+    if (!variantCurrency || variantCurrency === normalizedCurrency) return variant;
+    return {
+      ...variant,
+      currency: normalizedCurrency,
+    };
+  });
+}
+
 function decodeBasicHtmlEntities(value) {
   const raw = normalizeNonEmptyString(value);
   if (!raw) return '';
@@ -4355,20 +4397,20 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     '';
   const title =
     normalizeNonEmptyString(representativeProduct?.title || seedData.title || snapshot.title || row?.title) || row?.id;
-  const currency =
-    normalizeNonEmptyString(
-      selectedSnapshotVariant?.currency ||
-        effectiveSnapshotVariants.find((variant) => variant.currency)?.currency ||
-        row?.price_currency ||
-        seedData.price_currency ||
-        snapshot.price_currency,
-    ) || 'USD';
   const priceAmount =
     variantPrices.length > 0
       ? Math.min(...variantPrices)
       : typeof row?.price_amount === 'number'
         ? row.price_amount
         : parsePrice(seedData.price_amount ?? snapshot.price_amount) || null;
+  const currency = resolveBackfillCurrency({
+    selectedSnapshotVariant,
+    effectiveSnapshotVariants,
+    row,
+    seedData,
+    snapshot,
+  });
+  const persistedSnapshotVariants = alignVariantCurrencies(effectiveSnapshotVariants, currency);
   const destinationUrl =
     (selectedSnapshotVariant ? normalizeUrlLike(selectedSnapshotVariant.url) : '') ||
     representativeProductUrl ||
@@ -4540,7 +4582,13 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     image_url: imageUrl || normalizeNonEmptyString(snapshot.image_url),
     image_urls: mergedImageUrls,
     images: mergedImageUrls,
-    variants: effectiveSnapshotVariants.length > 0 ? effectiveSnapshotVariants : normalizeSeedVariants(fallbackPollutedRow ? {} : seedData, null),
+    ...(priceAmount != null ? { price_amount: priceAmount } : {}),
+    price_currency: currency,
+    ...(availability ? { availability } : {}),
+    variants:
+      persistedSnapshotVariants.length > 0
+        ? persistedSnapshotVariants
+        : alignVariantCurrencies(normalizeSeedVariants(fallbackPollutedRow ? {} : seedData, null), currency),
     diagnostics:
       manualImageOverrideApplied
         ? {
@@ -4565,6 +4613,9 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   let nextSeedData = {
     ...seedData,
     title,
+    ...(priceAmount != null ? { price_amount: priceAmount } : {}),
+    price_currency: currency,
+    ...(availability ? { availability } : {}),
     ...(description ? { description } : {}),
     ...(nextPdpDescriptionRaw ? { pdp_description_raw: nextPdpDescriptionRaw } : {}),
     ...(nextPdpDetailsSections.length > 0 ? { pdp_details_sections: nextPdpDetailsSections } : {}),
@@ -4590,7 +4641,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     ...(snapshotQuarantine ? { snapshot_quarantine: snapshotQuarantine } : {}),
     ...(imageUrl ? { image_url: imageUrl } : {}),
     ...(mergedImageUrls.length > 0 ? { image_urls: mergedImageUrls, images: mergedImageUrls } : {}),
-    ...(effectiveSnapshotVariants.length > 0 ? { variants: effectiveSnapshotVariants } : {}),
+    ...(persistedSnapshotVariants.length > 0 ? { variants: persistedSnapshotVariants } : {}),
     snapshot: nextSnapshot,
   };
   if (!nextPdpIngredientsRaw) {

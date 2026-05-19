@@ -1042,6 +1042,75 @@ Contains four types of peptides`,
     );
   });
 
+  test('prefers source-backed current pricing currency over stale extracted variant currency', () => {
+    const row = {
+      id: 'eps_kylie_highlighter',
+      external_product_id: 'ext_kylie_highlighter',
+      market: 'US',
+      title: 'King Kylie Loose Powder Highlighter',
+      canonical_url: 'https://kyliecosmetics.com/products/king-kylie-loose-powder-highlighter',
+      destination_url: 'https://kyliecosmetics.com/products/king-kylie-loose-powder-highlighter',
+      image_url: 'https://cdn.example.com/highlighter.jpg',
+      price_amount: 26,
+      price_currency: 'EUR',
+      availability: 'in_stock',
+      seed_data: {
+        brand: 'kylie cosmetics',
+        pricing: {
+          source: 'catalog_extract_v2',
+          current: { amount: 26, currency: 'USD' },
+        },
+        snapshot: {
+          title: 'King Kylie Loose Powder Highlighter',
+          canonical_url: 'https://kyliecosmetics.com/products/king-kylie-loose-powder-highlighter',
+          pricing: {
+            source: 'catalog_extract_v2',
+            current: { amount: 26, currency: 'USD' },
+          },
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: row.title,
+            url: row.canonical_url,
+            image_url: row.image_url,
+            image_urls: [row.image_url],
+            description_raw: 'A loose powder highlighter with a light-reflecting finish.',
+            variants: [
+              {
+                id: '48003575578866',
+                sku: 'KC852',
+                url: row.destination_url,
+                product_url: row.canonical_url,
+                option_name: 'Offer',
+                option_value: 'AUTO-9e1c20fecc70',
+                price: '26.00',
+                currency: 'EUR',
+                stock: 'In Stock',
+                image_url: row.image_url,
+                image_urls: [row.image_url],
+              },
+            ],
+          },
+        ],
+        variants: [],
+        diagnostics: { failure_category: null },
+      },
+      row.canonical_url,
+    );
+
+    expect(payload.nextRow.price_currency).toBe('USD');
+    expect(payload.nextRow.seed_data.price_currency).toBe('USD');
+    expect(payload.nextRow.seed_data.snapshot.price_currency).toBe('USD');
+    expect(payload.nextRow.seed_data.variants[0].currency).toBe('USD');
+    expect(payload.nextRow.seed_data.snapshot.variants[0].currency).toBe('USD');
+  });
+
   test('matches commerce facts offers when stored Shopify canonical uses a duplicate suffix', () => {
     const row = {
       title: 'PDRN 100 Hyaluronic Acid Glow Pad',
