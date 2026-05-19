@@ -1765,11 +1765,13 @@ describe('RecommendationEngine external candidate fetch', () => {
     ).toBe(true);
   });
 
-  test('new strict external intent families cover fragrance, face oil, eye cream, and moisturizer text', () => {
+  test('new strict external intent families cover fragrance, face oil, body oil, eye cream, and moisturizer text', () => {
     const { _internals } = require('../../src/services/RecommendationEngine');
 
     expect(_internals.getSimilarIntentFamilyFromText('Cosmic 2.0 Eau de Parfum')).toBe('fragrance');
     expect(_internals.getSimilarIntentFamilyFromText('Rare Rose Face Oil')).toBe('face_oil');
+    expect(_internals.getSimilarIntentFamilyFromText('Lavender Body Oil')).toBe('body_oil');
+    expect(_internals.getSimilarIntentFamilyFromText('Rose Body Lotion')).toBe('body_oil');
     expect(_internals.getSimilarIntentFamilyFromText('Herbal Recovery Eye Cream')).toBe('eye_cream');
     expect(_internals.getSimilarIntentFamilyFromText('Moisture Replenishing Day Cream')).toBe('moisturizer');
     expect(_internals.getSimilarIntentFamilyFromText('My Glow Black Honey Lip Oil')).toBe('lip_oil');
