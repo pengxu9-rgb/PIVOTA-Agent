@@ -804,6 +804,7 @@ async function auditRow(row, {
     liveResponse: similarEnabled ? ensureJsonObject(livePdp) : {},
     exclusionFlags: recall.exclusion_flags || {},
     productFamily: productKind.family,
+    sourceUnavailable: extractorGate?.source_unavailable === true,
     skippedReason: similarEnabled ? '' : 'similar_probe_disabled',
   });
   const variantGate = buildVariantGate({

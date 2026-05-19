@@ -970,6 +970,7 @@ function buildSimilarGate({
   liveResponse = {},
   exclusionFlags = {},
   productFamily = '',
+  sourceUnavailable = false,
   skippedReason = '',
 } = {}) {
   const normalizedSkippedReason = normalizeNonEmptyString(skippedReason || similarResponse?.reason);
@@ -997,6 +998,7 @@ function buildSimilarGate({
   ];
   const products = productSources.find((items) => Array.isArray(items) && items.length > 0) || [];
   const exempt =
+    sourceUnavailable === true ||
     Boolean(exclusionFlags?.gift_card) ||
     Boolean(exclusionFlags?.donation_bundle) ||
     Boolean(exclusionFlags?.non_merchandise) ||

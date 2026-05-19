@@ -226,6 +226,18 @@ describe('externalSeedPdpQuality', () => {
     }
   });
 
+  test('exempts terminal source-unavailable rows from similar-count QA', () => {
+    const similarGate = buildSimilarGate({
+      similarResponse: { products: [] },
+      exclusionFlags: { gift_card: false, donation_bundle: false, non_merchandise: false },
+      sourceUnavailable: true,
+    });
+
+    expect(similarGate.status).toBe('exempt');
+    expect(similarGate.exempt).toBe(true);
+    expect(similarGate.failure_reasons).toEqual([]);
+  });
+
   test('treats disabled similar probes as skipped instead of PDP quality failures', () => {
     const similarGate = buildSimilarGate({
       similarResponse: { skipped: true, reason: 'similar_probe_disabled' },
