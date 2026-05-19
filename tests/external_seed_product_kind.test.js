@@ -47,4 +47,21 @@ describe('external seed product kind classification', () => {
       }),
     );
   });
+
+  test('classifies hidden free-gift app products as non-merch', () => {
+    expect(
+      classifyExternalSeedProductKind({
+        title: 'Blush Brush (100% off)',
+        canonical_url: 'https://pixibeauty.com/products/blush-brush-sca_clone_freegift',
+        seed_data: {
+          description: 'This product is used for the app BOGOS.io Free Gift BOGO Bundle to work.',
+        },
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        family: 'non_merch',
+        reasons: expect.arrayContaining(['non_merch_signal']),
+      }),
+    );
+  });
 });
