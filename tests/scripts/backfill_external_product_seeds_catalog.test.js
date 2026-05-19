@@ -125,6 +125,14 @@ describe('backfill-external-product-seeds-catalog', () => {
           canonical_url: 'https://www.drjart.com/product',
           seed_data: {
             image_urls: ['https://www.drjart.com/image.png'],
+            variants: [
+              {
+                variant_id: 'variant-1',
+                option_name: 'Size',
+                option_value: '50 ml',
+                title: '50 ml',
+              },
+            ],
             pdp_details_sections: [{ heading: 'Overview', body: 'Barrier cream' }],
             pdp_faq_items: [{ question: 'Q1', answer: 'A1' }],
             pdp_how_to_use_raw: 'Apply morning and night.',
@@ -141,6 +149,7 @@ describe('backfill-external-product-seeds-catalog', () => {
 
     expect(serialized.payload.next_row_summary).toMatchObject({
       image_count: 1,
+      variant_count: 1,
       details_section_count: 1,
       faq_count: 1,
       how_to_use_present: true,

@@ -6304,7 +6304,7 @@ function serializeBackfillResult(result) {
             destination_url: normalizeUrlLike(nextRow?.destination_url),
             image_url: normalizeUrlLike(nextRow?.image_url),
             image_count: collectSeedImageUrls(seedData).length,
-            variant_count: normalizeSeedVariants(seedData.variants).length,
+            variant_count: normalizeSeedVariants(seedData, nextRow).length,
             details_section_count: Array.isArray(seedData.pdp_details_sections) ? seedData.pdp_details_sections.length : 0,
             faq_count: Array.isArray(seedData.pdp_faq_items) ? seedData.pdp_faq_items.length : 0,
             how_to_use_present: Boolean(normalizeNonEmptyString(seedData.pdp_how_to_use_raw)),
