@@ -606,9 +606,12 @@ describe('external seed product detail hydration', () => {
       .expect(200);
 
     expect(db.query.mock.calls.length).toBeGreaterThanOrEqual(3);
+    expect(
+      db.query.mock.calls.filter(([sql]) => String(sql || '').includes('WITH offer_stats AS')),
+    ).toHaveLength(0);
     expect(res.body.subject).toEqual(
       expect.objectContaining({
-        type: 'product',
+        type: 'product_group',
         id: 'sig_fentygloss1',
       }),
     );
@@ -620,7 +623,7 @@ describe('external seed product detail hydration', () => {
         resolved_merchant_id: 'external_seed',
         canonicalization_applied: true,
         canonicalization_reason_code: 'PIVOTA_SIGNATURE_ID',
-        resolution_source: 'external_seed_product_id',
+        resolution_source: 'catalog_products_signature_exact',
       }),
     );
     const canonicalModule = res.body.modules?.find((module) => module?.type === 'canonical');
