@@ -29,6 +29,12 @@ test('patchSeedData marks source unavailable and removes transactional price fie
           price: 18,
           price_amount: 18,
           price_currency: 'USD',
+          pricing: {
+            current: {
+              amount: 1800,
+              currency: 'USD',
+            },
+          },
           availability: 'in_stock',
           in_stock: true,
         },
@@ -45,6 +51,12 @@ test('patchSeedData marks source unavailable and removes transactional price fie
             title: 'Snapshot Default',
             current_price: 18,
             currency: 'USD',
+            pricing: {
+              current: {
+                amount: 1800,
+                currency: 'USD',
+              },
+            },
             availability: 'in_stock',
             in_stock: true,
           },
@@ -64,10 +76,12 @@ test('patchSeedData marks source unavailable and removes transactional price fie
   assert.equal(patched.variants[0].price, undefined);
   assert.equal(patched.variants[0].price_amount, undefined);
   assert.equal(patched.variants[0].price_currency, undefined);
+  assert.equal(patched.variants[0].pricing, undefined);
   assert.equal(patched.variants[0].availability, 'out_of_stock');
   assert.equal(patched.variants[0].in_stock, false);
   assert.equal(patched.snapshot.variants[0].current_price, undefined);
   assert.equal(patched.snapshot.variants[0].currency, undefined);
+  assert.equal(patched.snapshot.variants[0].pricing, undefined);
   assert.equal(patched.snapshot.variants[0].availability, 'out_of_stock');
   assert.equal(patched.snapshot.variants[0].in_stock, false);
   assert.deepEqual(patched.source_unavailable_v1, marker);

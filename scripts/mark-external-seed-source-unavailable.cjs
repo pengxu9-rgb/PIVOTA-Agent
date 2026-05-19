@@ -73,6 +73,9 @@ function deletePriceFields(target) {
     'currency',
     'price_currency',
     'priceCurrency',
+    'pricing',
+    'price_range',
+    'priceRange',
   ]) {
     delete target[key];
   }
