@@ -2151,6 +2151,72 @@ describe('RecommendationEngine external candidate fetch', () => {
     ).toBe(false);
   });
 
+  test('deep domain recall stops once exact domain/category has display-unique coverage for identity-protected foundation', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const queryMock = jest.fn(async (sql) => {
+      const sqlText = String(sql);
+      if (
+        sqlText.includes('domain = ANY($4)') &&
+        sqlText.includes('lower(coalesce(title') &&
+        sqlText.includes('LIKE ANY($5::text[])')
+      ) {
+        return { rows: [] };
+      }
+      if (
+        sqlText.includes('domain = ANY($4)') &&
+        sqlText.includes("lower(coalesce(") &&
+        sqlText.includes("seed_data->'derived'->'recall'->>'category'")
+      ) {
+        return {
+          rows: Array.from({ length: 8 }).map((_, index) =>
+            makeExternalRow({
+              id: `eps_foundation_${index}`,
+              external_product_id: `ext_foundation_${index}`,
+              title: `Mask Fit Red Foundation ${index + 1}`,
+              brand: 'TIRTIR Global',
+              category: 'Foundation',
+              domain: 'tirtir.global',
+            }),
+          ),
+        };
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const products = await _internals.fetchExternalCandidates({
+      brandHint: 'TIRTIR Global',
+      categoryHint: 'Foundation',
+      verticalHint: 'makeup',
+      intentFamilyHint: 'foundation',
+      domainHints: ['tirtir.global'],
+      limit: 48,
+      minFocusedCandidates: 8,
+      deepDomainRecall: true,
+    });
+
+    expect(products).toHaveLength(8);
+    expect(products.__externalFetchStats?.focused_target_count).toBe(8);
+    expect(products.__externalFetchStats?.stages.map((stage) => stage.name)).toEqual([
+      'external_domain_title_category',
+      'external_domain_category',
+    ]);
+    expect(
+      queryMock.mock.calls.some(([sql]) =>
+        String(sql).includes("seed_data->'derived'->'recall'->>'retrieval_title'"),
+      ),
+    ).toBe(false);
+    expect(
+      queryMock.mock.calls.some(([sql]) =>
+        String(sql).includes("regexp_replace(lower(coalesce(seed_data->>'brand'"),
+      ),
+    ).toBe(false);
+  });
+
   test('recommend includes explicit seed domain when canonical URL is a regional subdomain', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 
