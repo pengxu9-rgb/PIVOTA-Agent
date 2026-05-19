@@ -4267,7 +4267,12 @@ async function resolveCatalogProductRefFromPivotaSignature(productId) {
           cp.source_product_id,
           cp.product_key,
           cp.pivota_signature_id,
-          cp.content_key
+          cp.content_key,
+          cp.category,
+          cp.product_type,
+          cp.category_path,
+          cp.category_label_source,
+          cp.category_confidence
         FROM catalog_products cp
         LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id
         WHERE cp.pivota_signature_id = $1
@@ -4284,15 +4289,67 @@ async function resolveCatalogProductRefFromPivotaSignature(productId) {
     const exactMerchantId = String(exactRow?.merchant_id || '').trim();
     const exactSourceProductId = String(exactRow?.source_product_id || '').trim();
     if (exactMerchantId && exactSourceProductId) {
+      let exactIdentityRow = null;
+      if (exactMerchantId === EXTERNAL_SEED_MERCHANT_ID && isExternalSeedProductId(exactSourceProductId)) {
+        try {
+          const identityResult = await query(
+            `
+              SELECT
+                pil.sellable_item_group_id,
+                pil.product_line_id,
+                pil.review_family_id,
+                pil.identity_confidence,
+                pil.match_basis,
+                pil.identity_status,
+                pil.live_read_enabled,
+                pil.review_required
+              FROM pdp_identity_listing pil
+              WHERE pil.source_listing_ref = $1
+                AND NULLIF(pil.sellable_item_group_id, '') IS NOT NULL
+                AND pil.identity_status = 'approved'
+                AND pil.live_read_enabled IS TRUE
+                AND COALESCE(pil.review_required, false) IS NOT TRUE
+              LIMIT 1
+            `,
+            [`external_seed:${exactSourceProductId}`],
+          );
+          exactIdentityRow = Array.isArray(identityResult?.rows) ? identityResult.rows[0] : null;
+        } catch (err) {
+          const message = String(err?.message || err || '');
+          if (!(err?.code === 'NO_DATABASE' || (message.includes('pdp_identity_listing') && message.includes('does not exist')))) {
+            logger.debug?.(
+              { err: err?.message || String(err), product_id: exactSourceProductId },
+              'Failed to resolve exact signature identity listing',
+            );
+          }
+        }
+      }
       return {
         merchant_id: exactMerchantId,
         product_id: exactSourceProductId,
         ...(exactRow?.platform ? { platform: String(exactRow.platform).trim() } : {}),
         ...(exactRow?.product_key ? { product_key: String(exactRow.product_key).trim() } : {}),
         pivota_signature_id: normalizedProductId,
+        category: firstNonEmptyString(exactRow?.category),
+        product_type: firstNonEmptyString(exactRow?.product_type),
+        category_path: firstNonEmptyString(exactRow?.category_path),
+        category_label_source: firstNonEmptyString(exactRow?.category_label_source),
+        category_confidence: Number.isFinite(Number(exactRow?.category_confidence))
+          ? Number(exactRow.category_confidence)
+          : undefined,
         product_group_id: normalizedProductId,
         sellable_item_group_id: normalizedProductId,
         canonical_sig_id: normalizedProductId,
+        identity_sellable_item_group_id: firstNonEmptyString(exactIdentityRow?.sellable_item_group_id),
+        product_line_id: firstNonEmptyString(exactIdentityRow?.product_line_id),
+        review_family_id: firstNonEmptyString(exactIdentityRow?.review_family_id),
+        identity_confidence: Number.isFinite(Number(exactIdentityRow?.identity_confidence))
+          ? Number(exactIdentityRow.identity_confidence)
+          : undefined,
+        match_basis: Array.isArray(exactIdentityRow?.match_basis) ? exactIdentityRow.match_basis : [],
+        identity_status: firstNonEmptyString(exactIdentityRow?.identity_status),
+        live_read_enabled: exactIdentityRow?.live_read_enabled === true,
+        review_required: exactIdentityRow?.review_required === true,
         content_key: firstNonEmptyString(exactRow?.content_key) || null,
         members: [],
         group_members: [],
@@ -4423,6 +4480,64 @@ function applyRequestedPivotaSignatureToPdpProduct(product, sigId, sourceProduct
           platform_product_id: product.platform_product_id || resolvedSourceProductId,
         }
       : {}),
+  };
+}
+
+function buildCatalogIdentityFromSignatureProductRef(signatureProductRef, {
+  requestedSigId = '',
+  resolvedMerchantId = '',
+  resolvedProductId = '',
+} = {}) {
+  if (!signatureProductRef || typeof signatureProductRef !== 'object' || Array.isArray(signatureProductRef)) {
+    return null;
+  }
+  const sigId = firstNonEmptyString(
+    requestedSigId,
+    signatureProductRef.pivota_signature_id,
+    signatureProductRef.canonical_sig_id,
+    signatureProductRef.sellable_item_group_id,
+    signatureProductRef.product_group_id,
+  );
+  if (!isPivotaSignatureProductId(sigId)) return null;
+  const merchantId = firstNonEmptyString(signatureProductRef.merchant_id, resolvedMerchantId);
+  const sourceProductId = firstNonEmptyString(signatureProductRef.product_id, resolvedProductId);
+  if (!merchantId || !sourceProductId) return null;
+  return {
+    merchant_id: merchantId,
+    platform: firstNonEmptyString(signatureProductRef.platform),
+    source_product_id: sourceProductId,
+    product_key: firstNonEmptyString(signatureProductRef.product_key),
+    pivota_signature_id: sigId,
+    signature_id: sigId,
+    category: firstNonEmptyString(signatureProductRef.category),
+    product_type: firstNonEmptyString(signatureProductRef.product_type),
+    category_path: firstNonEmptyString(signatureProductRef.category_path),
+    category_label_source: firstNonEmptyString(signatureProductRef.category_label_source),
+    category_confidence: Number.isFinite(Number(signatureProductRef.category_confidence))
+      ? Number(signatureProductRef.category_confidence)
+      : undefined,
+    sellable_item_group_id: firstNonEmptyString(
+      signatureProductRef.identity_sellable_item_group_id,
+      signatureProductRef.sellable_item_group_id,
+      sigId,
+    ),
+    product_group_id: firstNonEmptyString(
+      signatureProductRef.identity_sellable_item_group_id,
+      signatureProductRef.product_group_id,
+      signatureProductRef.sellable_item_group_id,
+      sigId,
+    ),
+    product_line_id: firstNonEmptyString(signatureProductRef.product_line_id),
+    review_family_id: firstNonEmptyString(signatureProductRef.review_family_id),
+    identity_confidence: Number.isFinite(Number(signatureProductRef.identity_confidence))
+      ? Number(signatureProductRef.identity_confidence)
+      : undefined,
+    match_basis: Array.isArray(signatureProductRef.match_basis)
+      ? signatureProductRef.match_basis
+      : ['catalog_signature_exact'],
+    identity_status: firstNonEmptyString(signatureProductRef.identity_status, 'approved'),
+    live_read_enabled: signatureProductRef.live_read_enabled === true,
+    review_required: signatureProductRef.review_required === true,
   };
 }
 
@@ -29716,6 +29831,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 		      const requestedProductIdForDiagnostics = productId || null;
           const requestedMerchantIdForDiagnostics = requestedMerchantId || null;
           let requestedPivotaSignatureId = null;
+          let signatureCatalogIdentity = null;
 			      if (
 			        productId &&
 			        String(productId).trim().toLowerCase().startsWith('sig_') &&
@@ -29757,6 +29873,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     ? { pivota_signature_id: String(signatureProductRef.canonical_sig_id).trim() }
                     : {}),
                 };
+              }
+              if (signatureProductRef.source === 'catalog_products_signature_exact') {
+                signatureCatalogIdentity = buildCatalogIdentityFromSignatureProductRef(signatureProductRef, {
+                  requestedSigId: requestedPivotaSignatureId,
+                  resolvedMerchantId: signatureResolvedMerchantId,
+                  resolvedProductId: signatureResolvedProductId,
+                });
               }
 		          canonicalizationApplied = productId !== requestedProductIdForDiagnostics;
 		          canonicalizationReasonCode = canonicalizationApplied ? 'PIVOTA_SIGNATURE_ID' : null;
@@ -30441,12 +30564,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        productRef: canonicalProductRef,
 	        fallbackProduct: canonicalProduct,
 	      });
-        let catalogIdentity = null;
+        let catalogIdentity = signatureCatalogIdentity || null;
+        if (catalogIdentity?.pivota_signature_id) {
+          pdpV2PhaseTimings.catalog_identity_hydration = 0;
+        }
         const shouldHydrateCatalogIdentityBeforeIdentityGraph =
           Boolean(requestedPivotaSignatureId) &&
           canonicalProductRef?.merchant_id === EXTERNAL_SEED_MERCHANT_ID &&
           isExternalSeedProductId(canonicalProductRef?.product_id);
-        if (shouldHydrateCatalogIdentityBeforeIdentityGraph) {
+        if (!catalogIdentity && shouldHydrateCatalogIdentityBeforeIdentityGraph) {
           const catalogIdentityStartedAt = Date.now();
           catalogIdentity = await resolveCatalogIdentityForProductRef({
             merchantId: canonicalProductRef?.merchant_id,

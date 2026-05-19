@@ -578,6 +578,22 @@ describe('external seed product detail hydration', () => {
       if (text.includes('FROM catalog_products') && text.includes('pivota_signature_id = $1')) {
         return Promise.resolve({ rows: [signatureRow] });
       }
+      if (text.includes('FROM pdp_identity_listing pil') && text.includes('source_listing_ref = $1')) {
+        return Promise.resolve({
+          rows: [
+            {
+              sellable_item_group_id: 'sig_fentygloss_line',
+              product_line_id: 'line_fenty_gloss_bomb',
+              review_family_id: 'line_fenty_gloss_bomb',
+              identity_confidence: 0.98,
+              match_basis: ['catalog_signature'],
+              identity_status: 'approved',
+              live_read_enabled: true,
+              review_required: false,
+            },
+          ],
+        });
+      }
       if (text.includes('FROM external_product_seeds') && text.includes('destination_url')) {
         return Promise.resolve({ rows: [detailRow] });
       }
@@ -609,6 +625,12 @@ describe('external seed product detail hydration', () => {
     expect(
       db.query.mock.calls.filter(([sql]) => String(sql || '').includes('WITH offer_stats AS')),
     ).toHaveLength(0);
+    expect(
+      db.query.mock.calls.filter(([sql]) =>
+        String(sql || '').includes('FROM catalog_products cp') &&
+        String(sql || '').includes('LEFT JOIN pdp_identity_listing'),
+      ),
+    ).toHaveLength(0);
     expect(res.body.subject).toEqual(
       expect.objectContaining({
         type: 'product_group',
@@ -626,6 +648,7 @@ describe('external seed product detail hydration', () => {
         resolution_source: 'catalog_products_signature_exact',
       }),
     );
+    expect(res.body.metadata.route_health.phases.catalog_identity_hydration).toBe(0);
     const canonicalModule = res.body.modules?.find((module) => module?.type === 'canonical');
     expect(canonicalModule?.data?.canonical_product_ref).toEqual(
       expect.objectContaining({
