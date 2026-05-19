@@ -4328,8 +4328,8 @@ function buildPdpPayload(args) {
   );
   const rawProductImageKey = buildPdpImageDedupeKey(rawProductImageUrl) || rawProductImageUrl;
   const productImageUrl =
-    rawProductImageKey && structuredContentImageKeys.has(rawProductImageKey) && mediaImageUrls.length
-      ? mediaImageUrls[0]
+    rawProductImageKey && structuredContentImageKeys.has(rawProductImageKey)
+      ? mediaImageUrls[0] || undefined
       : rawProductImageUrl || mediaImageUrls[0] || undefined;
   const previewItems = Array.isArray(product.line_preview_images)
     ? product.line_preview_images

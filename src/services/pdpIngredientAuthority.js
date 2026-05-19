@@ -1086,6 +1086,11 @@ function readActiveCandidates(product, inputs) {
     { value: inputs.ingredientIntel?.active_ingredients, source: 'ingredient_intel_array', validateAgainstIngredients: true },
     { value: inputs.seedData?.active_ingredients, source: 'seed_active_array', validateAgainstIngredients: true },
     { value: inputs.snapshot?.active_ingredients, source: 'snapshot_active_array', validateAgainstIngredients: true },
+    { value: product?.key_ingredients, source: 'key_ingredient_array', validateAgainstIngredients: true },
+    { value: product?.keyIngredients, source: 'key_ingredient_array', validateAgainstIngredients: true },
+    { value: inputs.ingredientIntel?.key_ingredients, source: 'key_ingredient_array', validateAgainstIngredients: true },
+    { value: inputs.seedData?.key_ingredients, source: 'key_ingredient_array', validateAgainstIngredients: true },
+    { value: inputs.snapshot?.key_ingredients, source: 'key_ingredient_array', validateAgainstIngredients: true },
   ];
   for (const candidate of arrays) {
     const result = activeCandidate(candidate.value, candidate.source, {

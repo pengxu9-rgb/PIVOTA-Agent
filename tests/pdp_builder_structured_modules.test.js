@@ -1,4 +1,5 @@
 const { buildPdpPayload } = require('../src/pdpBuilder');
+const { buildLivePdpGate } = require('../src/services/externalSeedPdpQuality');
 
 describe('pdpBuilder structured modules for external-seed style products', () => {
   test('suppresses transaction modules and fallback ingredient content for terminal-held external seeds', () => {
@@ -1700,6 +1701,73 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     ]);
     expect(payload.modules.find((module) => module.type === 'active_ingredients')).toBeFalsy();
     expect(payload.modules.find((module) => module.type === 'materials')).toBeFalsy();
+  });
+
+  test('surfaces source-backed key ingredient actives for external seed formula PDPs', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_blind_b3_toner',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'B3 Supercharged Balancing Face Toner',
+        category: 'Toner',
+        image_url: 'https://example.com/b3-toner.png',
+        price: { amount: 24, currency: 'USD' },
+        ingredients_inci: {
+          items: ['Water', 'Panthenol', 'Sodium Hyaluronate', 'Glycerin'],
+        },
+        key_ingredients: ['Panthenol (B5)', 'Glycerin', 'Hyaluronic acid'],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const activeIngredients = payload.modules.find((module) => module.type === 'active_ingredients');
+
+    expect(activeIngredients?.data?.items).toEqual(['Panthenol (B5)']);
+    expect(activeIngredients?.data?.items).not.toContain('Glycerin');
+    expect(payload.modules.find((module) => module.type === 'ingredients_inci')?.data?.items).toEqual([
+      'Water',
+      'Panthenol',
+      'Sodium Hyaluronate',
+      'Glycerin',
+    ]);
+  });
+
+  test('keeps structured content assets out of product image and live gallery', () => {
+    const contentImage =
+      'https://blindbarber.com/cdn/shop/files/30_Proof_Styling_Cream_-_Ingredients.png?v=1757511485';
+    const productImage =
+      'https://blindbarber.com/cdn/shop/products/styling-cream-2.jpg?v=1757432759';
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_blind_30_proof',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: '30 Proof Styling Cream',
+        category: 'Moisturizer',
+        image_url: contentImage,
+        images: [contentImage, productImage],
+        content_image_urls: [contentImage],
+        price: { amount: 24, currency: 'USD' },
+        description: 'A styling cream with medium hold and a natural finish.',
+        ingredients_inci: { items: ['Water', 'Glycerin', 'Hops Extract'] },
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+    const galleryUrls =
+      payload.modules.find((module) => module.type === 'media_gallery')?.data?.items?.map((item) => item.url) || [];
+    const liveGate = buildLivePdpGate({
+      seedData: { content_image_urls: [contentImage] },
+      livePayload: payload,
+      liveResponse: { modules: payload.modules },
+      extractorProduct: { description: 'A styling cream with medium hold and a natural finish.' },
+    });
+
+    expect(payload.product.image_url).toBe(productImage);
+    expect(galleryUrls).toEqual([productImage]);
+    expect(liveGate.failure_reasons).not.toContain('content_media_leaked_into_gallery');
   });
 
   test('suppresses active ingredient module for external seed skincare sets with formula category path', () => {

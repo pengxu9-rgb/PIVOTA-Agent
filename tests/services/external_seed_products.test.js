@@ -3682,6 +3682,38 @@ describe('externalSeedProducts helper', () => {
     ]);
   });
 
+  test('projects displayable key ingredients into external seed active ingredients', () => {
+    const product = buildExternalSeedProduct({
+      id: 'eps_blind_b3_toner',
+      external_product_id: 'ext_blind_b3_toner',
+      canonical_url: 'https://blindbarber.com/products/b3-supercharged-balancing-toner',
+      destination_url: 'https://blindbarber.com/products/b3-supercharged-balancing-toner',
+      title: 'B3 Supercharged Balancing Face Toner',
+      seed_data: {
+        category: 'Toner',
+        key_ingredients: ['Panthenol (B5)', 'Glycerin', 'Hyaluronic acid'],
+        pdp_ingredients_raw:
+          'Water (Aqua), Butylene Glycol, Panthenol, Sodium Hyaluronate, Glycerin, Aloe Barbadensis Leaf Juice.',
+        pdp_field_quality_summary: {
+          ingredients_raw: {
+            source_origin: 'shopify_json',
+            source_quality_status: 'high',
+          },
+        },
+        snapshot: {
+          title: 'B3 Supercharged Balancing Face Toner',
+          key_ingredients: ['Panthenol (B5)', 'Glycerin', 'Hyaluronic acid'],
+          pdp_ingredients_raw:
+            'Water (Aqua), Butylene Glycol, Panthenol, Sodium Hyaluronate, Glycerin, Aloe Barbadensis Leaf Juice.',
+        },
+      },
+    });
+
+    expect(product.key_ingredients).toEqual(['Panthenol (B5)', 'Glycerin', 'Hyaluronic acid']);
+    expect(product.active_ingredients).toEqual(['Panthenol (B5)']);
+    expect(product.active_ingredients).not.toContain('Glycerin');
+  });
+
   test('authoritative external seed snapshots quarantine legacy PDP shadow fields at runtime', () => {
     const product = buildExternalSeedProduct({
       id: 'eps_authoritative_runtime',
