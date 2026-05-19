@@ -540,6 +540,9 @@ describe('external seed product detail hydration', () => {
       platform: 'external_seed',
       source_product_id: 'ext_seed_db_sig_1',
       product_key: 'prod::external_seed::external_seed::ext_seed_db_sig_1',
+      external_seed_id: 'eps_seed_db_sig_1',
+      external_seed_external_product_id: 'ext_seed_db_sig_1',
+      external_seed_status: 'active',
     };
     const statusRow = {
       id: 'eps_seed_db_sig_1',
@@ -631,6 +634,13 @@ describe('external seed product detail hydration', () => {
         String(sql || '').includes('LEFT JOIN pdp_identity_listing'),
       ),
     ).toHaveLength(0);
+    expect(
+      db.query.mock.calls.filter(([sql]) =>
+        String(sql || '').includes('FROM external_product_seeds\n    WHERE') &&
+        String(sql || '').includes("CASE WHEN status = 'active'") &&
+        !String(sql || '').includes('destination_url'),
+      ),
+    ).toHaveLength(0);
     expect(res.body.subject).toEqual(
       expect.objectContaining({
         type: 'product_group',
@@ -649,6 +659,7 @@ describe('external seed product detail hydration', () => {
       }),
     );
     expect(res.body.metadata.route_health.phases.catalog_identity_hydration).toBe(0);
+    expect(res.body.metadata.route_health.phases.external_seed_status_precheck).toBeLessThanOrEqual(5);
     const canonicalModule = res.body.modules?.find((module) => module?.type === 'canonical');
     expect(canonicalModule?.data?.canonical_product_ref).toEqual(
       expect.objectContaining({

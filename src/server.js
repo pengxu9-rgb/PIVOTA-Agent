@@ -4323,9 +4323,26 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
           cp.product_type,
           cp.category_path,
           cp.category_label_source,
-          cp.category_confidence
+          cp.category_confidence,
+          eps.id AS external_seed_id,
+          eps.external_product_id AS external_seed_external_product_id,
+          eps.status AS external_seed_status,
+          eps.updated_at AS external_seed_updated_at,
+          eps.created_at AS external_seed_created_at
         FROM catalog_products cp
         LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id
+        LEFT JOIN LATERAL (
+          SELECT id, external_product_id, status, updated_at, created_at
+          FROM external_product_seeds eps
+          WHERE cp.merchant_id = '${EXTERNAL_SEED_MERCHANT_ID}'
+            AND cp.platform = '${EXTERNAL_SEED_MERCHANT_ID}'
+            AND eps.external_product_id = cp.source_product_id
+          ORDER BY
+            CASE WHEN eps.status = 'active' THEN 0 ELSE 1 END,
+            eps.updated_at DESC NULLS LAST,
+            eps.created_at DESC NULLS LAST
+          LIMIT 1
+        ) eps ON true
         WHERE cp.pivota_signature_id = $1
           AND ${activeCatalogProductSourceWhere('cp', 'cm')}
         ORDER BY
@@ -4401,6 +4418,11 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
         identity_status: firstNonEmptyString(exactIdentityRow?.identity_status),
         live_read_enabled: exactIdentityRow?.live_read_enabled === true,
         review_required: exactIdentityRow?.review_required === true,
+        external_seed_status: firstNonEmptyString(exactRow?.external_seed_status),
+        external_seed_id: firstNonEmptyString(exactRow?.external_seed_id),
+        external_seed_external_product_id: firstNonEmptyString(exactRow?.external_seed_external_product_id),
+        external_seed_updated_at: exactRow?.external_seed_updated_at || null,
+        external_seed_created_at: exactRow?.external_seed_created_at || null,
         content_key: firstNonEmptyString(exactRow?.content_key) || null,
         members: [],
         group_members: [],
@@ -29912,6 +29934,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           const requestedMerchantIdForDiagnostics = requestedMerchantId || null;
           let requestedPivotaSignatureId = null;
           let signatureCatalogIdentity = null;
+          let signatureExternalSeedRouteStatus = null;
 			      if (
 			        productId &&
 			        String(productId).trim().toLowerCase().startsWith('sig_') &&
@@ -29960,6 +29983,24 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   resolvedMerchantId: signatureResolvedMerchantId,
                   resolvedProductId: signatureResolvedProductId,
                 });
+                if (
+                  signatureResolvedMerchantId === EXTERNAL_SEED_MERCHANT_ID &&
+                  isExternalSeedProductId(signatureResolvedProductId) &&
+                  firstNonEmptyString(signatureProductRef.external_seed_status)
+                ) {
+                  signatureExternalSeedRouteStatus = {
+                    external_seed_id: firstNonEmptyString(signatureProductRef.external_seed_id) || null,
+                    external_product_id:
+                      firstNonEmptyString(
+                        signatureProductRef.external_seed_external_product_id,
+                        signatureResolvedProductId,
+                      ) || null,
+                    status: String(signatureProductRef.external_seed_status || '').trim().toLowerCase() || null,
+                    updated_at: signatureProductRef.external_seed_updated_at || null,
+                    created_at: signatureProductRef.external_seed_created_at || null,
+                    source: 'catalog_signature_exact',
+                  };
+                }
               }
 		          canonicalizationApplied = productId !== requestedProductIdForDiagnostics;
 		          canonicalizationReasonCode = canonicalizationApplied ? 'PIVOTA_SIGNATURE_ID' : null;
@@ -30089,15 +30130,21 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        (!requestedMerchantId || requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID)
 	      ) {
 	        const externalSeedStatusStartedAt = Date.now();
-	        let externalSeedRouteStatus = null;
+	        let externalSeedRouteStatus =
+	          signatureExternalSeedRouteStatus &&
+	          signatureExternalSeedRouteStatus.external_product_id === entryProductId
+	            ? signatureExternalSeedRouteStatus
+	            : null;
 	        try {
-	          externalSeedRouteStatus = await withStageBudget(
-	            fetchExternalSeedRouteStatusFromDb({
-	              productId: entryProductId,
-	            }),
-	            PDP_EXTERNAL_SEED_STATUS_PRECHECK_BUDGET_MS,
-	            'pdp_external_seed_status_precheck',
-	          );
+	          if (!externalSeedRouteStatus) {
+	            externalSeedRouteStatus = await withStageBudget(
+	              fetchExternalSeedRouteStatusFromDb({
+	                productId: entryProductId,
+	              }),
+	              PDP_EXTERNAL_SEED_STATUS_PRECHECK_BUDGET_MS,
+	              'pdp_external_seed_status_precheck',
+	            );
+	          }
 	        } catch (err) {
 	          if (err?.code === 'STAGE_TIMEOUT') {
 	            logger.warn(
