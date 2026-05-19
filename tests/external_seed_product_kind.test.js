@@ -84,6 +84,13 @@ describe('external seed product kind classification', () => {
         reasons: expect.arrayContaining(['non_merch_signal']),
       }),
     );
+
+    expect(classifyExternalSeedProductKind({ title: 'Mystery Gift' })).toEqual(
+      expect.objectContaining({
+        family: 'non_merch',
+        reasons: expect.arrayContaining(['non_merch_signal']),
+      }),
+    );
   });
 
   test('classifies beauty-branded apparel as non-merch', () => {
@@ -137,6 +144,13 @@ describe('external seed product kind classification', () => {
       expect.objectContaining({
         family: 'set_or_collection',
         reasons: expect.arrayContaining(['bundle_set_signal']),
+      }),
+    );
+
+    expect(classifyExternalSeedProductKind({ title: 'Kylash False Lashes' })).toEqual(
+      expect.objectContaining({
+        family: 'accessory',
+        reasons: expect.arrayContaining(['false_lash_accessory_signal']),
       }),
     );
 

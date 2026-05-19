@@ -2,9 +2,10 @@ const ACCESSORY_RE =
   /\b(accessor(?:y|ies)|brush|sponge|puff|applicator|sharpener|tweezer|curler|scissors|comb|mirror|case|bag|pouch|holder|spatula|tool|tools|gua sha|roller|headband|scrunchie|scarf|hat|cap|tote|clip|clips|lash curler|refill case|soap dish|soap saver|washcloth|cloth|towel|gift wrap|wrapping cloth|blotting paper|keyring|key ring|keychain|key chain|charm|candles?|diffusers?|reed diffuser|home fragrance)\b/i;
 const STICKER_ACCESSORY_RE = /\b(stickers?|decals?)\b/i;
 const TREATMENT_STICKER_RE = /\b(?:blemish|acne|pimple|spot|hydrocolloid|patch(?:es)?)\b/i;
+const FALSE_LASH_ACCESSORY_RE = /\b(?:false|fake|faux|precut|individual)\s+lashes?\b|\black\s+segments?\b|\black\s+clusters?\b/i;
 const SAMPLE_LIKE_RE = /\b(?:deluxe\s+sample|samples?|sample\s+size|trial\s*kit|sachets?|sachetbook)\b/i;
 const NON_MERCH_RE =
-  /\b(?:e[-\s]?gift[-\s]?cards?|gift[-\s]?cards?|donat(?:e|ion)|sample service|appointment|booking|shipping protection|package protection|route protection|order protection|free[-_\s]?gift|bogos(?:\.io)?|bogo bundle|sca[-_\s]?clone[-_\s]?freegift)\b/i;
+  /\b(?:e[-\s]?gift[-\s]?cards?|gift[-\s]?cards?|mystery\s+gifts?|donat(?:e|ion)|sample service|appointment|booking|shipping protection|package protection|route protection|order protection|free[-_\s]?gift|bogos(?:\.io)?|bogo bundle|sca[-_\s]?clone[-_\s]?freegift)\b/i;
 const APPAREL_NON_MERCH_RE =
   /\b(?:apparel|clothing|hoodies?|sweatshirts?|sweaters?|t[-\s]?shirts?|tees?|shirts?|tank tops?|jackets?|coats?|pants?|shorts?|socks?|robes?|beanies?)\b/i;
 
@@ -130,6 +131,10 @@ function classifyExternalSeedProductKind(input = {}) {
     reasons.push('sticker_accessory_signal');
     return { family: 'accessory', reasons };
   }
+  if (FALSE_LASH_ACCESSORY_RE.test(text)) {
+    reasons.push('false_lash_accessory_signal');
+    return { family: 'accessory', reasons };
+  }
   if (FORMULA_REFILL_PACKAGING_RE.test(text) && FORMULA_PRODUCT_RE.test(text)) {
     reasons.push('formula_refill_packaging_signal');
     return { family: 'single_formula', reasons };
@@ -179,6 +184,7 @@ module.exports = {
   COLLECTION_MEMBER_RE,
   FORMULA_PRODUCT_RE,
   FORMULA_REFILL_PACKAGING_RE,
+  FALSE_LASH_ACCESSORY_RE,
   SET_PHRASE_FORMULA_RE,
   STICKER_ACCESSORY_RE,
   TREATMENT_STICKER_RE,
