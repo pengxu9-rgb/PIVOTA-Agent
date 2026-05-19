@@ -141,6 +141,42 @@ describe('externalSeedPdpQuality', () => {
     );
   });
 
+  test('does not flag legitimate high-impact makeup copy as pollution', () => {
+    const livePdpGate = buildLivePdpGate({
+      extractorProduct: {
+        description_raw: 'Loose powder highlighter for a radiant finish.',
+        variants: [{ price: '26.00' }],
+      },
+      livePayload: {
+        product: {
+          description:
+            'A silky-soft, light-reflecting formula that builds from a soft glow to a high-impact highlight finish.',
+        },
+        modules: [
+          {
+            type: 'price_promo',
+            data: { price: { amount: 26, currency: 'USD' } },
+          },
+          {
+            type: 'product_details',
+            data: {
+              sections: [
+                {
+                  heading: 'Details',
+                  content:
+                    'Apply lightly for a soft glow or build it up for a high-impact highlight.',
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+
+    expect(livePdpGate.failure_reasons).not.toContain('polluted_product_description');
+    expect(livePdpGate.failure_reasons).not.toContain('polluted_product_details');
+  });
+
   test('uses exact seed price when auditing variant-scoped PDP live output', () => {
     const livePdpGate = buildLivePdpGate({
       expectedPrice: 56,
