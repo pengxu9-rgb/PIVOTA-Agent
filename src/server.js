@@ -4259,6 +4259,48 @@ async function resolveCatalogProductRefFromPivotaSignature(productId) {
   if (!isPivotaSignatureProductId(normalizedProductId)) return null;
 
   try {
+    const exactResult = await query(
+      `
+        SELECT
+          cp.merchant_id,
+          cp.platform,
+          cp.source_product_id,
+          cp.product_key,
+          cp.pivota_signature_id,
+          cp.content_key
+        FROM catalog_products cp
+        LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id
+        WHERE cp.pivota_signature_id = $1
+          AND ${activeCatalogProductSourceWhere('cp', 'cm')}
+        ORDER BY
+          CASE WHEN cp.source_system = 'external_product_seeds_mirror_v1' THEN 0 ELSE 1 END,
+          cp.updated_at DESC NULLS LAST,
+          cp.product_key ASC
+        LIMIT 1
+      `,
+      [normalizedProductId],
+    );
+    const exactRow = Array.isArray(exactResult?.rows) ? exactResult.rows[0] : null;
+    const exactMerchantId = String(exactRow?.merchant_id || '').trim();
+    const exactSourceProductId = String(exactRow?.source_product_id || '').trim();
+    if (exactMerchantId && exactSourceProductId) {
+      return {
+        merchant_id: exactMerchantId,
+        product_id: exactSourceProductId,
+        ...(exactRow?.platform ? { platform: String(exactRow.platform).trim() } : {}),
+        ...(exactRow?.product_key ? { product_key: String(exactRow.product_key).trim() } : {}),
+        pivota_signature_id: normalizedProductId,
+        product_group_id: normalizedProductId,
+        sellable_item_group_id: normalizedProductId,
+        canonical_sig_id: normalizedProductId,
+        content_key: firstNonEmptyString(exactRow?.content_key) || null,
+        members: [],
+        group_members: [],
+        member_sig_ids: [normalizedProductId],
+        source: 'catalog_products_signature_exact',
+      };
+    }
+
     const canonicalGroup = await resolveCanonicalCatalogEntityGroup({
       productId: normalizedProductId,
       queryFn: query,
@@ -29698,7 +29740,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 		          } else if (Array.isArray(signatureProductRef.members) && signatureProductRef.members.length > 0) {
 		            groupMembers = signatureProductRef.members;
 		          }
-              if (signatureProductRef.source === 'canonical_catalog_signature') {
+              if (
+                signatureProductRef.source === 'canonical_catalog_signature' ||
+                signatureProductRef.source === 'catalog_products_signature_exact'
+              ) {
                 canonicalProductRef = {
                   merchant_id: signatureResolvedMerchantId,
                   product_id: signatureResolvedProductId,
@@ -29718,7 +29763,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 		          identityResolutionSource =
 		            signatureProductRef.source === 'canonical_catalog_signature'
 		              ? 'canonical_catalog_signature'
-		              : 'catalog_products_signature';
+                  : signatureProductRef.source === 'catalog_products_signature_exact'
+                    ? 'catalog_products_signature_exact'
+                    : 'catalog_products_signature';
 		        }
 		      }
 		      const shouldPrewarmSimilarForCorePdp =

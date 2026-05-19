@@ -99,6 +99,8 @@ describe('find_similar_products mainline wrapper', () => {
           platform: 'external_seed',
           source_product_id: 'ext_source_1',
           product_key: 'prod::external_seed::external_seed::ext_source_1',
+          pivota_signature_id: 'sig_source1',
+          content_key: 'tom-ford:test-content-key',
         },
       ],
     });
@@ -143,7 +145,7 @@ describe('find_similar_products mainline wrapper', () => {
       })
       .expect(200);
 
-    expect(dbQueryMock).toHaveBeenCalledWith(expect.stringContaining('WHERE pivota_signature_id = $1'), ['sig_source1']);
+    expect(dbQueryMock).toHaveBeenCalledWith(expect.stringContaining('WHERE cp.pivota_signature_id = $1'), ['sig_source1']);
     expect(recommendMock).toHaveBeenCalledWith(
       expect.objectContaining({
         pdp_product: expect.objectContaining({
