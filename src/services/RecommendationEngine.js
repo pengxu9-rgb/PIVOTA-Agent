@@ -413,8 +413,8 @@ const SIMILAR_INTENT_FAMILY_RULES = Object.freeze([
   },
   {
     id: 'foundation',
-    js: /\b(?:foundation|cushion|skinveil|concealer)\b/i,
-    sql: '\\m(foundation|cushion|skinveil|concealer)\\M',
+    js: /\b(?:foundation|cushion|skin\s*tint|skin\s*veil|skinveil|blurring\s+elixir|tinted\s+moisturi[sz]er|concealer)\b/i,
+    sql: '\\m(foundation|cushion|skin\\s*tint|skin\\s*veil|skinveil|blurring\\s+elixir|tinted\\s+moisturi[sz]er|concealer)\\M',
   },
   {
     id: 'mask',
@@ -2162,6 +2162,11 @@ function getSimilarIntentFamilySqlLikePatterns(intentFamily) {
       '%cushion%',
       '%skinveil%',
       '%skin veil%',
+      '%skin tint%',
+      '%skin-tint%',
+      '%blurring elixir%',
+      '%tinted moisturizer%',
+      '%tinted moisturiser%',
       '%concealer%',
     ];
   }
@@ -2590,7 +2595,19 @@ function pickLayeredRecommendations({
         scoreDetail.brandMatch &&
         features.vertical === 'fragrance' &&
         (titleIntentMatches(base, features) || hasSharedSimilarIntentFamily(base, features));
-      if (base.isExternal && !base.bundleLike && features.bundleLike && !allowSameBrandFragranceBundle) {
+      const allowSameBrandIntentBundle =
+        baseIntentFamily &&
+        source === 'external' &&
+        scoreDetail.brandMatch &&
+        !features.accessoryKind &&
+        (titleIntentMatches(base, features) || sharedIntentFamily);
+      if (
+        base.isExternal &&
+        !base.bundleLike &&
+        features.bundleLike &&
+        !allowSameBrandFragranceBundle &&
+        !allowSameBrandIntentBundle
+      ) {
         filteredByConfidence += 1;
         return null;
       }

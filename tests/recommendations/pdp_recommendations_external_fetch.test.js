@@ -1775,6 +1775,7 @@ describe('RecommendationEngine external candidate fetch', () => {
     expect(_internals.getSimilarIntentFamilyFromText('Herbal Recovery Eye Cream')).toBe('eye_cream');
     expect(_internals.getSimilarIntentFamilyFromText('Moisture Replenishing Day Cream')).toBe('moisturizer');
     expect(_internals.getSimilarIntentFamilyFromText('My Glow Black Honey Lip Oil')).toBe('lip_oil');
+    expect(_internals.getSimilarIntentFamilyFromText('Skin Tint Blurring Elixir')).toBe('foundation');
     expect(_internals.getSimilarIntentFamilyFromFeatures({
       normalizedTitle: 'herbal recovery cream',
       leafCategory: 'cream',
@@ -1978,6 +1979,70 @@ describe('RecommendationEngine external candidate fetch', () => {
 
     expect(result.items.map((item) => item.product_id)).toEqual(['ext_brow_match']);
     expect(result.debug?.filters?.by_confidence).toBeGreaterThanOrEqual(3);
+  });
+
+  test('strict complexion singles can use same-brand same-intent bundles without admitting brush-only tools', () => {
+    const { pickLayeredRecommendations } = require('../../src/services/RecommendationEngine');
+    const result = pickLayeredRecommendations({
+      baseProduct: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_kylie_foundation',
+        title: 'Power Plush Longwear Foundation',
+        brand: 'Kylie Cosmetics',
+        category: 'Foundation',
+        product_type: 'Foundation',
+        price: 36,
+        currency: 'USD',
+        source: 'external_seed',
+        semantic_vertical: 'makeup',
+      },
+      externalCandidates: [
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ext_kylie_foundation_trio',
+          title: 'Power Plush Foundation Trio',
+          brand: 'Kylie Cosmetics',
+          category: 'Foundation',
+          product_type: 'Foundation',
+          price: 88.2,
+          currency: 'USD',
+          source: 'external_seed',
+          semantic_vertical: 'makeup',
+        },
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ext_kylie_foundation_concealer',
+          title: 'Power Plush Foundation & Concealer Duo',
+          brand: 'Kylie Cosmetics',
+          category: 'Foundation',
+          product_type: 'Foundation',
+          price: 62,
+          currency: 'USD',
+          source: 'external_seed',
+          semantic_vertical: 'makeup',
+        },
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ext_kylie_foundation_brush',
+          title: 'Foundation Brush 01',
+          brand: 'Kylie Cosmetics',
+          category: 'Makeup Brush',
+          product_type: 'Makeup Brush',
+          price: 22,
+          currency: 'USD',
+          source: 'external_seed',
+          semantic_vertical: 'tools',
+        },
+      ],
+      k: 4,
+      baseSemantic: { vertical: 'makeup', signal_strength: 3 },
+    });
+
+    expect(result.items.map((item) => item.product_id)).toEqual([
+      'ext_kylie_foundation_concealer',
+      'ext_kylie_foundation_trio',
+    ]);
+    expect(result.items.map((item) => item.product_id)).not.toContain('ext_kylie_foundation_brush');
   });
 
   test('recommend fetches internal and external pools in parallel instead of serially stacking source latency', async () => {

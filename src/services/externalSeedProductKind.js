@@ -2,7 +2,7 @@ const ACCESSORY_RE =
   /\b(accessor(?:y|ies)|brush|sponge|puff|applicator|sharpener|tweezer|curler|scissors|comb|mirror|case|bag|pouch|holder|spatula|tool|tools|gua sha|roller|headband|scrunchie|scarf|hat|cap|tote|clip|clips|lash curler|refill case|soap dish|soap saver|washcloth|cloth|towel|gift wrap|wrapping cloth|blotting paper|keyring|key ring|keychain|key chain|charm)\b/i;
 const STICKER_ACCESSORY_RE = /\b(stickers?|decals?)\b/i;
 const TREATMENT_STICKER_RE = /\b(?:blemish|acne|pimple|spot|hydrocolloid|patch(?:es)?)\b/i;
-const SAMPLE_LIKE_RE = /\b(?:deluxe\s+sample|sample\s+size|trial\s*kit|sachets?|sachetbook)\b/i;
+const SAMPLE_LIKE_RE = /\b(?:deluxe\s+sample|samples?|sample\s+size|trial\s*kit|sachets?|sachetbook)\b/i;
 const NON_MERCH_RE =
   /\b(?:e[-\s]?gift[-\s]?cards?|gift[-\s]?cards?|donat(?:e|ion)|sample service|appointment|booking|shipping protection|package protection|route protection|order protection|free[-_\s]?gift|bogos(?:\.io)?|bogo bundle|sca[-_\s]?clone[-_\s]?freegift)\b/i;
 const APPAREL_NON_MERCH_RE =

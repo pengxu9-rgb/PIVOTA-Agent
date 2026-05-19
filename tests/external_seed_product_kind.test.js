@@ -121,5 +121,12 @@ describe('external seed product kind classification', () => {
         reasons: expect.arrayContaining(['bundle_set_signal']),
       }),
     );
+
+    expect(classifyExternalSeedProductKind({ title: 'Power Plush Longwear Foundation Sample' })).toEqual(
+      expect.objectContaining({
+        family: 'sample',
+        reasons: expect.arrayContaining(['sample_like_signal']),
+      }),
+    );
   });
 });
