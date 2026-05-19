@@ -1207,3 +1207,80 @@ describe('external seed product detail hydration', () => {
     expect(nock.isDone()).toBe(true);
   });
 });
+
+describe('product detail cache per-merchant TTL resolution', () => {
+  afterAll(() => {
+    process.env = ORIGINAL_ENV;
+  });
+
+  test('ttl resolver: external_seed defaults to 0 (bypass) — preserves regression contract from aa04f68f', () => {
+    const { debug } = loadServerWithDb();
+    expect(debug.resolveProductDetailCacheTtlMs('external_seed')).toBe(0);
+  });
+
+  test('ttl resolver: first-party merchants get the default TTL', () => {
+    const { debug } = loadServerWithDb();
+    const ttl = debug.resolveProductDetailCacheTtlMs('merch_first_party_1');
+    expect(ttl).toBeGreaterThan(0);
+    expect(ttl).toBe(10 * 60 * 1000); // default 10 min
+  });
+
+  test('ttl resolver: PRODUCT_DETAIL_CACHE_TTL_MS_EXTERNAL_SEED env var enables external_seed cache', () => {
+    const { debug } = loadServerWithDb({
+      PRODUCT_DETAIL_CACHE_TTL_MS_EXTERNAL_SEED: '60000',
+    });
+    expect(debug.resolveProductDetailCacheTtlMs('external_seed')).toBe(60000);
+  });
+
+  test('ttl resolver: PRODUCT_DETAIL_CACHE_TTL_MS_OVERRIDES JSON map is honored and beats named env var', () => {
+    const { debug } = loadServerWithDb({
+      PRODUCT_DETAIL_CACHE_TTL_MS_OVERRIDES: JSON.stringify({
+        merch_special_x: 120000,
+        external_seed: 5000,
+      }),
+      PRODUCT_DETAIL_CACHE_TTL_MS_EXTERNAL_SEED: '60000', // overridden by JSON map
+    });
+    expect(debug.resolveProductDetailCacheTtlMs('merch_special_x')).toBe(120000);
+    expect(debug.resolveProductDetailCacheTtlMs('external_seed')).toBe(5000);
+  });
+
+  test('ttl resolver: empty/invalid merchantId falls back to default TTL', () => {
+    const { debug } = loadServerWithDb();
+    expect(debug.resolveProductDetailCacheTtlMs('')).toBe(10 * 60 * 1000);
+    expect(debug.resolveProductDetailCacheTtlMs(null)).toBe(10 * 60 * 1000);
+  });
+
+  test('ttl resolver: invalid JSON in PRODUCT_DETAIL_CACHE_TTL_MS_OVERRIDES is ignored', () => {
+    const { debug } = loadServerWithDb({
+      PRODUCT_DETAIL_CACHE_TTL_MS_OVERRIDES: 'not-valid-json',
+    });
+    // Falls through to default behavior; external_seed still defaults to 0.
+    expect(debug.resolveProductDetailCacheTtlMs('external_seed')).toBe(0);
+    expect(debug.resolveProductDetailCacheTtlMs('merch_x')).toBe(10 * 60 * 1000);
+  });
+
+  test('healthz snapshot exposes ttl_ms_by_merchant with default + known merchants', () => {
+    const { debug } = loadServerWithDb({
+      PRODUCT_DETAIL_CACHE_TTL_MS_EXTERNAL_SEED: '30000',
+    });
+    const stats = debug.snapshotProductDetailCacheStats();
+    expect(stats.ttl_ms_by_merchant).toEqual(
+      expect.objectContaining({
+        default: 10 * 60 * 1000,
+        external_seed: 30000,
+      }),
+    );
+  });
+
+  test('healthz snapshot ttl_ms_by_merchant includes merchants from JSON overrides', () => {
+    const { debug } = loadServerWithDb({
+      PRODUCT_DETAIL_CACHE_TTL_MS_OVERRIDES: JSON.stringify({
+        merch_overridden_a: 45000,
+      }),
+    });
+    const stats = debug.snapshotProductDetailCacheStats();
+    expect(stats.ttl_ms_by_merchant.merch_overridden_a).toBe(45000);
+    // external_seed still appears (it's known historical special-case)
+    expect(stats.ttl_ms_by_merchant.external_seed).toBe(0);
+  });
+});

@@ -2559,16 +2559,6 @@ const UPSTREAM_TIMEOUT_SEARCH_RETRY_MS = parseTimeoutMs(
   process.env.UPSTREAM_TIMEOUT_SEARCH_RETRY_MS,
   Math.min(UPSTREAM_TIMEOUT_SLOW_MS, Math.max(UPSTREAM_TIMEOUT_SEARCH_MS * 3, 45_000)),
 );
-const PDP_V2_CORE_HOT_CACHE_ENABLED =
-  String(process.env.PDP_V2_CORE_HOT_CACHE_ENABLED || 'true').toLowerCase() !== 'false';
-const PDP_V2_CORE_HOT_CACHE_TTL_MS = Math.max(
-  1000,
-  parseTimeoutMs(process.env.PDP_V2_CORE_HOT_CACHE_TTL_MS, 20 * 1000),
-);
-const PDP_V2_CORE_HOT_CACHE_MAX_ENTRIES = Math.max(
-  20,
-  Number(process.env.PDP_V2_CORE_HOT_CACHE_MAX_ENTRIES || 400) || 400,
-);
 const PDP_CORE_PREWARM_ENABLED =
   String(process.env.PDP_CORE_PREWARM_ENABLED || 'false').toLowerCase() === 'true';
 const PDP_SELF_OFFER_FALLBACK_ENABLED = parseBooleanEnv(
@@ -2640,10 +2630,11 @@ const PDP_EXTERNAL_SEED_STATUS_PRECHECK_BUDGET_MS = Math.max(
   50,
   parseTimeoutMs(process.env.PDP_EXTERNAL_SEED_STATUS_PRECHECK_BUDGET_MS, 250),
 );
-const PDP_EXTERNAL_SEED_DETAIL_CACHE_ENABLED = parseBooleanEnv(
-  process.env.PDP_EXTERNAL_SEED_DETAIL_CACHE_ENABLED,
-  false,
-);
+// PDP_EXTERNAL_SEED_DETAIL_CACHE_ENABLED removed — replaced by the per-merchant
+// TTL resolver `resolveProductDetailCacheTtlMs`. Default external_seed behavior
+// (bypass) is preserved via TTL=0 in the resolver. Operators can opt in via
+// PRODUCT_DETAIL_CACHE_TTL_MS_EXTERNAL_SEED. See freshness contract near
+// PRODUCT_DETAIL_CACHE_TTL_MS_OVERRIDES.
 const PDP_EXTERNAL_SEED_LEGACY_DETAIL_FALLBACK_ENABLED = parseBooleanEnv(
   process.env.PDP_EXTERNAL_SEED_LEGACY_DETAIL_FALLBACK_ENABLED,
   false,
@@ -3293,6 +3284,72 @@ const PRODUCT_DETAIL_CACHE_MAX_ENTRIES = Math.max(
   50,
   Number(process.env.PRODUCT_DETAIL_CACHE_MAX_ENTRIES || 2000) || 2000,
 );
+
+// Per-merchant TTL overrides for the product-detail in-memory cache.
+//
+// Freshness contract:
+//   - PRODUCT_DETAIL_CACHE_TTL_MS sets the default TTL (10 min) for all merchants.
+//   - For known special-cases, override via named env var (resolved name = merchantId
+//     uppercased + non-alnum -> '_'). Example: external_seed -> EXTERNAL_SEED.
+//   - For ad-hoc/per-tenant overrides, set PRODUCT_DETAIL_CACHE_TTL_MS_OVERRIDES
+//     as a JSON object: {"merch_x": 120000, "merch_y": 30000}.
+//   - A resolved TTL <= 0 disables in-memory caching for that merchant (bypass).
+//
+// external_seed defaults to 0 (bypass) to preserve the contract from commit
+// aa04f68f / regression test tests/external_seed_product_detail_fetch.test.js:362
+// ("does not reuse in-memory cache for external_seed detail reads"). Operators can
+// opt in to external_seed caching via PRODUCT_DETAIL_CACHE_TTL_MS_EXTERNAL_SEED=60000
+// after validating no staleness regression in staging.
+const PRODUCT_DETAIL_CACHE_TTL_MS_OVERRIDES = (() => {
+  const raw = String(process.env.PRODUCT_DETAIL_CACHE_TTL_MS_OVERRIDES || '').trim();
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const out = {};
+      for (const [k, v] of Object.entries(parsed)) {
+        const n = Number(v);
+        if (Number.isFinite(n)) out[String(k)] = Math.max(0, Math.trunc(n));
+      }
+      return out;
+    }
+  } catch {
+    // Invalid JSON -> ignore, fall through to defaults.
+  }
+  return {};
+})();
+
+function merchantIdToEnvSuffix(merchantId) {
+  return String(merchantId || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function resolveProductDetailCacheTtlMs(merchantId) {
+  const normalizedId = String(merchantId || '').trim();
+  if (!normalizedId) return PRODUCT_DETAIL_CACHE_TTL_MS;
+
+  if (Object.prototype.hasOwnProperty.call(PRODUCT_DETAIL_CACHE_TTL_MS_OVERRIDES, normalizedId)) {
+    return PRODUCT_DETAIL_CACHE_TTL_MS_OVERRIDES[normalizedId];
+  }
+
+  const suffix = merchantIdToEnvSuffix(normalizedId);
+  if (suffix) {
+    const namedEnv = process.env[`PRODUCT_DETAIL_CACHE_TTL_MS_${suffix}`];
+    if (namedEnv !== undefined && namedEnv !== '') {
+      const n = Number(namedEnv);
+      if (Number.isFinite(n)) return Math.max(0, Math.trunc(n));
+    }
+  }
+
+  // Known historical special-case: external_seed defaults to bypass.
+  // See freshness contract comment above.
+  if (normalizedId === EXTERNAL_SEED_MERCHANT_ID) return 0;
+
+  return PRODUCT_DETAIL_CACHE_TTL_MS;
+}
 const PRODUCT_DETAIL_STALE_LOOKUP_ENABLED =
   String(process.env.PRODUCT_DETAIL_STALE_LOOKUP_ENABLED || 'true').toLowerCase() === 'true';
 const PRODUCT_DETAIL_STALE_MAX_AGE_HOURS = parsePositiveInt(
@@ -3352,9 +3409,20 @@ function setProductDetailCache(
 }
 
 function snapshotProductDetailCacheStats() {
+  // Resolved per-merchant TTLs so ops can verify env-var overrides loaded.
+  // Includes the known external_seed default (0 = bypass) plus anything from
+  // PRODUCT_DETAIL_CACHE_TTL_MS_OVERRIDES (JSON) plus any named overrides
+  // discovered via PRODUCT_DETAIL_CACHE_TTL_MS_<MERCHANT_ID_UPPER>.
+  const ttlByMerchant = { default: PRODUCT_DETAIL_CACHE_TTL_MS };
+  const knownIds = new Set([EXTERNAL_SEED_MERCHANT_ID]);
+  for (const id of Object.keys(PRODUCT_DETAIL_CACHE_TTL_MS_OVERRIDES)) knownIds.add(id);
+  for (const id of knownIds) {
+    ttlByMerchant[id] = resolveProductDetailCacheTtlMs(id);
+  }
   return {
     enabled: PRODUCT_DETAIL_CACHE_ENABLED,
     ttl_ms: PRODUCT_DETAIL_CACHE_TTL_MS,
+    ttl_ms_by_merchant: ttlByMerchant,
     max_entries: PRODUCT_DETAIL_CACHE_MAX_ENTRIES,
     size: PRODUCT_DETAIL_CACHE.size,
     ...PRODUCT_DETAIL_CACHE_METRICS,
@@ -3376,13 +3444,17 @@ function cacheProductDetailForOffers({
   product,
   source = 'upstream',
   metadata = {},
-  ttlMs = PRODUCT_DETAIL_CACHE_TTL_MS,
+  ttlMs,
 } = {}) {
   const mid = String(merchantId || '').trim();
   const pid = String(productId || '').trim();
   if (!PRODUCT_DETAIL_CACHE_ENABLED || !mid || !pid || !product || typeof product !== 'object') {
     return;
   }
+  const resolvedTtlMs = Number.isFinite(Number(ttlMs))
+    ? Number(ttlMs)
+    : resolveProductDetailCacheTtlMs(mid);
+  if (resolvedTtlMs <= 0) return;
   setProductDetailCache(
     buildProductDetailCacheKey({ merchantId: mid, productId: pid, checkoutToken }),
     {
@@ -3394,7 +3466,7 @@ function cacheProductDetailForOffers({
         ...metadata,
       },
     },
-    ttlMs,
+    resolvedTtlMs,
   );
 }
 
@@ -3455,7 +3527,7 @@ function snapshotResolveProductGroupCacheStats() {
   };
 }
 
-function snapshotPdpV2CoreHotCacheStats() {
+function snapshotPdpV2PrefetchStateStats() {
   if (!getAuroraPdpPrefetchStateSnapshot) {
     return {
       available: false,
@@ -4951,6 +5023,29 @@ function attachProductDetailSource(product, detailSource) {
   return product;
 }
 
+// Attach in-memory cache metadata so downstream log/response builders can
+// correlate user-visible staleness with cache age (e.g. for diagnosing a
+// "this price looks wrong" report). Non-enumerable to avoid leaking into JSON
+// payloads served to clients; consumers that want it must read it explicitly.
+function attachProductDetailCacheMeta(product, { storedAtMs, ageMs } = {}) {
+  if (!product || typeof product !== 'object') return product;
+  const meta = {
+    stored_at_ms: Number.isFinite(storedAtMs) ? storedAtMs : null,
+    age_ms_at_read: Number.isFinite(ageMs) ? ageMs : null,
+  };
+  try {
+    Object.defineProperty(product, '__detail_cache_meta', {
+      value: meta,
+      enumerable: false,
+      configurable: true,
+      writable: true,
+    });
+  } catch {
+    product.__detail_cache_meta = meta;
+  }
+  return product;
+}
+
 function inferDetailSourceFromQuerySource(querySource) {
   const source = String(querySource || '').trim().toLowerCase();
   if (!source) return null;
@@ -6094,13 +6189,11 @@ async function fetchProductDetailForOffers(args) {
   const skipUpstreamFallback = args?.skipUpstreamFallback === true;
   const totalTimeoutMs = Math.max(0, Number(args?.totalTimeoutMs || args?.stageTimeoutMs || 0) || 0);
   if (!merchantId || !productId) return null;
+  const resolvedCacheTtlMs = resolveProductDetailCacheTtlMs(merchantId);
   const useMemoryCache =
     PRODUCT_DETAIL_CACHE_ENABLED &&
     !bypassCache &&
-    (
-      merchantId !== EXTERNAL_SEED_MERCHANT_ID ||
-      PDP_EXTERNAL_SEED_DETAIL_CACHE_ENABLED
-    );
+    resolvedCacheTtlMs > 0;
 
   const cacheKey = buildProductDetailCacheKey({ merchantId, productId, checkoutToken });
 
@@ -6117,7 +6210,7 @@ async function fetchProductDetailForOffers(args) {
         : null;
     const cachedSource = inferDetailSourceFromQuerySource(cachedValue?.metadata?.query_source);
     if (cachedProduct && typeof cachedProduct === 'object') {
-      return attachProductDetailSource(
+      const served = attachProductDetailSource(
         normalizeProductDetailPrice({
         ...cachedProduct,
         merchant_id: merchantId,
@@ -6127,6 +6220,14 @@ async function fetchProductDetailForOffers(args) {
         }),
         cachedSource || 'fresh_cache',
       );
+      const storedAtMs = Number(cachedEntry?.storedAtMs);
+      if (Number.isFinite(storedAtMs)) {
+        attachProductDetailCacheMeta(served, {
+          storedAtMs,
+          ageMs: Math.max(0, Date.now() - storedAtMs),
+        });
+      }
+      return served;
     }
   }
 
@@ -6150,7 +6251,7 @@ async function fetchProductDetailForOffers(args) {
               matched_via: seedDetail.matched_via || null,
               updated_at: seedDetail.updated_at || null,
             },
-          });
+          }, resolvedCacheTtlMs);
         }
         return seedDetail.product;
       }
@@ -6169,7 +6270,7 @@ async function fetchProductDetailForOffers(args) {
               metadata: {
                 query_source: 'external_product_seeds_legacy_fallback',
               },
-            });
+            }, resolvedCacheTtlMs);
           }
           return normalizedExternalSeed;
         }
@@ -6198,7 +6299,7 @@ async function fetchProductDetailForOffers(args) {
               query_source: 'products_cache',
               cached_at: fromDb.cached_at || null,
             },
-          });
+          }, resolvedCacheTtlMs);
         }
         return normalizedDb;
       }
@@ -6241,7 +6342,7 @@ async function fetchProductDetailForOffers(args) {
           success: true,
           product: normalizedUpstream,
           metadata: { query_source: 'upstream' },
-        });
+        }, resolvedCacheTtlMs);
       }
       return normalizedUpstream;
     }
@@ -6268,7 +6369,7 @@ async function fetchProductDetailForOffers(args) {
               cached_at: staleFromDb.cached_at || null,
               stale_max_age_hours: PRODUCT_DETAIL_STALE_MAX_AGE_HOURS,
             },
-          });
+          }, resolvedCacheTtlMs);
         }
         return normalizedStale;
       }
@@ -24831,7 +24932,7 @@ const healthRouteHandler = (req, res) => {
     resolve_product_candidates_cache: snapshotResolveProductCandidatesCacheStats(),
     resolve_product_group_cache: snapshotResolveProductGroupCacheStats(),
     product_detail_cache: snapshotProductDetailCacheStats(),
-    pdp_v2_core_hot_cache: snapshotPdpV2CoreHotCacheStats(),
+    pdp_v2_prefetch_state: snapshotPdpV2PrefetchStateStats(),
     pdp_recommendations_cache: getPdpRecsCacheStats(),
     external_seed_image_cache_bootstrap: getExternalSeedImageCacheBootstrapStatus(),
     external_seed_image_cache_job_runner: getExternalSeedImageCacheJobRunnerStatus(),
@@ -24924,7 +25025,7 @@ const healthRouteHandler = (req, res) => {
           resolve_product_candidates_cache: snapshotResolveProductCandidatesCacheStats(),
           resolve_product_group_cache: snapshotResolveProductGroupCacheStats(),
           product_detail_cache: snapshotProductDetailCacheStats(),
-          pdp_v2_core_hot_cache: snapshotPdpV2CoreHotCacheStats(),
+          pdp_v2_prefetch_state: snapshotPdpV2PrefetchStateStats(),
           pdp_recommendations_cache: getPdpRecsCacheStats(),
           external_seed_image_cache_bootstrap: getExternalSeedImageCacheBootstrapStatus(),
           external_seed_image_cache_job_runner: getExternalSeedImageCacheJobRunnerStatus(),
@@ -37611,7 +37712,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           response?.status === 200 &&
           (upstreamData.product || upstreamData?.data?.product);
         if (shouldCache && (!productDetailCacheMeta || productDetailCacheMeta.source !== 'memory')) {
-          setProductDetailCache(productDetailCacheKey, upstreamData);
+          const ttlForThisMerchant = resolveProductDetailCacheTtlMs(productDetailMerchantId);
+          if (ttlForThisMerchant > 0) {
+            setProductDetailCache(productDetailCacheKey, upstreamData, ttlForThisMerchant);
+          }
         }
       }
       if (productDetailDebug && productDetailCacheMeta) {
@@ -39000,6 +39104,8 @@ module.exports._debug = {
   beautyProductHasAcneOilControlEvidence,
   scoreBeautyExternalSeedProduct,
   compactBeautyMainlineProductForResponse,
+  snapshotProductDetailCacheStats,
+  resolveProductDetailCacheTtlMs,
 };
 
 if (require.main === module) {
