@@ -397,6 +397,11 @@ const SIMILAR_INTENT_FAMILY_RULES = Object.freeze([
     sql: '\\m(moisturi[sz](er|ing)|day\\s+cream|face\\s+cream|facial\\s+cream|hydrating\\s+cream|replenishing\\s+cream)\\M',
   },
   {
+    id: 'lip_oil',
+    js: /\b(?:lip\s+oil|lip\s+glaze)\b/i,
+    sql: '\\m(lip\\s+oil|lip\\s+glaze)\\M',
+  },
+  {
     id: 'highlighter',
     js: /\b(?:highlighter|illuminator)\b/i,
     sql: '\\m(highlighter|illuminator)\\M',
@@ -1924,6 +1929,8 @@ function buildBaseFeatures(baseProduct, semantic = null) {
     : inferVerticalFromProduct(baseProduct);
   const tokens = tokenize([baseProduct.title, baseProduct.name, brand, leafCategory, parentCategory].filter(Boolean).join(' '));
   const normalizedTitle = normalizeText(baseProduct.title || baseProduct.name);
+  const rawCategory = normalizeText(baseProduct.category || baseProduct.product_type || baseProduct.productType);
+  const productType = normalizeText(baseProduct.product_type || baseProduct.productType || baseProduct.category);
   const accessoryKind = getBeautyAccessoryKindFromFeatures({ normalizedTitle, leafCategory, parentCategory });
   const productFamily = normalizeText(baseProduct.product_family || baseProduct.external_seed_product_family);
   const sourceListingScope = normalizeText(baseProduct.source_listing_scope || baseProduct.listing_scope);
@@ -1937,6 +1944,8 @@ function buildBaseFeatures(baseProduct, semantic = null) {
     currency: normalizeCurrency(baseProduct, 'USD'),
     tokens,
     normalizedTitle,
+    rawCategory,
+    productType,
     isExternal: isExternalProduct(baseProduct),
     vertical: verticalSignal.vertical || UNKNOWN_VERTICAL,
     verticalInferred: Boolean(verticalSignal.inferred),
@@ -1973,6 +1982,8 @@ function buildCandidateFeatures(candidateProduct, baseCurrency) {
     : inferVerticalFromProduct(candidateProduct);
   const tokens = tokenize([candidateProduct.title, candidateProduct.name, brand, leafCategory, parentCategory].filter(Boolean).join(' '));
   const normalizedTitle = normalizeText(candidateProduct.title || candidateProduct.name);
+  const rawCategory = normalizeText(candidateProduct.category || candidateProduct.product_type || candidateProduct.productType);
+  const productType = normalizeText(candidateProduct.product_type || candidateProduct.productType || candidateProduct.category);
   const accessoryKind = getBeautyAccessoryKindFromFeatures({ normalizedTitle, leafCategory, parentCategory });
   const productFamily = normalizeText(candidateProduct.product_family || candidateProduct.external_seed_product_family);
   const sourceListingScope = normalizeText(candidateProduct.source_listing_scope || candidateProduct.listing_scope);
@@ -1986,6 +1997,8 @@ function buildCandidateFeatures(candidateProduct, baseCurrency) {
     currency,
     tokens,
     normalizedTitle,
+    rawCategory,
+    productType,
     isExternal: isExternalProduct(candidateProduct),
     vertical: verticalSignal.vertical || UNKNOWN_VERTICAL,
     verticalInferred: Boolean(verticalSignal.inferred),
@@ -2070,6 +2083,8 @@ function titleIntentMatches(baseFeatures, candidateFeatures) {
 function buildSimilarIntentFamilyTextFromFeatures(features) {
   return [
     features?.normalizedTitle,
+    features?.rawCategory,
+    features?.productType,
     features?.leafCategory,
     features?.parentCategory,
   ].filter(Boolean).join(' ');
@@ -2087,11 +2102,18 @@ function getSimilarIntentFamilyFromText(text) {
 
 function getSimilarIntentFamilyFromFeatures(features, { titleOnly = false } = {}) {
   if (titleOnly) return getSimilarIntentFamilyFromText(features?.normalizedTitle || '');
-  return getSimilarIntentFamilyFromText(buildSimilarIntentFamilyTextFromFeatures(features));
+  const direct = getSimilarIntentFamilyFromText(buildSimilarIntentFamilyTextFromFeatures(features));
+  if (direct) return direct;
+  const leaf = normalizeText(features?.leafCategory || '');
+  const parent = normalizeText(features?.parentCategory || '');
+  if (parent === 'moisturize' && ['cream', 'lotion', 'moisturizer', 'moisturiser'].includes(leaf)) {
+    return 'moisturizer';
+  }
+  return '';
 }
 
 function getSimilarIntentFamilyFromProduct(product) {
-  return getSimilarIntentFamilyFromText(
+  const direct = getSimilarIntentFamilyFromText(
     [
       product?.title,
       product?.name,
@@ -2102,6 +2124,13 @@ function getSimilarIntentFamilyFromProduct(product) {
       getParentCategory(product),
     ].filter(Boolean).join(' '),
   );
+  if (direct) return direct;
+  const leaf = getLeafCategory(product);
+  const parent = getParentCategory(product);
+  if (parent === 'moisturize' && ['cream', 'lotion', 'moisturizer', 'moisturiser'].includes(leaf)) {
+    return 'moisturizer';
+  }
+  return '';
 }
 
 function getSimilarIntentFamilySqlPattern(intentFamily) {
@@ -2170,6 +2199,7 @@ function getSimilarIntentFamilySqlLikePatterns(intentFamily) {
     ];
   }
   if (id === 'highlighter') return ['%highlighter%', '%illuminator%'];
+  if (id === 'lip_oil') return ['%lip oil%', '%lip glaze%'];
   if (id === 'hand_cream') return ['%hand cream%', '%hand balm%', '%hand lotion%'];
   if (id === 'micellar_cleansing_water') return ['%micellar%', '%cleansing water%'];
   return [];
@@ -2527,9 +2557,8 @@ function pickLayeredRecommendations({
       const source = features.isExternal ? 'external' : 'internal';
       const scoreDetail = scoreCandidate(base, features);
       const baseIntentFamily = getSimilarIntentFamilyFromFeatures(base);
-      const sharedIntentFamily = baseIntentFamily
-        ? getSimilarIntentFamilyFromFeatures(features, { titleOnly: true }) === baseIntentFamily
-        : false;
+      const candidateTitleIntentFamily = getSimilarIntentFamilyFromFeatures(features, { titleOnly: true });
+      const sharedIntentFamily = hasSharedSimilarIntentFamily(base, features);
 
       if (
         base.isExternal &&
@@ -2539,7 +2568,24 @@ function pickLayeredRecommendations({
         filteredByConfidence += 1;
         return null;
       }
-      if (base.isExternal && !base.bundleLike && features.bundleLike) {
+      const allowSameBrandFragranceBundle =
+        baseIntentFamily === 'fragrance' &&
+        source === 'external' &&
+        scoreDetail.brandMatch &&
+        features.vertical === 'fragrance' &&
+        (titleIntentMatches(base, features) || hasSharedSimilarIntentFamily(base, features));
+      if (base.isExternal && !base.bundleLike && features.bundleLike && !allowSameBrandFragranceBundle) {
+        filteredByConfidence += 1;
+        return null;
+      }
+      if (
+        base.isExternal &&
+        baseIntentFamily &&
+        source === 'external' &&
+        features.bundleLike &&
+        !scoreDetail.brandMatch &&
+        candidateTitleIntentFamily !== baseIntentFamily
+      ) {
         filteredByConfidence += 1;
         return null;
       }

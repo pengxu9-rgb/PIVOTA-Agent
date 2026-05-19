@@ -352,7 +352,7 @@ describe('RecommendationEngine external candidate fetch', () => {
     const picked = pickLayeredRecommendations({
       baseProduct: out.product,
       baseSemantic: out.semantic,
-      k: 6,
+      k: 4,
       internalCandidates: [],
       externalCandidates: [
         {
@@ -1772,6 +1772,12 @@ describe('RecommendationEngine external candidate fetch', () => {
     expect(_internals.getSimilarIntentFamilyFromText('Rare Rose Face Oil')).toBe('face_oil');
     expect(_internals.getSimilarIntentFamilyFromText('Herbal Recovery Eye Cream')).toBe('eye_cream');
     expect(_internals.getSimilarIntentFamilyFromText('Moisture Replenishing Day Cream')).toBe('moisturizer');
+    expect(_internals.getSimilarIntentFamilyFromText('My Glow Black Honey Lip Oil')).toBe('lip_oil');
+    expect(_internals.getSimilarIntentFamilyFromFeatures({
+      normalizedTitle: 'herbal recovery cream',
+      leafCategory: 'cream',
+      parentCategory: 'moisturize',
+    })).toBe('moisturizer');
   });
 
   test('deep-domain recall still loads global category rows when same-domain category rows may collapse by identity', async () => {
@@ -1964,7 +1970,7 @@ describe('RecommendationEngine external candidate fetch', () => {
           source: 'external_seed',
         },
       ],
-      k: 6,
+      k: 4,
       baseSemantic: { vertical: 'makeup', signal_strength: 3 },
     });
 
@@ -2112,7 +2118,7 @@ describe('RecommendationEngine external candidate fetch', () => {
         inventory_quantity: 10,
         status: 'active',
       },
-      k: 4,
+      k: 6,
       options: {
         debug: true,
         no_cache: true,
@@ -2410,35 +2416,156 @@ describe('RecommendationEngine external candidate fetch', () => {
         status: 'active',
         source: 'external_seed',
       },
+      k: 6,
+      options: {
+        debug: true,
+        no_cache: true,
+        internal_candidates: [],
+        external_candidates: [
+          ...[
+            'Cosmic Kylie Jenner Eau de Parfum',
+            'Cosmic 2.0 Eau de Parfum Pen Spray',
+            'Pixi Rose Eau de Parfum',
+            'Pixi Jasmine Eau de Parfum',
+          ].map((title, index) => ({
+            merchant_id: 'external_seed',
+            product_id: `ext_fragrance_${index}`,
+            title,
+            brand: index < 2 ? 'Kylie Cosmetics' : 'Pixi',
+            category_path: 'beauty/fragrance/perfume',
+            price: 60 + index * 5,
+            currency: 'USD',
+            inventory_quantity: 10,
+            status: 'active',
+            source: 'external_seed',
+          })),
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_fragrance_bundle',
+            title: 'Cosmic Kylie Jenner 50ml & Pen Spray Duo',
+            brand: 'Kylie Cosmetics',
+            category: 'Fragrance',
+            product_type: 'Fragrance',
+            category_path: 'beauty/sets/gift-set',
+            semantic_vertical: 'fragrance',
+            price: 66,
+            currency: 'USD',
+            inventory_quantity: 10,
+            status: 'active',
+            source: 'external_seed',
+          },
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_fragrance_bundle_large',
+            title: 'Cosmic Kylie Jenner 100ml & Pen Spray Duo',
+            brand: 'Kylie Cosmetics',
+            category: 'Fragrance',
+            product_type: 'Fragrance',
+            category_path: 'beauty/sets/gift-set',
+            semantic_vertical: 'fragrance',
+            price: 101,
+            currency: 'USD',
+            inventory_quantity: 10,
+            status: 'active',
+            source: 'external_seed',
+          },
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_lip_glaze_bundle',
+            title: 'Supple Kiss Lip Glaze Bundle',
+            brand: 'Kylie Cosmetics',
+            category: 'Fragrance',
+            product_type: 'Fragrance',
+            category_path: 'beauty/makeup/lip/lipstick',
+            semantic_vertical: 'makeup',
+            price: 113,
+            currency: 'USD',
+            inventory_quantity: 10,
+            status: 'active',
+            source: 'external_seed',
+          },
+        ],
+      },
+    });
+
+    expect(result.debug?.base?.vertical).toBe('fragrance');
+    expect(result.metadata.similar_status).toBe('ready');
+    expect(result.items.length).toBeGreaterThanOrEqual(5);
+    expect(result.items.map((item) => item.product_id)).toContain('ext_fragrance_bundle');
+    expect(result.items.map((item) => item.product_id)).not.toContain('ext_lip_glaze_bundle');
+    expect(result.items.every((item) => item.merchant_id === 'external_seed')).toBe(true);
+  });
+
+  test('recommend uses raw seed category intent for gift-set PDPs before falling back to generic gift sets', async () => {
+    const { recommend, _internals } = require('../../src/services/RecommendationEngine');
+    _internals.resetCache();
+
+    const result = await recommend({
+      pdp_product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_tirtir_my_glow_holiday',
+        title: 'My Glow Holiday Edition',
+        brand: 'TIRTIR Global',
+        category: 'Lip Oil',
+        product_type: 'Lip Oil',
+        category_path: 'beauty/makeup/sets/gift-set',
+        price: 3,
+        currency: 'USD',
+        inventory_quantity: 10,
+        status: 'active',
+        source: 'external_seed',
+      },
       k: 4,
       options: {
         debug: true,
         no_cache: true,
         internal_candidates: [],
         external_candidates: [
-          'Cosmic Kylie Jenner Eau de Parfum',
-          'Cosmic 2.0 Eau de Parfum Pen Spray',
-          'Pixi Rose Eau de Parfum',
-          'Pixi Jasmine Eau de Parfum',
-        ].map((title, index) => ({
-          merchant_id: 'external_seed',
-          product_id: `ext_fragrance_${index}`,
-          title,
-          brand: index < 2 ? 'Kylie Cosmetics' : 'Pixi',
-          category_path: 'beauty/fragrance/perfume',
-          price: 60 + index * 5,
-          currency: 'USD',
-          inventory_quantity: 10,
-          status: 'active',
-          source: 'external_seed',
-        })),
+          ...[
+            'My Glow Black Honey Lip Oil',
+            'My Glow Rosy Lip Oil',
+            'Crystal Lip Oil',
+            'Glow Lip Glaze',
+          ].map((title, index) => ({
+            merchant_id: 'external_seed',
+            product_id: `ext_lip_oil_${index}`,
+            title,
+            brand: index < 2 ? 'TIRTIR Global' : `Lip Brand ${index}`,
+            category: 'Lip Oil',
+            product_type: 'Lip Oil',
+            category_path: 'beauty/makeup/lip/lip-oil',
+            semantic_vertical: 'makeup',
+            price: 12 + index,
+            currency: 'USD',
+            inventory_quantity: 10,
+            status: 'active',
+            source: 'external_seed',
+          })),
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_generic_set_category_only',
+            title: 'The Modern Muse Set',
+            brand: 'Sigma Beauty',
+            category: 'Lip Oil',
+            product_type: 'Lip Oil',
+            category_path: 'beauty/makeup/sets/gift-set',
+            semantic_vertical: 'makeup',
+            price: 72,
+            currency: 'USD',
+            inventory_quantity: 10,
+            status: 'active',
+            source: 'external_seed',
+          },
+        ],
       },
     });
 
-    expect(result.debug?.base?.vertical).toBe('fragrance');
+    expect(result.debug?.fetch_strategy?.base_intent_family).toBe('lip_oil');
     expect(result.metadata.similar_status).toBe('ready');
-    expect(result.items.length).toBeGreaterThanOrEqual(4);
-    expect(result.items.every((item) => item.merchant_id === 'external_seed')).toBe(true);
+    expect(result.items.map((item) => item.product_id)).toEqual(
+      expect.arrayContaining(['ext_lip_oil_0', 'ext_lip_oil_1']),
+    );
+    expect(result.items.map((item) => item.product_id)).not.toContain('ext_generic_set_category_only');
   });
 
   test('recommend lets catalog category path override stale external seed vertical before picking similar products', async () => {
@@ -2489,6 +2616,59 @@ describe('RecommendationEngine external candidate fetch', () => {
     expect(result.metadata.similar_status).toBe('ready');
     expect(result.items.map((item) => item.product_id)).toEqual(
       expect.arrayContaining(['ext_face_oil_0', 'ext_face_oil_1']),
+    );
+  });
+
+  test('recommend treats skincare moisturize cream siblings as moisturizer intent matches', async () => {
+    const { recommend, _internals } = require('../../src/services/RecommendationEngine');
+    _internals.resetCache();
+
+    const result = await recommend({
+      pdp_product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_jurlique_day_cream',
+        title: 'Moisture Replenishing Day Cream',
+        brand: 'Jurlique',
+        category: 'Moisturizer',
+        product_type: 'Moisturizer',
+        category_path: 'beauty/skincare/moisturize/cream',
+        price: 100,
+        currency: 'USD',
+        inventory_quantity: 10,
+        status: 'active',
+        source: 'external_seed',
+      },
+      k: 4,
+      options: {
+        debug: true,
+        no_cache: true,
+        internal_candidates: [],
+        external_candidates: [
+          'Herbal Recovery Cream',
+          'Rare Rose Cream',
+          'Balancing Day Care Cream',
+          'Calendula Cream',
+        ].map((title, index) => ({
+          merchant_id: 'external_seed',
+          product_id: `ext_jurlique_cream_${index}`,
+          title,
+          brand: 'Jurlique',
+          category: 'Cream',
+          product_type: 'Cream',
+          category_path: 'beauty/skincare/moisturize/cream',
+          price: 60 + index * 8,
+          currency: 'USD',
+          inventory_quantity: 10,
+          status: 'active',
+          source: 'external_seed',
+        })),
+      },
+    });
+
+    expect(result.debug?.fetch_strategy?.base_intent_family).toBe('moisturizer');
+    expect(result.metadata.similar_status).toBe('ready');
+    expect(result.items.map((item) => item.product_id)).toEqual(
+      expect.arrayContaining(['ext_jurlique_cream_0', 'ext_jurlique_cream_1']),
     );
   });
 
