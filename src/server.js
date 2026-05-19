@@ -4264,12 +4264,33 @@ async function resolveCatalogProductRefFromPivotaSignature(productId) {
       queryFn: query,
     });
     if (canonicalGroup?.canonical_product_ref?.merchant_id && canonicalGroup?.canonical_product_ref?.product_id) {
+      const requestedSignatureMember = (
+        Array.isArray(canonicalGroup.members)
+          ? canonicalGroup.members
+          : Array.isArray(canonicalGroup.group_members)
+            ? canonicalGroup.group_members
+            : []
+      ).find((member) => firstNonEmptyString(member?.pivota_signature_id) === normalizedProductId);
+      const signatureProductRef =
+        requestedSignatureMember?.merchant_id && requestedSignatureMember?.product_id
+          ? requestedSignatureMember
+          : canonicalGroup.canonical_product_ref;
+      const signatureGroupId =
+        requestedSignatureMember?.merchant_id && requestedSignatureMember?.product_id
+          ? normalizedProductId
+          : canonicalGroup.product_group_id || normalizedProductId;
       return {
-        ...canonicalGroup.canonical_product_ref,
-        product_group_id: canonicalGroup.product_group_id || normalizedProductId,
+        merchant_id: signatureProductRef.merchant_id,
+        product_id: signatureProductRef.product_id,
+        ...(signatureProductRef.platform ? { platform: signatureProductRef.platform } : {}),
+        ...(signatureProductRef.product_key ? { product_key: signatureProductRef.product_key } : {}),
+        ...(signatureProductRef.pivota_signature_id
+          ? { pivota_signature_id: signatureProductRef.pivota_signature_id }
+          : {}),
+        product_group_id: signatureGroupId,
         sellable_item_group_id:
-          canonicalGroup.sellable_item_group_id || canonicalGroup.product_group_id || normalizedProductId,
-        canonical_sig_id: canonicalGroup.canonical_sig_id || canonicalGroup.product_group_id || normalizedProductId,
+          signatureGroupId || canonicalGroup.sellable_item_group_id || canonicalGroup.product_group_id || normalizedProductId,
+        canonical_sig_id: signatureGroupId || canonicalGroup.canonical_sig_id || canonicalGroup.product_group_id || normalizedProductId,
         content_key: canonicalGroup.content_key || null,
         members: Array.isArray(canonicalGroup.members) ? canonicalGroup.members : [],
         group_members: Array.isArray(canonicalGroup.group_members) ? canonicalGroup.group_members : [],

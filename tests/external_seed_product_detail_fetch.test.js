@@ -647,6 +647,24 @@ describe('external seed product detail hydration', () => {
     });
 
     const productKey = 'prod::external_seed::external_seed::ext_seed_db_sig_group_1';
+    const competingPrimaryRow = {
+      content_key: 'content::fenty::gloss-bomb-heat',
+      product_key: 'prod::external_seed::external_seed::fenty:canonical-gloss-bomb-heat',
+      merchant_id: 'external_seed',
+      platform: 'external_seed',
+      source_product_id: 'fenty:canonical-gloss-bomb-heat',
+      product_title: 'Fenty Beauty Gloss Bomb Heat Universal Lip Luminizer',
+      brand: 'Fenty Beauty',
+      canonical_url: 'https://www.fentybeauty.com/products/gloss-bomb-heat',
+      product_image_url: 'https://cdn.example.com/fenty-heat.jpg',
+      pdp_lifecycle_stage: 'published',
+      pivota_signature_id: 'sig_otherfentyheat',
+      pivota_signature_minted_at: '2026-04-01T00:00:00.000Z',
+      merchant_name: 'Fenty Beauty',
+      internal_product_group_id: 'pg_fenty_heat',
+      is_primary: true,
+      offer_count: 1,
+    };
     const signatureGroupRow = {
       content_key: 'content::fenty::gloss-bomb-heat',
       product_key: productKey,
@@ -662,7 +680,7 @@ describe('external seed product detail hydration', () => {
       pivota_signature_minted_at: '2026-05-01T00:00:00.000Z',
       merchant_name: 'Fenty Beauty',
       internal_product_group_id: 'pg_fenty_heat',
-      is_primary: true,
+      is_primary: false,
       offer_count: 1,
     };
     const statusRow = {
@@ -701,7 +719,7 @@ describe('external seed product detail hydration', () => {
     db.query.mockImplementation((sql) => {
       const text = String(sql || '');
       if (text.includes('WITH offer_stats AS')) {
-        return Promise.resolve({ rows: [signatureGroupRow] });
+        return Promise.resolve({ rows: [competingPrimaryRow, signatureGroupRow] });
       }
       if (text.includes('FROM catalog_products cp') && text.includes('LEFT JOIN pdp_identity_listing')) {
         return Promise.resolve({
@@ -767,6 +785,12 @@ describe('external seed product detail hydration', () => {
       expect.objectContaining({
         product_group_id: 'sig_fentyheat1',
         product_line_id: 'line_fenty_gloss_bomb_heat',
+      }),
+    );
+    expect(res.body.subject).toEqual(
+      expect.objectContaining({
+        type: 'product_group',
+        id: 'sig_fentyheat1',
       }),
     );
   });
