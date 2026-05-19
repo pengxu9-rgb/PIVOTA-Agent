@@ -2,8 +2,13 @@ jest.mock('../../src/db', () => ({
   query: jest.fn(),
   closePool: jest.fn(),
 }));
+jest.mock('axios', () => ({
+  head: jest.fn(),
+  get: jest.fn(),
+}));
 
 const { query } = require('../../src/db');
+const axios = require('axios');
 const {
   fetchRows,
   resolveGatewayUrl,
@@ -20,6 +25,7 @@ const {
   mergePdpProbeResponses,
   unwrapLivePdpPayload,
   resolveExpectedLivePdpPrice,
+  probeImageHealth,
   writeOutput,
 } = require('../../scripts/audit-external-product-pdp-quality');
 const {
@@ -35,6 +41,8 @@ describe('audit-external-product-pdp-quality helpers', () => {
   beforeEach(() => {
     query.mockReset();
     query.mockResolvedValue({ rows: [] });
+    axios.head.mockReset();
+    axios.get.mockReset();
   });
 
   test('defaults to the public PDP gateway instead of production backend env', () => {
@@ -204,6 +212,33 @@ describe('audit-external-product-pdp-quality helpers', () => {
     expect(isTransientImageProbeResult({ ok: false, error: 'bad_status', status: 404 })).toBe(false);
     expect(resolveImageProbeMaxAttempts({ maxAttempts: 3 })).toBe(3);
     expect(resolveImageProbeMaxAttempts({ maxAttempts: 12 })).toBe(4);
+  });
+
+  test('does not count transient image probe timeouts as broken gallery images', async () => {
+    axios.head.mockRejectedValue(
+      Object.assign(new Error('timeout of 5000ms exceeded'), { code: 'ECONNABORTED' }),
+    );
+
+    const imageHealth = await probeImageHealth(['https://cdn.example.com/product.jpg'], {
+      maxAttempts: 1,
+    });
+    const livePdpGate = buildLivePdpGate({
+      livePayload: {
+        modules: [
+          {
+            type: 'media_gallery',
+            data: {
+              items: [{ type: 'image', url: 'https://cdn.example.com/product.jpg' }],
+            },
+          },
+        ],
+      },
+      imageHealth,
+    });
+
+    expect(imageHealth.broken_count).toBe(0);
+    expect(imageHealth.transient_error_count).toBe(1);
+    expect(livePdpGate.failure_reasons).not.toContain('broken_gallery_image');
   });
 
   test('wraps catalog extractor DNS failures as row-level extractor failures', () => {

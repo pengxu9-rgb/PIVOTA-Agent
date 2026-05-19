@@ -632,12 +632,15 @@ async function probeImageHealth(urls, options = {}) {
   for (const url of selectedUrls) {
     results.push(await probeImageUrl(url, { maxAttempts: options.maxAttempts }));
   }
-  const broken = results.filter((result) => !result.ok);
+  const transientErrors = results.filter((result) => !result.ok && isTransientImageProbeResult(result));
+  const broken = results.filter((result) => !result.ok && !isTransientImageProbeResult(result));
   return {
     scanned_count: results.length,
     total_url_count: uniqueUrls.length,
     broken_count: broken.length,
     broken_urls: broken.slice(0, 20),
+    transient_error_count: transientErrors.length,
+    transient_error_urls: transientErrors.slice(0, 20),
     skipped: false,
     truncated: uniqueUrls.length > selectedUrls.length,
   };
