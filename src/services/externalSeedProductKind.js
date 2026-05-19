@@ -143,11 +143,6 @@ function hasToolCategoryPath(input = {}) {
 }
 
 function classifyExternalSeedProductKind(input = {}) {
-  const explicitFamily = resolveExplicitProductFamily(input);
-  if (explicitFamily) {
-    return { family: explicitFamily.family, reasons: [explicitFamily.reason] };
-  }
-
   const text = collectExternalSeedProductKindText(input);
   const reasons = [];
 
@@ -159,9 +154,14 @@ function classifyExternalSeedProductKind(input = {}) {
     reasons.push('apparel_non_merch_signal');
     return { family: 'non_merch', reasons };
   }
-  if (SAMPLE_LIKE_RE.test(text)) {
+  const explicitFamily = resolveExplicitProductFamily(input);
+  const sampleLike = SAMPLE_LIKE_RE.test(text);
+  if (sampleLike && (!explicitFamily || ['sample', 'single_formula'].includes(explicitFamily.family))) {
     reasons.push('sample_like_signal');
     return { family: 'sample', reasons };
+  }
+  if (explicitFamily) {
+    return { family: explicitFamily.family, reasons: [explicitFamily.reason] };
   }
   if (hasToolCategoryPath(input)) {
     reasons.push('tool_category_path_signal');

@@ -180,5 +180,24 @@ describe('external seed product kind classification', () => {
         reasons: expect.arrayContaining(['sample_like_signal']),
       }),
     );
+
+    expect(
+      classifyExternalSeedProductKind({
+        title: 'Koko K Matte Liquid Lipstick Sample',
+        canonical_url: 'https://kyliecosmetics.com/products/koko-k-matte-liquid-lipstick-sample',
+        seed_data: {
+          product_kind: 'single_formula',
+          product_type: 'Sample',
+          snapshot: {
+            product_kind: 'single_formula',
+          },
+        },
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        family: 'sample',
+        reasons: expect.arrayContaining(['sample_like_signal']),
+      }),
+    );
   });
 });
