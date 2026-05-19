@@ -798,8 +798,15 @@ async function hydrateRecommendationItemsWithReviewedProductIntel(items) {
   if (!entriesByKey || typeof entriesByKey.get !== 'function') return { items: list, stats };
 
   stats.attempted_count = kbKeysByItem.filter((keys) => keys.length > 0).length;
-  const missingKbKeys = kbKeys
-    .filter((kbKey) => !extractRecommendationProductIntelBundle(entriesByKey.get(kbKey)));
+  const missingKbKeys = Array.from(new Set(
+    kbKeysByItem.flatMap((keys) => {
+      const hasBundleForItem = keys.some((kbKey) =>
+        extractRecommendationProductIntelBundle(entriesByKey.get(kbKey)),
+      );
+      if (hasBundleForItem) return [];
+      return keys.filter((kbKey) => !extractRecommendationProductIntelBundle(entriesByKey.get(kbKey)));
+    }),
+  ));
   if (missingKbKeys.length) {
     stats.db_fallback_attempted_count = missingKbKeys.length;
     const directEntries = await readProductIntelKbEntriesDirect(missingKbKeys);

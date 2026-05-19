@@ -230,6 +230,83 @@ describe('RecommendationEngine product-intel card hydration', () => {
     );
   });
 
+  test('does not run direct DB fallback for alias misses when an item already has a reviewed bundle', async () => {
+    jest.resetModules();
+    process.env = {
+      ...ORIGINAL_ENV,
+      NODE_ENV: 'test',
+      DATABASE_URL: 'postgres://unit-test',
+      PDP_RECS_CACHE_ENABLED: 'false',
+    };
+    const query = jest.fn(async () => ({ rows: [] }));
+    jest.doMock('../../src/db', () => ({ query }));
+    jest.doMock('../../src/auroraBff/productIntelKbStore', () => ({
+      getProductIntelKbEntries: jest.fn(async () =>
+        new Map([
+          [
+            'product:sig_lip_glaze',
+            {
+              source: 'c_beauty_product_intel_sig_alias',
+              source_meta: {
+                quality_state: 'reviewed',
+                review_status: 'completed',
+                reviewer_kind: 'assistant',
+              },
+              analysis: {
+                product_intel_v1: {
+                  shopping_card: {
+                    title: 'Aqua Burst Lip Glaze',
+                    subtitle: 'Lip Glaze',
+                    highlight: 'Glass-like lip shine',
+                  },
+                },
+              },
+            },
+          ],
+        ]),
+      ),
+    }));
+
+    const { recommend } = require('../../src/services/RecommendationEngine');
+    const result = await recommend({
+      pdp_product: makeExternalProduct('ext_base_lip', {
+        title: 'Silky Matte Lip Ink',
+        category: 'Lip Makeup',
+        price: 20,
+      }),
+      k: 1,
+      options: {
+        debug: true,
+        no_cache: true,
+        internal_candidates: [],
+        external_candidates: [
+          makeExternalProduct('ext_variant_lip_glaze', {
+            title: 'Aqua Burst Lip Glaze',
+            category: 'Lip Makeup',
+            price: 21,
+            parent_external_product_id: 'ext_parent_lip_glaze',
+            sellable_item_group_id: 'sig_lip_glaze',
+            source_listing_scope: 'variant',
+          }),
+        ],
+      },
+    });
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].card_highlight).toBe('Glass-like lip shine');
+    expect(
+      query.mock.calls.some(([sql]) => String(sql).includes('aurora_product_intel_kb')),
+    ).toBe(false);
+    expect(result.metadata.product_intel_card_hydration).toEqual(
+      expect.objectContaining({
+        attempted_count: 1,
+        hydrated_count: 1,
+        db_fallback_attempted_count: 0,
+        db_fallback_hit_count: 0,
+      }),
+    );
+  });
+
   test('uses direct DB fallback when KB store misses a reviewed similar card bundle', async () => {
     jest.resetModules();
     process.env = {
