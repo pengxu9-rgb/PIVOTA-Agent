@@ -68,6 +68,31 @@ describe('external seed product kind classification', () => {
     );
   });
 
+  test('classifies beauty-branded apparel as non-merch', () => {
+    expect(classifyExternalSeedProductKind({ title: 'Pixi 25th Anniversary Hoodie' })).toEqual(
+      expect.objectContaining({
+        family: 'non_merch',
+        reasons: expect.arrayContaining(['apparel_non_merch_signal']),
+      }),
+    );
+  });
+
+  test('classifies advent and 12-days calendars as collection sets', () => {
+    expect(classifyExternalSeedProductKind({ title: '12 Days of Icons Calendar' })).toEqual(
+      expect.objectContaining({
+        family: 'set_or_collection',
+        reasons: expect.arrayContaining(['bundle_set_signal']),
+      }),
+    );
+
+    expect(classifyExternalSeedProductKind({ title: '12 Days of Kylie Advent Calendar' })).toEqual(
+      expect.objectContaining({
+        family: 'set_or_collection',
+        reasons: expect.arrayContaining(['bundle_set_signal']),
+      }),
+    );
+  });
+
   test('classifies reviewed beauty merch edge cases without suppressing sample ingredients', () => {
     expect(classifyExternalSeedProductKind({ title: 'Hooded Bath Towel' })).toEqual(
       expect.objectContaining({

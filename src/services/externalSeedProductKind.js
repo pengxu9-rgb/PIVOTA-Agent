@@ -5,9 +5,11 @@ const TREATMENT_STICKER_RE = /\b(?:blemish|acne|pimple|spot|hydrocolloid|patch(?
 const SAMPLE_LIKE_RE = /\b(?:deluxe\s+sample|sample\s+size|trial\s*kit|sachets?|sachetbook)\b/i;
 const NON_MERCH_RE =
   /\b(?:e[-\s]?gift[-\s]?cards?|gift[-\s]?cards?|donat(?:e|ion)|sample service|appointment|booking|shipping protection|package protection|route protection|order protection|free[-_\s]?gift|bogos(?:\.io)?|bogo bundle|sca[-_\s]?clone[-_\s]?freegift)\b/i;
+const APPAREL_NON_MERCH_RE =
+  /\b(?:apparel|clothing|hoodies?|sweatshirts?|sweaters?|t[-\s]?shirts?|tees?|shirts?|tank tops?|jackets?|coats?|pants?|shorts?|socks?|robes?|beanies?)\b/i;
 
 const STRONG_BUNDLE_RE =
-  /\b(?:bundles?|kits?|duos?|trios?|quartets?|routine|regimen|makeup\s+look|starter\s+set|travel\s+set|mini\s+set|value\s+set|gift\s+set|discovery\s+set|essentials?\s+set|sets?|(?:mask|ampoule|sheet)\s+packs)\b/i;
+  /\b(?:bundles?|kits?|duos?|trios?|quartets?|routine|regimen|makeup\s+look|starter\s+set|travel\s+set|mini\s+set|value\s+set|gift\s+set|discovery\s+set|essentials?\s+set|sets?|advent\s+calendars?|holiday\s+calendars?|beauty\s+calendars?|(?:12|twelve)\s+days\s+of|(?:mask|ampoule|sheet)\s+packs)\b/i;
 const COLLECTION_BUNDLE_RE =
   /\b(?:collection\s+(?:set|kit|bundle)|(?:complete|holiday|starter|travel|mini|gift|routine|regimen|essentials?|most[-\s]?loved)\s+collection|the\s+[^\n]{2,80}\s+collection)\b/i;
 const COLLECTION_MEMBER_RE = /\bcollection\s*:\s*[^\n]+/i;
@@ -110,6 +112,10 @@ function classifyExternalSeedProductKind(input = {}) {
 
   if (NON_MERCH_RE.test(text)) {
     reasons.push('non_merch_signal');
+    return { family: 'non_merch', reasons };
+  }
+  if (APPAREL_NON_MERCH_RE.test(text)) {
+    reasons.push('apparel_non_merch_signal');
     return { family: 'non_merch', reasons };
   }
   if (SAMPLE_LIKE_RE.test(text)) {
