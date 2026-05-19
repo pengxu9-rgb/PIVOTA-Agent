@@ -377,6 +377,26 @@ const SIMILAR_INTENT_FAMILY_RULES = Object.freeze([
     sql: '\\m(hand\\s*cream|handhero)\\M',
   },
   {
+    id: 'fragrance',
+    js: /\b(?:fragrance|perfume|parfum|eau\s+de\s+(?:parfum|toilette)|cologne|roll\s+on\s+perfume)\b/i,
+    sql: '\\m(fragrance|perfume|parfum|eau\\s+de\\s+(parfum|toilette)|cologne|roll\\s+on\\s+perfume)\\M',
+  },
+  {
+    id: 'face_oil',
+    js: /\b(?:face\s+oil|facial\s+oil)\b/i,
+    sql: '\\m(face\\s+oil|facial\\s+oil)\\M',
+  },
+  {
+    id: 'eye_cream',
+    js: /\b(?:eye\s+cream|eye\s+creme|eye\s+cr[eè]me)\b/i,
+    sql: '\\m(eye\\s+cream|eye\\s+creme|eye\\s+cr[eè]me)\\M',
+  },
+  {
+    id: 'moisturizer',
+    js: /\b(?:moisturi[sz](?:er|ing)|day\s+cream|face\s+cream|facial\s+cream|hydrating\s+cream|replenishing\s+cream)\b/i,
+    sql: '\\m(moisturi[sz](er|ing)|day\\s+cream|face\\s+cream|facial\\s+cream|hydrating\\s+cream|replenishing\\s+cream)\\M',
+  },
+  {
     id: 'highlighter',
     js: /\b(?:highlighter|illuminator)\b/i,
     sql: '\\m(highlighter|illuminator)\\M',
@@ -1298,6 +1318,16 @@ function buildExternalSeedRecommendationCandidate(row, options = {}) {
       seedData.derived?.recall?.vertical,
     ),
   );
+  const catalogCategoryPath = normalizeCatalogCategoryPath(
+    firstNonEmptyText(
+      row.catalog_category_path,
+      seedData.catalog_category_path,
+      seedData.category_path,
+      snapshot.catalog_category_path,
+      snapshot.category_path,
+    ),
+  );
+  const catalogPathVertical = semanticVerticalFromCatalogCategoryPath(catalogCategoryPath);
 
   if (!externalProductId) return null;
 
@@ -1355,6 +1385,7 @@ function buildExternalSeedRecommendationCandidate(row, options = {}) {
     seedData.product?.category,
     snapshot.category,
     productType,
+    categoryLeafFromCatalogPath(catalogCategoryPath),
     fallbackCategory,
   );
   const imageUrl = firstImageUrl(
@@ -1414,6 +1445,7 @@ function buildExternalSeedRecommendationCandidate(row, options = {}) {
     ...(brand ? { brand, vendor: brand } : {}),
     ...(category ? { category } : {}),
     ...(productType ? { product_type: productType } : category ? { product_type: category } : {}),
+    ...(catalogCategoryPath ? { category_path: catalogCategoryPath, catalog_category_path: catalogCategoryPath } : {}),
     ...(description ? { description } : {}),
     ...(imageUrl ? { image_url: imageUrl, image: imageUrl } : {}),
     ...(priceAmount != null ? { price: priceAmount, price_amount: priceAmount } : {}),
@@ -1430,7 +1462,12 @@ function buildExternalSeedRecommendationCandidate(row, options = {}) {
     ...(parentExternalProductId ? { parent_external_product_id: parentExternalProductId } : {}),
     ...(sourceListingScope ? { source_listing_scope: sourceListingScope } : {}),
     ...(variantTitle ? { variant_title: variantTitle } : {}),
-    ...(recallVertical ? { semantic_vertical: recallVertical, recall_vertical: recallVertical } : {}),
+    ...(catalogPathVertical || recallVertical
+      ? {
+          semantic_vertical: catalogPathVertical || recallVertical,
+          recall_vertical: catalogPathVertical || recallVertical,
+        }
+      : {}),
   };
 }
 
@@ -1620,6 +1657,12 @@ const EXTERNAL_SEED_RECOMMENDATION_SELECT = `
             destination_url,
             canonical_url,
             domain,
+            (SELECT catalog_seed_product.category_path
+               FROM catalog_products catalog_seed_product
+              WHERE catalog_seed_product.merchant_id = 'external_seed'
+                AND catalog_seed_product.platform = 'external_seed'
+                AND catalog_seed_product.source_product_id = external_product_seeds.external_product_id
+              LIMIT 1) AS catalog_category_path,
             title,
             image_url,
             price_amount,
@@ -1688,6 +1731,12 @@ const EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT = `
             destination_url,
             canonical_url,
             domain,
+            (SELECT catalog_seed_product.category_path
+               FROM catalog_products catalog_seed_product
+              WHERE catalog_seed_product.merchant_id = 'external_seed'
+                AND catalog_seed_product.platform = 'external_seed'
+                AND catalog_seed_product.source_product_id = external_product_seeds.external_product_id
+              LIMIT 1) AS catalog_category_path,
             title,
             image_url,
             price_amount,
@@ -1703,6 +1752,12 @@ const EXTERNAL_SEED_LIGHT_RECOMMENDATION_SELECT = `
             destination_url,
             canonical_url,
             domain,
+            (SELECT catalog_seed_product.category_path
+               FROM catalog_products catalog_seed_product
+              WHERE catalog_seed_product.merchant_id = 'external_seed'
+                AND catalog_seed_product.platform = 'external_seed'
+                AND catalog_seed_product.source_product_id = external_product_seeds.external_product_id
+              LIMIT 1) AS catalog_category_path,
             title,
             image_url,
             price_amount,
@@ -1738,11 +1793,11 @@ const EXTERNAL_SEED_SEMANTIC_SELECT = `
         price_amount,
         price_currency,
         availability,
-        (SELECT cp.category_path
-           FROM catalog_products cp
-          WHERE cp.merchant_id = 'external_seed'
-            AND cp.platform = 'external_seed'
-            AND cp.source_product_id = external_product_seeds.external_product_id
+        (SELECT catalog_seed_product.category_path
+           FROM catalog_products catalog_seed_product
+          WHERE catalog_seed_product.merchant_id = 'external_seed'
+            AND catalog_seed_product.platform = 'external_seed'
+            AND catalog_seed_product.source_product_id = external_product_seeds.external_product_id
           LIMIT 1) AS catalog_category_path,
         jsonb_strip_nulls(jsonb_build_object(
           'title', seed_data->>'title',
@@ -1753,11 +1808,11 @@ const EXTERNAL_SEED_SEMANTIC_SELECT = `
           'category', coalesce(seed_data->>'category', seed_data->'derived'->'recall'->>'category'),
           'product_type', coalesce(seed_data->>'product_type', seed_data->'derived'->'recall'->>'category'),
           'productType', seed_data->>'productType',
-          'catalog_category_path', (SELECT cp.category_path
-             FROM catalog_products cp
-            WHERE cp.merchant_id = 'external_seed'
-              AND cp.platform = 'external_seed'
-              AND cp.source_product_id = external_product_seeds.external_product_id
+          'catalog_category_path', (SELECT catalog_seed_product.category_path
+             FROM catalog_products catalog_seed_product
+            WHERE catalog_seed_product.merchant_id = 'external_seed'
+              AND catalog_seed_product.platform = 'external_seed'
+              AND catalog_seed_product.source_product_id = external_product_seeds.external_product_id
             LIMIT 1),
           'category_path', coalesce(seed_data->>'category_path', seed_data->>'catalog_category_path'),
           'recall_category', seed_data->'derived'->'recall'->>'category',
@@ -2088,6 +2143,32 @@ function getSimilarIntentFamilySqlLikePatterns(intentFamily) {
       '%wash-off mask%',
     ];
   }
+  if (id === 'fragrance') {
+    return [
+      '%fragrance%',
+      '%perfume%',
+      '%parfum%',
+      '%eau de parfum%',
+      '%eau de toilette%',
+      '%cologne%',
+      '%roll on perfume%',
+    ];
+  }
+  if (id === 'face_oil') return ['%face oil%', '%facial oil%'];
+  if (id === 'eye_cream') return ['%eye cream%', '%eye creme%', '%eye crème%'];
+  if (id === 'moisturizer') {
+    return [
+      '%moisturizer%',
+      '%moisturiser%',
+      '%moisturizing%',
+      '%moisturising%',
+      '%day cream%',
+      '%face cream%',
+      '%facial cream%',
+      '%hydrating cream%',
+      '%replenishing cream%',
+    ];
+  }
   if (id === 'highlighter') return ['%highlighter%', '%illuminator%'];
   if (id === 'hand_cream') return ['%hand cream%', '%hand balm%', '%hand lotion%'];
   if (id === 'micellar_cleansing_water') return ['%micellar%', '%cleansing water%'];
@@ -2187,6 +2268,17 @@ function classifyConfidenceLevel(base, candidate, layerId) {
 
   if (layerId === 'L3I' && base.isExternal && candidate.features.isExternal) {
     return hasSharedSimilarIntentFamily(base, candidate.features) ? 'medium' : 'low';
+  }
+
+  if (layerId === 'L3E' && base.isExternal && candidate.features.isExternal && candidate.leafMatch) {
+    const sameKnownVertical =
+      base.vertical !== UNKNOWN_VERTICAL &&
+      candidate.features.vertical !== UNKNOWN_VERTICAL &&
+      base.vertical === candidate.features.vertical;
+    const missingCandidateVertical = candidate.features.vertical === UNKNOWN_VERTICAL;
+    if (sameKnownVertical && candidate.relDiff != null && candidate.relDiff <= 0.6) return 'medium';
+    if (sameKnownVertical && candidate.tokenOverlap >= 0.08) return 'medium';
+    if (missingCandidateVertical && candidate.relDiff != null && candidate.relDiff <= 0.35) return 'medium';
   }
 
   if (base.vertical !== UNKNOWN_VERTICAL && candidate.features.vertical !== UNKNOWN_VERTICAL) {
@@ -3348,56 +3440,55 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
         return attachExternalFetchStats([]);
       }
     } else {
-    const deepRecallDomainCategoryCap = boundedRecallCap(3, 48);
-    const [
-      preloadedDomainTitleCategoryMatches,
-      preloadedDomainCategoryMatches,
-    ] = await Promise.all([
-      runTimedExternalQuery(
-        'external_domain_title_category',
-        () => runDomainTitleCategoryQuery(deepRecallDomainCategoryCap),
-        PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS,
-      ),
-      runTimedExternalQuery(
-        'external_domain_category',
-        () => runDomainCategoryQuery(deepRecallDomainCategoryCap),
-        PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS,
-      ),
-    ]);
-    out.push(...preloadedDomainTitleCategoryMatches);
-    let domainCategoryFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
-    out.push(...preloadedDomainCategoryMatches);
-    domainCategoryFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
-    const exactDomainCategorySellableCount = domainCategoryFocusedCandidates
-      .filter((product) => isSellable(product, { inStockOnly: true }))
-      .length;
-    exactDomainCategoryCandidateCount = displayUniqueCandidateCount(domainCategoryFocusedCandidates);
-    const exactDomainCategoryDisplayCoverageEnough =
-      exactDomainCategoryCandidateCount >= safeMinFocusedCandidates;
-    if (
-      intentFamilyPattern &&
-      (
+      const deepRecallDomainCategoryCap = boundedRecallCap(3, 48);
+      const [
+        preloadedDomainTitleCategoryMatches,
+        preloadedDomainCategoryMatches,
+      ] = await Promise.all([
+        runTimedExternalQuery(
+          'external_domain_title_category',
+          () => runDomainTitleCategoryQuery(deepRecallDomainCategoryCap),
+          PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS,
+        ),
+        runTimedExternalQuery(
+          'external_domain_category',
+          () => runDomainCategoryQuery(deepRecallDomainCategoryCap),
+          PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS,
+        ),
+      ]);
+      out.push(...preloadedDomainTitleCategoryMatches);
+      let domainCategoryFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
+      out.push(...preloadedDomainCategoryMatches);
+      domainCategoryFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
+      exactDomainCategoryCandidateCount = displayUniqueCandidateCount(domainCategoryFocusedCandidates);
+      const domainIntentCandidates = intentFamilyPattern
+        ? domainCategoryFocusedCandidates.filter((product) => getSimilarIntentFamilyFromProduct(product) === intentFamily)
+        : domainCategoryFocusedCandidates;
+      const exactDomainIntentCandidateCount = displayUniqueCandidateCount(domainIntentCandidates);
+      exactDomainCategoryFocusedEnough = exactDomainCategoryCandidateCount >= safeMinFocusedCandidates;
+      if (
+        intentFamilyPattern &&
+        (
+          !identityCollapseProtection
+            ? Math.max(exactDomainIntentCandidateCount, domainIntentCandidates.length) >= exactDomainCategoryGoodEnoughCount
+            : exactDomainIntentCandidateCount >= safeMinFocusedCandidates
+        )
+      ) {
+        return attachExternalFetchStats(domainIntentCandidates.slice(0, returnCap));
+      }
+      if (
+        exactDomainCategoryFocusedEnough &&
+        !intentFamilyPattern &&
         !identityCollapseProtection
-          ? Math.max(exactDomainCategoryCandidateCount, exactDomainCategorySellableCount) >= exactDomainCategoryGoodEnoughCount
-          : exactDomainCategoryDisplayCoverageEnough
-      )
-    ) {
-      return attachExternalFetchStats(domainCategoryFocusedCandidates.slice(0, returnCap));
-    }
-    exactDomainCategoryFocusedEnough = exactDomainCategoryCandidateCount >= safeMinFocusedCandidates;
-    if (
-      exactDomainCategoryFocusedEnough &&
-      !intentFamilyPattern &&
-      !identityCollapseProtection
-    ) {
-      return attachExternalFetchStats(domainCategoryFocusedCandidates.slice(0, returnCap));
-    }
-    if (
-      domainCategoryFocusedCandidates.length === 0 &&
-      timedOutStageCount(['external_domain_title_category', 'external_domain_category']) >= 2
-    ) {
-      return attachExternalFetchStats([]);
-    }
+      ) {
+        return attachExternalFetchStats(domainCategoryFocusedCandidates.slice(0, returnCap));
+      }
+      if (
+        domainCategoryFocusedCandidates.length === 0 &&
+        timedOutStageCount(['external_domain_title_category', 'external_domain_category']) >= 2
+      ) {
+        return attachExternalFetchStats([]);
+      }
     }
   }
   if (deepDomainRecall && normalizedDomainHints.length && !category) {
@@ -3466,8 +3557,11 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
           [...preloadedIntentFamilyMatches, ...out],
           (p) => `${getMerchantId(p)}::${getProductId(p)}`,
         );
-        if (hasDisplayCoverage(intentFocusedCandidates, focusedRecallTarget)) {
-          return attachExternalFetchStats(intentFocusedCandidates.slice(0, returnCap));
+        const exactIntentFocusedCandidates = intentFocusedCandidates.filter(
+          (product) => getSimilarIntentFamilyFromProduct(product) === intentFamily,
+        );
+        if (hasDisplayCoverage(exactIntentFocusedCandidates, focusedRecallTarget)) {
+          return attachExternalFetchStats(exactIntentFocusedCandidates.slice(0, returnCap));
         }
       }
     }
@@ -3478,15 +3572,21 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
         [...preloadedIntentFamilyMatches, ...out],
         (p) => `${getMerchantId(p)}::${getProductId(p)}`,
       );
-      if (hasDisplayCoverage(intentFocusedCandidates, focusedRecallTarget)) {
-        return attachExternalFetchStats(intentFocusedCandidates.slice(0, returnCap));
+      const exactIntentFocusedCandidates = intentFocusedCandidates.filter(
+        (product) => getSimilarIntentFamilyFromProduct(product) === intentFamily,
+      );
+      if (hasDisplayCoverage(exactIntentFocusedCandidates, focusedRecallTarget)) {
+        return attachExternalFetchStats(exactIntentFocusedCandidates.slice(0, returnCap));
       }
     }
     preloadedCategoryMatches = await loadCategoryMatches();
     out.push(...preloadedCategoryMatches);
     const categoryFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
     if (exactDomainCategoryFocusedEnough) {
-      return attachExternalFetchStats(categoryFocusedCandidates.slice(0, returnCap));
+      const safeCategoryFocusedCandidates = intentFamilyPattern
+        ? categoryFocusedCandidates.filter((product) => getSimilarIntentFamilyFromProduct(product) === intentFamily)
+        : categoryFocusedCandidates;
+      return attachExternalFetchStats(safeCategoryFocusedCandidates.slice(0, returnCap));
     }
     if (hasDisplayCoverage(categoryFocusedCandidates, safeMinFocusedCandidates) && !normalizedDomainHints.length) {
       return attachExternalFetchStats(categoryFocusedCandidates.slice(0, returnCap));
@@ -3750,8 +3850,9 @@ async function enrichExternalBaseProduct(baseProduct) {
       baseProduct?.recall_vertical ||
       existingRecall?.vertical,
   );
+  const existingCatalogPathVertical = semanticVerticalFromCatalogCategoryPath(getCatalogCategoryPathHint(enriched));
   const existingInferred = inferVerticalFromProduct(enriched);
-  const existingEffectiveVertical = existingStoredVertical || existingInferred.vertical;
+  const existingEffectiveVertical = existingCatalogPathVertical || existingStoredVertical || existingInferred.vertical;
   const existingBrand = getBrandName(enriched);
   const existingLeafCategory = getLeafCategory(enriched);
   const existingSignalStrength = computeSemanticSignalStrength({
@@ -3766,15 +3867,15 @@ async function enrichExternalBaseProduct(baseProduct) {
     existingEffectiveVertical !== UNKNOWN_VERTICAL &&
     existingSignalStrength >= 2
   ) {
-    if (existingStoredVertical) {
-      enriched.semantic_vertical = existingStoredVertical;
-      enriched.recall_vertical = existingStoredVertical;
+    if (existingCatalogPathVertical || existingStoredVertical) {
+      enriched.semantic_vertical = existingCatalogPathVertical || existingStoredVertical;
+      enriched.recall_vertical = existingCatalogPathVertical || existingStoredVertical;
     }
     return {
       product: enriched,
       semantic: {
         vertical: existingEffectiveVertical,
-        vertical_inferred: existingStoredVertical ? false : existingInferred.inferred,
+        vertical_inferred: existingCatalogPathVertical || existingStoredVertical ? false : existingInferred.inferred,
         signal_strength: existingSignalStrength,
         rescue_applied: false,
         rescue_fields: [],
@@ -3949,16 +4050,17 @@ async function enrichExternalBaseProduct(baseProduct) {
       seedData?.semantic_vertical ||
       seedData?.derived?.recall?.vertical,
   );
-  const effectiveVertical = storedRecallVertical || inferred.vertical;
-  if (storedRecallVertical) {
-    enriched.semantic_vertical = storedRecallVertical;
-    enriched.recall_vertical = storedRecallVertical;
+  const catalogPathVertical = semanticVerticalFromCatalogCategoryPath(getCatalogCategoryPathHint(enriched));
+  const effectiveVertical = catalogPathVertical || storedRecallVertical || inferred.vertical;
+  if (catalogPathVertical || storedRecallVertical) {
+    enriched.semantic_vertical = catalogPathVertical || storedRecallVertical;
+    enriched.recall_vertical = catalogPathVertical || storedRecallVertical;
   }
   return {
     product: enriched,
     semantic: {
       vertical: effectiveVertical,
-      vertical_inferred: storedRecallVertical ? false : inferred.inferred,
+      vertical_inferred: catalogPathVertical || storedRecallVertical ? false : inferred.inferred,
       signal_strength: computeSemanticSignalStrength({
         brand: getBrandName(enriched),
         leafCategory: getLeafCategory(enriched),

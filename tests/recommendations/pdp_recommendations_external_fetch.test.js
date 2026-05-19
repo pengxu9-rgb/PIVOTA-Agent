@@ -4,6 +4,7 @@ function makeExternalRow({
   title,
   brand = 'KraveBeauty',
   category = 'Serum',
+  catalog_category_path = '',
   domain = 'kravebeauty.com',
   description = 'Focused same-brand serum candidate',
 } = {}) {
@@ -18,6 +19,7 @@ function makeExternalRow({
     price_amount: 28,
     price_currency: 'USD',
     availability: 'in_stock',
+    ...(catalog_category_path ? { catalog_category_path } : {}),
     seed_brand: brand,
     seed_category: category,
     seed_product_type: category,
@@ -1670,6 +1672,108 @@ describe('RecommendationEngine external candidate fetch', () => {
     ).toBe(true);
   });
 
+  test('deep-domain recall does not let same-domain category rows short-circuit a different strict intent family', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const queryMock = jest.fn(async (sql, params) => {
+      const sqlText = String(sql);
+      if (sqlText.includes('domain = ANY($4)') && sqlText.includes('LIKE ANY($5::text[])')) {
+        return {
+          rows: Array.from({ length: 12 }).map((_, index) =>
+            makeExternalRow({
+              id: `eps_tirtir_serum_title_${index}`,
+              external_product_id: `ext_tirtir_serum_title_${index}`,
+              title: `TIRTIR Glow Serum ${index}`,
+              brand: 'TIRTIR Global',
+              category: 'Serum',
+              domain: 'tirtir.global',
+            }),
+          ),
+        };
+      }
+      if (
+        sqlText.includes('domain = ANY($4)') &&
+        sqlText.includes("seed_data->'derived'->'recall'->>'category")
+      ) {
+        return {
+          rows: Array.from({ length: 12 }).map((_, index) =>
+            makeExternalRow({
+              id: `eps_tirtir_serum_structured_${index}`,
+              external_product_id: `ext_tirtir_serum_structured_${index}`,
+              title: `TIRTIR Skin Serum ${index}`,
+              brand: 'TIRTIR Global',
+              category: 'Serum',
+              domain: 'tirtir.global',
+            }),
+          ),
+        };
+      }
+      if (
+        sqlText.includes("seed_data->'derived'->'recall'->>'retrieval_title'") &&
+        Array.isArray(params?.[3]) &&
+        params[3].includes('%highlighter%')
+      ) {
+        return {
+          rows: [
+            makeExternalRow({
+              id: 'eps_highlighter_1',
+              external_product_id: 'ext_highlighter_1',
+              title: 'Diamond Bomb All-Over Diamond Veil Highlighter',
+              brand: 'Fenty Beauty',
+              category: 'Highlighter',
+              domain: 'fentybeauty.com',
+            }),
+            makeExternalRow({
+              id: 'eps_highlighter_2',
+              external_product_id: 'ext_highlighter_2',
+              title: 'Kylighter Illuminating Powder',
+              brand: 'Kylie Cosmetics',
+              category: 'Highlighter',
+              domain: 'kyliecosmetics.com',
+            }),
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const products = await _internals.fetchExternalCandidates({
+      brandHint: 'TIRTIR Global',
+      categoryHint: 'Serum',
+      verticalHint: 'makeup',
+      intentFamilyHint: 'highlighter',
+      domainHints: ['https://tirtir.global/products/my-glow-ampoule-highlighter'],
+      limit: 36,
+      minFocusedCandidates: 12,
+      deepDomainRecall: true,
+    });
+
+    expect(products.map((product) => product.product_id)).toEqual(
+      expect.arrayContaining(['ext_highlighter_1', 'ext_highlighter_2']),
+    );
+    expect(products.map((product) => product.product_id)).not.toEqual(
+      expect.arrayContaining(['ext_tirtir_serum_title_0', 'ext_tirtir_serum_structured_0']),
+    );
+    expect(
+      queryMock.mock.calls.some(([sql]) =>
+        String(sql).includes("seed_data->'derived'->'recall'->>'retrieval_title'"),
+      ),
+    ).toBe(true);
+  });
+
+  test('new strict external intent families cover fragrance, face oil, eye cream, and moisturizer text', () => {
+    const { _internals } = require('../../src/services/RecommendationEngine');
+
+    expect(_internals.getSimilarIntentFamilyFromText('Cosmic 2.0 Eau de Parfum')).toBe('fragrance');
+    expect(_internals.getSimilarIntentFamilyFromText('Rare Rose Face Oil')).toBe('face_oil');
+    expect(_internals.getSimilarIntentFamilyFromText('Herbal Recovery Eye Cream')).toBe('eye_cream');
+    expect(_internals.getSimilarIntentFamilyFromText('Moisture Replenishing Day Cream')).toBe('moisturizer');
+  });
+
   test('deep-domain recall still loads global category rows when same-domain category rows may collapse by identity', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 
@@ -2286,6 +2390,106 @@ describe('RecommendationEngine external candidate fetch', () => {
       expect.arrayContaining(['ext_lucky_pouch', 'ext_soap_saver']),
     );
     expect(result.metadata.similar_status).toBe('ready');
+  });
+
+  test('recommend accepts external fragrance leaf matches when catalog category path supplies vertical quality', async () => {
+    const { recommend, _internals } = require('../../src/services/RecommendationEngine');
+    _internals.resetCache();
+
+    const result = await recommend({
+      pdp_product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_kylie_cosmic_2',
+        title: 'Cosmic 2.0 Eau de Parfum',
+        brand: 'Kylie Cosmetics',
+        category_path: 'beauty/fragrance/perfume',
+        canonical_url: 'https://kyliecosmetics.com/products/cosmic-2-eau-de-parfum',
+        price: 78,
+        currency: 'USD',
+        inventory_quantity: 10,
+        status: 'active',
+        source: 'external_seed',
+      },
+      k: 4,
+      options: {
+        debug: true,
+        no_cache: true,
+        internal_candidates: [],
+        external_candidates: [
+          'Cosmic Kylie Jenner Eau de Parfum',
+          'Cosmic 2.0 Eau de Parfum Pen Spray',
+          'Pixi Rose Eau de Parfum',
+          'Pixi Jasmine Eau de Parfum',
+        ].map((title, index) => ({
+          merchant_id: 'external_seed',
+          product_id: `ext_fragrance_${index}`,
+          title,
+          brand: index < 2 ? 'Kylie Cosmetics' : 'Pixi',
+          category_path: 'beauty/fragrance/perfume',
+          price: 60 + index * 5,
+          currency: 'USD',
+          inventory_quantity: 10,
+          status: 'active',
+          source: 'external_seed',
+        })),
+      },
+    });
+
+    expect(result.debug?.base?.vertical).toBe('fragrance');
+    expect(result.metadata.similar_status).toBe('ready');
+    expect(result.items.length).toBeGreaterThanOrEqual(4);
+    expect(result.items.every((item) => item.merchant_id === 'external_seed')).toBe(true);
+  });
+
+  test('recommend lets catalog category path override stale external seed vertical before picking similar products', async () => {
+    const { recommend, _internals } = require('../../src/services/RecommendationEngine');
+    _internals.resetCache();
+
+    const result = await recommend({
+      pdp_product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_jurlique_rare_rose_face_oil',
+        title: 'Rare Rose Face Oil',
+        brand: 'Jurlique',
+        category_path: 'beauty/skincare/moisturize/oil',
+        semantic_vertical: 'fragrance',
+        recall_vertical: 'fragrance',
+        price: 70,
+        currency: 'USD',
+        inventory_quantity: 10,
+        status: 'active',
+        source: 'external_seed',
+      },
+      k: 4,
+      options: {
+        debug: true,
+        no_cache: true,
+        internal_candidates: [],
+        external_candidates: [
+          'Herbal Recovery Face Oil',
+          'Antioxidant Face Oil',
+          'Nourishing Facial Oil',
+          'Glow Replenishing Face Oil',
+        ].map((title, index) => ({
+          merchant_id: 'external_seed',
+          product_id: `ext_face_oil_${index}`,
+          title,
+          brand: index === 0 ? 'Jurlique' : `Skincare Brand ${index}`,
+          category_path: 'beauty/skincare/moisturize/oil',
+          price: 60 + index * 4,
+          currency: 'USD',
+          inventory_quantity: 10,
+          status: 'active',
+          source: 'external_seed',
+        })),
+      },
+    });
+
+    expect(result.debug?.base?.vertical).toBe('skincare');
+    expect(result.metadata.similar_status).toBe('ready');
+    expect(result.items.map((item) => item.product_id)).toEqual(
+      expect.arrayContaining(['ext_face_oil_0', 'ext_face_oil_1']),
+    );
   });
 
   test('uses internal category-focused candidates before recent merchant rows', async () => {
