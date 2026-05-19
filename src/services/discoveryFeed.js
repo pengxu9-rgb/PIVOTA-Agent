@@ -3921,7 +3921,7 @@ async function fetchDiscoveryRecallStep({
         failure_reason:
           err?.code === 'ECONNABORTED' || /timeout/i.test(String(err?.message || ''))
             ? 'timeout'
-            : 'request_error',
+            : `request_error:${err?.code || 'unknown'}`,
         error: err?.message || String(err),
       },
     };
