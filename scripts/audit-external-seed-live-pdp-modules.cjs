@@ -387,6 +387,7 @@ function buildRowAudit(row, probe) {
     productKind.formula_content_required ||
     variant.bad_labels.length > 0 ||
     variant.variant_count > 1;
+  const requiresHowTo = productKind.formula_content_required;
 
   const blockingReasons = [];
   if (!gallery.ok) blockingReasons.push('gallery_missing_or_bloated');
@@ -397,21 +398,21 @@ function buildRowAudit(row, probe) {
   if (productKind.formula_content_required && !content.ingredients_present) blockingReasons.push('missing_ingredients');
   if (productKind.formula_content_required && content.ingredients_force_filled) blockingReasons.push('force_filled_ingredients');
   if (content.active_ingredients_force_filled) blockingReasons.push('force_filled_active_ingredients');
-  if (!content.how_to_present) blockingReasons.push('missing_how_to');
+  if (requiresHowTo && !content.how_to_present) blockingReasons.push('missing_how_to');
   if (!content.overview_present) blockingReasons.push('missing_overview');
   if (!content.details_present) blockingReasons.push('missing_details');
   if (hasUnavailableModule(pdp, 'product_intel')) blockingReasons.push('product_intel_unavailable');
 
   const coreReady =
     gallery.ok &&
-    variant.ok &&
+    (!requiresVariantClarity || variant.ok) &&
     insights.ok &&
     !insights.seller_only_evidence &&
     reviews.ok &&
     (!productKind.formula_content_required || content.ingredients_present) &&
     (!productKind.formula_content_required || !content.ingredients_force_filled) &&
     !content.active_ingredients_force_filled &&
-    content.how_to_present &&
+    (!requiresHowTo || content.how_to_present) &&
     content.overview_present;
 
   return {
