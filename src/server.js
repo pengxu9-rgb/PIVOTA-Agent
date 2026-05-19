@@ -20420,6 +20420,35 @@ function isAccessoryLikePdpForSimilarSuppression(product = {}, pdpSchemaProfile 
   return profile === 'generic_merch' && PDP_SIMILAR_ACCESSORY_TITLE_RE.test(text);
 }
 
+function isExternalSeedPdpProduct(product = {}) {
+  const merchantId = String(product?.merchant_id || product?.merchantId || product?.merchant?.id || '').trim();
+  const productId = String(product?.product_id || product?.productId || product?.id || '').trim();
+  const platformProductId = String(product?.platform_product_id || product?.platformProductId || '').trim();
+  return (
+    merchantId === EXTERNAL_SEED_MERCHANT_ID ||
+    isExternalSeedProductId(productId) ||
+    isExternalSeedProductId(platformProductId)
+  );
+}
+
+function shouldSkipPdpSimilarFetchForAccessory({
+  product = {},
+  pdpSchemaProfile = '',
+} = {}) {
+  if (!isExternalSeedPdpProduct(product)) return false;
+  const text = [
+    product.title,
+    product.name,
+    product.category,
+    product.product_type,
+    product.productType,
+    product.category_path,
+    product.categoryPath,
+  ].filter(Boolean).join(' ');
+  const sampleLike = /\b(?:sachet|trial\s*kit|sample)\b/i.test(text);
+  return sampleLike || isAccessoryLikePdpForSimilarSuppression(product, pdpSchemaProfile);
+}
+
 function shouldHideEmptySimilarModuleForPdp({
   product = {},
   pdpSchemaProfile = '',
@@ -30809,6 +30838,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        : Promise.resolve(null);
 
       const similarCacheBypass = wantsSimilar ? resolvePdpSimilarCacheBypass(payload) : false;
+      const preSimilarPdpSchemaProfile = wantsSimilar
+        ? resolvePdpSchemaProfile(canonicalProductForPdp)
+        : '';
+      const skipSimilarFetchForAccessory = wantsSimilar && shouldSkipPdpSimilarFetchForAccessory({
+        product: canonicalProductForPdp,
+        pdpSchemaProfile: preSimilarPdpSchemaProfile,
+      });
 
 	      // Similar products (non-blocking; can be requested by include=similar).
 	      // Run in parallel with reviews fetch to avoid additive latency on first paint.
@@ -30816,6 +30852,21 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         ? (async () => {
             const moduleStartedAt = Date.now();
             try {
+              if (skipSimilarFetchForAccessory) {
+                return {
+                  status: 'empty',
+                  strategy: 'related_products',
+                  items: [],
+                  metadata: {
+                    similar_status: 'empty',
+                    skipped: true,
+                    skipped_reason: 'no_verified_accessory_matches',
+                    low_confidence: false,
+                    low_confidence_reason_codes: [],
+                    underfill: 0,
+                  },
+                };
+              }
               const { fetchArgs } = buildPdpSimilarFetchArgs({
                 payload,
                 canonicalProductForPdp,
@@ -38888,6 +38939,8 @@ module.exports._debug = {
   enrichSimilarProductsForPdpCards,
   getSimilarCardEnrichmentMetadata,
   shouldEnrichSimilarCard,
+  isAccessoryLikePdpForSimilarSuppression,
+  shouldSkipPdpSimilarFetchForAccessory,
   buildFindProductsMultiDiscoveryBridgeResponse,
   fetchProductDetailForOffers,
   fetchExternalSeedProductDetailFromDb,
