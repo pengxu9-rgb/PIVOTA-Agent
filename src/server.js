@@ -4253,11 +4253,62 @@ async function fetchExternalSeedProductDetailFromDb(args) {
   }
 }
 
+// Single-flight + short-TTL memoization for the Pivota-signature -> catalog product_ref
+// resolver. The lookup is read-only and deterministic for a given sig_*. Real PDP traffic
+// includes lots of repeat/concurrent fetches for the same product (rapid back-nav, multiple
+// page components hydrating the same PDP, hotset items). Without this, every request runs
+// the 2-3 DB round-trips in resolveCatalogProductRefFromPivotaSignature (~400-500ms total).
+const RESOLVE_CATALOG_SIGNATURE_CACHE_ENABLED =
+  process.env.RESOLVE_CATALOG_SIGNATURE_CACHE_ENABLED !== 'false';
+const RESOLVE_CATALOG_SIGNATURE_CACHE_TTL_MS = Math.max(
+  5_000,
+  parseTimeoutMs(process.env.RESOLVE_CATALOG_SIGNATURE_CACHE_TTL_MS, 60_000),
+);
+const RESOLVE_CATALOG_SIGNATURE_CACHE_MAX_ENTRIES = Math.max(
+  50,
+  Number(process.env.RESOLVE_CATALOG_SIGNATURE_CACHE_MAX_ENTRIES || 1000) || 1000,
+);
+const RESOLVE_CATALOG_SIGNATURE_CACHE = new Map(); // sigId -> { value, expiresAtMs }
+const RESOLVE_CATALOG_SIGNATURE_INFLIGHT = new Map(); // sigId -> Promise
+
 async function resolveCatalogProductRefFromPivotaSignature(productId) {
   if (!process.env.DATABASE_URL) return null;
   const normalizedProductId = String(productId || '').trim();
   if (!isPivotaSignatureProductId(normalizedProductId)) return null;
 
+  if (RESOLVE_CATALOG_SIGNATURE_CACHE_ENABLED) {
+    const cached = RESOLVE_CATALOG_SIGNATURE_CACHE.get(normalizedProductId);
+    if (cached && cached.expiresAtMs > Date.now()) {
+      return cached.value;
+    }
+    if (cached) RESOLVE_CATALOG_SIGNATURE_CACHE.delete(normalizedProductId);
+
+    const inflight = RESOLVE_CATALOG_SIGNATURE_INFLIGHT.get(normalizedProductId);
+    if (inflight) return inflight;
+
+    const promise = resolveCatalogProductRefFromPivotaSignatureInner(normalizedProductId)
+      .then((value) => {
+        if (RESOLVE_CATALOG_SIGNATURE_CACHE.size >= RESOLVE_CATALOG_SIGNATURE_CACHE_MAX_ENTRIES) {
+          const firstKey = RESOLVE_CATALOG_SIGNATURE_CACHE.keys().next().value;
+          if (firstKey !== undefined) RESOLVE_CATALOG_SIGNATURE_CACHE.delete(firstKey);
+        }
+        RESOLVE_CATALOG_SIGNATURE_CACHE.set(normalizedProductId, {
+          value,
+          expiresAtMs: Date.now() + RESOLVE_CATALOG_SIGNATURE_CACHE_TTL_MS,
+        });
+        return value;
+      })
+      .finally(() => {
+        RESOLVE_CATALOG_SIGNATURE_INFLIGHT.delete(normalizedProductId);
+      });
+    RESOLVE_CATALOG_SIGNATURE_INFLIGHT.set(normalizedProductId, promise);
+    return promise;
+  }
+
+  return resolveCatalogProductRefFromPivotaSignatureInner(normalizedProductId);
+}
+
+async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProductId) {
   try {
     const exactResult = await query(
       `
