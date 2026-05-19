@@ -29663,8 +29663,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 		        markPdpV2Phase('resolve_catalog_signature', signatureResolveStartedAt);
 		        if (signatureProductRef?.product_id && signatureProductRef?.merchant_id) {
               requestedPivotaSignatureId = requestedProductIdForDiagnostics;
-		          productId = String(signatureProductRef.product_id || '').trim() || productId;
-		          requestedMerchantId = String(signatureProductRef.merchant_id || '').trim() || requestedMerchantId;
+              const signatureResolvedProductId =
+                String(signatureProductRef.product_id || '').trim() || productId;
+              const signatureResolvedMerchantId =
+                String(signatureProductRef.merchant_id || '').trim() || requestedMerchantId;
+		          productId = signatureResolvedProductId;
+		          requestedMerchantId = signatureResolvedMerchantId;
 		          if (signatureProductRef.product_group_id) {
 		            productGroupId = String(signatureProductRef.product_group_id || '').trim() || productGroupId;
 		          }
@@ -29673,6 +29677,21 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 		          } else if (Array.isArray(signatureProductRef.members) && signatureProductRef.members.length > 0) {
 		            groupMembers = signatureProductRef.members;
 		          }
+              if (signatureProductRef.source === 'canonical_catalog_signature') {
+                canonicalProductRef = {
+                  merchant_id: signatureResolvedMerchantId,
+                  product_id: signatureResolvedProductId,
+                  ...(signatureProductRef.platform
+                    ? { platform: String(signatureProductRef.platform).trim() }
+                    : {}),
+                  ...(signatureProductRef.product_key
+                    ? { product_key: String(signatureProductRef.product_key).trim() }
+                    : {}),
+                  ...(signatureProductRef.canonical_sig_id
+                    ? { pivota_signature_id: String(signatureProductRef.canonical_sig_id).trim() }
+                    : {}),
+                };
+              }
 		          canonicalizationApplied = productId !== requestedProductIdForDiagnostics;
 		          canonicalizationReasonCode = canonicalizationApplied ? 'PIVOTA_SIGNATURE_ID' : null;
 		          identityResolutionSource =
@@ -30236,9 +30255,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        }
 	      }
 	      if (pdpV2ProductGroupResolveMode === 'not_started') {
-	        pdpV2ProductGroupResolveMode = shouldSkipExternalSeedUpstreamGroupResolve
-	          ? 'skipped_external_seed_upstream_disabled'
-	          : canonicalProductRef ? 'not_needed' : 'skipped';
+	        pdpV2ProductGroupResolveMode = canonicalProductRef
+            ? 'not_needed'
+            : shouldSkipExternalSeedUpstreamGroupResolve
+              ? 'skipped_external_seed_upstream_disabled'
+              : 'skipped';
 	      }
 	      markPdpV2Phase('resolve_group_cached', resolveGroupCachedStartedAt || Date.now());
 
@@ -30352,6 +30373,20 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        productRef: canonicalProductRef,
 	        fallbackProduct: canonicalProduct,
 	      });
+        let catalogIdentity = null;
+        const shouldHydrateCatalogIdentityBeforeIdentityGraph =
+          Boolean(requestedPivotaSignatureId) &&
+          canonicalProductRef?.merchant_id === EXTERNAL_SEED_MERCHANT_ID &&
+          isExternalSeedProductId(canonicalProductRef?.product_id);
+        if (shouldHydrateCatalogIdentityBeforeIdentityGraph) {
+          const catalogIdentityStartedAt = Date.now();
+          catalogIdentity = await resolveCatalogIdentityForProductRef({
+            merchantId: canonicalProductRef?.merchant_id,
+            productId: canonicalProductRef?.product_id,
+            productKey: canonicalProductRef?.product_key,
+          });
+          markPdpV2Phase('catalog_identity_hydration', catalogIdentityStartedAt);
+        }
 		      const identityGraphLiveStartedAt = Date.now();
 	        const identityGraphLookupProductId =
 	          productGroupAliasId && canonicalProductRef?.product_id
@@ -30374,7 +30409,24 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           !productGroupAliasId &&
           !canonicalizationApplied &&
           !(Array.isArray(groupMembers) && groupMembers.length > 1);
-		      if (!identityGraphLive && !shouldSkipDirectExternalSeedIdentityGraph) {
+        const shouldSkipSigExternalSeedIdentityGraph =
+          Boolean(requestedPivotaSignatureId) &&
+          canonicalizationApplied &&
+          canonicalizationReasonCode === 'PIVOTA_SIGNATURE_ID' &&
+          canonicalProductRef?.merchant_id === EXTERNAL_SEED_MERCHANT_ID &&
+          isExternalSeedProductId(canonicalProductRef?.product_id) &&
+          (!requestedMerchantId || requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID) &&
+          !variantId &&
+          !offerId &&
+          !hasExplicitProductGroup &&
+          !offerProductGroupId &&
+          !productGroupAliasId &&
+          Boolean(catalogIdentity?.pivota_signature_id);
+		      if (
+            !identityGraphLive &&
+            !shouldSkipDirectExternalSeedIdentityGraph &&
+            !shouldSkipSigExternalSeedIdentityGraph
+          ) {
             pdpV2IdentityGraphLiveMode = shouldHydrateIdentityLineMemberPayloads
               ? 'executed_full_hydration'
               : 'executed_without_line_member_hydration';
@@ -30388,7 +30440,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 		      } else if (identityGraphLive) {
             pdpV2IdentityGraphLiveMode = 'preloaded';
           } else {
-            pdpV2IdentityGraphLiveMode = 'skipped_direct_external_seed_no_group';
+            pdpV2IdentityGraphLiveMode = shouldSkipSigExternalSeedIdentityGraph
+              ? 'skipped_sig_external_seed_catalog_identity'
+              : 'skipped_direct_external_seed_no_group';
           }
 	      markPdpV2Phase('identity_graph_live', identityGraphLiveStartedAt);
 	      if (identityGraphLive?.synthetic_product && wantsProductIntel) {
@@ -30445,13 +30499,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             canonicalProductRef?.product_id || productId,
           );
         }
-        const catalogIdentityStartedAt = Date.now();
-        const catalogIdentity = await resolveCatalogIdentityForProductRef({
-          merchantId: canonicalProductRef?.merchant_id,
-          productId: canonicalProductRef?.product_id,
-          productKey: canonicalProductRef?.product_key,
-        });
-        markPdpV2Phase('catalog_identity_hydration', catalogIdentityStartedAt);
+        if (!catalogIdentity) {
+          const catalogIdentityStartedAt = Date.now();
+          catalogIdentity = await resolveCatalogIdentityForProductRef({
+            merchantId: canonicalProductRef?.merchant_id,
+            productId: canonicalProductRef?.product_id,
+            productKey: canonicalProductRef?.product_key,
+          });
+          markPdpV2Phase('catalog_identity_hydration', catalogIdentityStartedAt);
+        }
         if (catalogIdentity?.pivota_signature_id) {
           canonicalProductForPdp = applyCatalogIdentityToPdpProduct(
             canonicalProductForPdp,
