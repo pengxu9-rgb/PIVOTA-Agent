@@ -2881,6 +2881,11 @@ Contains four types of peptides`,
                 name: 'Mini Fragrance',
                 source_kind: 'shopify_body_html_labeled_sections',
               },
+              {
+                name: '. Product copy before Set includes: 1 compact palette',
+                source_kind: 'bundle_component_description_candidate',
+                raw_text: '. Product copy before Set includes: 1 compact palette',
+              },
             ],
             variants: [],
           },
@@ -2902,6 +2907,11 @@ Contains four types of peptides`,
       {
         name: 'Mini Fragrance',
         source_kind: 'shopify_body_html_labeled_sections',
+      },
+      {
+        name: '1 compact palette',
+        source_kind: 'bundle_component_description_candidate',
+        raw_text: '. Product copy before Set includes: 1 compact palette',
       },
     ]);
     expect(payload.nextRow.seed_data.snapshot.product_kind).toBe('bundle');

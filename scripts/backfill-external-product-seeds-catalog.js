@@ -1835,12 +1835,19 @@ function normalizeProductKind(value) {
   return EXTERNAL_SEED_PRODUCT_KINDS.has(normalized) ? normalized : '';
 }
 
+function cleanBundleComponentName(value) {
+  let next = normalizeNonEmptyString(value);
+  const setIncludesMatch = next.match(/\bset\s+includes\s*:?\s*(.+)$/i);
+  if (setIncludesMatch) next = normalizeNonEmptyString(setIncludesMatch[1]);
+  return next.replace(/^[\s.,:;-]+/, '').replace(/\s+/g, ' ').trim();
+}
+
 function normalizeBundleComponents(value, maxItems = 24) {
   const items = Array.isArray(value) ? value : [];
   const out = [];
   const seen = new Set();
   for (const item of items) {
-    const name = normalizeNonEmptyString(item?.name);
+    const name = cleanBundleComponentName(item?.name);
     const quantity = normalizeNonEmptyString(item?.quantity);
     const sourceKind = normalizeNonEmptyString(item?.source_kind || item?.sourceKind) || 'catalog_intelligence_bundle_component';
     const rawText = normalizeNonEmptyString(item?.raw_text || item?.rawText);

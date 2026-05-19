@@ -37,6 +37,8 @@ function collectExternalSeedProductKindText(input = {}) {
     input.title,
     input.name,
     input.display_name,
+    input.product_kind,
+    input.product_family,
     input.category,
     input.product_type,
     input.canonical_url,
@@ -44,12 +46,16 @@ function collectExternalSeedProductKindText(input = {}) {
     input.url,
     seedData.title,
     seedData.name,
+    seedData.product_kind,
+    seedData.product_family,
     seedData.category,
     seedData.product_type,
     seedData.productType,
     seedData.source_page_type,
     snapshot.title,
     snapshot.name,
+    snapshot.product_kind,
+    snapshot.product_family,
     snapshot.category,
     snapshot.product_type,
     snapshot.productType,
@@ -58,6 +64,35 @@ function collectExternalSeedProductKindText(input = {}) {
     .map(asString)
     .filter(Boolean)
     .join(' ');
+}
+
+function normalizeExplicitProductFamily(value) {
+  const normalized = asString(value).toLowerCase().replace(/[\s-]+/g, '_');
+  if (!normalized) return '';
+  if (['non_merch', 'non_merchandise'].includes(normalized)) return 'non_merch';
+  if (['bundle', 'set', 'set_or_collection', 'collection'].includes(normalized)) return 'set_or_collection';
+  if (['accessory', 'tool', 'beauty_tool'].includes(normalized)) return 'accessory';
+  if (['sample', 'sample_like'].includes(normalized)) return 'sample';
+  if (['single_formula', 'formula'].includes(normalized)) return 'single_formula';
+  return '';
+}
+
+function resolveExplicitProductFamily(input = {}) {
+  const seedData = asPlainObject(input.seed_data);
+  const snapshot = asPlainObject(seedData.snapshot);
+  const candidates = [
+    { value: input.product_family, reason: 'explicit_product_family_signal' },
+    { value: seedData.product_family, reason: 'explicit_product_family_signal' },
+    { value: snapshot.product_family, reason: 'explicit_product_family_signal' },
+    { value: input.product_kind, reason: 'explicit_product_kind_signal' },
+    { value: seedData.product_kind, reason: 'explicit_product_kind_signal' },
+    { value: snapshot.product_kind, reason: 'explicit_product_kind_signal' },
+  ];
+  for (const candidate of candidates) {
+    const family = normalizeExplicitProductFamily(candidate.value);
+    if (family) return { family, reason: candidate.reason };
+  }
+  return null;
 }
 
 function collectCategoryPathCandidates(input = {}) {
@@ -108,6 +143,11 @@ function hasToolCategoryPath(input = {}) {
 }
 
 function classifyExternalSeedProductKind(input = {}) {
+  const explicitFamily = resolveExplicitProductFamily(input);
+  if (explicitFamily) {
+    return { family: explicitFamily.family, reasons: [explicitFamily.reason] };
+  }
+
   const text = collectExternalSeedProductKindText(input);
   const reasons = [];
 

@@ -69,6 +69,26 @@ describe('external seed product kind classification', () => {
     );
   });
 
+  test('honors reviewed explicit product kind from seed data', () => {
+    expect(
+      classifyExternalSeedProductKind({
+        title: 'Own Your Glow Palette',
+        category_path: ['beauty', 'makeup', 'face'],
+        seed_data: {
+          product_kind: 'bundle',
+          snapshot: {
+            product_kind: 'bundle',
+          },
+        },
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        family: 'set_or_collection',
+        reasons: expect.arrayContaining(['explicit_product_kind_signal']),
+      }),
+    );
+  });
+
   test('classifies hidden free-gift app products as non-merch', () => {
     expect(
       classifyExternalSeedProductKind({
