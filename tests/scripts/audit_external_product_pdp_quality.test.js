@@ -710,6 +710,48 @@ describe('audit-external-product-pdp-quality helpers', () => {
     expect(gate.failure_reasons).not.toContain('makeup_shade_missing_visual');
   });
 
+  test('allows shade axis for color-correcting brightener products', () => {
+    const livePayload = {
+      product: {
+        product_id: 'ext_correction_concentrate',
+        merchant_id: 'external_seed',
+        title: 'Correction Concentrate',
+        category: 'Skincare',
+        product_type: 'Brightener',
+        variants: [
+          {
+            variant_id: 'v_brightening_peach',
+            title: 'Brightening Peach',
+            swatch_image_url: 'https://example.com/brightening-peach.png',
+            options: [{ name: 'Shade', value: 'Brightening Peach', axis_kind: 'shade' }],
+          },
+          {
+            variant_id: 'v_awakening_apricot',
+            title: 'Awakening Apricot',
+            swatch_image_url: 'https://example.com/awakening-apricot.png',
+            options: [{ name: 'Shade', value: 'Awakening Apricot', axis_kind: 'shade' }],
+          },
+        ],
+      },
+      modules: [{ type: 'variant_selector', data: { selected_variant_id: 'v_brightening_peach' } }],
+    };
+
+    const gate = buildVariantGate({
+      seedData: {
+        title: 'Correction Concentrate',
+        category: 'Skincare',
+        product_type: 'Brightener',
+        tags: ['complexion', 'concealer', 'makeup'],
+        snapshot: { title: 'Correction Concentrate' },
+      },
+      livePayload,
+      liveResponse: { modules: [{ type: 'canonical', data: { pdp_payload: livePayload } }] },
+    });
+
+    expect(gate.failure_reasons).not.toContain('wrong_axis_for_category');
+    expect(gate.failure_reasons).not.toContain('makeup_shade_missing_visual');
+  });
+
   test('exempts set and collection PDPs from single-product similar underfill', () => {
     const gate = buildSimilarGate({
       similarResponse: { products: [] },
