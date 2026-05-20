@@ -49,6 +49,15 @@ const normalizeIngredientItems =
   typeof ingredientAuthorityInternals.normalizeIngredientItems === 'function'
     ? ingredientAuthorityInternals.normalizeIngredientItems
     : (items) => Array.from(new Set((Array.isArray(items) ? items : []).map(normalizeNonEmptyString).filter(Boolean)));
+const PRODUCT_INTEL_OPTIONAL_PRODUCT_FAMILIES = new Set(['accessory', 'non_merch', 'sample']);
+
+function normalizeProductFamily(value) {
+  return normalizeNonEmptyString(value).toLowerCase().replace(/[\s-]+/g, '_');
+}
+
+function shouldExemptTerminalHoldAuxiliaryGate({ productFamily = '', terminalHold = false } = {}) {
+  return Boolean(terminalHold && PRODUCT_INTEL_OPTIONAL_PRODUCT_FAMILIES.has(normalizeProductFamily(productFamily)));
+}
 
 function normalizeAmount(value) {
   if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
@@ -653,7 +662,7 @@ function extractCanonicalData(liveResponse = {}) {
   return ensureJsonObject(canonical?.data);
 }
 
-function buildIdentityGate({ livePayload = {}, liveResponse = {} } = {}) {
+function buildIdentityGate({ livePayload = {}, liveResponse = {}, productFamily = '', terminalHold = false } = {}) {
   const canonicalData = extractCanonicalData(liveResponse);
   const product = ensureJsonObject(livePayload?.product);
   const productGroupId = normalizeNonEmptyString(
@@ -690,6 +699,20 @@ function buildIdentityGate({ livePayload = {}, liveResponse = {} } = {}) {
   if (!productGroupId || !productLineId) {
     failureReasons.push('missing_pdp_identity');
   }
+  if (
+    failureReasons.length &&
+    shouldExemptTerminalHoldAuxiliaryGate({ productFamily, terminalHold })
+  ) {
+    return {
+      status: 'exempt',
+      product_group_id: productGroupId || null,
+      product_line_id: productLineId || null,
+      sellable_item_group_id: sellableItemGroupId || null,
+      exempt: true,
+      skipped_reason: `terminal_hold_${normalizeProductFamily(productFamily)}`,
+      failure_reasons: [],
+    };
+  }
   return {
     status: failureReasons.length ? 'failed' : 'passed',
     product_group_id: productGroupId || null,
@@ -699,7 +722,7 @@ function buildIdentityGate({ livePayload = {}, liveResponse = {} } = {}) {
   };
 }
 
-function buildProductIntelGate({ livePayload = {}, liveResponse = {} } = {}) {
+function buildProductIntelGate({ livePayload = {}, liveResponse = {}, productFamily = '', terminalHold = false } = {}) {
   const modules = collectModules(liveResponse, livePayload);
   const productIntelModule = modules.find((module) => module?.type === 'product_intel') || null;
   const topLevelIntel = ensureJsonObject(liveResponse?.product_intel || livePayload?.product_intel);
@@ -718,6 +741,19 @@ function buildProductIntelGate({ livePayload = {}, liveResponse = {} } = {}) {
     productIntelStatus === 'generating' ||
     normalizeNonEmptyString(productIntelModule?.reason).toLowerCase() === 'missing_blocked';
   const failureReasons = blocked ? ['product_intel_module_empty_or_blocked'] : [];
+  if (
+    failureReasons.length &&
+    shouldExemptTerminalHoldAuxiliaryGate({ productFamily, terminalHold })
+  ) {
+    return {
+      status: 'exempt',
+      has_product_intel: hasProductIntelData,
+      product_intel_status: productIntelStatus || null,
+      exempt: true,
+      skipped_reason: `terminal_hold_${normalizeProductFamily(productFamily)}`,
+      failure_reasons: [],
+    };
+  }
   return {
     status: failureReasons.length ? 'failed' : 'passed',
     has_product_intel: hasProductIntelData,

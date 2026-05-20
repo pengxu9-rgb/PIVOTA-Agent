@@ -699,6 +699,21 @@ function resolveExpectedLivePdpPrice(row = {}) {
   return Number.isFinite(amount) && amount > 0 ? row.price_amount : null;
 }
 
+function hasTerminalHoldMarker(seedData = {}, snapshot = {}) {
+  return [
+    seedData.transaction_readiness_blocker_v1,
+    snapshot.transaction_readiness_blocker_v1,
+    seedData.non_merch_terminal_hold_v1,
+    snapshot.non_merch_terminal_hold_v1,
+    seedData.source_unavailable_v1,
+    snapshot.source_unavailable_v1,
+  ]
+    .map(ensureJsonObject)
+    .some((contract) =>
+      Boolean(normalizeNonEmptyString(contract.status || contract.reason || contract.contract_version)),
+    );
+}
+
 async function auditRow(row, {
   catalogBaseUrl,
   gatewayUrl,
@@ -784,6 +799,7 @@ async function auditRow(row, {
     extractorProduct: extractor.product || {},
     seedData,
   });
+  const terminalHold = hasTerminalHoldMarker(seedData, snapshot);
   const livePdpGate = buildLivePdpGate({
     extractorProduct: extractor.product || {},
     livePayload,
@@ -796,10 +812,14 @@ async function auditRow(row, {
   const identityGate = buildIdentityGate({
     livePayload: unwrapLivePdpPayload(corePdp),
     liveResponse: ensureJsonObject(corePdp),
+    productFamily: productKind.family,
+    terminalHold,
   });
   const productIntelGate = buildProductIntelGate({
     livePayload: unwrapLivePdpPayload(corePdp),
     liveResponse: ensureJsonObject(corePdp),
+    productFamily: productKind.family,
+    terminalHold,
   });
   const similarGate = buildSimilarGate({
     similarResponse: ensureJsonObject(similar),

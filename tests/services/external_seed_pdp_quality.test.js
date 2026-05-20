@@ -2,6 +2,7 @@ const {
   buildSeedGate,
   buildExtractorGate,
   buildSourceUnavailableExtractorGate,
+  buildIdentityGate,
   buildProductIntelGate,
   buildLivePdpGate,
   buildSimilarGate,
@@ -341,6 +342,32 @@ describe('externalSeedPdpQuality', () => {
 
     expect(gate.status).toBe('failed');
     expect(gate.failure_reasons).toEqual(['product_intel_module_empty_or_blocked']);
+  });
+
+  test('exempts reviewed terminal-held non-merch rows from auxiliary identity and product intel gates', () => {
+    const productIntelGate = buildProductIntelGate({
+      productFamily: 'non_merch',
+      terminalHold: true,
+      liveResponse: {
+        modules: [{ type: 'product_intel', data: null, reason: 'missing_blocked' }],
+        metadata: { product_intel_status: 'missing_blocked' },
+      },
+    });
+    const identityGate = buildIdentityGate({
+      productFamily: 'non_merch',
+      terminalHold: true,
+      livePayload: {
+        product: {
+          product_group_id: 'pg:external:ext_hat',
+          sellable_item_group_id: 'pg:external:ext_hat',
+        },
+      },
+    });
+
+    expect(productIntelGate.status).toBe('exempt');
+    expect(productIntelGate.failure_reasons).toEqual([]);
+    expect(identityGate.status).toBe('exempt');
+    expect(identityGate.failure_reasons).toEqual([]);
   });
 
   test('flags structured sections, merchant FAQ, active ingredients, and thin similar card drift', () => {
