@@ -635,6 +635,35 @@ describe('externalSeedPdpQuality', () => {
     expect(similarGate.card_highlight_missing_count).toBe(3);
   });
 
+  test('does not allow seller-only similar card fallbacks to pass', () => {
+    const similarGate = buildSimilarGate({
+      similarResponse: {
+        products: [
+          {
+            product_id: 'ext_1',
+            merchant_id: 'external_seed',
+            title: 'Lemongrass Tea Shampoo',
+            shopping_card: {
+              highlight: 'Shampoo routine format',
+              evidence_profile: 'seller_only',
+            },
+          },
+          { product_id: 'ext_2', merchant_id: 'external_seed', title: 'Ready card 2', card_highlight: 'Daily shampoo.' },
+          { product_id: 'ext_3', merchant_id: 'external_seed', title: 'Ready card 3', card_highlight: 'Daily conditioner.' },
+          { product_id: 'ext_4', merchant_id: 'external_seed', title: 'Ready card 4', card_highlight: 'Light face oil.' },
+        ],
+      },
+      exclusionFlags: { gift_card: false, donation_bundle: false, non_merchandise: false },
+    });
+
+    expect(similarGate.failure_reasons).toEqual([
+      'similar_card_missing_highlight',
+      'similar_card_seller_only_fallback',
+    ]);
+    expect(similarGate.card_highlight_missing_count).toBe(1);
+    expect(similarGate.card_seller_only_fallback_count).toBe(1);
+  });
+
   test('reports probe failures instead of misclassifying them as product-quality regressions', () => {
     const livePdpGate = buildLivePdpGate({
       extractorProduct: {

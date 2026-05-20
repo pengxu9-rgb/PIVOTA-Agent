@@ -302,6 +302,41 @@ describe('Celestial commerce core source contracts', () => {
     ]);
   });
 
+  test('PDP similar card filter rejects seller-only and non-formula merch cards for beauty PDPs', () => {
+    const app = require('../src/server');
+    const { filterSimilarProductsWithCardHighlights } = app._debug;
+
+    const out = filterSimilarProductsWithCardHighlights(
+      [
+        {
+          product_id: 'ext_seller_only',
+          title: 'Lemongrass Tea Shampoo',
+          category: 'Shampoo',
+          image_url: 'https://cdn.example.test/shampoo.jpg',
+          shopping_card: {
+            highlight: 'Shampoo routine format',
+            evidence_profile: 'seller_only',
+          },
+        },
+        {
+          product_id: 'ext_hat',
+          title: 'Bad Hair Day - Dad Hat',
+          image_url: 'https://cdn.example.test/hat.jpg',
+        },
+        {
+          product_id: 'ext_ready',
+          title: 'AHA Refining Face Scrub',
+          category: 'Exfoliant',
+          image_url: 'https://cdn.example.test/scrub.jpg',
+          card_highlight: 'AHA exfoliating step.',
+        },
+      ],
+      { baseProduct: { title: 'Lemongrass Tea Conditioner', category: 'Conditioner' } },
+    );
+
+    expect(out.map((item) => item.product_id)).toEqual(['ext_ready']);
+  });
+
   test('shopping agent loop-break builds a scenario-aware retry query from short user selection', () => {
     const app = require('../src/server');
     const { uiChatBuildLoopBreakRetryArgs } = app._debug;

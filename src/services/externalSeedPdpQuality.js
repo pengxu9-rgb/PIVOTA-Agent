@@ -381,6 +381,7 @@ function collectSeedExplicitActiveItems(seedData = {}, snapshot = ensureJsonObje
 }
 
 function hasDisplayableSimilarCardData(product = {}) {
+  if (hasSellerOnlySimilarCardEvidence(product)) return false;
   return Boolean(
     normalizeNonEmptyString(
       product.card_highlight ||
@@ -393,6 +394,24 @@ function hasDisplayableSimilarCardData(product = {}) {
         product.description,
     ),
   );
+}
+
+function readSimilarCardEvidenceProfile(product = {}) {
+  return normalizeNonEmptyString(
+    product.evidence_profile ||
+      product.evidenceProfile ||
+      product.product_intel?.evidence_profile ||
+      product.productIntel?.evidence_profile ||
+      product.shopping_card?.evidence_profile ||
+      product.shoppingCard?.evidence_profile ||
+      product.search_card?.evidence_profile ||
+      product.searchCard?.evidence_profile,
+  ).toLowerCase();
+}
+
+function hasSellerOnlySimilarCardEvidence(product = {}) {
+  const profile = readSimilarCardEvidenceProfile(product);
+  return profile === 'seller_only' || profile === 'seller_only_fallback';
 }
 
 function collectLiveGalleryImages(livePayload = {}) {
@@ -1017,16 +1036,20 @@ function buildSimilarGate({
   if (!exempt && products.length < 4) {
     failureReasons.push('similar_underfill');
   }
-  const missingHighlight = products
-    .slice(0, Math.min(products.length, 4))
-    .filter((item) => !hasDisplayableSimilarCardData(item));
+  const auditedProducts = products.slice(0, Math.min(products.length, 4));
+  const missingHighlight = auditedProducts.filter((item) => !hasDisplayableSimilarCardData(item));
+  const sellerOnlyFallback = auditedProducts.filter((item) => hasSellerOnlySimilarCardEvidence(item));
   if (!exempt && products.length > 0 && missingHighlight.length > 0) {
     failureReasons.push('similar_card_missing_highlight');
+  }
+  if (!exempt && products.length > 0 && sellerOnlyFallback.length > 0) {
+    failureReasons.push('similar_card_seller_only_fallback');
   }
   return {
     status: failureReasons.length ? 'failed' : exempt ? 'exempt' : 'passed',
     similar_count: products.length,
     card_highlight_missing_count: missingHighlight.length,
+    card_seller_only_fallback_count: sellerOnlyFallback.length,
     exempt,
     failure_reasons: failureReasons,
   };
@@ -1169,7 +1192,8 @@ function buildExternalSeedQualityResult({
   if (
     failureReasons.includes('similar_probe_failed') ||
     failureReasons.includes('similar_underfill') ||
-    failureReasons.includes('similar_card_missing_highlight')
+    failureReasons.includes('similar_card_missing_highlight') ||
+    failureReasons.includes('similar_card_seller_only_fallback')
   ) {
     rootCauseClassification.push('similar_issue');
   }
@@ -1212,6 +1236,7 @@ module.exports = {
   collectLiveGalleryImages,
   collectLiveModuleList,
   looksLikeSectionSoupText,
+  hasSellerOnlySimilarCardEvidence,
   isImageUrlIdentityStripped,
   extractProbeError,
   buildSeedGate,

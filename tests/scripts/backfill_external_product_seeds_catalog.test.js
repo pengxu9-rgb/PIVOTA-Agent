@@ -28,6 +28,7 @@ const {
   collectBackfilledExternalProductIds,
   isDisplayableProductIntelKbRow,
   cleanPdpIngredientsRaw,
+  cleanPdpDescriptionCandidate,
   cleanPdpHowToUseRaw,
   choosePdpHowToUseRaw,
   extractHowToUseFromPdpText,
@@ -78,6 +79,17 @@ describe('backfill-external-product-seeds-catalog', () => {
       'Ultra-Shine Lip Color ',
     );
     expect(sanitizeTextForPostgres(null)).toBeNull();
+  });
+
+  test('repairs common cp1252 mojibake before staging PDP description copy', () => {
+    const cleaned = cleanPdpDescriptionCandidate(
+      'Our cr\u00c3\u00a8me cleanser is so gentle it\u00e2\u20ac\u2122s used in baby products. Caution: \u00c2 Avoid eye area.\u00c2',
+    );
+
+    expect(cleaned).toBe("Our cr\u00e8me cleanser is so gentle it's used in baby products.");
+    expect(cleaned).not.toContain('\ufffd');
+    expect(cleaned).not.toMatch(/\u00c3|\u00c2|\u00e2/);
+    expect(cleaned).not.toMatch(/Caution|How to Use|Full Ingredients/i);
   });
 
   test('collects updated external product ids for post-backfill Pivota Insights coverage', () => {

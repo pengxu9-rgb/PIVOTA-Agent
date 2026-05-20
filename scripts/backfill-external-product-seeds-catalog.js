@@ -194,8 +194,71 @@ function decodeBasicHtmlEntities(value) {
     });
 }
 
+const WINDOWS_1252_BYTE_BY_CODE_POINT = new Map([
+  [0x20ac, 0x80],
+  [0x201a, 0x82],
+  [0x0192, 0x83],
+  [0x201e, 0x84],
+  [0x2026, 0x85],
+  [0x2020, 0x86],
+  [0x2021, 0x87],
+  [0x02c6, 0x88],
+  [0x2030, 0x89],
+  [0x0160, 0x8a],
+  [0x2039, 0x8b],
+  [0x0152, 0x8c],
+  [0x017d, 0x8e],
+  [0x2018, 0x91],
+  [0x2019, 0x92],
+  [0x201c, 0x93],
+  [0x201d, 0x94],
+  [0x2022, 0x95],
+  [0x2013, 0x96],
+  [0x2014, 0x97],
+  [0x02dc, 0x98],
+  [0x2122, 0x99],
+  [0x0161, 0x9a],
+  [0x203a, 0x9b],
+  [0x0153, 0x9c],
+  [0x017e, 0x9e],
+  [0x0178, 0x9f],
+]);
+
+function countCommonMojibakeMarkers(value) {
+  return (String(value || '').match(/(?:\u00c3[\u0080-\u00bf]|\u00c2(?:\s|\u00a0|$)|\u00e2[\u0080-\uffff]{1,2})/g) || []).length;
+}
+
+function encodeWindows1252Bytes(value) {
+  const bytes = [];
+  for (const char of String(value || '')) {
+    const codePoint = char.codePointAt(0);
+    const mapped = WINDOWS_1252_BYTE_BY_CODE_POINT.get(codePoint);
+    if (mapped != null) {
+      bytes.push(mapped);
+    } else if (codePoint <= 0xff) {
+      bytes.push(codePoint);
+    } else {
+      return null;
+    }
+  }
+  return Buffer.from(bytes);
+}
+
+function repairCommonMojibakeText(value) {
+  const raw = String(value || '');
+  if (!raw || countCommonMojibakeMarkers(raw) === 0) return raw;
+  const precleaned = raw.replace(/\u00c2\u00a0/g, ' ').replace(/\u00c2(?=\s|$)/g, '');
+  const encoded = encodeWindows1252Bytes(precleaned);
+  if (!encoded) return precleaned;
+  const decoded = encoded.toString('utf8');
+  if (!decoded || decoded.includes('\ufffd')) return precleaned;
+  return countCommonMojibakeMarkers(decoded) < countCommonMojibakeMarkers(precleaned)
+    ? decoded
+    : precleaned;
+}
+
 function normalizePdpCopy(value) {
-  return decodeBasicHtmlEntities(value)
+  return repairCommonMojibakeText(decodeBasicHtmlEntities(value))
     .replace(/<!--[\s\S]*?-->/g, ' ')
     .replace(/[\u2018\u2019]/g, "'")
     .replace(/[\u201c\u201d]/g, '"')
@@ -1516,6 +1579,22 @@ function stripTrailingPdpSectionNoise(value, { removeFreeFrom = false } = {}) {
   return next;
 }
 
+function stripTrailingPdpDescriptionSectionNoise(value) {
+  let next = stripTrailingPdpSectionNoise(value, { removeFreeFrom: true });
+  const stopPatterns = [
+    /\bCaution\b\s*:/i,
+    /\bWhat'?s in it\b\s*:/i,
+    /\bWhat'?s not in it\b\s*:/i,
+    /\bIt'?s all good\b\s*:/i,
+    /\bMade in (?:USA|U\.S\.A\.|United States)\b/i,
+  ];
+  for (const pattern of stopPatterns) {
+    const match = next.match(pattern);
+    if (match && match.index > 20) next = next.slice(0, match.index).trim();
+  }
+  return next;
+}
+
 function isStorefrontBoilerplateDescription(value) {
   const normalized = normalizePdpCopy(value)
     .toLowerCase()
@@ -1655,7 +1734,7 @@ function cleanPdpDescriptionCandidate(value, detailsSections = []) {
     return '';
   }
 
-  return next;
+  return stripTrailingPdpDescriptionSectionNoise(next);
 }
 
 function isReviewPollutedPdpDetailsSection(heading, body, sourceKind = '') {
@@ -5467,7 +5546,7 @@ async function extractSeed(targetUrl, row, baseUrl) {
 }
 
 function stripHtmlToText(value) {
-  return decodeBasicHtmlEntities(
+  return normalizePdpCopy(
     String(value || '')
       .replace(/<br\s*\/?>/gi, '\n')
       .replace(/<\/(?:p|div|li|h[1-6]|section|article)>/gi, '\n')
@@ -5494,7 +5573,7 @@ function parseShopifyBodyHtmlSections(bodyHtml) {
     .replace(/<\/(?:p|div|li|h[1-6]|section|article)>/gi, '\n')
     .replace(/<strong[^>]*>([\s\S]*?)<\/strong>/gi, '\n[[PIVOTA_HEADING]]$1[[/PIVOTA_HEADING]]\n')
     .replace(/<b[^>]*>([\s\S]*?)<\/b>/gi, '\n[[PIVOTA_HEADING]]$1[[/PIVOTA_HEADING]]\n');
-  const flattened = decodeBasicHtmlEntities(marked.replace(/<[^>]+>/g, ' '))
+  const flattened = normalizePdpCopy(marked.replace(/<[^>]+>/g, ' '))
     .replace(/[ \t]+/g, ' ')
     .replace(/\s*\n\s*/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
@@ -6752,6 +6831,7 @@ module.exports = {
   collectBackfilledExternalProductIds,
   filterProductIdsMissingPivotaInsights,
   isDisplayableProductIntelKbRow,
+  cleanPdpDescriptionCandidate,
   cleanPdpIngredientsRaw,
   cleanPdpHowToUseRaw,
   choosePdpHowToUseRaw,

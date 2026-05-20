@@ -20219,7 +20219,26 @@ function readSimilarCardText(...values) {
   return '';
 }
 
+function readSimilarCardEvidenceProfile(product = {}) {
+  return readSimilarCardText(
+    product.evidence_profile,
+    product.evidenceProfile,
+    product.product_intel?.evidence_profile,
+    product.productIntel?.evidence_profile,
+    product.shopping_card?.evidence_profile,
+    product.shoppingCard?.evidence_profile,
+    product.search_card?.evidence_profile,
+    product.searchCard?.evidence_profile,
+  ).toLowerCase();
+}
+
+function isSellerOnlySimilarCardEvidence(product = {}) {
+  const profile = readSimilarCardEvidenceProfile(product);
+  return profile === 'seller_only' || profile === 'seller_only_fallback';
+}
+
 function hasSimilarCardPresentation(product = {}) {
+  if (isSellerOnlySimilarCardEvidence(product)) return false;
   return Boolean(
     readSimilarCardText(
       product.card_highlight,
@@ -20350,9 +20369,15 @@ function applySourceBackedSimilarCardHighlightFallback(item = {}) {
 function annotateSimilarCardStatus(item = {}) {
   if (!item || typeof item !== 'object') return item;
   const next = applySourceBackedSimilarCardHighlightFallback(item);
+  const sellerOnlyEvidence = isSellerOnlySimilarCardEvidence(next);
   return {
     ...next,
-    card_highlight_status: hasSimilarCardPresentation(next) ? 'ready' : 'highlight_missing',
+    card_highlight_status: sellerOnlyEvidence
+      ? 'seller_only_fallback'
+      : hasSimilarCardPresentation(next)
+        ? 'ready'
+        : 'highlight_missing',
+    ...(sellerOnlyEvidence ? { card_highlight_reject_reason: 'seller_only_evidence' } : {}),
     card_image_status: hasSimilarCardImage(next) ? 'ready' : 'image_missing',
   };
 }
@@ -20426,7 +20451,12 @@ function getSimilarItemDisplayCategory(item = {}) {
 function filterSimilarProductsWithCardHighlights(items = [], { baseProduct = null, minItems = 4 } = {}) {
   const targetCount = Math.max(1, Number(minItems || 4) || 4);
   const displayable = (Array.isArray(items) ? items : []).filter(
-    (item) => item && typeof item === 'object' && hasSimilarCardImage(item),
+    (item) =>
+      item &&
+      typeof item === 'object' &&
+      hasSimilarCardImage(item) &&
+      !isSellerOnlySimilarCardEvidence(item) &&
+      !isNonFormulaMerchSimilarCandidateForBeautyBase(item, baseProduct),
   );
   const highlightReady = displayable.filter((item) => hasSimilarCardPresentation(item));
   const candidatePool = highlightReady.length >= targetCount ? highlightReady : displayable;
@@ -20548,7 +20578,46 @@ function calibrateSimilarMetadataForVisibleProducts({
 }
 
 const PDP_SIMILAR_ACCESSORY_TITLE_RE =
-  /\b(pouch|bag|holder|keychain|keyring|sticker|stickers|soap saver|gua sha|gwalsa|brush|tool|applicator|spatula|mirror|sharpener|headband|puff|sponge|towel|sachet|trial\s*kit|sample)\b/i;
+  /\b(pouch|bag|holder|keychain|keyring|sticker|stickers|soap saver|gua sha|gwalsa|brush|tool|applicator|spatula|mirror|sharpener|headband|puff|sponge|towel|hat|cap|beanie|sachet|trial\s*kit|sample)\b/i;
+
+const PDP_SIMILAR_BEAUTY_BASE_RE =
+  /\b(skincare|skin care|haircare|hair care|hair|shampoo|conditioner|cleanser|cleansing|toner|serum|cream|moisturi[sz]er|balm|mask|oil|exfoliant|sunscreen|spf|body wash|lotion|beard|face oil|makeup|cosmetic)\b/i;
+
+const PDP_SIMILAR_NON_FORMULA_MERCH_RE =
+  /\b(dad\s+hat|hat|cap|beanie|tee|t-shirt|shirt|hoodie|sweatshirt|tote|bag|pouch|keychain|sticker|stickers|patch|pin|gift card|egift|e-gift)\b/i;
+
+function isNonFormulaMerchSimilarCandidateForBeautyBase(item = {}, baseProduct = null) {
+  if (!item || typeof item !== 'object') return false;
+  const baseText = [
+    baseProduct?.title,
+    baseProduct?.name,
+    baseProduct?.category,
+    baseProduct?.product_type,
+    baseProduct?.productType,
+    baseProduct?.leaf_category,
+    baseProduct?.parent_category,
+    baseProduct?.category_path,
+    baseProduct?.categoryPath,
+  ].filter(Boolean).join(' ');
+  if (!PDP_SIMILAR_BEAUTY_BASE_RE.test(baseText)) return false;
+
+  const productFamily = normalizeSearchTextForMatch(
+    firstNonEmptyString(item.product_family, item.external_seed_product_family),
+  );
+  if (['accessory', 'non_merch', 'non_merchandise', 'sample'].includes(productFamily)) return true;
+
+  const itemText = [
+    item.title,
+    item.name,
+    item.category,
+    item.product_type,
+    item.productType,
+    item.card_subtitle,
+    item.shopping_card?.subtitle,
+    item.search_card?.compact_candidate,
+  ].filter(Boolean).join(' ');
+  return PDP_SIMILAR_NON_FORMULA_MERCH_RE.test(itemText);
+}
 
 function isAccessoryLikePdpForSimilarSuppression(product = {}, pdpSchemaProfile = '') {
   if (isBeautyToolPdpProfile(pdpSchemaProfile)) return true;
