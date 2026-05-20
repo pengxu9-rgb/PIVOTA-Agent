@@ -8213,6 +8213,10 @@ async function fetchBrandScopedExternalSeedCandidates({
   brandAliases = [],
   limit = 120,
   orderByRecency = true,
+  // When false, skip the attached-seed JOIN query — attached seeds are already
+  // represented in the canonical agent_pdp_view path (commerce-index brand flow).
+  // Default true preserves T2a behaviour.
+  includeAttached = true,
 } = {}) {
   if (!process.env.DATABASE_URL) return [];
   const normalizedAliases = uniqStrings(
@@ -8301,7 +8305,9 @@ async function fetchBrandScopedExternalSeedCandidates({
     // Query B — attached seeds joined to catalog_products. Surfaces canonical
     // pivota_signature_id / canonical_url so the frontend builds /products/sig_* URLs
     // pointing to the Pivota canonical PDP rather than the merchant-scoped fallback.
-    if (rows.length < safeLimit) {
+    // Skipped when `includeAttached` is false (e.g. when the canonical agent_pdp_view
+    // path is the primary source via BRAND_PAGE_USES_COMMERCE_INDEX — avoids dupes).
+    if (includeAttached && rows.length < safeLimit) {
       const attachedRes = await query(
         `
           SELECT ${attachedSelectColumns}
@@ -8451,6 +8457,127 @@ async function fetchBrandScopedInternalCatalogCandidates({ brandAliases = [], li
   }
 }
 
+// Commerce-index canonical brand-page reader.
+// Queries `agent_pdp_view` (one row per canonical product, aggregated offers across
+// merchants) joined to `catalog_products` for canonical identity. Returns products
+// with `pivota_signature_id` so the frontend builds /products/sig_* URLs that route
+// to the Pivota canonical PDP — not a single-merchant product cache view.
+//
+// Gated by env var BRAND_PAGE_USES_COMMERCE_INDEX (handled by the caller). This
+// function does not check the flag itself; it's just the canonical reader.
+//
+// `index_pipeline_state.serving_eligible=TRUE` is enforced via inner JOIN so we
+// only surface products that the pipeline has marked ready for serving. The query
+// fails open (logged warn + returns []) if the pipeline tables aren't present yet.
+async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 120 } = {}) {
+  if (!process.env.DATABASE_URL) return [];
+  const normalizedAliases = uniqStrings(
+    brandAliases.map((alias) => normalizeBrandText(alias)).filter(Boolean),
+    16,
+  );
+  if (!normalizedAliases.length) return [];
+  const compactAliases = uniqStrings(
+    normalizedAliases.map((alias) => compactBrandToken(alias)).filter(Boolean),
+    16,
+  );
+
+  const safeLimit = clampInt(limit, Math.max(limit, 120), 24, 400);
+  try {
+    // agent_pdp_view aggregates offers and pricing per content_key.
+    // catalog_products provides the brand column (agent_pdp_view's brand reflects
+    // the canonical title's brand; catalog_products may carry per-merchant aliases).
+    // We match brand on EITHER apv.brand OR any catalog_products.brand attached to
+    // the same content_key, so brand search picks up variants.
+    const res = await query(
+      `
+        WITH brand_match AS (
+          SELECT DISTINCT cp.content_key
+          FROM catalog_products cp
+          WHERE cp.content_key IS NOT NULL
+            AND cp.brand IS NOT NULL
+            AND (
+              lower(cp.brand) = ANY($1::text[])
+              OR regexp_replace(lower(cp.brand), '[^a-z0-9]+', '', 'g') = ANY($2::text[])
+            )
+        )
+        SELECT
+          apv.content_key,
+          apv.pivota_signature_id,
+          apv.brand,
+          apv.title,
+          apv.description,
+          apv.image_url,
+          apv.image_urls,
+          apv.currency,
+          apv.price_min,
+          apv.price_max,
+          apv.offer_count,
+          apv.offers,
+          apv.category_path
+        FROM agent_pdp_view apv
+        JOIN brand_match bm ON bm.content_key = apv.content_key
+        JOIN index_pipeline_state ips ON ips.content_key = apv.content_key
+        WHERE apv.pivota_signature_id IS NOT NULL
+          AND ips.serving_eligible = TRUE
+        ORDER BY apv.refreshed_at DESC NULLS LAST
+        LIMIT $3
+      `,
+      [normalizedAliases, compactAliases, safeLimit],
+    );
+    return (res.rows || [])
+      .map((row) => {
+        const productId = String(row.pivota_signature_id || '').trim();
+        if (!productId) return null;
+        const offers = Array.isArray(row.offers) ? row.offers : null;
+        const imageUrls = Array.isArray(row.image_urls) ? row.image_urls : [];
+        const priceMin = Number(row.price_min);
+        return {
+          id: productId,
+          product_id: productId,
+          pivota_signature_id: productId,
+          ...(row.content_key ? { content_key: String(row.content_key) } : {}),
+          ...(row.canonical_url ? { pivota_canonical_url: String(row.canonical_url) } : {}),
+          title: String(row.title || '').trim() || productId,
+          ...(row.description ? { description: String(row.description) } : {}),
+          ...(row.brand ? { brand: String(row.brand), vendor: String(row.brand) } : {}),
+          ...(row.image_url ? { image_url: String(row.image_url) } : {}),
+          ...(imageUrls.length ? { image_urls: imageUrls, images: imageUrls } : {}),
+          price: Number.isFinite(priceMin) ? priceMin : null,
+          currency: String(row.currency || 'USD').trim() || 'USD',
+          ...(offers ? { offers, offers_count: Number(row.offer_count) || offers.length } : {}),
+          ...(Array.isArray(row.category_path) && row.category_path.length
+            ? { category_path: row.category_path, category: row.category_path[row.category_path.length - 1] }
+            : {}),
+          source: 'commerce_index',
+        };
+      })
+      .filter(Boolean);
+  } catch (err) {
+    const message = String(err?.message || err || '');
+    if (
+      err?.code === 'NO_DATABASE' ||
+      (message.includes('agent_pdp_view') && message.includes('does not exist')) ||
+      (message.includes('index_pipeline_state') && message.includes('does not exist'))
+    ) {
+      // Migrations not applied yet — fail open, caller falls back to legacy path.
+      return [];
+    }
+    logger.warn(
+      {
+        err: message,
+        brand_aliases: normalizedAliases,
+      },
+      'brand scoped commerce-index query failed',
+    );
+    return [];
+  }
+}
+
+function brandPageUsesCommerceIndex() {
+  const flag = String(process.env.BRAND_PAGE_USES_COMMERCE_INDEX || '').trim().toLowerCase();
+  return flag === '1' || flag === 'true' || flag === 'yes' || flag === 'on';
+}
+
 async function loadBrandScopedDirectCandidates({
   request,
   brandAliases = [],
@@ -8472,6 +8599,11 @@ async function loadBrandScopedDirectCandidates({
   const safeLimit = clampInt(limit, Math.max(limit, 120), 24, 360);
   const stepStartedAt = Date.now();
 
+  // When BRAND_PAGE_USES_COMMERCE_INDEX is enabled, swap the legacy products_cache
+  // read for the commerce-index canonical view (agent_pdp_view + catalog_products).
+  // Also suppress attached external seeds so they don't duplicate canonical rows.
+  const useCommerceIndex = brandPageUsesCommerceIndex();
+
   try {
     const [internalCandidates, externalCandidates] = await Promise.all([
       typeof fetchInternalCandidatesFn === 'function'
@@ -8480,10 +8612,15 @@ async function loadBrandScopedDirectCandidates({
             limit: safeLimit,
             request,
           })
-        : fetchBrandScopedInternalCatalogCandidates({
-            brandAliases: normalizedAliases,
-            limit: safeLimit,
-          }),
+        : useCommerceIndex
+          ? fetchBrandScopedCanonicalCandidates({
+              brandAliases: normalizedAliases,
+              limit: safeLimit,
+            })
+          : fetchBrandScopedInternalCatalogCandidates({
+              brandAliases: normalizedAliases,
+              limit: safeLimit,
+            }),
       typeof fetchExternalCandidatesFn === 'function'
         ? fetchExternalCandidatesFn({
             brandAliases: normalizedAliases,
@@ -8494,6 +8631,9 @@ async function loadBrandScopedDirectCandidates({
             brandAliases: normalizedAliases,
             limit: safeLimit,
             orderByRecency: !isBrandScopeOnlyQuery(request),
+            // When canonical view is primary, suppress attached-seed flow so
+            // the same product doesn't appear twice (once via apv, once via seed).
+            includeAttached: !useCommerceIndex,
           }),
     ]);
 
