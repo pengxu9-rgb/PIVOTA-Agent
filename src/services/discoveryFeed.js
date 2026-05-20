@@ -8238,65 +8238,114 @@ async function fetchBrandScopedExternalSeedCandidates({
   const tool = 'creator_agents';
 
   try {
-    const selectColumns = `
-      id,
-      external_product_id,
-      destination_url,
-      canonical_url,
-      domain,
-      title,
-      image_url,
-      price_amount,
-      price_currency,
-      availability,
-      updated_at,
-      created_at,
-      coalesce(seed_data->'derived'->'recall', '{}'::jsonb) AS seed_recall,
-      ${EXTERNAL_SEED_RECALL_SQL_FIELDS.brand} AS seed_brand,
-      ${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} AS seed_category
+    const epsBrandFieldSql = EXTERNAL_SEED_RECALL_SQL_FIELDS.brand.replace(/seed_data/g, 'eps.seed_data');
+    const epsCategoryFieldSql = EXTERNAL_SEED_RECALL_SQL_FIELDS.category.replace(/seed_data/g, 'eps.seed_data');
+    const baseSelectColumns = `
+      eps.id,
+      eps.external_product_id,
+      eps.destination_url,
+      eps.canonical_url,
+      eps.domain,
+      eps.title,
+      eps.image_url,
+      eps.price_amount,
+      eps.price_currency,
+      eps.availability,
+      eps.updated_at,
+      eps.created_at,
+      eps.attached_product_key,
+      coalesce(eps.seed_data->'derived'->'recall', '{}'::jsonb) AS seed_recall,
+      ${epsBrandFieldSql} AS seed_brand,
+      ${epsCategoryFieldSql} AS seed_category
     `;
-    const normalizedBrandSql = `trim(regexp_replace(${EXTERNAL_SEED_RECALL_SQL_FIELDS.brand}, '[^a-z0-9]+', ' ', 'g'))`;
-    const compactBrandSql = `regexp_replace(${EXTERNAL_SEED_RECALL_SQL_FIELDS.brand}, '[^a-z0-9]+', '', 'g')`;
+    const attachedSelectColumns = `
+      ${baseSelectColumns},
+      cp.pivota_signature_id  AS pivota_signature_id,
+      cp.content_key          AS catalog_content_key,
+      cp.canonical_url        AS pivota_canonical_url,
+      cp.title                AS catalog_title
+    `;
+    const normalizedBrandSql = `trim(regexp_replace(${epsBrandFieldSql}, '[^a-z0-9]+', ' ', 'g'))`;
+    const compactBrandSql = `regexp_replace(${epsBrandFieldSql}, '[^a-z0-9]+', '', 'g')`;
     // Exactly matches idx_external_product_seeds_brand_search_norm_recency so PostgreSQL
     // can use the partial index (requires attached_product_key IS NULL in WHERE too).
-    const indexedBrandSql = `lower(regexp_replace(coalesce(seed_data->>'brand', seed_data->'snapshot'->>'brand', split_part(domain, '.', 1), ''), '[^a-z0-9]+', '', 'g'))`;
+    const indexedBrandSql = `lower(regexp_replace(coalesce(eps.seed_data->>'brand', eps.seed_data->'snapshot'->>'brand', split_part(eps.domain, '.', 1), ''), '[^a-z0-9]+', '', 'g'))`;
     const orderClause = orderByRecency
-      ? 'ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST'
+      ? 'ORDER BY eps.updated_at DESC NULLS LAST, eps.created_at DESC NULLS LAST'
       : '';
-    const brandRes = await query(
+    const brandMatchSql = `(
+        ${epsBrandFieldSql} = ANY($3::text[])
+        OR ${epsBrandFieldSql} LIKE ANY($4::text[])
+        OR ${normalizedBrandSql} = ANY($3::text[])
+        OR ${normalizedBrandSql} LIKE ANY($4::text[])
+        OR ${compactBrandSql} = ANY($6::text[])
+        OR ${indexedBrandSql} = ANY($6::text[])
+      )`;
+    // Query A — unattached seeds, partial-index fast path. No JOIN; can never produce
+    // canonical fields (attached_product_key IS NULL by predicate).
+    const unattachedRes = await query(
       `
-        SELECT ${selectColumns}
-        FROM external_product_seeds
-        WHERE status = 'active'
-          AND attached_product_key IS NULL
-          AND market = $1
-          AND (tool = '*' OR tool = $2)
-          AND (
-            ${EXTERNAL_SEED_RECALL_SQL_FIELDS.brand} = ANY($3::text[])
-            OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.brand} LIKE ANY($4::text[])
-            OR ${normalizedBrandSql} = ANY($3::text[])
-            OR ${normalizedBrandSql} LIKE ANY($4::text[])
-            OR ${compactBrandSql} = ANY($6::text[])
-            OR ${indexedBrandSql} = ANY($6::text[])
-          )
+        SELECT ${baseSelectColumns}
+        FROM external_product_seeds eps
+        WHERE eps.status = 'active'
+          AND eps.attached_product_key IS NULL
+          AND eps.market = $1
+          AND (eps.tool = '*' OR eps.tool = $2)
+          AND ${brandMatchSql}
         ${orderClause}
         LIMIT $5
       `,
       [market, tool, normalizedAliases, brandPrefixPatterns, safeLimit, compactAliases],
     );
-    const rows = Array.isArray(brandRes?.rows) ? [...brandRes.rows] : [];
+    const rows = Array.isArray(unattachedRes?.rows) ? [...unattachedRes.rows] : [];
+    // Query B — attached seeds joined to catalog_products. Surfaces canonical
+    // pivota_signature_id / canonical_url so the frontend builds /products/sig_* URLs
+    // pointing to the Pivota canonical PDP rather than the merchant-scoped fallback.
+    if (rows.length < safeLimit) {
+      const attachedRes = await query(
+        `
+          SELECT ${attachedSelectColumns}
+          FROM external_product_seeds eps
+          LEFT JOIN catalog_products cp ON cp.product_key = eps.attached_product_key
+          WHERE eps.status = 'active'
+            AND eps.attached_product_key IS NOT NULL
+            AND eps.market = $1
+            AND (eps.tool = '*' OR eps.tool = $2)
+            AND ${brandMatchSql}
+          ${orderClause}
+          LIMIT $5
+        `,
+        [
+          market,
+          tool,
+          normalizedAliases,
+          brandPrefixPatterns,
+          Math.max(0, safeLimit - rows.length),
+          compactAliases,
+        ],
+      );
+      const seenIds = new Set(rows.map((row) => String(row?.id || '').trim()).filter(Boolean));
+      for (const row of Array.isArray(attachedRes?.rows) ? attachedRes.rows : []) {
+        const id = String(row?.id || '').trim();
+        if (id && seenIds.has(id)) continue;
+        if (id) seenIds.add(id);
+        rows.push(row);
+        if (rows.length >= safeLimit) break;
+      }
+    }
     if (rows.length < safeLimit) {
       const titleRes = await query(
         `
-          SELECT ${selectColumns}
-          FROM external_product_seeds
-          WHERE status = 'active'
-            AND market = $1
-            AND (tool = '*' OR tool = $2)
+          SELECT ${attachedSelectColumns}
+          FROM external_product_seeds eps
+          LEFT JOIN catalog_products cp ON cp.product_key = eps.attached_product_key
+          WHERE eps.status = 'active'
+            AND eps.market = $1
+            AND (eps.tool = '*' OR eps.tool = $2)
             AND EXISTS (
               SELECT 1
               FROM unnest($3::text[]) AS alias
-              WHERE lower(coalesce(seed_data->'snapshot'->>'title', seed_data->>'title', title, '')) LIKE alias || ' %'
+              WHERE lower(coalesce(eps.seed_data->'snapshot'->>'title', eps.seed_data->>'title', eps.title, '')) LIKE alias || ' %'
             )
           ${orderClause}
           LIMIT $4
