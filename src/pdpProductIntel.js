@@ -2,6 +2,13 @@ const PRODUCT_INTEL_CONTRACT_VERSION = 'pivota.product_intel.v1';
 const PRODUCT_FEEDBACK_CONTRACT_VERSION = 'pivota.product_feedback.v1';
 const PRODUCT_RECOMMENDATION_INTENTS_CONTRACT_VERSION = 'pivota.product_recommendation_intents.v1';
 const PIVOTA_INSIGHTS_DISPLAY_NAME = 'Pivota Insights';
+const SELLER_ONLY_PUBLIC_INTEL_EVIDENCE_PROFILES = new Set([
+  'seller_only',
+  'seller_only_fallback',
+]);
+const SELLER_ONLY_PUBLIC_INTEL_REVIEW_DECISIONS = new Set([
+  'seller_only_fallback',
+]);
 const { buildAuthoritativeIngredientView } = require('./services/pdpIngredientAuthority');
 const {
   buildSearchCardPayload,
@@ -515,6 +522,23 @@ function normalizePublishedProductIntelBundle(bundle, {
     : rawSource;
   const core = asPlainObject(source.product_intel_core);
   if (!core) return null;
+  const rawEvidenceProfile =
+    asString(core.evidence_profile) || asString(source.evidence_profile) || 'seller_only';
+  const publicEvidenceProfiles = [
+    asString(core.evidence_profile),
+    asString(source.evidence_profile),
+    rawEvidenceProfile,
+  ].map((value) => value.toLowerCase()).filter(Boolean);
+  const publicReviewDecision = asString(source.provenance?.review_decision).toLowerCase();
+  if (
+    requireReviewed &&
+    (
+      publicEvidenceProfiles.some((profile) => SELLER_ONLY_PUBLIC_INTEL_EVIDENCE_PROFILES.has(profile)) ||
+      SELLER_ONLY_PUBLIC_INTEL_REVIEW_DECISIONS.has(publicReviewDecision)
+    )
+  ) {
+    return null;
+  }
   const reviewedForPublicDisplay = isHumanReviewedProductIntelBundle(source);
   if (requireReviewed && !reviewedForPublicDisplay) return null;
   if (shouldRejectGenericProductIntelBundle(source)) return null;
@@ -525,8 +549,7 @@ function normalizePublishedProductIntelBundle(bundle, {
   const offers = Array.isArray(offersData?.offers) ? offersData.offers : [];
   const commerceModes = uniqueStrings(offers.map((offer) => asString(offer?.commerce_mode)));
   const marketSignalBadges = asArray(source.market_signal_badges).map(asPlainObject).filter(Boolean);
-  const coreEvidenceProfile =
-    asString(core.evidence_profile) || asString(source.evidence_profile) || 'seller_only';
+  const coreEvidenceProfile = rawEvidenceProfile;
   const normalizedCore = {
     ...core,
     what_it_is: {
