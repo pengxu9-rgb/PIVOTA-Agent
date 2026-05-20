@@ -2138,6 +2138,22 @@ function getSimilarIntentFamilyFromProduct(product) {
   return '';
 }
 
+function getSimilarIntentFamilyFromProductTitle(product) {
+  return getSimilarIntentFamilyFromText(
+    [
+      product?.title,
+      product?.name,
+    ].filter(Boolean).join(' '),
+  );
+}
+
+function productMatchesFocusedIntentFamily(product, intentFamily, { titleOnly = false } = {}) {
+  const family = String(intentFamily || '').trim();
+  if (!family) return true;
+  if (!titleOnly) return getSimilarIntentFamilyFromProduct(product) === family;
+  return getSimilarIntentFamilyFromProductTitle(product) === family;
+}
+
 function getSimilarIntentFamilySqlPattern(intentFamily) {
   const id = String(intentFamily || '').trim();
   return SIMILAR_INTENT_FAMILY_RULES.find((rule) => rule.id === id)?.sql || '';
@@ -3016,6 +3032,13 @@ async function fetchExternalCandidates({
   const intentFamily = String(intentFamilyHint || '').trim();
   const intentFamilyPattern = getSimilarIntentFamilySqlPattern(intentFamily);
   const intentFamilyLikePatterns = getSimilarIntentFamilySqlLikePatterns(intentFamily);
+  const strictIntentFamilyRecall = Boolean(
+    intentFamily &&
+      requiresStrictExternalSameBrandIntent({
+        normalizedTitle: intentFamily,
+        leafCategory: category,
+      }),
+  );
   const identityCollapseProtection = requiresIdentityCollapseProtectionForExternalRecall({
     categoryHint: category,
     intentFamilyHint: intentFamily,
@@ -3541,7 +3564,9 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
       domainCategoryFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
       exactDomainCategoryCandidateCount = displayUniqueCandidateCount(domainCategoryFocusedCandidates);
       const domainIntentCandidates = intentFamilyPattern
-        ? domainCategoryFocusedCandidates.filter((product) => getSimilarIntentFamilyFromProduct(product) === intentFamily)
+        ? domainCategoryFocusedCandidates.filter((product) =>
+            productMatchesFocusedIntentFamily(product, intentFamily, { titleOnly: strictIntentFamilyRecall }),
+          )
         : domainCategoryFocusedCandidates;
       const exactDomainIntentCandidateCount = displayUniqueCandidateCount(domainIntentCandidates);
       exactDomainCategoryFocusedEnough = exactDomainCategoryCandidateCount >= safeMinFocusedCandidates;
@@ -3595,7 +3620,9 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
       out.push(...preloadedDomainMatches);
       const domainExpandedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
       const domainIntentCandidates = intentFamily
-        ? domainExpandedCandidates.filter((product) => getSimilarIntentFamilyFromProduct(product) === intentFamily)
+        ? domainExpandedCandidates.filter((product) =>
+            productMatchesFocusedIntentFamily(product, intentFamily, { titleOnly: strictIntentFamilyRecall }),
+          )
         : domainExpandedCandidates;
       const sameDomainCoverageCandidates = intentFamilyPattern ? domainIntentCandidates : domainExpandedCandidates;
       if (hasDisplayCoverage(sameDomainCoverageCandidates, focusedRecallTarget)) {
@@ -3620,7 +3647,7 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
       preloadedDomainMatches = await domainMatchesTask;
       const filteredDomainMatches = preloadedDomainMatches.filter((product) => {
         if (BEAUTY_ACCESSORY_TITLE_RE.test(normalizeText(product?.title || product?.name || ''))) return false;
-        return getSimilarIntentFamilyFromProduct(product) === intentFamily;
+        return productMatchesFocusedIntentFamily(product, intentFamily, { titleOnly: strictIntentFamilyRecall });
       });
       out.push(...filteredDomainMatches);
       const domainIntentCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
@@ -3637,7 +3664,7 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
           (p) => `${getMerchantId(p)}::${getProductId(p)}`,
         );
         const exactIntentFocusedCandidates = intentFocusedCandidates.filter(
-          (product) => getSimilarIntentFamilyFromProduct(product) === intentFamily,
+          (product) => productMatchesFocusedIntentFamily(product, intentFamily, { titleOnly: strictIntentFamilyRecall }),
         );
         if (hasDisplayCoverage(exactIntentFocusedCandidates, focusedRecallTarget)) {
           return attachExternalFetchStats(exactIntentFocusedCandidates.slice(0, returnCap));
@@ -3652,7 +3679,7 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
         (p) => `${getMerchantId(p)}::${getProductId(p)}`,
       );
       const exactIntentFocusedCandidates = intentFocusedCandidates.filter(
-        (product) => getSimilarIntentFamilyFromProduct(product) === intentFamily,
+        (product) => productMatchesFocusedIntentFamily(product, intentFamily, { titleOnly: strictIntentFamilyRecall }),
       );
       if (hasDisplayCoverage(exactIntentFocusedCandidates, focusedRecallTarget)) {
         return attachExternalFetchStats(exactIntentFocusedCandidates.slice(0, returnCap));
@@ -3663,7 +3690,9 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
     const categoryFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
     if (exactDomainCategoryFocusedEnough) {
       const safeCategoryFocusedCandidates = intentFamilyPattern
-        ? categoryFocusedCandidates.filter((product) => getSimilarIntentFamilyFromProduct(product) === intentFamily)
+        ? categoryFocusedCandidates.filter((product) =>
+            productMatchesFocusedIntentFamily(product, intentFamily, { titleOnly: strictIntentFamilyRecall }),
+          )
         : categoryFocusedCandidates;
       return attachExternalFetchStats(safeCategoryFocusedCandidates.slice(0, returnCap));
     }
@@ -4568,5 +4597,7 @@ module.exports = {
     recommendationFallbackPolicy,
     getSimilarIntentFamilyFromText,
     getSimilarIntentFamilyFromFeatures,
+    getSimilarIntentFamilyFromProductTitle,
+    productMatchesFocusedIntentFamily,
   },
 };

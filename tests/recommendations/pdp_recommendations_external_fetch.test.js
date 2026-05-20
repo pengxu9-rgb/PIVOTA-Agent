@@ -1783,6 +1783,93 @@ describe('RecommendationEngine external candidate fetch', () => {
     })).toBe('moisturizer');
   });
 
+  test('strict sunscreen deep-domain recall does not count incidental category rows as focused coverage', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const pixiShieldRows = [
+      makeExternalRow({
+        id: 'eps_pixi_shield_duo',
+        external_product_id: 'ext_pixi_shield_duo',
+        title: 'On-the-Glow SHIELD SPF 50 Sunscreen Duo',
+        brand: 'PIXI BEAUTY',
+        category: 'Sunscreen',
+        domain: 'pixibeauty.com',
+      }),
+      makeExternalRow({
+        id: 'eps_pixi_shield_trio',
+        external_product_id: 'ext_pixi_shield_trio',
+        title: 'On-the-Glow SHIELD SPF 50 Sunscreen Trio',
+        brand: 'PIXI BEAUTY',
+        category: 'Sunscreen',
+        domain: 'pixibeauty.com',
+      }),
+    ];
+    const incidentalPixiRows = Array.from({ length: 8 }).map((_, index) =>
+      makeExternalRow({
+        id: `eps_pixi_incidental_${index}`,
+        external_product_id: `ext_pixi_incidental_${index}`,
+        title: `Double Cleanse ${index}`,
+        brand: 'PIXI BEAUTY',
+        category: 'Sunscreen',
+        domain: 'pixibeauty.com',
+        description: 'Removes makeup and sunscreen.',
+      }),
+    );
+
+    const queryMock = jest.fn(async (sql) => {
+      const sqlText = String(sql);
+      if (sqlText.includes('domain = ANY($4)') && sqlText.includes("lower(coalesce(title, '')) LIKE ANY")) {
+        return { rows: pixiShieldRows };
+      }
+      if (sqlText.includes('domain = ANY($4)') && sqlText.includes("seed_data->'derived'->'recall'->>'category")) {
+        return { rows: [...pixiShieldRows, ...incidentalPixiRows] };
+      }
+      if (
+        sqlText.includes("seed_data->'derived'->'recall'->>'retrieval_title'") &&
+        !sqlText.includes('domain = ANY($4)')
+      ) {
+        return {
+          rows: Array.from({ length: 6 }).map((_, index) =>
+            makeExternalRow({
+              id: `eps_cross_brand_sunscreen_${index}`,
+              external_product_id: `ext_cross_brand_sunscreen_${index}`,
+              title: `Daily SPF 50 Sunscreen ${index}`,
+              brand: `SPF Brand ${index}`,
+              category: 'Sunscreen',
+              domain: `spf-brand-${index}.example`,
+            }),
+          ),
+        };
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const products = await _internals.fetchExternalCandidates({
+      brandHint: 'PIXI BEAUTY',
+      categoryHint: 'Sunscreen',
+      intentFamilyHint: 'sunscreen',
+      domainHints: ['https://pixibeauty.com/products/on-the-glow-shield'],
+      limit: 48,
+      minFocusedCandidates: 8,
+      deepDomainRecall: true,
+    });
+
+    expect(products.some((product) => product.domain === 'pixibeauty.com')).toBe(true);
+    expect(products.some((product) => /^spf-brand-/i.test(product.domain))).toBe(true);
+    expect(products.some((product) => /^Double Cleanse/i.test(product.title))).toBe(false);
+    expect(
+      queryMock.mock.calls.some(
+        ([sql]) =>
+          String(sql).includes("seed_data->'derived'->'recall'->>'retrieval_title'") &&
+          !String(sql).includes('domain = ANY($4)'),
+      ),
+    ).toBe(true);
+  });
+
   test('deep-domain recall still loads global category rows when same-domain category rows may collapse by identity', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 
