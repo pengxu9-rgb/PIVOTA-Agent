@@ -507,6 +507,81 @@ describe('find_similar_products mainline wrapper', () => {
     );
   });
 
+  it('runtime-classifies official hair styling seeds and blocks non-formula fill', () => {
+    const { pickLayeredRecommendations } = require('../src/services/RecommendationEngine');
+
+    const baseProduct = {
+      merchant_id: 'external_seed',
+      product_id: 'ext_90_proof',
+      title: '90 Proof Pomade',
+      brand: 'Blind Barber',
+      category: 'Fragrance',
+      product_type: 'Fragrance',
+      semantic_vertical: 'fragrance',
+      description: 'Leaves your hair with a strong hold and a matte finish.',
+    };
+    const externalCandidates = [
+      {
+        merchant_id: 'external_seed',
+        product_id: 'ext_101_proof',
+        title: '101 Proof Classic Pomade',
+        brand: 'Blind Barber',
+        description: 'Leaves your hair with maximum hold and a high sheen finish.',
+        image_url: 'https://cdn.example.test/101.jpg',
+      },
+      {
+        merchant_id: 'external_seed',
+        product_id: 'ext_60_wax',
+        title: '60 Proof Wax',
+        brand: 'Blind Barber',
+        description: 'Leaves your hair with a medium hold and a workable natural finish.',
+        image_url: 'https://cdn.example.test/wax.jpg',
+      },
+      {
+        merchant_id: 'external_seed',
+        product_id: 'ext_styling_cream',
+        title: '30 Proof Styling Cream',
+        brand: 'Blind Barber',
+        category: 'Moisturizer',
+        semantic_vertical: 'skincare',
+        description: 'A daily styling product for towel-dried hair.',
+        image_url: 'https://cdn.example.test/cream.jpg',
+      },
+      {
+        merchant_id: 'external_seed',
+        product_id: 'ext_perfume_sample',
+        title: 'Eau De Parfum - Speakeasy 2ML',
+        brand: 'Blind Barber',
+        description: 'Fine fragrance sample.',
+        image_url: 'https://cdn.example.test/perfume.jpg',
+      },
+      {
+        merchant_id: 'external_seed',
+        product_id: 'ext_hat',
+        title: 'Bad Hair Day - Dad Hat',
+        brand: 'Blind Barber',
+        description: 'One Size Fits Most Cotton Twill',
+        image_url: 'https://cdn.example.test/hat.jpg',
+      },
+    ];
+
+    const rec = pickLayeredRecommendations({
+      baseProduct,
+      internalCandidates: [],
+      externalCandidates,
+      k: 6,
+    });
+
+    expect(rec.metadata.base_semantic.vertical).toBe('haircare');
+    expect(rec.items.map((item) => item.product_id)).toEqual([
+      'ext_101_proof',
+      'ext_60_wax',
+      'ext_styling_cream',
+    ]);
+    expect(rec.items.map((item) => item.product_id)).not.toContain('ext_perfume_sample');
+    expect(rec.items.map((item) => item.product_id)).not.toContain('ext_hat');
+  });
+
   it('skips expensive public PDP similar recall for external sample/sachet products', async () => {
     const app = require('../src/server');
 

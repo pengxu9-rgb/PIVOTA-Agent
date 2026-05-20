@@ -338,9 +338,18 @@ const STOPWORDS = new Set([
 
 const BEAUTY_ACCESSORY_TITLE_RE =
   /\b(pouch|bag|holder|keychain|keyring|sticker|stickers|soap saver|gua sha|gwalsa|brush|tool|applicator|spatula|mirror|sharpener|headband|puff|sponge|towel|sachet|trial\s*kit|sample)\b/i;
+const EXTERNAL_SEED_NON_FORMULA_MERCH_TITLE_RE =
+  /\b(?:add[-\s]?on\s+donation|dad\s+hat|donation|e-?gift|gift\s*card|giftcard|hat|cap|beanie|hoodie|longsleeve|package\s+protection|savedby|tee|t-shirt|shirt|tote\s+bag|tote)\b/i;
 const BEAUTY_SET_OR_BUNDLE_TITLE_RE =
   /\b(?:bundle|set|kit|duo|trio|collection|routine|campaign\s+look|look\s+bundle)\b/i;
 const REFILL_TITLE_RE = /\brefill\b/i;
+const EXTERNAL_SEED_HAIR_STYLING_TEXT_RE =
+  /\b(?:pomade|proof\s+wax|hair\s+clay|hair\s+wax|styling\s+(?:cream|gel|powder)|style\s+powder|texturizing\s+style\s+powder|texturizing|sea\s+salt\s+spray|volumi[sz]ing\s+foam|curl\s+defining\s+cream|curl\s+cream|thickening\s+style\s+gel)\b/i;
+const EXTERNAL_SEED_HAIR_STYLING_SECONDARY_RE = /\b(?:clay|foam|gel|spray|wax)\b/i;
+const EXTERNAL_SEED_HAIR_WASH_TEXT_RE = /\b(?:shampoo|conditioner)\b/i;
+const EXTERNAL_SEED_HAIR_TEXT_RE =
+  /\b(?:hair|haircare|hair\s+care|scalp|hold|shine|texture|volume|frizz|curls?)\b/i;
+const EXTERNAL_SEED_HAIR_STRONG_CONTEXT_RE = /\b(?:hair|haircare|hair\s+care|scalp|frizz|curls?)\b/i;
 const STRICT_EXTERNAL_SAME_BRAND_LEAF_CATEGORIES = new Set([
   'brow pencil',
   'brow gel',
@@ -426,6 +435,11 @@ const SIMILAR_INTENT_FAMILY_RULES = Object.freeze([
     js: /\b(?:micellar|cleansing\s*water|make\s*up\s*remover|makeup\s*remover)\b/i,
     sql: '\\m(micellar|cleansing\\s*water|make\\s*up\\s*remover|makeup\\s*remover)\\M',
   },
+  {
+    id: 'hair_styling',
+    js: /\b(?:pomade|proof\s+wax|hair\s+clay|hair\s+wax|styling\s+(?:cream|gel|powder)|style\s+powder|texturizing\s+style\s+powder|sea\s+salt\s+spray|volumi[sz]ing\s+foam|curl\s+defining\s+cream|curl\s+cream|thickening\s+style\s+gel)\b/i,
+    sql: '\\m(pomade|proof\\s+wax|hair\\s+clay|hair\\s+wax|styling\\s+(cream|gel|powder)|style\\s+powder|texturizing\\s+style\\s+powder|sea\\s+salt\\s+spray|volumi[sz]ing\\s+foam|curl\\s+defining\\s+cream|curl\\s+cream|thickening\\s+style\\s+gel)\\M',
+  },
 ]);
 
 function getBeautyAccessoryKindFromText(text) {
@@ -477,6 +491,151 @@ function isRefillLikeFromFeatures(features) {
       ].filter(Boolean).join(' '),
     ),
   );
+}
+
+function collectExternalSeedRuntimeText(product = {}) {
+  const seedData = ensureJsonObject(product?.seed_data || product?.external_seed?.seed_data);
+  const snapshot = ensureJsonObject(seedData?.snapshot);
+  const recall = ensureJsonObject(
+    product?.external_seed_recall ||
+      product?.externalSeedRecall ||
+      product?.recall_doc ||
+      product?.recall ||
+      seedData?.derived?.recall,
+  );
+  return [
+    product?.title,
+    product?.name,
+    product?.description,
+    product?.category,
+    product?.product_type,
+    product?.productType,
+    product?.source_listing_scope,
+    product?.listing_scope,
+    recall?.retrieval_title,
+    recall?.retrieval_summary,
+    recall?.category,
+    recall?.vertical,
+    seedData?.title,
+    seedData?.description,
+    seedData?.category,
+    seedData?.product_type,
+    snapshot?.title,
+    snapshot?.description,
+    snapshot?.category,
+    snapshot?.product_type,
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ');
+}
+
+function collectExternalSeedRuntimeIdentityText(product = {}) {
+  const seedData = ensureJsonObject(product?.seed_data || product?.external_seed?.seed_data);
+  const snapshot = ensureJsonObject(seedData?.snapshot);
+  const recall = ensureJsonObject(
+    product?.external_seed_recall ||
+      product?.externalSeedRecall ||
+      product?.recall_doc ||
+      product?.recall ||
+      seedData?.derived?.recall,
+  );
+  return [
+    product?.title,
+    product?.name,
+    product?.category,
+    product?.product_type,
+    product?.productType,
+    recall?.retrieval_title,
+    recall?.category,
+    seedData?.title,
+    seedData?.category,
+    seedData?.product_type,
+    snapshot?.title,
+    snapshot?.category,
+    snapshot?.product_type,
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ');
+}
+
+function inferExternalSeedRuntimeProductClass(product = {}) {
+  if (!isExternalProduct(product)) return null;
+  const text = collectExternalSeedRuntimeText(product);
+  const normalized = normalizeText(text);
+  if (!normalized) return null;
+  const identityText = normalizeText(collectExternalSeedRuntimeIdentityText(product));
+  if (EXTERNAL_SEED_NON_FORMULA_MERCH_TITLE_RE.test(identityText)) {
+    return {
+      vertical: UNKNOWN_VERTICAL,
+      category: 'Non Formula Merch',
+      family: 'non_merch',
+      recommendable: false,
+      reason: 'external_seed_non_formula_merch_title',
+    };
+  }
+  if (
+    EXTERNAL_SEED_HAIR_STYLING_TEXT_RE.test(normalized) ||
+    (EXTERNAL_SEED_HAIR_STYLING_SECONDARY_RE.test(normalized) && EXTERNAL_SEED_HAIR_STRONG_CONTEXT_RE.test(normalized))
+  ) {
+    return {
+      vertical: 'haircare',
+      category: 'Hair Styling',
+      family: 'hair_styling',
+      recommendable: true,
+      reason: 'external_seed_hair_styling_text',
+    };
+  }
+  if (EXTERNAL_SEED_HAIR_WASH_TEXT_RE.test(normalized) && EXTERNAL_SEED_HAIR_TEXT_RE.test(normalized)) {
+    const category = /\bconditioner\b/i.test(normalized) && !/\bshampoo\b/i.test(normalized)
+      ? 'Conditioner'
+      : /\bshampoo\b/i.test(normalized) && !/\bconditioner\b/i.test(normalized)
+        ? 'Shampoo'
+        : 'Hair Wash';
+    return {
+      vertical: 'haircare',
+      category,
+      family: 'hair_wash',
+      recommendable: true,
+      reason: 'external_seed_hair_wash_text',
+    };
+  }
+  return null;
+}
+
+function applyExternalSeedRuntimeProductClass(product = {}) {
+  if (!product || typeof product !== 'object' || !isExternalProduct(product)) return product;
+  const runtimeClass = inferExternalSeedRuntimeProductClass(product);
+  if (!runtimeClass) return product;
+
+  const next = { ...product };
+  const currentVertical = normalizeStoredSemanticVertical(next.semantic_vertical || next.recall_vertical);
+  const currentCategory = normalizeText(next.category || next.product_type || next.productType);
+  const shouldOverrideCategory =
+    !currentCategory ||
+    isWeakExternalSeedCategory(currentCategory) ||
+    (runtimeClass.vertical === 'haircare' &&
+      (['fragrance', 'skincare'].includes(currentVertical) ||
+        ['fragrance', 'moisturizer', 'skincare'].includes(currentCategory)));
+
+  if (runtimeClass.vertical && runtimeClass.vertical !== UNKNOWN_VERTICAL) {
+    next.semantic_vertical = runtimeClass.vertical;
+    next.recall_vertical = runtimeClass.vertical;
+  }
+  if (runtimeClass.category && shouldOverrideCategory) {
+    next.category = runtimeClass.category;
+    next.product_type = runtimeClass.category;
+  }
+  if (runtimeClass.family) {
+    next.external_seed_runtime_family = runtimeClass.family;
+    next.external_seed_product_family = runtimeClass.family;
+    if (!next.product_family || runtimeClass.family === 'non_merch') {
+      next.product_family = runtimeClass.family;
+    }
+  }
+  next.external_seed_runtime_class_reason = runtimeClass.reason;
+  return next;
 }
 
 function accessoryKindsAreCompatible(baseKind, candidateKind) {
@@ -1446,7 +1605,7 @@ function buildExternalSeedRecommendationCandidate(row, options = {}) {
       ? !['out_of_stock', 'sold_out', 'unavailable', 'discontinued'].includes(normalizedAvailability)
       : true;
 
-  return {
+  return applyExternalSeedRuntimeProductClass({
     merchant_id: EXTERNAL_SEED_MERCHANT_ID,
     product_id: externalProductId,
     external_product_id: externalProductId,
@@ -1478,7 +1637,7 @@ function buildExternalSeedRecommendationCandidate(row, options = {}) {
           recall_vertical: catalogPathVertical || recallVertical,
         }
       : {}),
-  };
+  });
 }
 
 function normalizeCatalogCategoryPath(value) {
@@ -1633,7 +1792,7 @@ function buildCatalogProductRecommendationCandidate(row, options = {}) {
     snapshot.destination_url,
   );
 
-  return {
+  const candidate = {
     merchant_id: isExternalSeedCatalogRow ? EXTERNAL_SEED_MERCHANT_ID : firstNonEmptyText(row.merchant_id),
     product_id: productId,
     id: productId,
@@ -1659,6 +1818,7 @@ function buildCatalogProductRecommendationCandidate(row, options = {}) {
     retrieval_source: 'catalog_category_path',
     ...(semanticVertical ? { semantic_vertical: semanticVertical, recall_vertical: semanticVertical } : {}),
   };
+  return isExternalSeedCatalogRow ? applyExternalSeedRuntimeProductClass(candidate) : candidate;
 }
 
 const EXTERNAL_SEED_RECOMMENDATION_SELECT = `
@@ -1924,6 +2084,7 @@ function resolveSemanticVerticalOverride(product, semantic = null) {
 }
 
 function buildBaseFeatures(baseProduct, semantic = null) {
+  baseProduct = applyExternalSeedRuntimeProductClass(baseProduct);
   const brand = getBrandName(baseProduct);
   const leafCategory = getLeafCategory(baseProduct);
   const parentCategory = getParentCategory(baseProduct);
@@ -1938,6 +2099,7 @@ function buildBaseFeatures(baseProduct, semantic = null) {
   const productType = normalizeText(baseProduct.product_type || baseProduct.productType || baseProduct.category);
   const accessoryKind = getBeautyAccessoryKindFromFeatures({ normalizedTitle, leafCategory, parentCategory });
   const productFamily = normalizeText(baseProduct.product_family || baseProduct.external_seed_product_family);
+  const runtimeFamily = normalizeText(baseProduct.external_seed_runtime_family);
   const sourceListingScope = normalizeText(baseProduct.source_listing_scope || baseProduct.listing_scope);
   return {
     productId: getProductId(baseProduct),
@@ -1957,6 +2119,7 @@ function buildBaseFeatures(baseProduct, semantic = null) {
     verticalKeywords: verticalSignal.matched_keywords || [],
     accessoryKind,
     productFamily,
+    runtimeFamily,
     sourceListingScope,
     bundleLike: isSetOrBundleLikeFromFeatures({
       normalizedTitle,
@@ -1976,6 +2139,7 @@ function buildBaseFeatures(baseProduct, semantic = null) {
 }
 
 function buildCandidateFeatures(candidateProduct, baseCurrency) {
+  candidateProduct = applyExternalSeedRuntimeProductClass(candidateProduct);
   const brand = getBrandName(candidateProduct);
   const leafCategory = getLeafCategory(candidateProduct);
   const parentCategory = getParentCategory(candidateProduct);
@@ -1991,6 +2155,7 @@ function buildCandidateFeatures(candidateProduct, baseCurrency) {
   const productType = normalizeText(candidateProduct.product_type || candidateProduct.productType || candidateProduct.category);
   const accessoryKind = getBeautyAccessoryKindFromFeatures({ normalizedTitle, leafCategory, parentCategory });
   const productFamily = normalizeText(candidateProduct.product_family || candidateProduct.external_seed_product_family);
+  const runtimeFamily = normalizeText(candidateProduct.external_seed_runtime_family);
   const sourceListingScope = normalizeText(candidateProduct.source_listing_scope || candidateProduct.listing_scope);
   return {
     productId: getProductId(candidateProduct),
@@ -2009,6 +2174,7 @@ function buildCandidateFeatures(candidateProduct, baseCurrency) {
     verticalInferred: Boolean(verticalSignal.inferred),
     accessoryKind,
     productFamily,
+    runtimeFamily,
     sourceListingScope,
     bundleLike: isSetOrBundleLikeFromFeatures({
       normalizedTitle,
@@ -2106,6 +2272,7 @@ function getSimilarIntentFamilyFromText(text) {
 }
 
 function getSimilarIntentFamilyFromFeatures(features, { titleOnly = false } = {}) {
+  if (!titleOnly && normalizeText(features?.runtimeFamily || '') === 'hair_styling') return 'hair_styling';
   if (titleOnly) return getSimilarIntentFamilyFromText(features?.normalizedTitle || '');
   const direct = getSimilarIntentFamilyFromText(buildSimilarIntentFamilyTextFromFeatures(features));
   if (direct) return direct;
@@ -2121,15 +2288,19 @@ function getSimilarIntentFamilyFromFeatures(features, { titleOnly = false } = {}
 }
 
 function getSimilarIntentFamilyFromProduct(product) {
+  const classifiedProduct = applyExternalSeedRuntimeProductClass(product);
+  if (normalizeText(classifiedProduct?.external_seed_runtime_family || '') === 'hair_styling') {
+    return 'hair_styling';
+  }
   const direct = getSimilarIntentFamilyFromText(
     [
-      product?.title,
-      product?.name,
-      product?.category,
-      product?.product_type,
-      product?.productType,
-      getLeafCategory(product),
-      getParentCategory(product),
+      classifiedProduct?.title,
+      classifiedProduct?.name,
+      classifiedProduct?.category,
+      classifiedProduct?.product_type,
+      classifiedProduct?.productType,
+      getLeafCategory(classifiedProduct),
+      getParentCategory(classifiedProduct),
     ].filter(Boolean).join(' '),
   );
   if (direct) return direct;
@@ -2259,6 +2430,24 @@ function getSimilarIntentFamilySqlLikePatterns(intentFamily) {
   if (id === 'lip_oil') return ['%lip oil%', '%lip glaze%'];
   if (id === 'hand_cream') return ['%hand cream%', '%hand balm%', '%hand lotion%'];
   if (id === 'micellar_cleansing_water') return ['%micellar%', '%cleansing water%'];
+  if (id === 'hair_styling') {
+    return [
+      '%pomade%',
+      '%proof wax%',
+      '%hair clay%',
+      '%hair wax%',
+      '%styling cream%',
+      '%styling gel%',
+      '%style powder%',
+      '%texturizing%',
+      '%sea salt spray%',
+      '%volumizing foam%',
+      '%volumising foam%',
+      '%curl defining cream%',
+      '%curl cream%',
+      '%thickening style gel%',
+    ];
+  }
   return [];
 }
 
@@ -2616,6 +2805,17 @@ function pickLayeredRecommendations({
       const baseIntentFamily = getSimilarIntentFamilyFromFeatures(base);
       const candidateTitleIntentFamily = getSimilarIntentFamilyFromFeatures(features, { titleOnly: true });
       const sharedIntentFamily = hasSharedSimilarIntentFamily(base, features);
+
+      if (
+        base.isExternal &&
+        source === 'external' &&
+        (features.productFamily === 'non_merch' ||
+          features.runtimeFamily === 'non_merch' ||
+          EXTERNAL_SEED_NON_FORMULA_MERCH_TITLE_RE.test(features.normalizedTitle || ''))
+      ) {
+        filteredByConfidence += 1;
+        return null;
+      }
 
       if (
         base.isExternal &&
@@ -3965,17 +4165,17 @@ async function enrichExternalBaseProduct(baseProduct) {
     };
   }
 
-  const enriched = { ...baseProduct };
+  let enriched = applyExternalSeedRuntimeProductClass({ ...baseProduct });
   const rescueFields = [];
   const existingRecall = ensureJsonObject(
-    baseProduct?.external_seed_recall ||
-      baseProduct?.externalSeedRecall ||
-      baseProduct?.recall_doc ||
-      baseProduct?.recall,
+    enriched?.external_seed_recall ||
+      enriched?.externalSeedRecall ||
+      enriched?.recall_doc ||
+      enriched?.recall,
   );
   const existingStoredVertical = normalizeStoredSemanticVertical(
-    baseProduct?.semantic_vertical ||
-      baseProduct?.recall_vertical ||
+    enriched?.semantic_vertical ||
+      enriched?.recall_vertical ||
       existingRecall?.vertical,
   );
   const existingCatalogPathVertical = semanticVerticalFromCatalogCategoryPath(getCatalogCategoryPathHint(enriched));
@@ -4041,8 +4241,8 @@ async function enrichExternalBaseProduct(baseProduct) {
       seedData?.productType ||
       snapshot?.category ||
       snapshot?.product_type ||
-    snapshot?.productType ||
-    '',
+      snapshot?.productType ||
+      '',
   ).trim();
   if (seedCategory && isWeakExternalSeedCategory(getLeafCategory(enriched))) {
     const rawCategoryPath = enriched.category_path || enriched.categoryPath;
@@ -4172,17 +4372,24 @@ async function enrichExternalBaseProduct(baseProduct) {
     enriched.external_product_id = String(seedRecord.external_product_id);
   }
 
+  const runtimeEnriched = applyExternalSeedRuntimeProductClass(enriched);
+  if (runtimeEnriched !== enriched) {
+    enriched = runtimeEnriched;
+    if (!rescueFields.includes('runtime_class')) rescueFields.push('runtime_class');
+  }
+
   const inferred = inferVerticalFromProduct(enriched);
   const storedRecallVertical = normalizeStoredSemanticVertical(
     seedData?.recall_vertical ||
       seedData?.semantic_vertical ||
       seedData?.derived?.recall?.vertical,
   );
+  const runtimeVertical = normalizeStoredSemanticVertical(enriched.semantic_vertical || enriched.recall_vertical);
   const catalogPathVertical = semanticVerticalFromCatalogCategoryPath(getCatalogCategoryPathHint(enriched));
-  const effectiveVertical = catalogPathVertical || storedRecallVertical || inferred.vertical;
-  if (catalogPathVertical || storedRecallVertical) {
-    enriched.semantic_vertical = catalogPathVertical || storedRecallVertical;
-    enriched.recall_vertical = catalogPathVertical || storedRecallVertical;
+  const effectiveVertical = catalogPathVertical || runtimeVertical || storedRecallVertical || inferred.vertical;
+  if (catalogPathVertical || runtimeVertical || storedRecallVertical) {
+    enriched.semantic_vertical = catalogPathVertical || runtimeVertical || storedRecallVertical;
+    enriched.recall_vertical = catalogPathVertical || runtimeVertical || storedRecallVertical;
   }
   return {
     product: enriched,
