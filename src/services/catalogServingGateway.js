@@ -8,7 +8,10 @@ const CATALOG_SERVING_GATEWAY_CONTRACT_VERSION = 'pivota.catalog_serving.gateway
 const DEFAULT_MARKET = 'US';
 const DEFAULT_LIMIT = 24;
 const MAX_LIMIT = 100;
-const VALID_SHADOW_MODES = new Set(['external_only', 'allow_local_shadow']);
+// 'serving_eligible_only' is a stricter form of 'allow_local_shadow' that
+// pre-filters local shadow results to products marked serving_eligible=TRUE
+// in index_pipeline_state. Enable only after ≥1000 products are eligible.
+const VALID_SHADOW_MODES = new Set(['external_only', 'allow_local_shadow', 'serving_eligible_only']);
 
 function asString(value) {
   const normalized = String(value || '').trim();
@@ -64,7 +67,9 @@ async function searchCatalogServingGateway(input = {}, {
   searchCatalogServingIndexFn = searchCatalogServingIndex,
 } = {}) {
   const request = normalizeCatalogServingGatewayRequest(input);
-  const allowLocalShadow = request.shadow_mode === 'allow_local_shadow';
+  const servingEligibleOnly = request.shadow_mode === 'serving_eligible_only';
+  // serving_eligible_only implies allowing the local shadow path
+  const allowLocalShadow = servingEligibleOnly || request.shadow_mode === 'allow_local_shadow';
   const indexConfig = getCatalogServingIndexConfig(env);
   const localShadowAvailable = canUseLocalCatalogServingSearch(env);
   const result = await searchCatalogServingIndexFn(
@@ -82,6 +87,7 @@ async function searchCatalogServingGateway(input = {}, {
     {
       env,
       allowLocalShadow,
+      servingEligibleOnly,
     },
   );
 
@@ -112,6 +118,7 @@ async function searchCatalogServingGateway(input = {}, {
       local_shadow_requested: allowLocalShadow,
       local_shadow_available: localShadowAvailable,
       local_shadow_used: asString(result?.source) === 'local_shadow',
+      serving_eligible_filter: servingEligibleOnly,
     },
   };
 }
