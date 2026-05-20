@@ -338,6 +338,8 @@ const STOPWORDS = new Set([
 
 const BEAUTY_ACCESSORY_TITLE_RE =
   /\b(pouch|bag|holder|keychain|keyring|sticker|stickers|soap saver|gua sha|gwalsa|brush|tool|applicator|spatula|mirror|sharpener|headband|puff|sponge|towel|sachet|trial\s*kit|sample)\b/i;
+const BEAUTY_TREATMENT_PATCH_STICKER_RE =
+  /\b(?:blemish|spot|pimple|acne|hydrocolloid|clarity)\b.*\b(?:sticker|stickers|patch|patches)\b|\b(?:sticker|stickers|patch|patches)\b.*\b(?:blemish|spot|pimple|acne|hydrocolloid|clarity)\b/i;
 const EXTERNAL_SEED_NON_FORMULA_MERCH_TITLE_RE =
   /\b(?:add[-\s]?on\s+donation|dad\s+hat|donation|e-?gift|gift\s*card|giftcard|hat|cap|beanie|hoodie|longsleeve|package\s+protection|savedby|tee|t-shirt|shirt|tote\s+bag|tote)\b/i;
 const EXTERNAL_SEED_PET_PRODUCT_TITLE_RE =
@@ -438,6 +440,11 @@ const SIMILAR_INTENT_FAMILY_RULES = Object.freeze([
     sql: '\\m((under\\s*-?\\s*eye|undereye|eye)\\s+(brightener|cream|creme|cr[eè]me|serum|treatment|gel|balm|patch)|eye\\s*brightener)\\M',
   },
   {
+    id: 'blemish_patch',
+    js: BEAUTY_TREATMENT_PATCH_STICKER_RE,
+    sql: '\\m((blemish|spot|pimple|acne|hydrocolloid|clarity).*(sticker|stickers|patch|patches)|(sticker|stickers|patch|patches).*(blemish|spot|pimple|acne|hydrocolloid|clarity))\\M',
+  },
+  {
     id: 'moisturizer',
     js: /\b(?:moisturi[sz](?:er|ing)|day\s+cream|face\s+cream|facial\s+cream|hydrating\s+cream|replenishing\s+cream)\b/i,
     sql: '\\m(moisturi[sz](er|ing)|day\\s+cream|face\\s+cream|facial\\s+cream|hydrating\\s+cream|replenishing\\s+cream)\\M',
@@ -449,8 +456,8 @@ const SIMILAR_INTENT_FAMILY_RULES = Object.freeze([
   },
   {
     id: 'lip_treatment',
-    js: /\b(?:lip\s*(?:gloss|balm|treatment|plump(?:er|ing)?|luminiz(?:er|ers?)?|glow|lift)|lipgloss|lipglow|liplift)\b/i,
-    sql: '\\m(lip\\s*(gloss|balm|treatment|plump(er|ing)?|luminiz(er|ers?)?|glow|lift)|lipgloss|lipglow|liplift)\\M',
+    js: /\b(?:lip\s*(?:gloss|balm|treatment|plump(?:er|ing)?|luminiz(?:er|ers?)?|glow|lift|blush|tint|stain|colou?r)|lipgloss|lipglow|liplift|lipblush|liptint|lipstain)\b/i,
+    sql: '\\m(lip\\s*(gloss|balm|treatment|plump(er|ing)?|luminiz(er|ers?)?|glow|lift|blush|tint|stain|colou?r)|lipgloss|lipglow|liplift|lipblush|liptint|lipstain)\\M',
   },
   {
     id: 'highlighter',
@@ -482,6 +489,7 @@ const SIMILAR_INTENT_FAMILY_RULES = Object.freeze([
 function getBeautyAccessoryKindFromText(text) {
   const normalized = normalizeText(text);
   if (!normalized || !BEAUTY_ACCESSORY_TITLE_RE.test(normalized)) return '';
+  if (BEAUTY_TREATMENT_PATCH_STICKER_RE.test(normalized)) return '';
   if (/\b(?:puff|sponge|applicator)\b/.test(normalized)) return 'applicator';
   if (/\b(?:brush|tool|spatula|mirror|sharpener|headband|gua sha|gwalsa)\b/.test(normalized)) return 'tool';
   if (/\b(?:pouch|bag|holder|keychain|keyring|soap saver|towel)\b/.test(normalized)) return 'storage';
@@ -2349,6 +2357,7 @@ function buildSimilarIntentFamilyTextFromFeatures(features) {
 function getSimilarIntentFamilyFromText(text) {
   const normalized = normalizeText(text);
   if (!normalized) return '';
+  if (BEAUTY_TREATMENT_PATCH_STICKER_RE.test(normalized)) return 'blemish_patch';
   if (BEAUTY_ACCESSORY_TITLE_RE.test(normalized)) return '';
   for (const rule of SIMILAR_INTENT_FAMILY_RULES) {
     if (rule.js.test(normalized)) return rule.id;
@@ -2946,6 +2955,10 @@ function pickLayeredRecommendations({
         source === 'external' &&
         scoreDetail.brandMatch &&
         !features.accessoryKind &&
+        !requiresIdentityCollapseProtectionForExternalRecall({
+          categoryHint: base.leafCategory,
+          intentFamilyHint: baseIntentFamily,
+        }) &&
         (titleIntentMatches(base, features) || sharedIntentFamily);
       if (
         base.isExternal &&
@@ -2987,7 +3000,14 @@ function pickLayeredRecommendations({
         base.isExternal &&
         base.vertical !== UNKNOWN_VERTICAL &&
         base.vertical !== 'tools' &&
-        BEAUTY_ACCESSORY_TITLE_RE.test(features.normalizedTitle || '')
+        BEAUTY_ACCESSORY_TITLE_RE.test(features.normalizedTitle || '') &&
+        !BEAUTY_TREATMENT_PATCH_STICKER_RE.test(
+          [
+            features.normalizedTitle,
+            features.leafCategory,
+            features.parentCategory,
+          ].filter(Boolean).join(' '),
+        )
       ) {
         filteredByConfidence += 1;
         return null;
