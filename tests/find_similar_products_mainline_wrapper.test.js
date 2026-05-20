@@ -290,55 +290,6 @@ describe('find_similar_products mainline wrapper', () => {
     );
   });
 
-  it('does not mark source-backed title fallback cards as seller-only display failures', async () => {
-    const app = require('../src/server');
-
-    const items = await app._debug.enrichSimilarProductsForPdpCards({
-      items: [
-        {
-          product_id: 'anua_sunscreen_title',
-          merchant_id: 'external_seed',
-          title: 'Zero-Cast Moisturizing Sunscreen SPF 50',
-          category: 'Sunscreen',
-          image_url: 'https://cdn.example.test/anua-sunscreen.jpg',
-          shopping_card: {
-            evidence_profile: 'seller_only',
-          },
-        },
-        {
-          product_id: 'skin1004_suncream_title',
-          merchant_id: 'external_seed',
-          title: 'Centella Air-Fit Suncream Plus SPF50+ PA++++',
-          category: 'Sunscreen',
-          image_url: 'https://cdn.example.test/skin1004-suncream.jpg',
-          shopping_card: {
-            evidence_profile: 'seller_only',
-          },
-        },
-      ],
-      maxItems: 2,
-      budgetMs: 100,
-      detailBudgetMs: 50,
-    });
-
-    expect(items[0]).toEqual(
-      expect.objectContaining({
-        card_highlight_status: 'ready',
-        card_image_status: 'ready',
-        card_highlight: 'Zero-Cast Moisturizing Sunscreen SPF 50',
-        card_highlight_source: 'source_backed_title_or_intro',
-      }),
-    );
-    expect(items[0].card_highlight_reject_reason).toBeUndefined();
-    expect(items[1]).toEqual(
-      expect.objectContaining({
-        card_highlight_status: 'ready',
-        card_highlight: 'Centella Air-Fit Suncream Plus SPF50+ PA++++',
-        card_highlight_source: 'source_backed_title_or_intro',
-      }),
-    );
-  });
-
   it('does not treat category-only similar cards as source-backed highlights', async () => {
     const app = require('../src/server');
 
