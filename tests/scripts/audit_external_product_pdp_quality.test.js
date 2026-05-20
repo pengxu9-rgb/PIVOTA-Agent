@@ -752,6 +752,44 @@ describe('audit-external-product-pdp-quality helpers', () => {
     expect(gate.failure_reasons).not.toContain('makeup_shade_missing_visual');
   });
 
+  test('allows shade axis for tinted lip colour masks', () => {
+    const livePayload = {
+      product: {
+        product_id: 'ext_lipmask',
+        merchant_id: 'external_seed',
+        title: 'LipMask',
+        category: 'Skincare',
+        product_type: 'Lips',
+        variants: [
+          {
+            variant_id: 'v_sucre',
+            title: 'Sucre',
+            swatch_image_url: 'https://example.com/sucre.png',
+            options: [{ name: 'Shade', value: 'Sucre', axis_kind: 'shade' }],
+          },
+        ],
+      },
+      modules: [{ type: 'variant_selector', data: { selected_variant_id: 'v_sucre' } }],
+    };
+
+    const gate = buildVariantGate({
+      seedData: {
+        title: 'LipMask',
+        category: 'Skincare',
+        product_type: 'Lips',
+        snapshot: {
+          title: 'LipMask',
+          description: 'A jelly texture tinted lip colour that leaves a juicy veil of colour.',
+        },
+      },
+      livePayload,
+      liveResponse: { modules: [{ type: 'canonical', data: { pdp_payload: livePayload } }] },
+    });
+
+    expect(gate.failure_reasons).not.toContain('wrong_axis_for_category');
+    expect(gate.failure_reasons).not.toContain('makeup_shade_missing_visual');
+  });
+
   test('exempts set and collection PDPs from single-product similar underfill', () => {
     const gate = buildSimilarGate({
       similarResponse: { products: [] },
