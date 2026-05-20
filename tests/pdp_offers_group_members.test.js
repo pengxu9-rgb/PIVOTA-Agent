@@ -1409,6 +1409,83 @@ describe('PDP grouped offers', () => {
     );
   });
 
+  test('prefers current external-seed detail over stale group member source payloads', async () => {
+    const app = require('../src/server');
+
+    const offersData = await app._debug.buildOffersFromGroupMembers({
+      productGroupId: 'sig_pixi_lower_lash',
+      preferredMerchantId: 'external_seed',
+      preferredProductId: 'ext_pixi_lower_lash',
+      debug: true,
+      prefetchedProducts: [
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ext_pixi_lower_lash',
+          id: 'ext_pixi_lower_lash',
+          title: 'Lower Lash Mascara',
+          brand: 'PIXI BEAUTY',
+          merchant_name: 'pixibeauty.com',
+          price: { amount: 12, currency: 'USD' },
+          price_amount: 12,
+          currency: 'USD',
+          in_stock: true,
+          source: 'external_seed_db',
+          source_url: 'https://pixibeauty.com/products/lower-lash-mascara',
+          variants: [
+            {
+              variant_id: 'lower-lash-default',
+              title: 'Default',
+              price: 12,
+              currency: 'USD',
+              in_stock: true,
+            },
+          ],
+        },
+      ],
+      members: [
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ext_pixi_lower_lash',
+          source_kind: 'canonical_catalog',
+          source_payload: {
+            title: 'Lower Lash Mascara',
+            brand: 'PIXI BEAUTY',
+            merchant_name: 'pixibeauty.com',
+            price_amount: 11,
+            price_currency: 'USD',
+            destination_url: 'https://pixibeauty.com/products/lower-lash-mascara',
+            variants: [
+              {
+                variant_id: 'lower-lash-default',
+                title: 'Default',
+                price: 11,
+                currency: 'USD',
+                in_stock: true,
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    expect(offersData.offers_count).toBe(1);
+    expect(offersData.offers[0]).toEqual(
+      expect.objectContaining({
+        merchant_id: 'external_seed',
+        product_id: 'ext_pixi_lower_lash',
+        price: { amount: 12, currency: 'USD' },
+      }),
+    );
+    expect(offersData.offers[0].variants[0]).toEqual(
+      expect.objectContaining({
+        variant_id: 'lower-lash-default',
+        price: { current: { amount: 12, currency: 'USD' } },
+      }),
+    );
+    expect(offersData.diagnostics.build_sources.prefetched).toBe(1);
+    expect(JSON.stringify(offersData.offers[0])).not.toContain('"amount":11');
+  });
+
   test('uses preferred external-seed product id as default offer when merchant id is shared', async () => {
     const app = require('../src/server');
 

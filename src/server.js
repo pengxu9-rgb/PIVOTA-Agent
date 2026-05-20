@@ -7502,21 +7502,20 @@ async function buildOffersFromGroupMembers(args) {
         const memberStartedAt = Date.now();
         let source = 'unresolved';
         let fetchError = null;
-        const memberPayloadProduct = buildExternalSeedOfferProductFromMember(m);
         const prefetchedProduct =
           prefetchedProductByKey.get(`${m.merchant_id}:${m.product_id}`) || null;
+        const memberPayloadProduct = buildExternalSeedOfferProductFromMember(m);
         const usedPrefetchedProduct = Boolean(prefetchedProduct);
-        if (memberPayloadProduct) {
+        const prefersFreshExternalSeedProduct = m.merchant_id === EXTERNAL_SEED_MERCHANT_ID;
+        if (memberPayloadProduct && !prefersFreshExternalSeedProduct) {
           buildSourceStats.identity_payload += 1;
           source = 'identity_payload';
         } else if (usedPrefetchedProduct) {
           buildSourceStats.prefetched += 1;
           source = 'prefetched';
         }
-        const product =
-          memberPayloadProduct ||
-          prefetchedProduct ||
-          (await fetchProductDetailForOffers({
+        const fetchedProductPromise = () =>
+          fetchProductDetailForOffers({
             merchantId: m.merchant_id,
             productId: m.product_id,
             checkoutToken,
@@ -7528,10 +7527,28 @@ async function buildOffersFromGroupMembers(args) {
           }).catch((err) => {
             fetchError = err;
             return null;
-          }));
-        if (!memberPayloadProduct && !usedPrefetchedProduct && product) {
+          });
+        const product = prefersFreshExternalSeedProduct
+          ? prefetchedProduct || (await fetchedProductPromise()) || memberPayloadProduct
+          : memberPayloadProduct || prefetchedProduct || (await fetchedProductPromise());
+        if (
+          !memberPayloadProduct &&
+          !usedPrefetchedProduct &&
+          product
+        ) {
           buildSourceStats.fetched += 1;
           source = getProductDetailSource(product) || 'fetched';
+        } else if (
+          prefersFreshExternalSeedProduct &&
+          !usedPrefetchedProduct &&
+          product &&
+          product !== memberPayloadProduct
+        ) {
+          buildSourceStats.fetched += 1;
+          source = getProductDetailSource(product) || 'fetched';
+        } else if (prefersFreshExternalSeedProduct && product && product === memberPayloadProduct) {
+          buildSourceStats.identity_payload += 1;
+          source = 'identity_payload_fallback';
         }
         if (!product) {
           buildSourceStats.unresolved += 1;
