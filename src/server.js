@@ -30754,7 +30754,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      }
 
 	      const entryProductId = productId;
-	      const entryProductIsExternalSeed = isExternalSeedProductId(entryProductId);
+	      // Treat any product as an external-seed route when the caller passes
+	      // merchant_id=external_seed explicitly. Without this, domain-prefixed seed
+	      // IDs (e.g. `ulta:hash`, produced by brand-scoped seed search) fail to
+	      // enter the external_seed lookup branches and PDP cannot resolve them.
+	      const entryProductIsExternalSeed =
+	        isExternalSeedProductId(entryProductId) ||
+	        requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID;
         let productGroupAliasId = null;
 	      let externalSeedDirectPrecheckProduct = null;
         if (
