@@ -27499,6 +27499,62 @@ function buildLegacyProductDetailsData(...moduleDataList) {
   };
 }
 
+const PRODUCT_INTEL_OVERVIEW_REJECT_EVIDENCE_PROFILES = new Set([
+  'seller_only',
+  'seller_only_fallback',
+  'seller_plus_formula',
+]);
+
+const PRODUCT_INTEL_OVERVIEW_BLOCKLIST_RE =
+  /\b(add to cart|checkout|shipping|returns?|privacy policy|terms(?: and conditions)?|official\s+site|social highlights?)\b/i;
+
+function normalizeProductIntelOverviewText(value, maxChars = 420) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!text || text.length < 24) return '';
+  if (PRODUCT_INTEL_OVERVIEW_BLOCKLIST_RE.test(text)) return '';
+  if (text.length <= maxChars) return text;
+  const head = text.slice(0, maxChars + 1);
+  const sentenceMatch = head.match(/^(.{120,}?[.!?])\s+/);
+  if (sentenceMatch?.[1]) return sentenceMatch[1].trim();
+  return `${head.slice(0, maxChars).replace(/[\s,;:]+$/g, '').trim()}...`;
+}
+
+function buildProductOverviewDataFromProductIntel(productIntel = {}) {
+  if (!isPlainObject(productIntel)) return null;
+  const core = isPlainObject(productIntel.product_intel_core)
+    ? productIntel.product_intel_core
+    : isPlainObject(productIntel.core)
+      ? productIntel.core
+      : {};
+  const evidenceProfile = String(
+    core.evidence_profile || productIntel.evidence_profile || '',
+  ).trim().toLowerCase();
+  if (!evidenceProfile || PRODUCT_INTEL_OVERVIEW_REJECT_EVIDENCE_PROFILES.has(evidenceProfile)) {
+    return null;
+  }
+  const text = normalizeProductIntelOverviewText(
+    firstNonEmptyString(
+      core.what_it_is?.body,
+      productIntel.what_it_is?.body,
+      productIntel.shopping_card?.intro,
+      productIntel.search_card?.intro_candidate,
+    ),
+  );
+  if (!text) return null;
+  return {
+    sections: [
+      {
+        heading: 'Description',
+        content_type: 'text',
+        content: text,
+        collapsed_by_default: false,
+        source: 'product_intel_reviewed_overview',
+      },
+    ],
+    source: 'product_intel_reviewed_overview',
+  };
+}
+
 function mergeRecommendationModuleWithEnvelope(moduleData, envelope) {
   if (!moduleData || typeof moduleData !== 'object') return null;
   const envelopeMetadata = envelope?.metadata && typeof envelope.metadata === 'object' ? envelope.metadata : {};
@@ -31761,14 +31817,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             null
           : null;
       const howToUseData = findPdpPayloadModuleData(pdpPayload, 'how_to_use') || null;
-      const productOverviewData = findPdpPayloadModuleData(pdpPayload, 'product_overview') || null;
+      let productOverviewData = findPdpPayloadModuleData(pdpPayload, 'product_overview') || null;
       const supplementalDetailsData = findPdpPayloadModuleData(pdpPayload, 'supplemental_details') || null;
       const productFactsData = findPdpPayloadModuleData(pdpPayload, 'product_facts') || null;
-      const productDetailsData = buildLegacyProductDetailsData(
-        productOverviewData,
-        productFactsData,
-        supplementalDetailsData,
-      );
+      let productDetailsData = null;
       const variantSelectorData = findPdpPayloadModuleData(pdpPayload, 'variant_selector') || null;
 
       let canonicalPayload = stripResponseOwnedPdpModulesFromCanonicalPayload(pdpPayload);
@@ -32140,6 +32192,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           ...(productIntel ? {} : { reason: productIntelMissingReason || productIntelStatus }),
         });
       }
+
+      if (!productOverviewData) {
+        productOverviewData = buildProductOverviewDataFromProductIntel(productIntel);
+      }
+      productDetailsData = buildLegacyProductDetailsData(
+        productOverviewData,
+        productFactsData,
+        supplementalDetailsData,
+      );
 
       if (wantsActiveIngredients && allowsBeautyFormulaModules) {
         modules.push({
@@ -39594,6 +39655,7 @@ module.exports._debug = {
   deriveOfficialSeedSimilarCardHighlight,
   deriveOfficialSeedSimilarCardTitleHighlight,
   applyOfficialSeedSimilarCardEnrichment,
+  buildProductOverviewDataFromProductIntel,
   isAccessoryLikePdpForSimilarSuppression,
   shouldSkipPdpSimilarFetchForAccessory,
   buildFindProductsMultiDiscoveryBridgeResponse,

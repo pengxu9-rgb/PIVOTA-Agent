@@ -675,6 +675,43 @@ describe('find_similar_products mainline wrapper', () => {
     );
   });
 
+  it('uses reviewed non-seller product intel as PDP overview fallback', () => {
+    const app = require('../src/server');
+
+    expect(app._debug.buildProductOverviewDataFromProductIntel({
+      evidence_profile: 'official_pdp_seed',
+      product_intel_core: {
+        evidence_profile: 'official_pdp_seed',
+        what_it_is: {
+          body: 'A travel-size calendula toner format with a lightweight liquid texture for quick skin-refresh steps.',
+        },
+      },
+    })).toEqual({
+      sections: [
+        expect.objectContaining({
+          heading: 'Description',
+          content: 'A travel-size calendula toner format with a lightweight liquid texture for quick skin-refresh steps.',
+          source: 'product_intel_reviewed_overview',
+        }),
+      ],
+      source: 'product_intel_reviewed_overview',
+    });
+  });
+
+  it('does not use seller-only product intel as PDP overview fallback', () => {
+    const app = require('../src/server');
+
+    expect(app._debug.buildProductOverviewDataFromProductIntel({
+      evidence_profile: 'seller_only',
+      product_intel_core: {
+        evidence_profile: 'seller_only',
+        what_it_is: {
+          body: 'Seller supplied text with enough length should still not become a PDP overview.',
+        },
+      },
+    })).toBeNull();
+  });
+
   it('skips expensive public PDP similar recall for external sample/sachet products', async () => {
     const app = require('../src/server');
 
