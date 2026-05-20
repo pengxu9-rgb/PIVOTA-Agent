@@ -675,6 +675,41 @@ describe('audit-external-product-pdp-quality helpers', () => {
     expect(gate.failure_reasons).not.toContain('makeup_shade_missing_visual');
   });
 
+  test('allows shade axis when category path identifies complexion makeup', () => {
+    const livePayload = {
+      product: {
+        product_id: 'ext_beauty_balm',
+        merchant_id: 'external_seed',
+        title: 'Beauty Balm',
+        category: 'Skincare',
+        product_type: 'Balm',
+        category_path: 'beauty/makeup/face/foundation',
+        variants: [
+          {
+            variant_id: 'v_cream',
+            title: 'Cream',
+            swatch: { hex: '#e6c5a7' },
+            options: [{ name: 'Shade', value: 'Cream', axis_kind: 'shade' }],
+          },
+        ],
+      },
+      modules: [{ type: 'variant_selector', data: { selected_variant_id: 'v_cream' } }],
+    };
+
+    const gate = buildVariantGate({
+      seedData: {
+        title: 'Beauty Balm',
+        category_path: 'beauty/makeup/face/foundation',
+        snapshot: { title: 'Beauty Balm' },
+      },
+      livePayload,
+      liveResponse: { modules: [{ type: 'canonical', data: { pdp_payload: livePayload } }] },
+    });
+
+    expect(gate.failure_reasons).not.toContain('wrong_axis_for_category');
+    expect(gate.failure_reasons).not.toContain('makeup_shade_missing_visual');
+  });
+
   test('exempts set and collection PDPs from single-product similar underfill', () => {
     const gate = buildSimilarGate({
       similarResponse: { products: [] },
