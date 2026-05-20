@@ -664,34 +664,6 @@ describe('externalSeedPdpQuality', () => {
     expect(similarGate.card_seller_only_fallback_count).toBe(1);
   });
 
-  test('allows source-backed title similar card fallback despite seller-only product intel profile', () => {
-    const similarGate = buildSimilarGate({
-      similarResponse: {
-        products: [
-          {
-            product_id: 'ext_1',
-            merchant_id: 'external_seed',
-            title: 'Zero-Cast Moisturizing Sunscreen SPF 50',
-            image_url: 'https://cdn.example.test/sunscreen.jpg',
-            card_highlight: 'Zero-Cast Moisturizing Sunscreen SPF 50',
-            card_highlight_source: 'source_backed_title_or_intro',
-            shopping_card: {
-              evidence_profile: 'seller_only',
-            },
-          },
-          { product_id: 'ext_2', merchant_id: 'external_seed', title: 'Ready card 2', card_highlight: 'Daily sunscreen.', image_url: 'https://cdn.example.test/2.jpg' },
-          { product_id: 'ext_3', merchant_id: 'external_seed', title: 'Ready card 3', card_highlight: 'Mineral sunscreen.', image_url: 'https://cdn.example.test/3.jpg' },
-          { product_id: 'ext_4', merchant_id: 'external_seed', title: 'Ready card 4', card_highlight: 'Gel sunscreen.', image_url: 'https://cdn.example.test/4.jpg' },
-        ],
-      },
-      exclusionFlags: { gift_card: false, donation_bundle: false, non_merchandise: false },
-    });
-
-    expect(similarGate.failure_reasons).toEqual([]);
-    expect(similarGate.status).toBe('passed');
-    expect(similarGate.card_seller_only_fallback_count).toBe(0);
-  });
-
   test('reports probe failures instead of misclassifying them as product-quality regressions', () => {
     const livePdpGate = buildLivePdpGate({
       extractorProduct: {

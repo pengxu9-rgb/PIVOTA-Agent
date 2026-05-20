@@ -29,10 +29,6 @@ const ACTIVE_ALLOWED_HINT_RE =
   /\b(?:spf|sunscreen|sun\s*(?:screen|protection|defense)|uv|pa\+|acne|blemish|treatment|serum|essence|ampoule|retinol|retinal|salicylic|benzoyl\s+peroxide|azelaic|vitamin\s+c)\b/i;
 const COLOR_COSMETIC_OR_TOOL_RE =
   /\b(?:foundation|concealer|skin\s+tint|powder|blush|bronzer|contour|highlighter|luminizer|gloss|lip(?:stick| liner| oil| gloss| butter| balm| kit)?|mascara|eyeliner|kyliner|brow|palette|eyeshadow|makeup\s+sponge|sponge|brush|sharpener|bundle|duo|trio|collection|kit|look)\b/i;
-const SIMILAR_CARD_TITLE_FALLBACK_PRODUCT_RE =
-  /\b(?:ampoule|balm|blush|bronzer|brow|cleanser|cleansing|conditioner|concealer|cream|deodorant|essence|exfoliant|eyeshadow|foundation|fragrance|gel|gloss|liner|lipstick|lotion|mascara|mask|mist|moisturizer|oil|pad|palette|patch|peel|powder|primer|serum|shampoo|spf\s*\d*|suncream|sunscreen|tint|toner|treatment)\b/i;
-const SIMILAR_CARD_TITLE_FALLBACK_GENERIC_RE =
-  /\b(?:category\s+only|missing\s+highlight|similar\s+product|related\s+product|product\s+\d*|item\s+\d*)\b/i;
 const NON_SURFACEABLE_ACTIVE_STATUS = new Set([
   'low',
   'blocked',
@@ -413,60 +409,7 @@ function readSimilarCardEvidenceProfile(product = {}) {
   ).toLowerCase();
 }
 
-function normalizeSimilarCardTitleText(value) {
-  return normalizeNonEmptyString(value)
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .replace(/[.;,:|-]+$/g, '')
-    .trim();
-}
-
-function normalizeSimilarCardComparableText(value) {
-  return normalizeSimilarCardTitleText(value).toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
-}
-
-function hasSimilarCardImage(product = {}) {
-  return Boolean(
-    normalizeNonEmptyString(
-      product.image_url ||
-        product.imageUrl ||
-        product.image ||
-        product.shopping_card?.image_url ||
-        product.search_card?.image_url,
-    ),
-  );
-}
-
-function isSourceBackedTitleSimilarCardFallback(product = {}) {
-  if (!product || typeof product !== 'object') return false;
-  const source = normalizeNonEmptyString(product.card_highlight_source || product.cardHighlightSource).toLowerCase();
-  if (source !== 'source_backed_title_or_intro') return false;
-  if (!hasSimilarCardImage(product)) return false;
-
-  const title = normalizeSimilarCardTitleText(
-    product.title ||
-      product.name ||
-      product.card_title ||
-      product.cardTitle ||
-      product.shopping_card?.title ||
-      product.search_card?.title_candidate ||
-      product.search_card?.titleCandidate,
-  );
-  const highlight = normalizeSimilarCardTitleText(
-    product.card_highlight ||
-      product.cardHighlight ||
-      product.shopping_card?.highlight ||
-      product.search_card?.highlight_candidate ||
-      product.search_card?.highlightCandidate,
-  );
-  if (!title || !highlight) return false;
-  if (normalizeSimilarCardComparableText(title) !== normalizeSimilarCardComparableText(highlight)) return false;
-  if (SIMILAR_CARD_TITLE_FALLBACK_GENERIC_RE.test(title)) return false;
-  return SIMILAR_CARD_TITLE_FALLBACK_PRODUCT_RE.test(title);
-}
-
 function hasSellerOnlySimilarCardEvidence(product = {}) {
-  if (isSourceBackedTitleSimilarCardFallback(product)) return false;
   const profile = readSimilarCardEvidenceProfile(product);
   return profile === 'seller_only' || profile === 'seller_only_fallback';
 }
