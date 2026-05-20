@@ -9,3 +9,14 @@ coverage
 tmp
 artifacts
 reports
+tests
+docs
+datasets
+fixtures
+.github
+ci
+label_studio
+ml
+models
+monitoring
+*.md
