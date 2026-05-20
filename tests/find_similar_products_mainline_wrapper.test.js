@@ -69,7 +69,7 @@ describe('find_similar_products mainline wrapper', () => {
           product_id: 'ext_demo_1',
           source: 'external_seed',
         }),
-        k: 4,
+        k: 16,
         options: expect.objectContaining({
           candidate_limit: 16,
         }),

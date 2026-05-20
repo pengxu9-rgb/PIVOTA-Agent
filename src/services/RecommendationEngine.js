@@ -2955,11 +2955,14 @@ function pickLayeredRecommendations({
         source === 'external' &&
         scoreDetail.brandMatch &&
         !features.accessoryKind &&
-        !requiresIdentityCollapseProtectionForExternalRecall({
-          categoryHint: base.leafCategory,
-          intentFamilyHint: baseIntentFamily,
-        }) &&
-        (titleIntentMatches(base, features) || sharedIntentFamily);
+        (titleIntentMatches(base, features) || sharedIntentFamily) &&
+        (
+          !requiresIdentityCollapseProtectionForExternalRecall({
+            categoryHint: base.leafCategory,
+            intentFamilyHint: baseIntentFamily,
+          }) ||
+          candidateTitleIntentFamily === baseIntentFamily
+        );
       if (
         base.isExternal &&
         !base.bundleLike &&
