@@ -16,6 +16,7 @@ const NON_MERCH_PAGE_RE =
   /(?:^|\/)(?:collections?|collection|category|catalogsearch|search|cart|account|customer|blog|blogs|pages?|faq|privacy|terms|wishlist|gift(?:ing)?|store-locator|customer-service|all-products|appointments?|booking|online-booking|locations?|contact-us)(?:\/|$)/i;
 const BEAUTY_VERTICAL_PATTERNS = Object.freeze([
   ['gift_card', GIFT_CARD_RE],
+  ['bodycare', /\b(body\s*wash|body\s*bar|cleansing\s*bar|deodorant|shav(?:e|ing)|beard\s*(?:balm|oil|butter|wash|care|grooming)|hand\s*(?:and|\+)\s*body)\b/i],
   ['fragrance', /\b(fragrance|fragrances|fragarance|fragarances|fragance|fragances|fragrence|fragrences|fragrancee|perfume|parfum|cologne|eau de parfum|eau de toilette|scent)\b/i],
   ['haircare', /\b(shampoo|conditioner|hair|leave-in|leave in|detangling|repair mask|hair mask|scalp|curl|edge control|styling gel)\b/i],
   ['beauty_tools', /\b(brush|makeup brush|kabuki|tool|tools|applicator|sponge|detangling brush)\b/i],
@@ -52,6 +53,10 @@ const AMBIGUOUS_RECALL_CATEGORY_KEYS = new Set([
   'sticks',
 ]);
 const RECALL_LEAF_CATEGORY_PATTERNS = Object.freeze([
+  ['Beard Balm', /\bbeard(?:[\s-]+[a-z0-9+-]+){0,3}[\s-]+balms?\b/i],
+  ['Shave Cream', /\bshav(?:e|ing)(?:[\s-]+[a-z0-9+-]+){0,4}[\s-]+creams?\b/i],
+  ['Shave Oil', /\bshav(?:e|ing)(?:[\s-]+[a-z0-9+-]+){0,4}[\s-]+oils?\b/i],
+  ['Body Bar', /\b(?:body(?:[\s-]+[a-z0-9+-]+){0,3}[\s-]+bars?|cleansing\s+bar|bar\s+cleanser)\b/i],
   ['Scalp Treatment', /\b(?:scalp(?:[\s-]+[a-z0-9+-]+){0,4}[\s-]+(?:serum|treatment|tonic|oil)|for\s+scalp)\b/i],
   ['Heat Protectant', /\b(?:heat[-\s]*protect(?:ant|ing|ion)?|frizz[-\s]*smoothing\s+heat\s+protectant)\b/i],
   ['Curl Cream', /\b(?:curl[-\s]*defining\s+cream|curl\s+cream|homecurl)\b/i],

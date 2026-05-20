@@ -533,6 +533,93 @@ describe('find_similar_products mainline wrapper', () => {
     expect(rec.items.map((item) => item.product_id)).not.toContain('ext_hat');
   });
 
+  it('runtime-classifies external bodycare grooming seeds and filters pet deodorizing products', () => {
+    const { pickLayeredRecommendations } = require('../src/services/RecommendationEngine');
+
+    const baseProduct = {
+      merchant_id: 'external_seed',
+      product_id: 'ext_blind_deodorant',
+      title: 'Tonka Bean Aluminum-Free Deodorant',
+      brand: 'Blind Barber',
+      description: 'Aluminum-free deodorant that helps underarm odor while absorbing excess moisture.',
+    };
+    const externalCandidates = [
+      {
+        merchant_id: 'external_seed',
+        product_id: 'ext_upcircle_deodorant',
+        title: 'Refillable Deodorant with Macadamia + Bergamot',
+        brand: 'UpCircle Beauty',
+        description: 'A deodorant designed to be kind to your skin.',
+        image_url: 'https://cdn.example.test/upcircle.jpg',
+      },
+      {
+        merchant_id: 'external_seed',
+        product_id: 'ext_nuxe_deodorant',
+        title: '24hr Fresh-Feel Deodorant',
+        brand: 'NUXE',
+        description: 'Deodorant protection with a fresh-feel finish.',
+        image_url: 'https://cdn.example.test/nuxe.jpg',
+      },
+      {
+        merchant_id: 'external_seed',
+        product_id: 'ext_fab_deodorant',
+        title: 'Whole Body Deodorant Cream',
+        brand: 'First Aid Beauty',
+        description: 'Odor-fighting AHA deodorant cream for unwanted body odor.',
+        image_url: 'https://cdn.example.test/fab.jpg',
+      },
+      {
+        merchant_id: 'external_seed',
+        product_id: 'ext_tom_ford_deodorant',
+        title: 'Oud Wood Deodorant Stick',
+        brand: 'Tom Ford Beauty',
+        description: 'A scented deodorant stick.',
+        image_url: 'https://cdn.example.test/tom-ford.jpg',
+      },
+      {
+        merchant_id: 'external_seed',
+        product_id: 'ext_pet_spray',
+        title: 'Natural Deodorizing spray for PETS',
+        brand: 'Natural Dog Company',
+        description: 'A pet deodorizing spray.',
+        image_url: 'https://cdn.example.test/pet.jpg',
+      },
+    ];
+
+    const rec = pickLayeredRecommendations({
+      baseProduct,
+      internalCandidates: [],
+      externalCandidates,
+      k: 6,
+    });
+
+    expect(rec.metadata.base_semantic.vertical).toBe('bodycare');
+    expect(rec.items.map((item) => item.product_id).sort()).toEqual([
+      'ext_fab_deodorant',
+      'ext_nuxe_deodorant',
+      'ext_tom_ford_deodorant',
+      'ext_upcircle_deodorant',
+    ].sort());
+    expect(rec.items.map((item) => item.product_id)).not.toContain('ext_pet_spray');
+  });
+
+  it('derives official seed card highlights for bodycare and grooming similar cards', () => {
+    const app = require('../src/server');
+
+    expect(app._debug.deriveOfficialSeedSimilarCardHighlight({
+      description: 'Our deodorant is designed to be kind to your skin: enriched with macadamia oil and bergamot.',
+    })).toBe('Kind-to-skin deodorant');
+    expect(app._debug.deriveOfficialSeedSimilarCardHighlight({
+      description: 'Lav Kids Foaming Body Wash provides a soft, gentle cleanse that leaves skin feeling clean.',
+    })).toBe('Foaming body wash cleanse');
+    expect(app._debug.deriveOfficialSeedSimilarCardHighlight({
+      description: 'A cleansing bar that gently cleanses skin while leaving the body feeling hydrated.',
+    })).toBe('Body cleansing bar');
+    expect(app._debug.deriveOfficialSeedSimilarCardHighlight({
+      description: 'Our shave cream provides a protective lather and helps soften your facial hair.',
+    })).toBe('Protective lather');
+  });
+
   it('skips expensive public PDP similar recall for external sample/sachet products', async () => {
     const app = require('../src/server');
 

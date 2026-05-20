@@ -340,6 +340,8 @@ const BEAUTY_ACCESSORY_TITLE_RE =
   /\b(pouch|bag|holder|keychain|keyring|sticker|stickers|soap saver|gua sha|gwalsa|brush|tool|applicator|spatula|mirror|sharpener|headband|puff|sponge|towel|sachet|trial\s*kit|sample)\b/i;
 const EXTERNAL_SEED_NON_FORMULA_MERCH_TITLE_RE =
   /\b(?:add[-\s]?on\s+donation|dad\s+hat|donation|e-?gift|gift\s*card|giftcard|hat|cap|beanie|hoodie|longsleeve|package\s+protection|savedby|tee|t-shirt|shirt|tote\s+bag|tote)\b/i;
+const EXTERNAL_SEED_PET_PRODUCT_TITLE_RE =
+  /\b(?:for\s+pets?|pet\s+(?:care|deodori[sz]ing|spray)|dog|cat)\b/i;
 const BEAUTY_SET_OR_BUNDLE_TITLE_RE =
   /\b(?:bundle|set|kit|duo|trio|collection|routine|campaign\s+look|look\s+bundle)\b/i;
 const REFILL_TITLE_RE = /\brefill\b/i;
@@ -350,6 +352,11 @@ const EXTERNAL_SEED_HAIR_WASH_TEXT_RE = /\b(?:shampoo|conditioner)\b/i;
 const EXTERNAL_SEED_HAIR_TEXT_RE =
   /\b(?:hair|haircare|hair\s+care|scalp|hold|shine|texture|volume|frizz|curls?)\b/i;
 const EXTERNAL_SEED_HAIR_STRONG_CONTEXT_RE = /\b(?:hair|haircare|hair\s+care|scalp|frizz|curls?)\b/i;
+const EXTERNAL_SEED_BODY_WASH_TEXT_RE = /\b(?:body\s*wash|hand\s*(?:and|\+)\s*body\s*wash|shower\s*gel|foaming\s*shower\s*gel)\b/i;
+const EXTERNAL_SEED_BODY_BAR_TEXT_RE = /\b(?:body\s*bar|cleansing\s*bar|bar\s*cleanser)\b/i;
+const EXTERNAL_SEED_DEODORANT_TEXT_RE = /\b(?:deodorant|underarm\s+odor|underarm\s+odour|aluminum[-\s]*free)\b/i;
+const EXTERNAL_SEED_SHAVE_CARE_TEXT_RE = /\b(?:shav(?:e|ing)\s*(?:cream|oil|gel|balm|care|foam)|razor\s*burn|protective\s+lather)\b/i;
+const EXTERNAL_SEED_BEARD_CARE_TEXT_RE = /\b(?:beard\s*(?:balm|oil|butter|wash|care|grooming)|soften(?:s)?\s+(?:your\s+)?beard|tame\s+(?:your\s+)?beard)\b/i;
 const STRICT_EXTERNAL_SAME_BRAND_LEAF_CATEGORIES = new Set([
   'brow pencil',
   'brow gel',
@@ -399,6 +406,31 @@ const SIMILAR_INTENT_FAMILY_RULES = Object.freeze([
     id: 'body_oil',
     js: /\b(?:body\s+(?:oil|lotion|cream|balm|moisturi[sz]er)|massage\s+oil)\b/i,
     sql: '\\m(body\\s+(oil|lotion|cream|balm|moisturi[sz]er)|massage\\s+oil)\\M',
+  },
+  {
+    id: 'body_wash',
+    js: /\b(?:body\s*wash|body\s*bar|cleansing\s*bar|bar\s*cleanser|hand\s*(?:and|\+)\s*body\s*wash|shower\s*gel|foaming\s*shower\s*gel)\b/i,
+    sql: '\\m(body\\s*wash|body\\s*bar|cleansing\\s*bar|bar\\s*cleanser|hand\\s*(and|\\+)\\s*body\\s*wash|shower\\s*gel|foaming\\s*shower\\s*gel)\\M',
+  },
+  {
+    id: 'body_bar',
+    js: /\b(?:body\s*bar|cleansing\s*bar|bar\s*cleanser)\b/i,
+    sql: '\\m(body\\s*bar|cleansing\\s*bar|bar\\s*cleanser)\\M',
+  },
+  {
+    id: 'deodorant',
+    js: /\b(?:deodorant|deodorising|deodorizing|underarm\s+odor|underarm\s+odour)\b/i,
+    sql: '\\m(deodorant|deodorising|deodorizing|underarm\\s+odor|underarm\\s+odour)\\M',
+  },
+  {
+    id: 'shave_care',
+    js: /\b(?:shav(?:e|ing)\s*(?:cream|oil|gel|balm|care|foam)|razor\s*burn|protective\s+lather)\b/i,
+    sql: '\\m(shav(e|ing)\\s*(cream|oil|gel|balm|care|foam)|razor\\s*burn|protective\\s+lather)\\M',
+  },
+  {
+    id: 'beard_care',
+    js: /\b(?:beard\s*(?:balm|oil|butter|wash|care|grooming)|beard\s*soften|soften(?:s)?\s+(?:your\s+)?beard)\b/i,
+    sql: '\\m(beard\\s*(balm|oil|butter|wash|care|grooming)|beard\\s*soften|soften(s)?\\s+(your\\s+)?beard)\\M',
   },
   {
     id: 'eye_cream',
@@ -606,6 +638,51 @@ function inferExternalSeedRuntimeProductClass(product = {}) {
       reason: 'external_seed_hair_wash_text',
     };
   }
+  if (EXTERNAL_SEED_BODY_WASH_TEXT_RE.test(normalized)) {
+    return {
+      vertical: 'bodycare',
+      category: 'Body Wash',
+      family: 'body_wash',
+      recommendable: true,
+      reason: 'external_seed_body_wash_text',
+    };
+  }
+  if (EXTERNAL_SEED_BODY_BAR_TEXT_RE.test(normalized)) {
+    return {
+      vertical: 'bodycare',
+      category: 'Body Bar',
+      family: 'body_bar',
+      recommendable: true,
+      reason: 'external_seed_body_bar_text',
+    };
+  }
+  if (EXTERNAL_SEED_DEODORANT_TEXT_RE.test(normalized)) {
+    return {
+      vertical: 'bodycare',
+      category: 'Deodorant',
+      family: 'deodorant',
+      recommendable: true,
+      reason: 'external_seed_deodorant_text',
+    };
+  }
+  if (EXTERNAL_SEED_SHAVE_CARE_TEXT_RE.test(normalized)) {
+    return {
+      vertical: 'bodycare',
+      category: 'Shave Care',
+      family: 'shave_care',
+      recommendable: true,
+      reason: 'external_seed_shave_care_text',
+    };
+  }
+  if (EXTERNAL_SEED_BEARD_CARE_TEXT_RE.test(normalized)) {
+    return {
+      vertical: 'bodycare',
+      category: 'Beard Care',
+      family: 'beard_care',
+      recommendable: true,
+      reason: 'external_seed_beard_care_text',
+    };
+  }
   return null;
 }
 
@@ -622,7 +699,10 @@ function applyExternalSeedRuntimeProductClass(product = {}) {
     isWeakExternalSeedCategory(currentCategory) ||
     (runtimeClass.vertical === 'haircare' &&
       (['fragrance', 'skincare'].includes(currentVertical) ||
-        ['fragrance', 'moisturizer', 'skincare'].includes(currentCategory)));
+        ['fragrance', 'moisturizer', 'skincare'].includes(currentCategory))) ||
+    (runtimeClass.vertical === 'bodycare' &&
+      (['fragrance', 'haircare', 'skincare'].includes(currentVertical) ||
+        ['fragrance', 'hair styling', 'moisturizer', 'skincare'].includes(currentCategory)));
 
   if (runtimeClass.vertical && runtimeClass.vertical !== UNKNOWN_VERTICAL) {
     next.semantic_vertical = runtimeClass.vertical;
@@ -2833,6 +2913,15 @@ function pickLayeredRecommendations({
         (features.productFamily === 'non_merch' ||
           features.runtimeFamily === 'non_merch' ||
           EXTERNAL_SEED_NON_FORMULA_MERCH_TITLE_RE.test(features.normalizedTitle || ''))
+      ) {
+        filteredByConfidence += 1;
+        return null;
+      }
+
+      if (
+        base.isExternal &&
+        source === 'external' &&
+        EXTERNAL_SEED_PET_PRODUCT_TITLE_RE.test(features.normalizedTitle || '')
       ) {
         filteredByConfidence += 1;
         return null;

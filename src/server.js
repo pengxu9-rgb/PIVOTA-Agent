@@ -20389,7 +20389,7 @@ function hasSimilarCardImage(product = {}) {
 }
 
 const SIMILAR_CARD_TITLE_FALLBACK_PRODUCT_RE =
-  /\b(?:ampoule|balm|blush|bronzer|brow|cleanser|cleansing|conditioner|concealer|cream|deodorant|essence|exfoliant|eyeshadow|foundation|fragrance|gel|gloss|liner|lipstick|lotion|mascara|mask|mist|moisturizer|oil|pad|palette|patch|peel|powder|primer|serum|shampoo|spf|sunscreen|tint|toner|treatment)\b/i;
+  /\b(?:ampoule|balm|bar|beard|blush|body\s*wash|bronzer|brow|cleanser|cleansing|conditioner|concealer|cream|deodorant|essence|exfoliant|eyeshadow|foundation|fragrance|gel|gloss|liner|lipstick|lotion|mascara|mask|mist|moisturizer|oil|pad|palette|patch|peel|powder|primer|serum|shampoo|shav(?:e|ing)|spf|sunscreen|tint|toner|treatment)\b/i;
 
 const SIMILAR_CARD_TITLE_FALLBACK_GENERIC_RE =
   /\b(?:category\s+only|missing\s+highlight|similar\s+product|related\s+product|product\s+\d*|item\s+\d*)\b/i;
@@ -20409,7 +20409,7 @@ function normalizeSimilarCardFallbackText(value, { maxChars = 74 } = {}) {
 const SIMILAR_CARD_OFFICIAL_SEED_HIGHLIGHT_MAX_CHARS = 40;
 
 const SIMILAR_CARD_OFFICIAL_SEED_BENEFIT_RE =
-  /\b(?:aha|barrier|body|balance|cleanse|cleanses|cleansing|condition|conditioning|exfoliat|finish|firm|flexible|fullness|hair|hold|hydration|matte|moisturi[sz]|oil|shine|soften|sulfate-free|texture|thicken|volume|weightless)\b/i;
+  /\b(?:aha|barrier|beard|body|balance|cleanse|cleanses|cleansing|condition|conditioning|deodorant|exfoliat|finish|firm|flexible|fullness|hair|hold|hydration|lather|matte|moisturi[sz]|odor|odour|oil|protective|razor|shav(?:e|ing)|shine|soften|soothe|sulfate-free|texture|thicken|volume|weightless)\b/i;
 
 const SIMILAR_CARD_OFFICIAL_SEED_BLOCKLIST_RE =
   /\b(?:add[-\s]?on donation|caution|cotton twill|customer service|donation|for best results|gift card|how to use|ingredient|one size fits most|package protection|policies|refund|shipping|terms)\b/i;
@@ -20482,6 +20482,17 @@ function deriveOfficialSeedSimilarCardHighlight(detail = {}) {
       /\b(weightless volume and texture)\b/i,
       /\b(fullness and flexible hold)\b/i,
       /\b(moisturi[sz]e and soften coarse beard hairs)\b/i,
+      /\b(soften,? tame and lightly style (?:your )?beard)\b/i,
+      /\b(condition(?:s)? and (?:keeps|leaves) (?:your )?beard soft and shiny)\b/i,
+      /\b(aluminum[-\s]*free deodorant)\b/i,
+      /\b(absorb(?:s|ing)? excess moisture)\b/i,
+      /\b(odor[-\s]*fighting AHA'?s?)\b/i,
+      /\b(deodorant protection)\b/i,
+      /\b(protective lather)\b/i,
+      /\b(protective layer of glide)\b/i,
+      /\b(soften(?:s)? (?:your )?facial hair)\b/i,
+      /\b(gently cleanses and hydrates)\b/i,
+      /\b(non-stripping body cleansing)\b/i,
     ];
 
     for (const pattern of directPatterns) {
@@ -20502,6 +20513,21 @@ function deriveOfficialSeedSimilarCardHighlight(detail = {}) {
     }
     if (/\brice bran\b/i.test(text) && /\bexfoliat/i.test(text) && /\bclean/i.test(text)) {
       return 'Rice bran exfoliating cleanse';
+    }
+    if (/\bfoaming\s+(?:body\s*wash|shower\s*gel)\b/i.test(text)) {
+      return 'Foaming body wash cleanse';
+    }
+    if (/\bhand\s*(?:&|\+|and)\s*body\s*wash\b/i.test(text) && /\b(?:cleanse|cleanses|cleansing|sooth|protect|nourish|hydrate)\b/i.test(text)) {
+      return 'Hand and body wash';
+    }
+    if (/\bbody\s*wash\b/i.test(text) && /\b(?:cleanse|cleanses|cleansing|gentle|sulfate-free|hydrate|nourish|refresh)\b/i.test(text)) {
+      return 'Body wash cleanse';
+    }
+    if (/\b(?:body\s*bar|cleansing\s*bar|bar\s*cleanser)\b/i.test(text) && /\b(?:cleanse|cleanses|cleansing|lather|skin|body|moisturi[sz]|nourish|hydrate)\b/i.test(text)) {
+      return 'Body cleansing bar';
+    }
+    if (/\bdeodorant\b/i.test(text) && /\b(?:kind to your skin|nourish|hydrate|macadamia|bergamot|odor|odour|aluminum[-\s]*free|fresh[-\s]*feel)\b/i.test(text)) {
+      return 'Kind-to-skin deodorant';
     }
 
     const sentences = text
