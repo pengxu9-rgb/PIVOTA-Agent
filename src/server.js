@@ -20549,6 +20549,34 @@ function deriveOfficialSeedSimilarCardHighlight(detail = {}) {
   return '';
 }
 
+function hasOfficialSeedSimilarCardSourceText(detail = {}) {
+  return collectOfficialSeedSimilarHighlightSourceTexts(detail).some((value) => {
+    const text = String(value || '').replace(/\s+/g, ' ').trim();
+    return text.length >= 24 && !SIMILAR_CARD_OFFICIAL_SEED_BLOCKLIST_RE.test(text.slice(0, 120));
+  });
+}
+
+function deriveOfficialSeedSimilarCardTitleHighlight(detail = {}) {
+  if (!hasOfficialSeedSimilarCardSourceText(detail)) return '';
+  const title = normalizeSimilarCardFallbackText(
+    readSimilarCardText(
+      detail.title,
+      detail.name,
+      detail.card_title,
+      detail.shopping_card?.title,
+      detail.search_card?.title_candidate,
+      detail.seed_data?.snapshot?.title,
+      detail.seed_data?.title,
+    ),
+    { maxChars: 64 },
+  );
+  if (!title || title.length < 8) return '';
+  if (SIMILAR_CARD_TITLE_FALLBACK_GENERIC_RE.test(title)) return '';
+  if (!SIMILAR_CARD_TITLE_FALLBACK_PRODUCT_RE.test(title)) return '';
+  if (SIMILAR_CARD_OFFICIAL_SEED_BLOCKLIST_RE.test(title)) return '';
+  return title;
+}
+
 function deriveSourceBackedSimilarCardHighlight(item = {}) {
   if (!item || typeof item !== 'object') return '';
 
@@ -20634,13 +20662,16 @@ function applySourceBackedSimilarCardHighlightFallback(item = {}) {
 
 function applyOfficialSeedSimilarCardEnrichment(item = {}, detail = {}) {
   if (!item || typeof item !== 'object') return item;
-  const cardHighlight = deriveOfficialSeedSimilarCardHighlight(detail);
+  const derivedHighlight = deriveOfficialSeedSimilarCardHighlight(detail);
+  const titleHighlight = derivedHighlight ? '' : deriveOfficialSeedSimilarCardTitleHighlight(detail);
+  const cardHighlight = derivedHighlight || titleHighlight;
   if (!cardHighlight) return item;
+  const highlightSource = derivedHighlight ? 'official_pdp_seed' : 'official_pdp_seed_title';
   const next = {
     ...item,
     card_highlight: cardHighlight,
-    card_highlight_source: 'official_pdp_seed',
-    evidence_profile: 'official_pdp_seed',
+    card_highlight_source: highlightSource,
+    evidence_profile: highlightSource,
   };
   if (!next.shopping_card || typeof next.shopping_card !== 'object' || Array.isArray(next.shopping_card)) {
     next.shopping_card = {};
@@ -20648,7 +20679,7 @@ function applyOfficialSeedSimilarCardEnrichment(item = {}, detail = {}) {
   next.shopping_card = {
     ...next.shopping_card,
     highlight: cardHighlight,
-    evidence_profile: 'official_pdp_seed',
+    evidence_profile: highlightSource,
   };
   if (!next.search_card || typeof next.search_card !== 'object' || Array.isArray(next.search_card)) {
     next.search_card = {};
@@ -20656,7 +20687,7 @@ function applyOfficialSeedSimilarCardEnrichment(item = {}, detail = {}) {
   next.search_card = {
     ...next.search_card,
     highlight_candidate: cardHighlight,
-    evidence_profile: 'official_pdp_seed',
+    evidence_profile: highlightSource,
   };
   return next;
 }
@@ -39544,6 +39575,7 @@ module.exports._debug = {
   shouldEnrichSimilarCard,
   shouldHydrateSimilarCardFromOfficialSeed,
   deriveOfficialSeedSimilarCardHighlight,
+  deriveOfficialSeedSimilarCardTitleHighlight,
   applyOfficialSeedSimilarCardEnrichment,
   isAccessoryLikePdpForSimilarSuppression,
   shouldSkipPdpSimilarFetchForAccessory,

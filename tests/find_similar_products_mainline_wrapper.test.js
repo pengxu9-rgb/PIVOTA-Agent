@@ -620,6 +620,61 @@ describe('find_similar_products mainline wrapper', () => {
     })).toBe('Protective lather');
   });
 
+  it('uses official seed titles as similar card evidence when official PDP text exists', () => {
+    const app = require('../src/server');
+
+    const enriched = app._debug.applyOfficialSeedSimilarCardEnrichment(
+      {
+        product_id: 'ext_jurlique_hand_cream',
+        merchant_id: 'external_seed',
+        title: 'Rose Hand Cream',
+        evidence_profile: 'seller_only',
+        shopping_card: { evidence_profile: 'seller_only' },
+        search_card: { evidence_profile: 'seller_only' },
+      },
+      {
+        title: 'Rose Hand Cream',
+        description: 'A replenishing hand cream from the official product page with botanical oils for daily hand care.',
+      },
+    );
+
+    expect(enriched).toEqual(
+      expect.objectContaining({
+        card_highlight: 'Rose Hand Cream',
+        card_highlight_source: 'official_pdp_seed_title',
+        evidence_profile: 'official_pdp_seed_title',
+      }),
+    );
+    expect(enriched.shopping_card).toEqual(
+      expect.objectContaining({
+        highlight: 'Rose Hand Cream',
+        evidence_profile: 'official_pdp_seed_title',
+      }),
+    );
+    expect(enriched.search_card).toEqual(
+      expect.objectContaining({
+        highlight_candidate: 'Rose Hand Cream',
+        evidence_profile: 'official_pdp_seed_title',
+      }),
+    );
+  });
+
+  it('does not promote generic official seed titles into similar card evidence', () => {
+    const app = require('../src/server');
+
+    expect(app._debug.applyOfficialSeedSimilarCardEnrichment(
+      { product_id: 'ext_generic', merchant_id: 'external_seed', evidence_profile: 'seller_only' },
+      {
+        title: 'Similar Product 1',
+        description: 'Official product page text that is present but the title is still generic.',
+      },
+    )).toEqual(
+      expect.objectContaining({
+        evidence_profile: 'seller_only',
+      }),
+    );
+  });
+
   it('skips expensive public PDP similar recall for external sample/sachet products', async () => {
     const app = require('../src/server');
 
