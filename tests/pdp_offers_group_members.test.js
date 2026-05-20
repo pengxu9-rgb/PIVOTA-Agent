@@ -653,6 +653,8 @@ describe('PDP grouped offers', () => {
     });
 
     expect(args.candidateLimit).toBeGreaterThanOrEqual(6);
+    expect(args.candidateLimit).toBeGreaterThan(args.displayLimit);
+    expect(args.fetchArgs.k).toBe(args.candidateLimit);
     expect(args.fetchArgs.options).toEqual(
       expect.objectContaining({
         no_cache: false,
@@ -690,6 +692,8 @@ describe('PDP grouped offers', () => {
       source: 'external_seed',
       currency: 'USD',
     });
+    expect(args.candidateLimit).toBeGreaterThan(args.displayLimit);
+    expect(args.fetchArgs.k).toBe(args.candidateLimit);
   });
 
   test('detects missing similar card images separately from highlight readiness', () => {

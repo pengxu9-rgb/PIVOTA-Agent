@@ -3789,7 +3789,7 @@ function buildPdpSimilarFetchArgs({
     similarBaseProduct,
     fetchArgs: {
       pdp_product: similarBaseProduct,
-      k: limit,
+      k: resolvedCandidateLimit,
       locale:
         payload?.context?.locale ||
         payload?.context?.language ||
@@ -35897,7 +35897,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
             const rec = await fetchSimilarProductsDeduped({
               pdp_product: baseProduct,
-              k: limit,
+              k: directCandidateLimit,
               locale: payload?.context?.locale || payload?.context?.language || payload?.locale || 'en-US',
               currency: baseProduct.currency || baseProduct.price?.currency || 'USD',
               options: {
@@ -35916,7 +35916,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               items: rawProducts,
               checkoutToken,
               bypassCache,
-              maxItems: limit,
+              maxItems: directCandidateLimit,
             });
             const cardEnrichmentMetadata = getSimilarCardEnrichmentMetadata(enrichedProducts);
             const products = await hydrateVisibleSimilarProductSigIdsFromCatalog(
