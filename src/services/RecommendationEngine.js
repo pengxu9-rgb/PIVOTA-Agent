@@ -393,8 +393,8 @@ const SIMILAR_INTENT_FAMILY_RULES = Object.freeze([
   },
   {
     id: 'eye_cream',
-    js: /\b(?:eye\s+cream|eye\s+creme|eye\s+cr[eè]me)\b/i,
-    sql: '\\m(eye\\s+cream|eye\\s+creme|eye\\s+cr[eè]me)\\M',
+    js: /\b(?:(?:under\s*-?\s*eye|undereye|eye)\s+(?:brightener|cream|creme|cr[eè]me|serum|treatment|gel|balm|patch)|eye\s*brightener)\b/i,
+    sql: '\\m((under\\s*-?\\s*eye|undereye|eye)\\s+(brightener|cream|creme|cr[eè]me|serum|treatment|gel|balm|patch)|eye\\s*brightener)\\M',
   },
   {
     id: 'moisturizer',
@@ -2114,6 +2114,9 @@ function getSimilarIntentFamilyFromFeatures(features, { titleOnly = false } = {}
   if (parent === 'moisturize' && ['cream', 'lotion', 'moisturizer', 'moisturiser'].includes(leaf)) {
     return 'moisturizer';
   }
+  if (parent === 'eye' && ['brightener', 'cream', 'serum', 'treatment', 'gel', 'balm', 'patch'].includes(leaf)) {
+    return 'eye_cream';
+  }
   return '';
 }
 
@@ -2134,6 +2137,9 @@ function getSimilarIntentFamilyFromProduct(product) {
   const parent = getParentCategory(product);
   if (parent === 'moisturize' && ['cream', 'lotion', 'moisturizer', 'moisturiser'].includes(leaf)) {
     return 'moisturizer';
+  }
+  if (parent === 'eye' && ['brightener', 'cream', 'serum', 'treatment', 'gel', 'balm', 'patch'].includes(leaf)) {
+    return 'eye_cream';
   }
   return '';
 }
@@ -2221,7 +2227,21 @@ function getSimilarIntentFamilySqlLikePatterns(intentFamily) {
       '%massage oil%',
     ];
   }
-  if (id === 'eye_cream') return ['%eye cream%', '%eye creme%', '%eye crème%'];
+  if (id === 'eye_cream') {
+    return [
+      '%eye cream%',
+      '%eye creme%',
+      '%eye crème%',
+      '%eye serum%',
+      '%eye treatment%',
+      '%eye gel%',
+      '%eye balm%',
+      '%eye patch%',
+      '%eye brightener%',
+      '%under eye%',
+      '%undereye%',
+    ];
+  }
   if (id === 'moisturizer') {
     return [
       '%moisturizer%',

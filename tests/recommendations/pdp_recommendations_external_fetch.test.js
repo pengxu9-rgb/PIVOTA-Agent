@@ -1773,6 +1773,7 @@ describe('RecommendationEngine external candidate fetch', () => {
     expect(_internals.getSimilarIntentFamilyFromText('Lavender Body Oil')).toBe('body_oil');
     expect(_internals.getSimilarIntentFamilyFromText('Rose Body Lotion')).toBe('body_oil');
     expect(_internals.getSimilarIntentFamilyFromText('Herbal Recovery Eye Cream')).toBe('eye_cream');
+    expect(_internals.getSimilarIntentFamilyFromText('C-Vit Undereye Brightener')).toBe('eye_cream');
     expect(_internals.getSimilarIntentFamilyFromText('Moisture Replenishing Day Cream')).toBe('moisturizer');
     expect(_internals.getSimilarIntentFamilyFromText('My Glow Black Honey Lip Oil')).toBe('lip_oil');
     expect(_internals.getSimilarIntentFamilyFromText('Skin Tint Blurring Elixir')).toBe('foundation');
@@ -1781,6 +1782,11 @@ describe('RecommendationEngine external candidate fetch', () => {
       leafCategory: 'cream',
       parentCategory: 'moisturize',
     })).toBe('moisturizer');
+    expect(_internals.getSimilarIntentFamilyFromFeatures({
+      normalizedTitle: 'c-vit undereye brightener',
+      leafCategory: 'brightener',
+      parentCategory: 'eye',
+    })).toBe('eye_cream');
   });
 
   test('strict sunscreen deep-domain recall does not count incidental category rows as focused coverage', async () => {
