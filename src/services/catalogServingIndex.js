@@ -881,6 +881,9 @@ async function searchCatalogServingIndex(params = {}, {
   fetchBackfillProductsFn = fetchBackfillProducts,
   identityRowsResolverFn = listLivePdpIdentityRowsForRefs,
   allowLocalShadow = false,
+  // When true, filter local shadow results to only serving_eligible=TRUE products
+  // (as determined by index_pipeline_state). Requires migrations 098+099 to be applied.
+  servingEligibleOnly = false,
 } = {}) {
   const config = getCatalogServingIndexConfig(env);
   if (!config.enabled) {
@@ -912,6 +915,37 @@ async function searchCatalogServingIndex(params = {}, {
       brandFilter,
       ...(typeof queryFn === 'function' ? { queryFn } : {}),
     });
+
+    // When serving_eligible_only is active, pre-filter sourceRows to products
+    // that have serving_eligible=TRUE in index_pipeline_state. Uses a JOIN
+    // through catalog_products to resolve content_key → (merchant_id, source_product_id).
+    // Falls back to no filter if index_pipeline_state isn't available yet.
+    if (servingEligibleOnly && typeof queryFn === 'function' && sourceRows.length > 0) {
+      try {
+        const eligibleRes = await queryFn(
+          `SELECT cp.merchant_id, cp.source_product_id
+           FROM index_pipeline_state ips
+           JOIN catalog_products cp ON cp.content_key = ips.content_key
+           WHERE ips.serving_eligible = TRUE`,
+          [],
+        );
+        const eligibleSet = new Set(
+          (eligibleRes.rows || []).map(
+            (r) => `${r.merchant_id || ''}::${r.source_product_id || ''}`,
+          ),
+        );
+        // Filter sourceRows: keep rows where merchant_id + product_id matches an eligible pair
+        const filtered = sourceRows.filter((row) => {
+          const key = `${row.merchant_id || ''}::${row.product_id || ''}`;
+          return eligibleSet.has(key);
+        });
+        // Overwrite sourceRows reference; use filtered for all downstream steps
+        sourceRows.length = 0;
+        for (const row of filtered) sourceRows.push(row);
+      } catch (_err) {
+        // index_pipeline_state may not exist yet — fail open and serve all products
+      }
+    }
     const sourceListingRefs = uniqStrings(
       sourceRows.map((row) =>
         buildSourceListingRef({

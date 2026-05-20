@@ -134,6 +134,7 @@ const {
 } = require('./services/discoveryFeed');
 const { backfillCatalogServingIndex } = require('./services/catalogServingIndex');
 const { searchCatalogServingGateway } = require('./services/catalogServingGateway');
+const { inspectIndexPipeline } = require('./services/indexInspect');
 const {
   NON_IMAGE_GEMINI_FLOOR_MODEL,
   isTemporaryUnifiedGeminiModelEnabled,
@@ -29085,6 +29086,29 @@ app.post('/api/admin/catalog-serving/search', requireAdmin, async (req, res) => 
     return res.status(500).json({
       ok: false,
       error: 'CATALOG_SERVING_SEARCH_FAILED',
+      message: err?.message || String(err),
+    });
+  }
+});
+
+app.get('/api/admin/index/inspect', requireAdmin, async (req, res) => {
+  const content_key = String(req.query.content_key || '').trim() || null;
+  const seed_id = String(req.query.seed_id || '').trim() || null;
+  const url = String(req.query.url || '').trim() || null;
+  if (!content_key && !seed_id && !url) {
+    return res.status(400).json({
+      ok: false,
+      error: 'MISSING_LOOKUP_PARAM',
+      message: 'Provide one of: content_key, seed_id, url',
+    });
+  }
+  try {
+    const result = await inspectIndexPipeline({ content_key, seed_id, url });
+    return res.json({ ok: true, result });
+  } catch (err) {
+    return res.status(500).json({
+      ok: false,
+      error: 'INDEX_INSPECT_FAILED',
       message: err?.message || String(err),
     });
   }
