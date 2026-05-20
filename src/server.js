@@ -20314,9 +20314,50 @@ function readSimilarCardEvidenceProfile(product = {}) {
   ).toLowerCase();
 }
 
-function isSellerOnlySimilarCardEvidence(product = {}) {
+function hasRawSellerOnlySimilarCardEvidence(product = {}) {
   const profile = readSimilarCardEvidenceProfile(product);
   return profile === 'seller_only' || profile === 'seller_only_fallback';
+}
+
+function isSourceBackedTitleSimilarCardFallback(product = {}) {
+  if (!product || typeof product !== 'object') return false;
+  const source = readSimilarCardText(product.card_highlight_source, product.cardHighlightSource).toLowerCase();
+  if (source !== 'source_backed_title_or_intro') return false;
+  if (!hasSimilarCardImage(product)) return false;
+
+  const title = normalizeSimilarCardFallbackText(
+    readSimilarCardText(
+      product.title,
+      product.name,
+      product.card_title,
+      product.cardTitle,
+      product.shopping_card?.title,
+      product.shoppingCard?.title,
+      product.search_card?.title_candidate,
+      product.searchCard?.title_candidate,
+      product.searchCard?.titleCandidate,
+    ),
+  );
+  const highlight = normalizeSimilarCardFallbackText(
+    readSimilarCardText(
+      product.card_highlight,
+      product.cardHighlight,
+      product.shopping_card?.highlight,
+      product.shoppingCard?.highlight,
+      product.search_card?.highlight_candidate,
+      product.searchCard?.highlight_candidate,
+      product.searchCard?.highlightCandidate,
+    ),
+  );
+  if (!title || !highlight) return false;
+  if (normalizeSearchTextForMatch(title) !== normalizeSearchTextForMatch(highlight)) return false;
+  if (SIMILAR_CARD_TITLE_FALLBACK_GENERIC_RE.test(title)) return false;
+  return SIMILAR_CARD_TITLE_FALLBACK_PRODUCT_RE.test(title);
+}
+
+function isSellerOnlySimilarCardEvidence(product = {}) {
+  if (isSourceBackedTitleSimilarCardFallback(product)) return false;
+  return hasRawSellerOnlySimilarCardEvidence(product);
 }
 
 function hasSimilarCardPresentation(product = {}) {
@@ -20350,7 +20391,7 @@ function hasSimilarCardImage(product = {}) {
 }
 
 const SIMILAR_CARD_TITLE_FALLBACK_PRODUCT_RE =
-  /\b(?:ampoule|balm|blush|bronzer|brow|cleanser|cleansing|conditioner|concealer|cream|deodorant|essence|exfoliant|eyeshadow|foundation|fragrance|gel|gloss|liner|lipstick|lotion|mascara|mask|mist|moisturizer|oil|pad|palette|patch|peel|powder|primer|serum|shampoo|spf|sunscreen|tint|toner|treatment)\b/i;
+  /\b(?:ampoule|balm|blush|bronzer|brow|cleanser|cleansing|conditioner|concealer|cream|deodorant|essence|exfoliant|eyeshadow|foundation|fragrance|gel|gloss|liner|lipstick|lotion|mascara|mask|mist|moisturizer|oil|pad|palette|patch|peel|powder|primer|serum|shampoo|spf\s*\d*|suncream|sunscreen|tint|toner|treatment)\b/i;
 
 const SIMILAR_CARD_TITLE_FALLBACK_GENERIC_RE =
   /\b(?:category\s+only|missing\s+highlight|similar\s+product|related\s+product|product\s+\d*|item\s+\d*)\b/i;
@@ -20546,11 +20587,14 @@ function applySourceBackedSimilarCardHighlightFallback(item = {}) {
 
   const cardHighlight = deriveSourceBackedSimilarCardHighlight(item);
   if (!cardHighlight) return item;
+  const sellerOnlyEvidence = hasRawSellerOnlySimilarCardEvidence(item);
 
   const next = {
     ...item,
     card_highlight: cardHighlight,
-    card_highlight_source: item.card_highlight_source || 'source_backed_title_or_intro',
+    card_highlight_source: sellerOnlyEvidence
+      ? 'source_backed_title_or_intro'
+      : item.card_highlight_source || 'source_backed_title_or_intro',
   };
   if (!next.shopping_card || typeof next.shopping_card !== 'object' || Array.isArray(next.shopping_card)) {
     next.shopping_card = {};
