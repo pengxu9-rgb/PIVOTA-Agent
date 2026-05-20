@@ -6075,7 +6075,9 @@ function hasOfferProductTransactionHold(product = {}) {
   if (!isPlainObject(product)) return false;
   const seedData = isPlainObject(product.seed_data) ? product.seed_data : {};
   const snapshot = isPlainObject(seedData.snapshot) ? seedData.snapshot : {};
-  const family = firstNonEmptyString(product.product_family, product.external_seed_product_family).toLowerCase();
+  const family = String(
+    firstNonEmptyString(product.product_family, product.external_seed_product_family) || '',
+  ).toLowerCase();
   const hasContract = (value) => {
     const contract = isPlainObject(value) ? value : {};
     return Boolean(firstNonEmptyString(contract.status, contract.reason, contract.contract_version));
@@ -7020,11 +7022,13 @@ function hydrateCanonicalPdpPayloadFromOffers(pdpPayload, offersData) {
     product.price ?? product.price_amount ?? product.priceAmount,
   );
   const shouldHydratePrice = !Number.isFinite(currentProductAmount) || currentProductAmount <= 0;
+  const shouldProjectGroupOfferPrice =
+    String(offersData?.offer_source || '').trim() === 'group_fused' && Boolean(selectedOfferMoney);
 
   if (offersData?.default_offer_id) product.default_offer_id = offersData.default_offer_id;
   if (offersData?.best_price_offer_id) product.best_price_offer_id = offersData.best_price_offer_id;
 
-  if (selectedOfferMoney && shouldHydratePrice) {
+  if (selectedOfferMoney && (shouldHydratePrice || shouldProjectGroupOfferPrice)) {
     const existingPrice =
       product.price && typeof product.price === 'object' && !Array.isArray(product.price)
         ? product.price
@@ -7392,6 +7396,7 @@ async function buildOffersFromGroupMembers(args) {
   const bypassCache = args?.bypassCache === true;
   const limit = Math.min(Math.max(1, Number(args?.limit || groupMembers.length || 10) || 10), 50);
   const preferredMerchantId = args?.preferredMerchantId ? String(args.preferredMerchantId).trim() : null;
+  const preferredProductId = args?.preferredProductId ? String(args.preferredProductId).trim() : null;
   const debug = args?.debug === true;
   const prefetchedProductByKey = buildPrefetchedOfferProductMap(args?.prefetchedProducts);
 
@@ -7742,7 +7747,18 @@ async function buildOffersFromGroupMembers(args) {
     return aTotal < bTotal ? -1 : 1;
   });
   const bestPriceOfferId = sortedByTotal[0]?.offer_id || null;
-  const defaultOfferId = pickDefaultOfferId(prioritizedOffers) || bestPriceOfferId;
+  const preferredOffer =
+    (preferredProductId
+      ? prioritizedOffers.find(
+          (offer) =>
+            String(offer?.product_id || '').trim() === preferredProductId &&
+            (!preferredMerchantId || String(offer?.merchant_id || '').trim() === preferredMerchantId),
+        )
+      : null) ||
+    (preferredMerchantId
+      ? prioritizedOffers.find((offer) => String(offer?.merchant_id || '').trim() === preferredMerchantId)
+      : null);
+  const defaultOfferId = preferredOffer?.offer_id || pickDefaultOfferId(prioritizedOffers) || bestPriceOfferId;
   timings.sort = Date.now() - sortStartedAt;
   timings.total = Date.now() - totalStartedAt;
 
@@ -27292,6 +27308,7 @@ async function buildProductIntelOffersDataForContext({
           checkoutToken,
           limit,
           preferredMerchantId: context.canonicalProductRef.merchant_id || null,
+          preferredProductId: context.canonicalProductRef.product_id || null,
         }).catch(() => null)
       : null;
 
@@ -31810,6 +31827,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               bypassCache,
               limit: payload?.offers?.limit || 10,
               preferredMerchantId: requestedMerchantId || null,
+              preferredProductId: entryProductId || productId || null,
               debug,
               prefetchedProducts: [
                 canonicalProductForPdp,

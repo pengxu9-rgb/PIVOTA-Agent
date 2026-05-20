@@ -93,11 +93,32 @@ function buildCatalogGroupMember(row, canonicalSigId) {
   const merchantId = firstNonEmptyString(row?.merchant_id);
   const productId = firstNonEmptyString(row?.source_product_id, row?.platform_product_id, row?.product_key);
   if (!merchantId || !productId) return null;
+  const productPayload =
+    row?.product_payload && typeof row.product_payload === 'object' && !Array.isArray(row.product_payload)
+      ? row.product_payload
+      : {};
+  const payloadSnapshot =
+    productPayload.snapshot && typeof productPayload.snapshot === 'object' && !Array.isArray(productPayload.snapshot)
+      ? productPayload.snapshot
+      : {};
   const sourcePayload = {
-    title: firstNonEmptyString(row?.product_title, row?.title),
-    brand: firstNonEmptyString(row?.brand),
-    canonical_url: firstNonEmptyString(row?.canonical_url, row?.pivota_canonical_url),
-    image_url: firstNonEmptyString(row?.product_image_url, row?.image_url),
+    ...productPayload,
+    title: firstNonEmptyString(row?.product_title, row?.title, productPayload.title, productPayload.name, payloadSnapshot.title),
+    brand: firstNonEmptyString(row?.brand, productPayload.brand, payloadSnapshot.brand),
+    canonical_url: firstNonEmptyString(
+      row?.canonical_url,
+      row?.pivota_canonical_url,
+      productPayload.canonical_url,
+      productPayload.canonicalUrl,
+      payloadSnapshot.canonical_url,
+    ),
+    image_url: firstNonEmptyString(
+      row?.product_image_url,
+      row?.image_url,
+      productPayload.image_url,
+      productPayload.imageUrl,
+      payloadSnapshot.image_url,
+    ),
     content_key: firstNonEmptyString(row?.content_key),
     pivota_signature_id: firstNonEmptyString(row?.pivota_signature_id),
     canonical_sig_id: canonicalSigId || undefined,

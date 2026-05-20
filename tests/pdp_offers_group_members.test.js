@@ -1159,6 +1159,41 @@ describe('PDP grouped offers', () => {
     expect(payload.product.price_source).toBeUndefined();
   });
 
+  test('projects group-fused default offer price over canonical content price', () => {
+    const app = require('../src/server');
+
+    const payload = app._debug.hydrateCanonicalPdpPayloadFromOffers(
+      {
+        product: {
+          product_id: 'ext_cosrx_official_eye',
+          title: 'Advanced Snail Peptide Eye Cream',
+          price: { current: { amount: 28, currency: 'USD' } },
+          price_amount: 28,
+          currency: 'USD',
+        },
+      },
+      {
+        offer_source: 'group_fused',
+        default_offer_id: 'of_ulta_eye',
+        best_price_offer_id: 'of_ulta_eye',
+        offers: [
+          {
+            offer_id: 'of_ulta_eye',
+            merchant_id: 'external_seed',
+            product_id: 'ulta:eye',
+            merchant_name: 'Ulta Beauty',
+            price: { amount: 22, currency: 'USD' },
+            inventory: { in_stock: true },
+          },
+        ],
+      },
+    );
+
+    expect(payload.product.price.current).toEqual({ amount: 22, currency: 'USD' });
+    expect(payload.product.price_amount).toBe(22);
+    expect(payload.product.price_source).toBe('default_offer');
+  });
+
   test('removes zero canonical PDP product price when no positive offer price exists', () => {
     const app = require('../src/server');
 
@@ -1356,6 +1391,70 @@ describe('PDP grouped offers', () => {
       expect.objectContaining({
         variant_id: 'ulta-russian-red',
         title: 'Russian Red',
+      }),
+    );
+  });
+
+  test('uses preferred external-seed product id as default offer when merchant id is shared', async () => {
+    const app = require('../src/server');
+
+    const offersData = await app._debug.buildOffersFromGroupMembers({
+      productGroupId: 'sig_cosrx_eye',
+      preferredMerchantId: 'external_seed',
+      preferredProductId: 'ulta:cosrx-eye',
+      members: [
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ext_cosrx_eye_official',
+          source_kind: 'canonical_catalog',
+          source_payload: {
+            title: 'Advanced Snail Peptide Eye Cream',
+            brand: 'COSRX',
+            merchant_name: 'COSRX',
+            price_amount: 28,
+            price_currency: 'USD',
+            destination_url: 'https://www.cosrx.com/products/advanced-snail-peptide-eye-cream',
+            variants: [
+              {
+                variant_id: 'official_085',
+                title: '0.85 fl oz',
+                price: '28.00',
+                currency: 'USD',
+              },
+            ],
+          },
+          is_primary: true,
+        },
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ulta:cosrx-eye',
+          source_kind: 'canonical_catalog',
+          source_payload: {
+            title: 'Advanced Snail Peptide Eye Cream',
+            brand: 'COSRX',
+            merchant_name: 'Ulta Beauty',
+            price_amount: 22,
+            price_currency: 'USD',
+            destination_url: 'https://www.ulta.com/p/advanced-snail-peptide-eye-cream',
+            variants: [
+              {
+                variant_id: 'ulta_085',
+                title: '0.85 fl oz',
+                price: '22.00',
+                currency: 'USD',
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    const defaultOffer = offersData.offers.find((offer) => offer.offer_id === offersData.default_offer_id);
+    expect(offersData.offers_count).toBe(2);
+    expect(defaultOffer).toEqual(
+      expect.objectContaining({
+        product_id: 'ulta:cosrx-eye',
+        price: { amount: 22, currency: 'USD' },
       }),
     );
   });
