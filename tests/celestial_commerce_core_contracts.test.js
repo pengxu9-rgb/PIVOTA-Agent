@@ -337,6 +337,70 @@ describe('Celestial commerce core source contracts', () => {
     expect(out.map((item) => item.product_id)).toEqual(['ext_ready']);
   });
 
+  test('PDP similar cards can replace seller-only fallback with official PDP seed evidence', () => {
+    const app = require('../src/server');
+    const {
+      applyOfficialSeedSimilarCardEnrichment,
+      filterSimilarProductsWithCardHighlights,
+    } = app._debug;
+
+    const enriched = applyOfficialSeedSimilarCardEnrichment(
+      {
+        product_id: 'ext_shampoo',
+        title: 'Lemongrass Tea Shampoo',
+        category: 'Shampoo',
+        image_url: 'https://cdn.example.test/shampoo.jpg',
+        shopping_card: {
+          highlight: 'Shampoo routine format',
+          evidence_profile: 'seller_only',
+        },
+      },
+      {
+        description:
+          'This daily sulfate-free Lemongrass Tea Shampoo has been formulated with a custom spirit blend to cleanse your hair with natural ingredients of hops extract and juniper berry.',
+      },
+    );
+
+    expect(enriched.card_highlight).toBe('Sulfate-free hair cleanse');
+    expect(enriched.evidence_profile).toBe('official_pdp_seed');
+    expect(enriched.shopping_card.evidence_profile).toBe('official_pdp_seed');
+
+    const out = filterSimilarProductsWithCardHighlights(
+      [enriched],
+      { baseProduct: { title: 'Lemongrass Tea Conditioner', category: 'Conditioner' } },
+    );
+    expect(out.map((item) => item.product_id)).toEqual(['ext_shampoo']);
+  });
+
+  test('PDP similar card official seed highlights stay compact and source-backed', () => {
+    const app = require('../src/server');
+    const { deriveOfficialSeedSimilarCardHighlight } = app._debug;
+
+    expect(
+      deriveOfficialSeedSimilarCardHighlight({
+        description:
+          'This daily Lemongrass Tea Conditioner adds weightless body and shine while preventing tangles, allowing you to comb through effortlessly.',
+      }),
+    ).toBe('Adds weightless body and shine');
+    expect(
+      deriveOfficialSeedSimilarCardHighlight({
+        description:
+          'Our most advanced moisturizer, elixBoost Balm is formulated for skin barrier recovery and protection against environmental aggressors.',
+      }),
+    ).toBe('Skin barrier recovery and protection');
+    expect(
+      deriveOfficialSeedSimilarCardHighlight({
+        description:
+          'Blind Barber unique AHA Refining solution gently exfoliates the outermost layer of pore-clogging dead skin.',
+      }),
+    ).toBe('AHA exfoliation for dead skin');
+    expect(
+      deriveOfficialSeedSimilarCardHighlight({
+        description: 'One Size Fits Most Relaxed Fit, Garment Washed Cotton Twill',
+      }),
+    ).toBe('');
+  });
+
   test('shopping agent loop-break builds a scenario-aware retry query from short user selection', () => {
     const app = require('../src/server');
     const { uiChatBuildLoopBreakRetryArgs } = app._debug;

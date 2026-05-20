@@ -4325,6 +4325,88 @@ async function fetchExternalSeedProductDetailFromDb(args) {
   }
 }
 
+async function fetchExternalSeedSimilarCardSourcesFromDb(productIds = []) {
+  if (!process.env.DATABASE_URL) return new Map();
+  const ids = Array.from(
+    new Set(
+      (Array.isArray(productIds) ? productIds : [])
+        .map((value) => String(value || '').trim())
+        .filter((value) => isExternalSeedProductId(value)),
+    ),
+  ).slice(0, 24);
+  if (!ids.length) return new Map();
+
+  try {
+    const res = await query(
+      `
+        SELECT
+          external_product_id,
+          coalesce(seed_data->'snapshot'->>'title', seed_data->>'title', title, '') AS title,
+          coalesce(
+            seed_data->'snapshot'->>'pdp_description_raw',
+            seed_data->>'pdp_description_raw',
+            ''
+          ) AS pdp_description_raw,
+          coalesce(
+            seed_data->'snapshot'->>'description',
+            seed_data->>'description',
+            seed_data->'snapshot'->>'description_raw',
+            seed_data->>'description_raw',
+            ''
+          ) AS description,
+          CASE
+            WHEN jsonb_typeof(seed_data->'snapshot'->'pdp_details_sections') = 'array'
+              THEN seed_data->'snapshot'->'pdp_details_sections'
+            WHEN jsonb_typeof(seed_data->'pdp_details_sections') = 'array'
+              THEN seed_data->'pdp_details_sections'
+            ELSE '[]'::jsonb
+          END AS pdp_details_sections
+        FROM external_product_seeds
+        WHERE status = 'active'
+          AND external_product_id = ANY($1::text[])
+      `,
+      [ids],
+    );
+    const out = new Map();
+    for (const row of res?.rows || []) {
+      const externalProductId = String(row?.external_product_id || '').trim();
+      if (!externalProductId) continue;
+      const pdpDetailsSections = Array.isArray(row?.pdp_details_sections)
+        ? row.pdp_details_sections
+        : [];
+      out.set(externalProductId, {
+        product_id: externalProductId,
+        title: firstNonEmptyString(row?.title),
+        description: firstNonEmptyString(row?.description),
+        pdp_description_raw: firstNonEmptyString(row?.pdp_description_raw),
+        pdp_details_sections: pdpDetailsSections,
+        seed_data: {
+          snapshot: {
+            title: firstNonEmptyString(row?.title),
+            description: firstNonEmptyString(row?.description),
+            pdp_description_raw: firstNonEmptyString(row?.pdp_description_raw),
+            pdp_details_sections: pdpDetailsSections,
+          },
+        },
+      });
+    }
+    return out;
+  } catch (err) {
+    const message = String(err?.message || err || '');
+    if (
+      err?.code === 'NO_DATABASE' ||
+      (message.includes('external_product_seeds') && message.includes('does not exist'))
+    ) {
+      return new Map();
+    }
+    logger.warn(
+      { err: err?.message || String(err), product_count: ids.length },
+      'Failed to hydrate external seed similar card sources from DB',
+    );
+    return new Map();
+  }
+}
+
 // Single-flight + short-TTL memoization for the Pivota-signature -> catalog product_ref
 // resolver. The lookup is read-only and deterministic for a given sig_*. Real PDP traffic
 // includes lots of repeat/concurrent fetches for the same product (rapid back-nav, multiple
@@ -20285,22 +20367,141 @@ function normalizeSimilarCardFallbackText(value, { maxChars = 74 } = {}) {
   return text.slice(0, maxChars).replace(/\s+\S*$/g, '').replace(/[.;,:|-]+$/g, '').trim();
 }
 
+const SIMILAR_CARD_OFFICIAL_SEED_HIGHLIGHT_MAX_CHARS = 40;
+
+const SIMILAR_CARD_OFFICIAL_SEED_BENEFIT_RE =
+  /\b(?:aha|barrier|body|balance|cleanse|cleanses|cleansing|condition|conditioning|exfoliat|finish|firm|flexible|fullness|hair|hold|hydration|matte|moisturi[sz]|oil|shine|soften|sulfate-free|texture|thicken|volume|weightless)\b/i;
+
+const SIMILAR_CARD_OFFICIAL_SEED_BLOCKLIST_RE =
+  /\b(?:add[-\s]?on donation|caution|cotton twill|customer service|donation|for best results|gift card|how to use|ingredient|one size fits most|package protection|policies|refund|shipping|terms)\b/i;
+
+function normalizeOfficialSeedSimilarHighlightCandidate(value) {
+  const text = String(value || '')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^[.;,:|\-]+/g, '')
+    .replace(/[.;,:|\-]+$/g, '')
+    .trim();
+  if (!text) return '';
+  if (text.length > SIMILAR_CARD_OFFICIAL_SEED_HIGHLIGHT_MAX_CHARS) return '';
+  if (SIMILAR_CARD_OFFICIAL_SEED_BLOCKLIST_RE.test(text)) return '';
+  if (!SIMILAR_CARD_OFFICIAL_SEED_BENEFIT_RE.test(text)) return '';
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function collectOfficialSeedSimilarHighlightSourceTexts(detail = {}) {
+  if (!detail || typeof detail !== 'object') return [];
+  const seedData = isPlainObject(detail.seed_data) ? detail.seed_data : {};
+  const snapshot = isPlainObject(seedData.snapshot) ? seedData.snapshot : {};
+  const sources = [
+    detail.pdp_description_raw,
+    detail.description,
+    detail.summary,
+    seedData.pdp_description_raw,
+    snapshot.pdp_description_raw,
+    seedData.description,
+    snapshot.description,
+  ];
+  for (const sections of [detail.pdp_details_sections, detail.details_sections, seedData.pdp_details_sections, snapshot.pdp_details_sections]) {
+    if (!Array.isArray(sections)) continue;
+    sections.forEach((section) => {
+      if (!section || typeof section !== 'object') return;
+      sources.push(section.text, section.body, section.content, section.value, section.description);
+    });
+  }
+  return sources
+    .map((value) =>
+      String(value || '')
+        .replace(/<!--[\s\S]*?-->/g, ' ')
+        .replace(/<[^>]*>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim(),
+    )
+    .filter(Boolean);
+}
+
+function deriveOfficialSeedSimilarCardHighlight(detail = {}) {
+  const sources = collectOfficialSeedSimilarHighlightSourceTexts(detail);
+  for (const raw of sources) {
+    const text = String(raw || '').replace(/\s+/g, ' ').trim();
+    if (!text || SIMILAR_CARD_OFFICIAL_SEED_BLOCKLIST_RE.test(text.slice(0, 120))) continue;
+
+    const directPatterns = [
+      /\b(sulfate-free)\b[^.]{0,90}\bcleanse (?:your )?hair\b/i,
+      /\b(sulfate-free)\b[^.]{0,90}\bcleanse (?:your )?body\b/i,
+      /\b(adds? weightless body and shine)\b/i,
+      /\b(immediate hydration and balance)\b/i,
+      /\b(skin barrier recovery and protection)\b/i,
+      /\b(strong hold and (?:a )?matte finish)\b/i,
+      /\b(maximum hold and (?:a )?high sheen)\b/i,
+      /\b(medium-to-strong hold and light shine)\b/i,
+      /\b(weightless hold and (?:a )?natural sheen)\b/i,
+      /\b(medium hold and (?:a )?workable,? natural finish)\b/i,
+      /\b(weightless volume and texture)\b/i,
+      /\b(fullness and flexible hold)\b/i,
+      /\b(moisturi[sz]e and soften coarse beard hairs)\b/i,
+    ];
+
+    for (const pattern of directPatterns) {
+      const match = text.match(pattern);
+      if (!match) continue;
+      if (pattern.source.includes('cleanse (?:your )?hair')) {
+        return 'Sulfate-free hair cleanse';
+      }
+      if (pattern.source.includes('cleanse (?:your )?body')) {
+        return 'Sulfate-free body cleanse';
+      }
+      const candidate = normalizeOfficialSeedSimilarHighlightCandidate(match[1]);
+      if (candidate) return candidate;
+    }
+
+    if (/\baha\b/i.test(text) && /\bdead skin\b/i.test(text) && /\bexfoliat/i.test(text)) {
+      return 'AHA exfoliation for dead skin';
+    }
+    if (/\brice bran\b/i.test(text) && /\bexfoliat/i.test(text) && /\bclean/i.test(text)) {
+      return 'Rice bran exfoliating cleanse';
+    }
+
+    const sentences = text
+      .split(/(?<=[.!?])\s+/)
+      .slice(0, 3)
+      .flatMap((sentence) => sentence.split(/\s+(?:while|with|and then|that)\s+/i))
+      .map((part) =>
+        part
+          .replace(/^(?:this|the|our|blind barber'?s?)\s+/i, '')
+          .replace(/\b(?:has been|is)\s+formulated\s+to\s+/i, '')
+          .replace(/\b(?:has been|is)\s+designed\s+to\s+/i, '')
+          .trim(),
+      );
+    for (const sentence of sentences) {
+      const candidate = normalizeOfficialSeedSimilarHighlightCandidate(sentence);
+      if (candidate) return candidate;
+    }
+  }
+  return '';
+}
+
 function deriveSourceBackedSimilarCardHighlight(item = {}) {
   if (!item || typeof item !== 'object') return '';
 
-  const intro = normalizeSimilarCardFallbackText(
-    readSimilarCardText(
-      item.card_intro,
-      item.cardIntro,
-      item.shopping_card?.intro,
-      item.shoppingCard?.intro,
-      item.search_card?.intro_candidate,
-      item.searchCard?.intro_candidate,
-      item.searchCard?.introCandidate,
-      item.summary,
-    ),
-  );
-  if (intro) return intro;
+  if (!isSellerOnlySimilarCardEvidence(item)) {
+    const intro = normalizeSimilarCardFallbackText(
+      readSimilarCardText(
+        item.card_intro,
+        item.cardIntro,
+        item.shopping_card?.intro,
+        item.shoppingCard?.intro,
+        item.search_card?.intro_candidate,
+        item.searchCard?.intro_candidate,
+        item.searchCard?.introCandidate,
+        item.summary,
+      ),
+    );
+    if (intro) return intro;
+  }
 
   const title = normalizeSimilarCardFallbackText(
     readSimilarCardText(
@@ -20366,6 +20567,35 @@ function applySourceBackedSimilarCardHighlightFallback(item = {}) {
   return next;
 }
 
+function applyOfficialSeedSimilarCardEnrichment(item = {}, detail = {}) {
+  if (!item || typeof item !== 'object') return item;
+  const cardHighlight = deriveOfficialSeedSimilarCardHighlight(detail);
+  if (!cardHighlight) return item;
+  const next = {
+    ...item,
+    card_highlight: cardHighlight,
+    card_highlight_source: 'official_pdp_seed',
+    evidence_profile: 'official_pdp_seed',
+  };
+  if (!next.shopping_card || typeof next.shopping_card !== 'object' || Array.isArray(next.shopping_card)) {
+    next.shopping_card = {};
+  }
+  next.shopping_card = {
+    ...next.shopping_card,
+    highlight: cardHighlight,
+    evidence_profile: 'official_pdp_seed',
+  };
+  if (!next.search_card || typeof next.search_card !== 'object' || Array.isArray(next.search_card)) {
+    next.search_card = {};
+  }
+  next.search_card = {
+    ...next.search_card,
+    highlight_candidate: cardHighlight,
+    evidence_profile: 'official_pdp_seed',
+  };
+  return next;
+}
+
 function annotateSimilarCardStatus(item = {}) {
   if (!item || typeof item !== 'object') return item;
   const next = applySourceBackedSimilarCardHighlightFallback(item);
@@ -20389,6 +20619,13 @@ function isSimilarCardDetailHydrationAllowed({ allowDetailHydration = false } = 
 function shouldEnrichSimilarCard(item = {}, options = {}) {
   // Detail hydration is offline/opt-in only; public similar cards must be ready from the recall doc.
   return isSimilarCardDetailHydrationAllowed(options) && !hasSimilarCardImage(item);
+}
+
+function shouldHydrateSimilarCardFromOfficialSeed(item = {}) {
+  if (!item || typeof item !== 'object') return false;
+  const externalSeedIds = collectExternalSeedIdCandidatesForVisibleCatalogHydration(item);
+  if (!externalSeedIds.length) return false;
+  return isSellerOnlySimilarCardEvidence(item) || !hasSimilarCardPresentation(item);
 }
 
 function mergeSimilarCardEnrichment(candidate = {}, detail = {}) {
@@ -20745,10 +20982,26 @@ async function enrichSimilarProductsForPdpCards({
     1,
     Math.min(normalizedBudgetMs, Number(detailBudgetMs || 0) || normalizedBudgetMs),
   );
+  const normalizedOfficialSeedBudgetMs = Math.max(
+    normalizedDetailBudgetMs,
+    Math.min(
+      normalizedBudgetMs,
+      parseTimeoutMs(process.env.PDP_SIMILAR_CARD_OFFICIAL_SEED_BUDGET_MS, normalizedBudgetMs),
+    ),
+  );
+  const officialSeedHydrationCandidates = head.filter((item) => shouldHydrateSimilarCardFromOfficialSeed(item));
+  const officialSeedHydrationProductIds = officialSeedHydrationCandidates
+    .map((item) => collectExternalSeedIdCandidatesForVisibleCatalogHydration(item)[0])
+    .filter(Boolean);
   const metadata = {
     card_enrichment_budget_ms: normalizedBudgetMs,
     card_enrichment_detail_budget_ms: normalizedDetailBudgetMs,
+    card_enrichment_official_seed_budget_ms: normalizedOfficialSeedBudgetMs,
     card_enrichment_attempted_count: 0,
+    card_enrichment_official_seed_attempted_count: 0,
+    card_enrichment_official_seed_hit_count: 0,
+    card_enrichment_official_seed_timeout_count: 0,
+    card_enrichment_official_seed_failed_count: 0,
     card_enrichment_timeout_count: 0,
     card_enrichment_failed_count: 0,
     card_enrichment_detail_hydration_enabled: detailHydrationEnabled,
@@ -20758,13 +21011,45 @@ async function enrichSimilarProductsForPdpCards({
     card_enrichment_status: 'ready',
     product_intel_card_hydration: productIntelCardHydrationMetadata,
   };
-  if (!head.some((item) => shouldEnrichSimilarCard(item, { allowDetailHydration }))) {
+  let officialSeedCardSourcesById = new Map();
+  if (officialSeedHydrationProductIds.length > 0) {
+    metadata.card_enrichment_official_seed_attempted_count = officialSeedHydrationCandidates.length;
+    officialSeedCardSourcesById = await withStageBudget(
+      fetchExternalSeedSimilarCardSourcesFromDb(officialSeedHydrationProductIds),
+      normalizedOfficialSeedBudgetMs,
+      'pdp_similar_card_official_seed_sources',
+    ).catch((err) => {
+      if (err?.code === 'STAGE_TIMEOUT') {
+        metadata.card_enrichment_official_seed_timeout_count += officialSeedHydrationCandidates.length;
+      } else {
+        metadata.card_enrichment_official_seed_failed_count += officialSeedHydrationCandidates.length;
+      }
+      return new Map();
+    });
+  }
+  if (
+    officialSeedHydrationCandidates.length <= 0 &&
+    !head.some((item) => shouldEnrichSimilarCard(item, { allowDetailHydration }))
+  ) {
     return attachSimilarCardEnrichmentMetadata(fallback, metadata);
   }
 
   const enrichmentTask = Promise.all(
     head.map(async (item) => {
       if (!item || typeof item !== 'object') return item;
+      if (shouldHydrateSimilarCardFromOfficialSeed(item)) {
+        const externalSeedId = collectExternalSeedIdCandidatesForVisibleCatalogHydration(item)[0];
+        if (externalSeedId) {
+          const officialSeedProduct = officialSeedCardSourcesById.get(externalSeedId);
+          if (officialSeedProduct) {
+            const officialSeedEnriched = applyOfficialSeedSimilarCardEnrichment(item, officialSeedProduct);
+            if (officialSeedEnriched !== item && hasSimilarCardPresentation(officialSeedEnriched)) {
+              metadata.card_enrichment_official_seed_hit_count += 1;
+              return annotateSimilarCardStatus(officialSeedEnriched);
+            }
+          }
+        }
+      }
       if (!shouldEnrichSimilarCard(item, { allowDetailHydration })) {
         return annotateSimilarCardStatus(item);
       }
@@ -20819,10 +21104,14 @@ async function enrichSimilarProductsForPdpCards({
     throw err;
   });
   const result = [...enriched, ...tail];
-  if (metadata.card_enrichment_timeout_count > 0) {
+  if (
+    metadata.card_enrichment_timeout_count > 0 ||
+    metadata.card_enrichment_official_seed_timeout_count > 0
+  ) {
     metadata.card_enrichment_status = 'budget_exceeded';
   } else if (
     metadata.card_enrichment_failed_count > 0 ||
+    metadata.card_enrichment_official_seed_failed_count > 0 ||
     result.some((item) => String(item?.card_image_status || '').trim() === 'image_missing')
   ) {
     metadata.card_enrichment_status = 'partial';
@@ -39186,6 +39475,9 @@ module.exports._debug = {
   enrichSimilarProductsForPdpCards,
   getSimilarCardEnrichmentMetadata,
   shouldEnrichSimilarCard,
+  shouldHydrateSimilarCardFromOfficialSeed,
+  deriveOfficialSeedSimilarCardHighlight,
+  applyOfficialSeedSimilarCardEnrichment,
   isAccessoryLikePdpForSimilarSuppression,
   shouldSkipPdpSimilarFetchForAccessory,
   buildFindProductsMultiDiscoveryBridgeResponse,
