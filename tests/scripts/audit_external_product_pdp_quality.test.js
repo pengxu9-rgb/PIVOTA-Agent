@@ -577,28 +577,28 @@ describe('audit-external-product-pdp-quality helpers', () => {
   test('allows shade axis for tinted lip treatment products', () => {
     const livePayload = {
       product: {
-        product_id: 'ext_pout_preserve',
+        product_id: 'ext_hydra_liptreat',
         merchant_id: 'external_seed',
-        title: 'Pout Preserve Peptide Lip Treatment',
+        title: 'Hydra LipTreat',
         category: 'Skincare',
-        product_type: 'Lip Treatment',
+        product_type: 'LipTreat',
         variants: [
           {
-            variant_id: 'v_grape',
-            title: 'Grape Fizz',
-            swatch_image_url: 'https://example.com/grape-swatch.png',
-            options: [{ name: 'Shade', value: 'Grape Fizz' }],
+            variant_id: 'v_peach_y',
+            title: 'Peach-y',
+            swatch_image_url: 'https://example.com/peach-y-swatch.png',
+            options: [{ name: 'Shade', value: 'Peach-y' }],
           },
         ],
       },
-      modules: [{ type: 'variant_selector', data: { selected_variant_id: 'v_grape' } }],
+      modules: [{ type: 'variant_selector', data: { selected_variant_id: 'v_peach_y' } }],
     };
 
     const gate = buildVariantGate({
       seedData: {
         category: 'Skincare',
-        product_type: 'Lip Treatment',
-        snapshot: { title: 'Pout Preserve Peptide Lip Treatment' },
+        product_type: 'LipTreat',
+        snapshot: { title: 'Hydra LipTreat' },
       },
       livePayload,
       liveResponse: { modules: [{ type: 'canonical', data: { pdp_payload: livePayload } }] },

@@ -116,6 +116,8 @@ describe('RecommendationEngine semantic path helpers', () => {
   test('treats lip blush and lip tint titles as lips intent peers', () => {
     expect(_internals.getSimilarIntentFamilyFromText('LipBlush')).toBe('lip_treatment');
     expect(_internals.getSimilarIntentFamilyFromText('Lip Tint')).toBe('lip_treatment');
+    expect(_internals.getSimilarIntentFamilyFromText('Hydra LipTreat')).toBe('lip_treatment');
+    expect(_internals.getSimilarIntentFamilyFromText('Rose Lip Nourisher')).toBe('lip_treatment');
 
     const result = pickLayeredRecommendations({
       baseProduct: {
