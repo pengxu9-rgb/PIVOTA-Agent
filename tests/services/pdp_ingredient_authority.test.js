@@ -30,6 +30,63 @@ describe('pdpIngredientAuthority', () => {
     expect(authority.active_items).toEqual(expect.arrayContaining(['Niacinamide', 'Tamanu Oil']));
   });
 
+  test('keeps official INCI visible when active ingredient candidates are low-signal', () => {
+    const modules = buildStructuredPdpIngredientModules({
+      merchant_id: 'external_seed',
+      source: 'external_seed',
+      title: 'Calendula Cream',
+      pdp_ingredients_raw:
+        'Aqua (Water)- Coco-Caprylate/Caprate- Glycerin- Propanediol- Caprylic/Capric Triglyceride- Carthamus tinctorius (Safflower) Seed Oil- Pentylene Glycol- Cetearyl Alcohol- Glyceryl Stearate Citrate- C10-18 Triglycerides- Butyrospermum parkii (Shea) Butter- Xanthan Gum',
+      key_ingredients: ['Glycerin'],
+      pdp_field_quality_summary: {
+        ingredients_raw: {
+          source_origin: 'shopify_json',
+          source_quality_status: 'high',
+        },
+        active_ingredients_raw: {
+          source_origin: 'unknown',
+          source_quality_status: 'low',
+        },
+      },
+    });
+
+    expect(modules.ingredientsInciData).toEqual(
+      expect.objectContaining({
+        items: expect.arrayContaining(['Aqua (Water)', 'Glycerin', 'C10-18 Triglycerides']),
+        source_origin: 'pdp_section',
+        source_quality_status: 'authoritative',
+      }),
+    );
+    expect(modules.activeIngredientsData).toBeNull();
+    expect(modules.authority.purity_status).toBe('authoritative');
+    expect(modules.authority.suppressed_reason).toBe('active_items_low_signal');
+  });
+
+  test('cuts free-from copy while parsing official essential-oil ingredients', () => {
+    const modules = buildStructuredPdpIngredientModules({
+      merchant_id: 'external_seed',
+      source: 'external_seed',
+      title: 'Eucalyptus Pure Essential Oil',
+      pdp_ingredients_raw:
+        'Eucalyptus globulus Leaf Oil, Limonene, Linalool Free From: Silicones, Petrolatum, Mineral Oil, Paraffin Wax, PEGs.',
+      pdp_field_quality_summary: {
+        ingredients_raw: {
+          source_origin: 'shopify_json',
+          source_quality_status: 'high',
+        },
+      },
+    });
+
+    expect(modules.ingredientsInciData).toEqual(
+      expect.objectContaining({
+        items: ['Eucalyptus globulus Leaf Oil', 'Limonene', 'Linalool'],
+      }),
+    );
+    expect(modules.ingredientsInciData.raw_text).toBe(
+      'Eucalyptus globulus Leaf Oil, Limonene, Linalool',
+    );
+  });
+
   test('suppresses full INCI when only active ingredient block is trustworthy', () => {
     const modules = buildStructuredPdpIngredientModules({
       pdp_active_ingredients_raw:

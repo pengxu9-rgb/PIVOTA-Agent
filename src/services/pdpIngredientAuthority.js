@@ -41,6 +41,7 @@ const INGREDIENT_SECTION_RE =
   /\b(full ingredient(?:s| list)?|full ingredients? list|ingredients(?:\s*\(inci\))?|inci(?: list)?)\b\s*:?\s*/ig;
 const ACTIVE_SECTION_RE = /\bactive ingredients?\s*:/ig;
 const STOP_MARKERS = [
+  /\bfree from\s*:/i,
   /\bpeta-certified\b/i,
   /\bhow to pair\b/i,
   /\bshop now\b/i,
@@ -109,7 +110,7 @@ const LOW_SIGNAL_ACTIVE_ITEMS = new Set([
 const INVALID_ACTIVE_FRAGMENT_RE =
   /^(?:see|learn more|tab on|restores damaged|chapped|none|n\/a|select shade|choose shade)$/i;
 const INCI_STRUCTURE_RE =
-  /\b(aqua|water|extract|oil|acid|glycol|glycerin|alcohol|amide|amine|ceramide|panthenol|niacinamide|tocopherol|hyaluronate|triglyceride|dimethicone|siloxane|ferment|butter|wax|seed|leaf|root|flower|fruit|sodium|potassium|chloride|oxide|dioxide|hydroxide|carbomer|cellulose|poly|polyisobutene|copolymer|pectin|capry|propanediol|butylene|ethylene|hexanediol|ethanol|glucoside|benzoate|sorbate|retinal|retinol|caffeine|bisabolol|arginine|ergothioneine)\b|peptide/i;
+  /\b(aqua|water|extract|oil|acid|glycol|glycerin|alcohol|amide|amine|ceramide|panthenol|niacinamide|tocopherol|hyaluronate|triglyceride|dimethicone|siloxane|ferment|butter|wax|seed|leaf|root|flower|fruit|sodium|potassium|chloride|oxide|dioxide|hydroxide|carbomer|cellulose|poly|polyisobutene|copolymer|pectin|capry|propanediol|butylene|ethylene|hexanediol|ethanol|glucoside|benzoate|sorbate|retinal|retinol|caffeine|bisabolol|arginine|ergothioneine|limonene|linalool|geraniol|citral|citronellol|eugenol|farnesol)\b|peptide/i;
 const INCI_MARKETING_ONLY_RE =
   /\b(translucent|biodegradable|not tested on animals|cruelty[-\s]?free|paraben[-\s]?free|suitable for all skin types|all skin types|barely noticeable)\b/i;
 const ACTIVE_TRAILING_MARKETING_RE =
@@ -307,7 +308,8 @@ function splitIngredientText(text) {
         ch === '\n' ||
         ch === '|' ||
         ch === '•' ||
-        (ch === ',' && depth === 0));
+        (ch === ',' && depth === 0) ||
+        (ch === '-' && depth === 0 && /\s/.test(next) && !/\d/.test(prev)));
     if (delimiter) {
       if (current.trim()) items.push(current.trim());
       current = '';
@@ -851,8 +853,16 @@ function readStructuredArrayAuthority(product, inputs = readIngredientInputs(pro
       product?.ingredientsInci,
       product?.inci_ingredients,
       product?.inciIngredients,
+      product?.inci_list,
+      product?.inciList,
       product?.ingredients,
       product?.inci,
+      inputs.seedData?.inci_list,
+      inputs.seedData?.inciList,
+      inputs.snapshot?.inci_list,
+      inputs.snapshot?.inciList,
+      inputs.ingredientIntel?.inci_list,
+      inputs.snapshotIngredientIntel?.inci_list,
     ),
   );
   const directStructuredItems = directItems.filter((item) => isLikelyInciStructuredItem(item));
@@ -861,6 +871,8 @@ function readStructuredArrayAuthority(product, inputs = readIngredientInputs(pro
       product?.ingredientsInci?.raw_text ||
       product?.inci_ingredients?.raw_text ||
       product?.inciIngredients?.raw_text ||
+      product?.inci_list?.raw_text ||
+      product?.inciList?.raw_text ||
       product?.ingredients?.raw_text ||
       product?.inci?.raw_text,
   );
