@@ -1171,6 +1171,16 @@ describe('PDP grouped offers', () => {
           price_amount: 28,
           currency: 'USD',
         },
+        modules: [
+          {
+            module_id: 'm_price',
+            type: 'price_promo',
+            data: {
+              price: { amount: 28, currency: 'USD' },
+              promotions: [],
+            },
+          },
+        ],
       },
       {
         offer_source: 'group_fused',
@@ -1192,6 +1202,10 @@ describe('PDP grouped offers', () => {
     expect(payload.product.price.current).toEqual({ amount: 22, currency: 'USD' });
     expect(payload.product.price_amount).toBe(22);
     expect(payload.product.price_source).toBe('default_offer');
+    expect(payload.modules.find((module) => module.type === 'price_promo')?.data?.price).toEqual({
+      amount: 22,
+      currency: 'USD',
+    });
   });
 
   test('removes zero canonical PDP product price when no positive offer price exists', () => {

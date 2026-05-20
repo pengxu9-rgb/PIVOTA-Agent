@@ -7028,25 +7028,30 @@ function hydrateCanonicalPdpPayloadFromOffers(pdpPayload, offersData) {
   if (offersData?.default_offer_id) product.default_offer_id = offersData.default_offer_id;
   if (offersData?.best_price_offer_id) product.best_price_offer_id = offersData.best_price_offer_id;
 
+  let projectedOfferPrice = null;
   if (selectedOfferMoney && (shouldHydratePrice || shouldProjectGroupOfferPrice)) {
     const existingPrice =
       product.price && typeof product.price === 'object' && !Array.isArray(product.price)
         ? product.price
         : {};
-    product.price = {
-      ...existingPrice,
+    projectedOfferPrice = {
       amount: selectedOfferMoney.amount,
       currency: selectedOfferMoney.currency,
+    };
+    product.price = {
+      ...existingPrice,
+      amount: projectedOfferPrice.amount,
+      currency: projectedOfferPrice.currency,
       current: {
         ...(existingPrice.current && typeof existingPrice.current === 'object'
           ? existingPrice.current
           : {}),
-        amount: selectedOfferMoney.amount,
-        currency: selectedOfferMoney.currency,
+        amount: projectedOfferPrice.amount,
+        currency: projectedOfferPrice.currency,
       },
     };
-    product.price_amount = selectedOfferMoney.amount;
-    product.currency = selectedOfferMoney.currency;
+    product.price_amount = projectedOfferPrice.amount;
+    product.currency = projectedOfferPrice.currency;
     product.price_source = 'default_offer';
   } else if (shouldHydratePrice) {
     delete product.price;
@@ -7055,8 +7060,26 @@ function hydrateCanonicalPdpPayloadFromOffers(pdpPayload, offersData) {
     if (product.price_source === 'default_offer') delete product.price_source;
   }
 
+  const modules =
+    projectedOfferPrice && Array.isArray(pdpPayload.modules)
+      ? pdpPayload.modules.map((module) => {
+          if (String(module?.type || '').trim() !== 'price_promo') return module;
+          const data = module?.data && typeof module.data === 'object' && !Array.isArray(module.data)
+            ? module.data
+            : {};
+          return {
+            ...module,
+            data: {
+              ...data,
+              price: projectedOfferPrice,
+            },
+          };
+        })
+      : pdpPayload.modules;
+
   return hydrateCanonicalPdpMediaFromOfferImages({
     ...pdpPayload,
+    ...(modules ? { modules } : {}),
     product,
   }, product, selectedOfferImageUrls);
 }
