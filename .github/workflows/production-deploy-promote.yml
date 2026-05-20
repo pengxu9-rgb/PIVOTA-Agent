@@ -18,6 +18,10 @@ jobs:
     env:
       PROD_DEPLOY_WEBHOOK_URL: ${{ secrets.RAILWAY_PRODUCTION_DEPLOY_WEBHOOK_URL || secrets.PIVOTA_AGENT_PROD_DEPLOY_WEBHOOK_URL || secrets.RAILWAY_DEPLOY_WEBHOOK_URL || '' }}
       PROD_SMOKE_BASE_URL: ${{ vars.PIVOTA_AGENT_PROD_INVOKE_BASE_URL || vars.COMMERCE_CORE_PROD_SMOKE_BASE_URL || 'https://pivota-agent-production.up.railway.app' }}
+      RAILWAY_PROJECT_TOKEN: ${{ secrets.RAILWAY_PROJECT_TOKEN || '' }}
+      RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID || '885d576d-ad16-493d-90d2-8cbdbe0aedee' }}
+      RAILWAY_PRODUCTION_ENVIRONMENT_ID: ${{ vars.RAILWAY_PRODUCTION_ENVIRONMENT_ID || '50b12806-ab68-4265-aa0e-23af0b0d2426' }}
+      RAILWAY_PIVOTA_AGENT_SERVICE_ID: ${{ vars.RAILWAY_PIVOTA_AGENT_SERVICE_ID || 'eb5a15d3-9447-4b82-882a-49a956d09158' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -31,10 +35,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -z "${PROD_DEPLOY_WEBHOOK_URL}" ]]; then
-            echo "::notice::No production deploy webhook configured. Falling back to direct GitHub-linked production deploy detection."
-          else
+          if [[ -n "${PROD_DEPLOY_WEBHOOK_URL}" ]]; then
             echo "Production deploy webhook configured."
+          elif [[ -n "${RAILWAY_PROJECT_TOKEN}" ]]; then
+            echo "Railway project token configured; production deploy will be triggered through Railway GraphQL."
+          else
+            echo "::notice::No explicit production deploy trigger configured. Falling back to direct GitHub-linked production deploy detection."
           fi
 
       - name: Trigger production deploy webhook
@@ -51,6 +57,54 @@ jobs:
         run: |
           set -euo pipefail
           bash scripts/trigger_deploy_webhook.sh
+
+      - name: Trigger Railway production deploy via project token
+        if: env.PROD_DEPLOY_WEBHOOK_URL == '' && env.RAILWAY_PROJECT_TOKEN != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const required = [
+            'RAILWAY_PROJECT_TOKEN',
+            'RAILWAY_PROJECT_ID',
+            'RAILWAY_PRODUCTION_ENVIRONMENT_ID',
+            'RAILWAY_PIVOTA_AGENT_SERVICE_ID',
+          ];
+          for (const key of required) {
+            if (!String(process.env[key] || '').trim()) {
+              throw new Error(`${key} is required`);
+            }
+          }
+
+          const response = await fetch('https://backboard.railway.app/graphql/v2', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Project-Access-Token': process.env.RAILWAY_PROJECT_TOKEN,
+            },
+            body: JSON.stringify({
+              query: `mutation TriggerProductionDeploy($input: EnvironmentTriggersDeployInput!) {
+                environmentTriggersDeploy(input: $input)
+              }`,
+              variables: {
+                input: {
+                  projectId: process.env.RAILWAY_PROJECT_ID,
+                  environmentId: process.env.RAILWAY_PRODUCTION_ENVIRONMENT_ID,
+                  serviceId: process.env.RAILWAY_PIVOTA_AGENT_SERVICE_ID,
+                },
+              },
+            }),
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok || payload.errors) {
+            const message = payload.errors ? JSON.stringify(payload.errors) : JSON.stringify(payload);
+            throw new Error(`Railway deploy trigger failed: ${response.status} ${message}`);
+          }
+          if (payload?.data?.environmentTriggersDeploy !== true) {
+            throw new Error(`Railway deploy trigger returned unexpected response: ${JSON.stringify(payload)}`);
+          }
+          console.log('Railway production deploy triggered from GitHub Actions.');
+          NODE
 
       - name: Verify deployed commit via /version
         shell: bash
