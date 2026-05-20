@@ -724,6 +724,13 @@ function buildPublishedIntelKbKeys(product, canonicalProductRef = null, options 
   };
 
   push(`product:${firstNonEmptyString(canonicalProductRef?.product_id, product.product_id, product.id)}`);
+  push(`product:${firstNonEmptyString(
+    product.source_product_id,
+    product.sourceProductId,
+    product.external_product_id,
+    product.externalProductId,
+  )}`);
+  push(`product:${firstNonEmptyString(product.pivota_signature_id, product.pivotaSignatureId)}`);
   push(`product:${firstNonEmptyString(product.platform_product_id, product.platformProductId, product.shopify_id)}`);
   const productLineOptions = Array.isArray(product.product_line_options)
     ? product.product_line_options
@@ -749,6 +756,8 @@ function buildPublishedIntelKbKeys(product, canonicalProductRef = null, options 
     product.canonicalUrl,
     product.source_url,
     product.sourceUrl,
+    product.destination_url,
+    product.destinationUrl,
     product.handle_url,
     product.handleUrl,
   ]

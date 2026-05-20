@@ -236,6 +236,106 @@ describe('pdpProductIntel KB hydration', () => {
     expect(bundle.search_card.highlight_candidate).toBe('Creators often point to the lightweight');
   });
 
+  test('hydrates reviewed external-seed intel through catalog source_product_id', async () => {
+    const capturedKeys = [];
+    jest.doMock('../src/auroraBff/productIntelKbStore', () => ({
+      getProductIntelKbEntry: jest.fn(async () => null),
+      getProductIntelKbEntries: jest.fn(async (kbKeys) => {
+        capturedKeys.push(...kbKeys);
+        return new Map([
+          [
+            'product:ext_skin1004_case',
+            {
+              kb_key: 'product:ext_skin1004_case',
+              source: 'pivota_manual_reviewed_seller_only_v1',
+              last_success_at: '2026-05-13T23:28:00.000Z',
+              source_meta: {
+                external_product_id: 'ext_skin1004_case',
+                pivota_signature_id: 'sig_skin1004_case',
+                review_state: 'manual_reviewed_by_codex',
+              },
+              analysis: {
+                product_intel_v1: {
+                  contract_version: 'pivota.product_intel.v1',
+                  display_name: 'Pivota Insights',
+                  provenance: {
+                    source: 'pivota_manual_reviewed_seller_only_v1',
+                    generator: 'strict_human_manual_rewrite',
+                    review_tier: 'assistant_reviewed',
+                    review_state: 'manual_reviewed_by_codex',
+                    review_status: 'completed',
+                    review_decision: 'rewrite',
+                  },
+                  product_intel_core: {
+                    what_it_is: {
+                      headline: 'Tone-up sunscreen',
+                      body: 'A tone-up sunscreen for UV protection with a visibly brighter base finish.',
+                    },
+                    best_for: [
+                      { tag: 'daily_spf', label: 'Daily SPF users', confidence: 'moderate' },
+                    ],
+                    why_it_stands_out: [
+                      {
+                        headline: 'Tone-up finish',
+                        body: 'Positions sun protection around a brighter-looking base finish.',
+                        evidence_strength: 'seller_only',
+                      },
+                    ],
+                    routine_fit: {
+                      step: 'sunscreen',
+                      am_pm: ['am'],
+                      pairing_notes: ['Use as the last skincare step before makeup.'],
+                    },
+                    watchouts: [],
+                  quality_state: 'reviewed',
+                  evidence_profile: 'seller_plus_formula',
+                  source_coverage: {
+                    seller: { available: true },
+                    formula: { available: true },
+                    reviews: { available: false, count: 0 },
+                    },
+                  },
+                  community_signals: {
+                    status: 'unavailable',
+                    unavailable_reason: 'insufficient_feedback',
+                    evidence_profile: 'seller_plus_formula',
+                  },
+                  quality_state: 'reviewed',
+                  evidence_profile: 'seller_plus_formula',
+                },
+              },
+            },
+          ],
+        ]);
+      }),
+    }));
+
+    jest.doMock('../src/auroraBff/normalize', () => ({
+      normalizeProductAnalysis: jest.fn((raw) => ({ payload: raw })),
+    }));
+
+    const { hydrateProductWithPublishedIntel } = require('../src/pdpProductIntel');
+
+    const hydrated = await hydrateProductWithPublishedIntel({
+      product: {
+        product_id: 'sig_group_case',
+        source_product_id: 'ext_skin1004_case',
+        pivota_signature_id: 'sig_skin1004_case',
+        title: 'Tone Brightening Tone-Up Sunscreen',
+      },
+      canonicalProductRef: {
+        merchant_id: 'external_seed',
+        product_id: 'sig_group_case',
+      },
+      requireReviewedBundle: true,
+    });
+
+    expect(capturedKeys).toEqual(expect.arrayContaining(['product:ext_skin1004_case']));
+    expect(hydrated.product_intel).toBeTruthy();
+    expect(hydrated.product_intel.product_intel_core.what_it_is.body).toMatch(/tone-up sunscreen/i);
+    expect(hydrated.provenance.kb_key).toBe('product:ext_skin1004_case');
+  });
+
   test('preserves manually reviewed seller-only standout points during KB hydration', async () => {
     jest.doMock('../src/auroraBff/productIntelKbStore', () => ({
       getProductIntelKbEntry: jest.fn(async (kbKey) => {
