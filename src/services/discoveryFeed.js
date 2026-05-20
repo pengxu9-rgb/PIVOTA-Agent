@@ -8257,6 +8257,9 @@ async function fetchBrandScopedExternalSeedCandidates({
     `;
     const normalizedBrandSql = `trim(regexp_replace(${EXTERNAL_SEED_RECALL_SQL_FIELDS.brand}, '[^a-z0-9]+', ' ', 'g'))`;
     const compactBrandSql = `regexp_replace(${EXTERNAL_SEED_RECALL_SQL_FIELDS.brand}, '[^a-z0-9]+', '', 'g')`;
+    // Exactly matches idx_external_product_seeds_brand_search_norm_recency so PostgreSQL
+    // can use the partial index (requires attached_product_key IS NULL in WHERE too).
+    const indexedBrandSql = `lower(regexp_replace(coalesce(seed_data->>'brand', seed_data->'snapshot'->>'brand', split_part(domain, '.', 1), ''), '[^a-z0-9]+', '', 'g'))`;
     const orderClause = orderByRecency
       ? 'ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST'
       : '';
@@ -8265,6 +8268,7 @@ async function fetchBrandScopedExternalSeedCandidates({
         SELECT ${selectColumns}
         FROM external_product_seeds
         WHERE status = 'active'
+          AND attached_product_key IS NULL
           AND market = $1
           AND (tool = '*' OR tool = $2)
           AND (
@@ -8273,6 +8277,7 @@ async function fetchBrandScopedExternalSeedCandidates({
             OR ${normalizedBrandSql} = ANY($3::text[])
             OR ${normalizedBrandSql} LIKE ANY($4::text[])
             OR ${compactBrandSql} = ANY($6::text[])
+            OR ${indexedBrandSql} = ANY($6::text[])
           )
         ${orderClause}
         LIMIT $5
