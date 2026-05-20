@@ -2728,6 +2728,121 @@ describe('RecommendationEngine external candidate fetch', () => {
     expect(result.items.map((item) => item.product_id)).not.toContain('ext_generic_set_category_only');
   });
 
+  test('recommend treats lip gloss and lip balm siblings as lip treatment intent matches', async () => {
+    const { recommend, _internals } = require('../../src/services/RecommendationEngine');
+    _internals.resetCache();
+
+    expect(_internals.getSimilarIntentFamilyFromText('Botanical Collagen LipGloss')).toBe('lip_treatment');
+    expect(_internals.getSimilarIntentFamilyFromText('LipLift Max')).toBe('lip_treatment');
+
+    const result = await recommend({
+      pdp_product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_pixi_collagen_lipgloss',
+        title: 'Botanical Collagen LipGloss',
+        brand: 'Pixi Beauty',
+        category: 'Lip Gloss',
+        product_type: 'Lip Gloss',
+        category_path: 'beauty/makeup/lips/lip-gloss',
+        price: 14,
+        currency: 'USD',
+        inventory_quantity: 10,
+        status: 'active',
+        source: 'external_seed',
+      },
+      k: 4,
+      options: {
+        debug: true,
+        no_cache: true,
+        internal_candidates: [],
+        external_candidates: [
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_pixi_liplift_max',
+            title: 'LipLift Max',
+            brand: 'Pixi Beauty',
+            category: 'Lip Gloss',
+            product_type: 'Lip Gloss',
+            category_path: 'beauty/makeup/lips/lip-gloss',
+            price: 14,
+            currency: 'USD',
+            inventory_quantity: 10,
+            status: 'active',
+            source: 'external_seed',
+          },
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_pixi_lipglow',
+            title: 'LipGlow',
+            brand: 'Pixi Beauty',
+            category: 'Lip Balm',
+            product_type: 'Lip Balm',
+            category_path: 'beauty/makeup/lips/lip-balm',
+            price: 14,
+            currency: 'USD',
+            inventory_quantity: 10,
+            status: 'active',
+            source: 'external_seed',
+          },
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_other_lip_balm',
+            title: 'Lip Balm with Hemp Seed Oil + Shea Butter',
+            brand: 'UpCircle Beauty',
+            category: 'Lip Balm',
+            product_type: 'Lip Balm',
+            category_path: 'beauty/makeup/lips/lip-balm',
+            price: 8,
+            currency: 'USD',
+            inventory_quantity: 10,
+            status: 'active',
+            source: 'external_seed',
+          },
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_other_lip_plumper',
+            title: 'Glossy Lip Plumper',
+            brand: 'Makeup Brand',
+            category: 'Lip Plumper',
+            product_type: 'Lip Plumper',
+            category_path: 'beauty/makeup/lips/lip-gloss',
+            price: 12,
+            currency: 'USD',
+            inventory_quantity: 10,
+            status: 'active',
+            source: 'external_seed',
+          },
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_eye_liner',
+            title: 'Waterproof Eye Liner',
+            brand: 'Pixi Beauty',
+            category: 'Eyeliner',
+            product_type: 'Eyeliner',
+            category_path: 'beauty/makeup/eyes/eyeliner',
+            price: 14,
+            currency: 'USD',
+            inventory_quantity: 10,
+            status: 'active',
+            source: 'external_seed',
+          },
+        ],
+      },
+    });
+
+    expect(result.debug?.fetch_strategy?.base_intent_family).toBe('lip_treatment');
+    expect(result.metadata.similar_status).toBe('ready');
+    expect(result.items.map((item) => item.product_id)).toEqual(
+      expect.arrayContaining([
+        'ext_pixi_liplift_max',
+        'ext_pixi_lipglow',
+        'ext_other_lip_balm',
+        'ext_other_lip_plumper',
+      ]),
+    );
+    expect(result.items.map((item) => item.product_id)).not.toContain('ext_eye_liner');
+  });
+
   test('recommend lets catalog category path override stale external seed vertical before picking similar products', async () => {
     const { recommend, _internals } = require('../../src/services/RecommendationEngine');
     _internals.resetCache();

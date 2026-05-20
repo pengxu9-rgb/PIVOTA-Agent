@@ -416,6 +416,11 @@ const SIMILAR_INTENT_FAMILY_RULES = Object.freeze([
     sql: '\\m(lip\\s+oil|lip\\s+glaze)\\M',
   },
   {
+    id: 'lip_treatment',
+    js: /\b(?:lip\s*(?:gloss|balm|treatment|plump(?:er|ing)?|luminiz(?:er|ers?)?|glow|lift)|lipgloss|lipglow|liplift)\b/i,
+    sql: '\\m(lip\\s*(gloss|balm|treatment|plump(er|ing)?|luminiz(er|ers?)?|glow|lift)|lipgloss|lipglow|liplift)\\M',
+  },
+  {
     id: 'highlighter',
     js: /\b(?:highlighter|illuminator)\b/i,
     sql: '\\m(highlighter|illuminator)\\M',
@@ -2428,6 +2433,22 @@ function getSimilarIntentFamilySqlLikePatterns(intentFamily) {
   }
   if (id === 'highlighter') return ['%highlighter%', '%illuminator%'];
   if (id === 'lip_oil') return ['%lip oil%', '%lip glaze%'];
+  if (id === 'lip_treatment') {
+    return [
+      '%lip gloss%',
+      '%lipgloss%',
+      '%lip balm%',
+      '%lip treatment%',
+      '%lip plump%',
+      '%lip plumper%',
+      '%lip luminizer%',
+      '%lip luminizers%',
+      '%lip glow%',
+      '%lipglow%',
+      '%lip lift%',
+      '%liplift%',
+    ];
+  }
   if (id === 'hand_cream') return ['%hand cream%', '%hand balm%', '%hand lotion%'];
   if (id === 'micellar_cleansing_water') return ['%micellar%', '%cleansing water%'];
   if (id === 'hair_styling') {
