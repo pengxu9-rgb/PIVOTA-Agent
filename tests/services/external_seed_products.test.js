@@ -3419,6 +3419,74 @@ describe('externalSeedProducts helper', () => {
     );
   });
 
+  test('source-unavailable seeds preserve reviewed official price evidence', () => {
+    const product = buildExternalSeedProduct({
+      id: 'eps_tirtir_spicule',
+      external_product_id: 'ext_tirtir_spicule',
+      canonical_url: 'https://tirtir.global/products/spicule-shot-boosting-mask',
+      destination_url: 'https://tirtir.global/products/spicule-shot-boosting-mask',
+      title: 'Spicule Shot Boosting Mask',
+      price_amount: 1,
+      price_currency: 'USD',
+      availability: 'out_of_stock',
+      seed_data: {
+        brand: 'TIRTIR',
+        reviewed_price_offer_patch_v1: {
+          contract_version: 'external_seed.reviewed_price_offer_patch.v1',
+          source_origin: 'official_shopify_products_feed',
+          source_url: 'https://tirtir.global/products.json?limit=250',
+          review_state: 'assistant_reviewed',
+        },
+        source_unavailable_v1: {
+          contract_version: 'external_seed.source_unavailable.v1',
+          status: 'source_unavailable',
+          reason: 'official_pdp_404_public_products_json_not_transaction_ready',
+          transaction_ready: false,
+          price_current: false,
+        },
+        variants: [
+          {
+            variant_id: '47798658302171',
+            sku: 'A1380A',
+            title: '28 g',
+            option_name: 'Size',
+            option_value: '28 g',
+            price_amount: 1,
+            price_currency: 'USD',
+            availability: 'out_of_stock',
+            in_stock: false,
+          },
+        ],
+        snapshot: {
+          reviewed_price_offer_patch_v1: {
+            contract_version: 'external_seed.reviewed_price_offer_patch.v1',
+            source_origin: 'official_shopify_products_feed',
+            source_url: 'https://tirtir.global/products.json?limit=250',
+            review_state: 'assistant_reviewed',
+          },
+        },
+      },
+    });
+
+    expect(product.transaction_ready).toBe(false);
+    expect(product.transaction_readiness_blocker_v1.status).toBe('source_unavailable');
+    expect(product.price).toBe(1);
+    expect(product.availability).toBe('out_of_stock');
+    expect(product.in_stock).toBe(false);
+    expect(product.variants[0]).toEqual(
+      expect.objectContaining({
+        price: 1,
+        currency: 'USD',
+        in_stock: false,
+        availability: 'out_of_stock',
+      }),
+    );
+    const { buildPdpPayload } = require('../../src/pdpBuilder');
+    const pdpPayload = buildPdpPayload({ product });
+    const variantSelector = pdpPayload.modules.find((module) => module.type === 'variant_selector');
+    expect(variantSelector.data.variants[0].price.current).toEqual({ amount: 1, currency: 'USD' });
+  });
+
   test('projects source-backed active arrays when ingredient evidence validates them', () => {
     const product = buildExternalSeedProduct({
       id: 'eps_ole_violet_mask',

@@ -3553,11 +3553,32 @@ function canonicalizeExternalSeedSnapshot(seedData, row, options = {}) {
 }
 
 function resolveExternalSeedTransactionHold(seedData = {}, snapshot = {}) {
-  return [
+  const explicitHold = [
     seedData.transaction_readiness_blocker_v1,
     snapshot.transaction_readiness_blocker_v1,
     seedData.non_merch_terminal_hold_v1,
     snapshot.non_merch_terminal_hold_v1,
+  ]
+    .map(ensureJsonObject)
+    .find((contract) => Boolean(firstNonEmptyString(contract.status, contract.reason, contract.contract_version)));
+  if (explicitHold) return explicitHold;
+
+  const sourceUnavailableHold = resolveExternalSeedSourceUnavailableContract(seedData, snapshot);
+  if (!sourceUnavailableHold) return null;
+
+  const reviewedPricePatch = [
+    seedData.reviewed_price_offer_patch_v1,
+    snapshot.reviewed_price_offer_patch_v1,
+  ]
+    .map(ensureJsonObject)
+    .find((contract) => firstNonEmptyString(contract.contract_version, contract.source_origin, contract.source_url));
+  if (reviewedPricePatch) return null;
+
+  return sourceUnavailableHold;
+}
+
+function resolveExternalSeedSourceUnavailableContract(seedData = {}, snapshot = {}) {
+  return [
     seedData.source_unavailable_v1,
     snapshot.source_unavailable_v1,
   ]
@@ -3928,6 +3949,8 @@ function buildExternalSeedProduct(row, options = {}) {
   const transactionHold = resolveExternalSeedTransactionHold(seedData, snapshot) || productFamily === 'non_merch';
   const transactionHoldContract =
     typeof transactionHold === 'object' && transactionHold !== null ? transactionHold : null;
+  const sourceUnavailableContract = resolveExternalSeedSourceUnavailableContract(seedData, snapshot);
+  const transactionUnavailableContract = transactionHoldContract || sourceUnavailableContract;
   const forcedCategory =
     productFamily === 'non_merch'
       ? 'Gift Card'
@@ -4213,14 +4236,15 @@ function buildExternalSeedProduct(row, options = {}) {
     inventory_quantity: inStock === true ? 999 : inStock === false ? 0 : null,
     in_stock: inStock,
     availability: availability || undefined,
-    ...(transactionHold
+    ...(transactionUnavailableContract
       ? {
           transaction_ready: false,
-          transaction_readiness_blocker_v1: transactionHoldContract || { status: 'transaction_hold' },
+          transaction_readiness_blocker_v1: transactionUnavailableContract,
         }
       : {}),
-    ...(transactionHoldContract?.contract_version === 'external_seed.transaction_readiness_blocker.v1' ||
-    transactionHoldContract?.status
+    ...(transactionHold &&
+    (transactionHoldContract?.contract_version === 'external_seed.transaction_readiness_blocker.v1' ||
+    transactionHoldContract?.status)
       ? { non_merch_terminal_hold_v1: transactionHoldContract }
       : {}),
     product_type: normalizedCategory || 'external',
