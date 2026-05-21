@@ -956,6 +956,140 @@ describe('RecommendationEngine (PDP)', () => {
     );
   });
 
+  test('keeps external foundation shade alternatives within the same product line', async () => {
+    const result = await recommend({
+      pdp_product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_profilt_210',
+        title: "Pro Filt'r Soft Matte Longwear Foundation #210",
+        brand: 'Fenty Beauty',
+        category: 'Foundation',
+        product_type: 'Foundation',
+        price: 20,
+        source: 'external_seed',
+        inventory_quantity: 10,
+        status: 'active',
+      },
+      k: 6,
+      options: {
+        debug: true,
+        no_cache: true,
+        identity_rows: [
+          {
+            source_listing_ref: 'external_seed:ext_profilt_210',
+            sellable_item_group_id: 'sig_profilt_210',
+            product_line_id: 'pl_profilt_soft_matte',
+            review_family_id: 'rf_profilt_soft_matte',
+          },
+          {
+            source_listing_ref: 'external_seed:ext_profilt_210_mini',
+            sellable_item_group_id: 'sig_profilt_210',
+            product_line_id: 'pl_profilt_soft_matte',
+            review_family_id: 'rf_profilt_soft_matte',
+          },
+          {
+            source_listing_ref: 'external_seed:ext_profilt_100',
+            sellable_item_group_id: 'sig_profilt_100',
+            product_line_id: 'pl_profilt_soft_matte',
+            review_family_id: 'rf_profilt_soft_matte',
+          },
+          {
+            source_listing_ref: 'external_seed:ext_profilt_350',
+            sellable_item_group_id: 'sig_profilt_350',
+            product_line_id: 'pl_profilt_soft_matte',
+            review_family_id: 'rf_profilt_soft_matte',
+          },
+          {
+            source_listing_ref: 'external_seed:ext_powder_110',
+            sellable_item_group_id: 'sig_powder_110',
+            product_line_id: 'pl_profilt_powder',
+            review_family_id: 'rf_profilt_powder',
+          },
+          {
+            source_listing_ref: 'external_seed:ext_softlit_230',
+            sellable_item_group_id: 'sig_softlit_230',
+            product_line_id: 'pl_softlit',
+            review_family_id: 'rf_softlit',
+          },
+        ],
+        external_candidates: [
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_profilt_210_mini',
+            title: "Pro Filt'r Soft Matte Longwear Foundation #210 Mini",
+            brand: 'Fenty Beauty',
+            category: 'Foundation',
+            product_type: 'Foundation',
+            price: 9,
+            source: 'external_seed',
+            inventory_quantity: 10,
+            status: 'active',
+          },
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_profilt_100',
+            title: "Pro Filt'r Soft Matte Longwear Foundation #100",
+            brand: 'Fenty Beauty',
+            category: 'Foundation',
+            product_type: 'Foundation',
+            price: 20,
+            source: 'external_seed',
+            inventory_quantity: 10,
+            status: 'active',
+          },
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_profilt_350',
+            title: "Pro Filt'r Soft Matte Longwear Foundation #350",
+            brand: 'Fenty Beauty',
+            category: 'Foundation',
+            product_type: 'Foundation',
+            price: 20,
+            source: 'external_seed',
+            inventory_quantity: 10,
+            status: 'active',
+          },
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_powder_110',
+            title: "Pro Filt'r Soft Matte Powder Foundation #110",
+            brand: 'Fenty Beauty',
+            category: 'Foundation',
+            product_type: 'Foundation',
+            price: 20,
+            source: 'external_seed',
+            inventory_quantity: 10,
+            status: 'active',
+          },
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_softlit_230',
+            title: "Soft'lit Naturally Luminous Longwear Foundation 230",
+            brand: 'Fenty Beauty',
+            category: 'Foundation',
+            product_type: 'Foundation',
+            price: 40,
+            source: 'external_seed',
+            inventory_quantity: 10,
+            status: 'active',
+          },
+        ],
+      },
+    });
+
+    const productIds = result.items.map((item) => item.product_id);
+    expect(productIds).toEqual(
+      expect.arrayContaining(['ext_profilt_100', 'ext_profilt_350', 'ext_powder_110', 'ext_softlit_230']),
+    );
+    expect(productIds).not.toContain('ext_profilt_210_mini');
+    expect(result.metadata?.identity_dedupe).toEqual(
+      expect.objectContaining({
+        applied: true,
+        same_product_line_shade_alternatives_kept: 2,
+      }),
+    );
+  });
+
   test('c) no brand matches but same category + near price fills', () => {
     const base = makeProduct({
       merchant_id: 'merch_store',

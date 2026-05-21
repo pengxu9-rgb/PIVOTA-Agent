@@ -1133,6 +1133,43 @@ function buildRecommendationSemanticDedupeKey(product) {
   return `${brand}::${title}`;
 }
 
+const FOUNDATION_SHADE_TITLE_RE =
+  /\b(?:foundation|skin\s*tint|tinted\s+moisturi[sz]er|concealer)\b.*(?:#\s*)?[a-z]?\d{2,4}[a-z]?\b|\b(?:shade|color|colour)\s*(?:#\s*)?[a-z0-9-]{2,}\b/i;
+
+function isExternalFoundationShadeProduct(product) {
+  if (!isExternalProduct(product)) return false;
+  if (getSimilarIntentFamilyFromProduct(product) !== 'foundation') return false;
+  return FOUNDATION_SHADE_TITLE_RE.test(
+    [
+      product?.title,
+      product?.name,
+      product?.category,
+      product?.product_type,
+      product?.productType,
+    ].filter(Boolean).join(' '),
+  );
+}
+
+function shouldKeepSameProductLineShadeAlternative({
+  baseProduct,
+  candidateProduct,
+  baseProductLine = '',
+  candidateProductLine = '',
+  baseSellableGroup = '',
+  candidateSellableGroup = '',
+} = {}) {
+  if (!baseProductLine || !candidateProductLine || baseProductLine !== candidateProductLine) {
+    return false;
+  }
+  if (baseSellableGroup && candidateSellableGroup && baseSellableGroup === candidateSellableGroup) {
+    return false;
+  }
+  return (
+    isExternalFoundationShadeProduct(baseProduct) &&
+    isExternalFoundationShadeProduct(candidateProduct)
+  );
+}
+
 function normalizeRecommendationTitleForDedupe(title) {
   return normalizeText(title)
     .replace(/^(?:deal|sale|clearance)\s+/, '')
@@ -1396,6 +1433,7 @@ async function dedupeRecommendationCandidatesByIdentity({
     duplicate_candidates_dropped: 0,
     semantic_duplicates_dropped: 0,
     base_identity_excluded: 0,
+    same_product_line_shade_alternatives_kept: 0,
     rows_loaded: 0,
   };
 
@@ -1451,13 +1489,21 @@ async function dedupeRecommendationCandidatesByIdentity({
       const sellableGroup = String(row?.sellable_item_group_id || candidate?.sellable_item_group_id || '').trim();
       const productLine = String(row?.product_line_id || candidate?.product_line_id || '').trim();
       const semanticKey = buildRecommendationSemanticDedupeKey(candidate);
+      const sameProductLineShadeAlternative = shouldKeepSameProductLineShadeAlternative({
+        baseProduct,
+        candidateProduct: candidate,
+        baseProductLine,
+        candidateProductLine: productLine,
+        baseSellableGroup,
+        candidateSellableGroup: sellableGroup,
+      });
 
       if (row) stats.matched_candidates += 1;
       if (sellableGroup && baseSellableGroup && sellableGroup === baseSellableGroup) {
         stats.base_identity_excluded += 1;
         continue;
       }
-      if (productLine && baseProductLine && productLine === baseProductLine) {
+      if (productLine && baseProductLine && productLine === baseProductLine && !sameProductLineShadeAlternative) {
         stats.base_identity_excluded += 1;
         continue;
       }
@@ -1469,7 +1515,7 @@ async function dedupeRecommendationCandidatesByIdentity({
         stats.duplicate_candidates_dropped += 1;
         continue;
       }
-      if (productLine && seenProductLines.has(productLine)) {
+      if (productLine && seenProductLines.has(productLine) && !sameProductLineShadeAlternative) {
         stats.duplicate_candidates_dropped += 1;
         continue;
       }
@@ -1478,8 +1524,11 @@ async function dedupeRecommendationCandidatesByIdentity({
         continue;
       }
       if (sellableGroup) seenSellableGroups.add(sellableGroup);
-      if (productLine) seenProductLines.add(productLine);
+      if (productLine && !sameProductLineShadeAlternative) seenProductLines.add(productLine);
       if (semanticKey) seenSemanticKeys.add(semanticKey);
+      if (sameProductLineShadeAlternative) {
+        stats.same_product_line_shade_alternatives_kept += 1;
+      }
       out.push(row ? attachIdentityRow(candidate, row) : candidate);
     }
     return out;
