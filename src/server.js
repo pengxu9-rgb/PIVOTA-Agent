@@ -13379,7 +13379,7 @@ async function queryBeautyExternalSeedRowsFast({
         const result = await queryBeautyExternalSeedRowsWithTimeout(
           sql,
           [safeQueryMarket, tool, ...brandPatterns, ...brandCategoryPatterns, perScopeRowLimit],
-          1200,
+          2800,
         );
         const queryDurationMs = Math.max(0, Date.now() - queryStartedAt);
         const rows = Array.isArray(result?.rows) ? result.rows : [];
