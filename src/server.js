@@ -12818,6 +12818,42 @@ function buildBeautyExternalSeedRecallPatterns({ queryText = '', intent = null }
   return patterns.slice(0, 14);
 }
 
+function buildBeautyExternalSeedBrandCategoryTextTerms(queryText = '', intent = null) {
+  const terms = [];
+  const seen = new Set();
+  const push = (value) => {
+    const normalized = normalizeSearchTextForMatch(value);
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+    terms.push(normalized);
+  };
+  const prefix = resolveBeautyCategoryPathPrefixForQuery(queryText);
+  if (prefix.startsWith('beauty/makeup/cheek/')) {
+    ['blush', 'cheek', 'luminizer', 'highlighter'].forEach(push);
+  } else if (prefix.startsWith('beauty/makeup/lip/')) {
+    ['lipstick', 'lip color', 'liquid lip', 'rouge'].forEach(push);
+  } else if (prefix.startsWith('beauty/makeup/eye/')) {
+    ['mascara', 'eyeshadow', 'eyeliner', 'brow', 'lash'].forEach(push);
+  } else if (prefix.startsWith('beauty/fragrance/')) {
+    ['fragrance', 'perfume', 'parfum', 'body mist', 'eau de'].forEach(push);
+  } else if (prefix.startsWith('beauty/skincare/treat/')) {
+    const ingredientTokens = Array.isArray(intent?.ingredient_tokens)
+      ? intent.ingredient_tokens
+      : Array.isArray(intent?.soft_preferences?.ingredient_tokens)
+        ? intent.soft_preferences.ingredient_tokens
+        : [];
+    ingredientTokens.forEach((token) => push(String(token || '').replace(/_/g, ' ')));
+    ['serum', 'treatment', 'essence', 'ampoule', 'niacinamide'].forEach(push);
+  } else if (prefix.startsWith('beauty/skincare/moisturize/')) {
+    ['moisturizer', 'moisturiser', 'cream', 'barrier'].forEach(push);
+  } else if (prefix.startsWith('beauty/skincare/cleanse/')) {
+    ['cleanser', 'cleansing', 'face wash'].forEach(push);
+  } else if (prefix.startsWith('beauty/skincare/sun/')) {
+    ['sunscreen', 'spf', 'sunblock'].forEach(push);
+  }
+  return terms.slice(0, 8);
+}
+
 async function queryBeautyExternalSeedRowsWithTimeout(sql, params, timeoutMs = 1200) {
   const boundedTimeoutMs = Math.max(250, Math.min(3000, Math.trunc(Number(timeoutMs) || 1200)));
   if (typeof withClient !== 'function') return query(sql, params);
@@ -13247,6 +13283,21 @@ async function queryBeautyExternalSeedRowsFast({
   };
   const runTextRecallQuery = async (tool, queryMarket = safeMarket, marketScope = 'text_recall_underfill') => {
     const safePatterns = recallPatterns.filter(Boolean).slice(0, 14);
+    const brandCategoryRecall = Boolean(
+      intent?.brandBrowse &&
+        intent.brandBrowse.contract === 'brand_browse' &&
+        intent.brandBrowse.brand_only === false,
+    );
+    const brandPatterns = brandCategoryRecall
+      ? uniqueStrings([intent.brandBrowse.brand, intent.brandBrowse.alias])
+          .map((value) => normalizeSearchTextForMatch(value))
+          .filter(Boolean)
+          .map((value) => `%${value}%`)
+      : [];
+    const brandCategoryTerms = brandCategoryRecall
+      ? buildBeautyExternalSeedBrandCategoryTextTerms(queryText, intent)
+      : [];
+    const brandCategoryPatterns = brandCategoryTerms.map((value) => `%${value}%`);
     if (!safePatterns.length) {
       return {
         tool,
@@ -13265,6 +13316,91 @@ async function queryBeautyExternalSeedRowsFast({
     }
     try {
       const safeQueryMarket = String(queryMarket || safeMarket).trim().toUpperCase() || safeMarket;
+      const useBrandCategoryRecall = brandPatterns.length > 0 && brandCategoryPatterns.length > 0;
+      if (useBrandCategoryRecall) {
+        const brandClauses = brandPatterns.map((_, index) => {
+          const bind = `$${index + 3}`;
+          return `(
+            lower(coalesce(seed_data->>'brand', '')) LIKE ${bind}
+            OR lower(coalesce(seed_data->>'vendor', '')) LIKE ${bind}
+            OR lower(coalesce(seed_data->'snapshot'->>'brand', '')) LIKE ${bind}
+            OR lower(coalesce(seed_data->'snapshot'->>'vendor', '')) LIKE ${bind}
+            OR lower(coalesce(seed_data->'derived'->'recall'->>'brand_name', '')) LIKE ${bind}
+          )`;
+        });
+        const categoryStartIndex = 3 + brandPatterns.length;
+        const categoryClauses = brandCategoryPatterns.map((_, index) => {
+          const bind = `$${categoryStartIndex + index}`;
+          return `(
+            lower(coalesce(title, '')) LIKE ${bind}
+            OR lower(coalesce(seed_data->>'title', '')) LIKE ${bind}
+            OR lower(coalesce(seed_data->>'category', '')) LIKE ${bind}
+            OR lower(coalesce(seed_data->>'product_type', '')) LIKE ${bind}
+            OR lower(coalesce(seed_data->'snapshot'->>'title', '')) LIKE ${bind}
+            OR lower(coalesce(seed_data->'snapshot'->>'category', '')) LIKE ${bind}
+            OR lower(coalesce(seed_data->'derived'->'recall'->>'retrieval_title', '')) LIKE ${bind}
+            OR lower(coalesce(seed_data->'derived'->'recall'->>'retrieval_summary', '')) LIKE ${bind}
+            OR lower(coalesce(seed_data->'derived'->'recall'->>'category', '')) LIKE ${bind}
+          )`;
+        });
+        const limitBind = `$${3 + brandPatterns.length + brandCategoryPatterns.length}`;
+        const sql = `
+          SELECT
+            id,
+            external_product_id,
+            market,
+            tool,
+            destination_url,
+            canonical_url,
+            domain,
+            title,
+            image_url,
+            price_amount,
+            price_currency,
+            availability,
+            seed_data,
+            updated_at,
+            created_at,
+            ${catalogMirrorProjectionSql}
+          FROM external_product_seeds
+          WHERE status = 'active'
+            AND attached_product_key IS NULL
+            AND market = $1
+            AND tool = $2
+            AND (${brandClauses.join('\n            OR ')})
+            AND (${categoryClauses.join('\n            OR ')})
+            ${inStockOnly ? `AND coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')` : ''}
+          ORDER BY
+            updated_at DESC NULLS LAST,
+            created_at DESC NULLS LAST
+          LIMIT ${limitBind}
+        `;
+        const queryStartedAt = Date.now();
+        const result = await queryBeautyExternalSeedRowsWithTimeout(
+          sql,
+          [safeQueryMarket, tool, ...brandPatterns, ...brandCategoryPatterns, perScopeRowLimit],
+          1200,
+        );
+        const queryDurationMs = Math.max(0, Date.now() - queryStartedAt);
+        const rows = Array.isArray(result?.rows) ? result.rows : [];
+        return {
+          tool,
+          rows,
+          variant: {
+            query: String(queryText || '').trim(),
+            row_count: rows.length,
+            category_terms: categoryTerms,
+            recall_pattern_count: safePatterns.length,
+            brand_category_text_terms: brandCategoryTerms,
+            market: safeQueryMarket,
+            market_scope: marketScope,
+            tool_scope: tool || '(empty)',
+            text_recall_underfill: true,
+            brand_category_text_recall: true,
+            query_duration_ms: queryDurationMs,
+          },
+        };
+      }
       const patternClauses = safePatterns.map((_, index) => {
         const bind = `$${index + 3}`;
         return `(
