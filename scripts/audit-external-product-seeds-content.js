@@ -105,12 +105,15 @@ async function main() {
     format: normalizeNonEmptyString(argValue('format') || 'summary').toLowerCase(),
     out: argValue('out') || null,
     onlyFlagged: !hasFlag('include-clean'),
+    includeSourceUnavailable: hasFlag('include-source-unavailable') || hasFlag('includeSourceUnavailable'),
     persistRun: hasFlag('persist-run') || hasFlag('persistRun'),
     stage: normalizeNonEmptyString(argValue('stage') || 'initial'),
   };
 
   const rows = await fetchRows(options);
-  const results = rows.map((row) => auditExternalSeedRow(row));
+  const results = rows.map((row) =>
+    auditExternalSeedRow(row, { includeSourceUnavailable: options.includeSourceUnavailable }),
+  );
   const findings = results.flatMap((result) => result.findings || []);
   const summary = summarizeAuditResults(results);
   let auditRunId = null;

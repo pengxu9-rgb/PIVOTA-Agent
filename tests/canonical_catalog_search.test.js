@@ -65,6 +65,21 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
     expect(sql).toMatch(/p\.pivota_canonical_url/);
   });
 
+  test('filters source-unavailable external-seed catalog rows before canonical recall', async () => {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      query: 'fenty',
+      deps: { query },
+    });
+    const { sql } = query.calls[0];
+
+    expect(sql).toMatch(/p\.merchant_id = 'external_seed'/);
+    expect(sql).toMatch(/source_unavailable_v1,status/);
+    expect(sql).toMatch(/external_seed\.source_unavailable\.v1/);
+    expect(sql).toMatch(/transaction_readiness_blocker_v1,status/);
+    expect(sql).toMatch(/FROM external_product_seeds eps_unavailable/);
+  });
+
   test('omits merchant clause when merchantId not provided', async () => {
     const query = makeMockQuery([]);
     await fetchCanonicalChainRows({
@@ -72,7 +87,7 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
       deps: { query },
     });
     const { sql, params } = query.calls[0];
-    expect(sql).not.toMatch(/p\.merchant_id =/);
+    expect(sql).not.toMatch(/AND p\.merchant_id = \$\d+/);
     expect(params).toHaveLength(4);
   });
 

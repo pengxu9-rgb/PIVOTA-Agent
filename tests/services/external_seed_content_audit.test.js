@@ -584,6 +584,36 @@ describe('externalSeedContentAudit', () => {
     );
   });
 
+  test('skips source-unavailable rows by default after pollution cleanup', () => {
+    const row = {
+      id: 'eps_source_unavailable',
+      domain: 'fentybeauty.com',
+      market: 'US',
+      canonical_url: 'https://fentybeauty.com/products/narvardeliveryprotection',
+      title: 'Narvar Delivery Protection',
+      seed_data: {
+        source_unavailable_v1: {
+          contract_version: 'external_seed.source_unavailable.v1',
+          status: 'source_unavailable',
+        },
+        snapshot: {
+          canonical_url: 'https://fentybeauty.com/products/narvardeliveryprotection',
+          source_unavailable_v1: {
+            contract_version: 'external_seed.source_unavailable.v1',
+            status: 'source_unavailable',
+          },
+          variants: [],
+        },
+      },
+    };
+
+    const result = auditExternalSeedRow(row);
+
+    expect(result.source_unavailable).toBe(true);
+    expect(result.skipped_reason).toBe('source_unavailable');
+    expect(result.findings).toEqual([]);
+  });
+
   test('summarizes findings by severity and anomaly type', () => {
     const results = [
       {

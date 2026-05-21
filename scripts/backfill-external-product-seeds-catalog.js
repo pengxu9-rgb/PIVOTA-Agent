@@ -5461,10 +5461,10 @@ async function persistFailureSeedData(row, candidates = []) {
 async function fetchRows(options) {
   const where = [
     `status = 'active'`,
-    `attached_product_key IS NULL`,
     `market = $1`,
-    `(tool = '*' OR tool = 'creator_agents')`,
   ];
+  if (!options.includeAttached) where.splice(1, 0, `attached_product_key IS NULL`);
+  if (!options.includeAllTools) where.push(`(tool = '*' OR tool = 'creator_agents')`);
   const params = [options.market];
   let idx = params.length;
 
@@ -6737,6 +6737,8 @@ async function main() {
       (hasFlag('validate-image-health') || hasFlag('validateImageHealth') || !(hasFlag('dry-run') || hasFlag('dryRun'))) &&
       !hasFlag('skip-image-health-validation') &&
       !hasFlag('skipImageHealthValidation'),
+    includeAttached: hasFlag('include-attached') || hasFlag('includeAttached'),
+    includeAllTools: hasFlag('include-all-tools') || hasFlag('includeAllTools'),
     baseUrl: DEFAULT_CATALOG_BASE_URL,
   };
 

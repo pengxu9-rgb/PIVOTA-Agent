@@ -233,6 +233,31 @@ async function fetchCanonicalChainRows(args = {}) {
   const whereClause = categoryBind
     ? `(p.category_path IS NOT NULL AND p.category_path LIKE ${categoryBind} AND $2::text IS NOT NULL)`
     : `(${textWhereClause})`;
+  const externalSeedUnavailableWhere = `
+        AND NOT (
+          p.merchant_id = 'external_seed'
+          AND (
+            lower(coalesce(p.product_payload #>> '{source_unavailable_v1,status}', '')) = 'source_unavailable'
+            OR coalesce(p.product_payload #>> '{source_unavailable_v1,contract_version}', '') = 'external_seed.source_unavailable.v1'
+            OR lower(coalesce(p.product_payload #>> '{transaction_readiness_blocker_v1,status}', '')) = 'source_unavailable'
+            OR coalesce(p.product_payload #>> '{transaction_readiness_blocker_v1,contract_version}', '') = 'external_seed.source_unavailable.v1'
+            OR EXISTS (
+              SELECT 1
+              FROM external_product_seeds eps_unavailable
+              WHERE eps_unavailable.external_product_id = p.source_product_id
+                AND (
+                  lower(coalesce(eps_unavailable.seed_data #>> '{source_unavailable_v1,status}', '')) = 'source_unavailable'
+                  OR coalesce(eps_unavailable.seed_data #>> '{source_unavailable_v1,contract_version}', '') = 'external_seed.source_unavailable.v1'
+                  OR lower(coalesce(eps_unavailable.seed_data #>> '{snapshot,source_unavailable_v1,status}', '')) = 'source_unavailable'
+                  OR coalesce(eps_unavailable.seed_data #>> '{snapshot,source_unavailable_v1,contract_version}', '') = 'external_seed.source_unavailable.v1'
+                  OR lower(coalesce(eps_unavailable.seed_data #>> '{transaction_readiness_blocker_v1,status}', '')) = 'source_unavailable'
+                  OR coalesce(eps_unavailable.seed_data #>> '{transaction_readiness_blocker_v1,contract_version}', '') = 'external_seed.source_unavailable.v1'
+                  OR lower(coalesce(eps_unavailable.seed_data #>> '{snapshot,transaction_readiness_blocker_v1,status}', '')) = 'source_unavailable'
+                  OR coalesce(eps_unavailable.seed_data #>> '{snapshot,transaction_readiness_blocker_v1,contract_version}', '') = 'external_seed.source_unavailable.v1'
+                )
+            )
+          )
+        )`;
   const joinSkuOffers = Boolean(includeSkuOffers);
   const skuOfferColumns = joinSkuOffers
     ? `
@@ -352,6 +377,7 @@ async function fetchCanonicalChainRows(args = {}) {
       LEFT JOIN catalog_merchants m ON m.merchant_id = p.merchant_id
       WHERE ${whereClause}
         AND ${activeCatalogProductSourceWhere('p', 'm')}
+        ${externalSeedUnavailableWhere}
       ${merchantClause}
       ${marketWhere}
       ORDER BY rank_score DESC, p.updated_at DESC

@@ -89,6 +89,85 @@ const STATIC_BRAND_ALIASES = Object.freeze({
   mango: ['mango'],
 });
 
+const BEAUTY_BRAND_ALIAS_KEYS = new Set([
+  'tom_ford',
+  'jo_malone',
+  'byredo',
+  'dior',
+  'chanel',
+  'ysl',
+  'armani',
+  'gucci',
+  'prada',
+  'valentino',
+  'givenchy',
+  'fenty_beauty',
+  'rare_beauty',
+  'charlotte_tilbury',
+  'nars',
+  'clinique',
+  'shiseido',
+  'laneige',
+  'innisfree',
+  'the_ordinary',
+  'cerave',
+  'la_roche_posay',
+  'kiehls',
+  'tatcha',
+  'drunk_elephant',
+  'la_mer',
+  'diptyque',
+  'le_labo',
+  'mac_cosmetics',
+  'estee_lauder',
+  'lancome',
+  'glossier',
+  'milk_makeup',
+  'tower_28',
+  'supergoop',
+  'make_up_for_ever',
+  'urban_decay',
+  'too_faced',
+  'bobbi_brown',
+  'laura_mercier',
+  'hourglass',
+  'huda_beauty',
+  'pat_mcgrath',
+  'westman_atelier',
+  'patrick_ta',
+  'summer_fridays',
+  'sol_de_janeiro',
+  'rhode',
+  'merit',
+  'saie',
+  'haus_labs',
+  'glow_recipe',
+  'paulas_choice',
+  'youth_to_the_people',
+  'sunday_riley',
+  'ole_henriksen',
+  'dermalogica',
+  'naturium',
+  'biossance',
+  'first_aid_beauty',
+  'pixi_beauty',
+  'moroccanoil',
+  'gisou',
+  'biologique_recherche',
+  'nuxe',
+  'jurlique',
+  'pattern_beauty',
+  'jvn',
+  'fable_and_mane',
+  'living_proof',
+  'r_and_co',
+  'dae',
+  'ilia',
+  'kosas',
+  'kylie_cosmetics',
+  'sigma_beauty',
+]);
+
 const BRAND_SUFFIX_TOKENS = new Set([
   'beauty',
   'cosmetic',
@@ -234,6 +313,74 @@ function detectBrandByStaticAliases(normalizedQuery) {
   return Array.from(new Set(matches));
 }
 
+function resolveBeautyBrandBrowseQuery(queryText, options = {}) {
+  const normalizedQuery = normalizeBrandText(queryText);
+  if (!normalizedQuery) {
+    return {
+      matched: false,
+      brand_like: false,
+      brand: null,
+      alias: null,
+      explicit_category: false,
+      brand_only: false,
+      detection_mode: null,
+      contract: null,
+    };
+  }
+
+  const matches = [];
+  for (const [brandKey, aliases] of Object.entries(STATIC_BRAND_ALIASES)) {
+    if (!BEAUTY_BRAND_ALIAS_KEYS.has(brandKey)) continue;
+    const sortedAliases = [...aliases].sort((a, b) => String(b || '').length - String(a || '').length);
+    for (const alias of sortedAliases) {
+      const normalizedAlias = normalizeBrandText(alias);
+      if (!normalizedAlias) continue;
+      if (!matchesBrandAliasInNormalizedText(normalizedQuery, normalizedAlias)) continue;
+      matches.push({
+        brand_key: brandKey,
+        brand: toCanonicalBrandLabel(aliases[0]),
+        alias: normalizedAlias,
+      });
+      break;
+    }
+  }
+
+  if (!matches.length) {
+    return {
+      matched: false,
+      brand_like: Boolean(detectBrandEntities(queryText, options).brand_like),
+      brand: null,
+      alias: null,
+      explicit_category: hasExplicitCategoryHint(queryText, options?.intent || null),
+      brand_only: false,
+      detection_mode: null,
+      contract: null,
+    };
+  }
+
+  const best = matches.sort((left, right) => right.alias.length - left.alias.length)[0];
+  const queryTokens = tokenizeBrandText(normalizedQuery);
+  const aliasTokens = new Set(tokenizeBrandText(best.alias));
+  const brandTokens = new Set(tokenizeBrandText(best.brand));
+  const remainingTokens = queryTokens.filter((token) => !aliasTokens.has(token) && !brandTokens.has(token));
+  const explicitCategory = hasExplicitCategoryHint(queryText, options?.intent || null);
+  const meaningfulRemainder = remainingTokens.filter(
+    (token) => !BRAND_STOP_TOKENS.has(token) && !BRAND_SUFFIX_TOKENS.has(token),
+  );
+
+  return {
+    matched: true,
+    brand_like: true,
+    brand_key: best.brand_key,
+    brand: best.brand,
+    alias: best.alias,
+    explicit_category: explicitCategory,
+    brand_only: meaningfulRemainder.length === 0,
+    detection_mode: 'static_beauty',
+    contract: 'brand_browse',
+  };
+}
+
 function detectBrandByDynamicAliases(normalizedQuery, candidateProducts = []) {
   const dynamicAliases = collectDynamicBrandAliases(candidateProducts);
   if (!dynamicAliases.length) return [];
@@ -353,4 +500,5 @@ module.exports = {
   buildBrandQueryVariants,
   hasExplicitCategoryHint,
   normalizeBrandText,
+  resolveBeautyBrandBrowseQuery,
 };

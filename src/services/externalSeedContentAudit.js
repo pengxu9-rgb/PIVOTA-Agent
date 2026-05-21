@@ -152,6 +152,23 @@ function getSnapshot(row) {
   return { seedData, snapshot };
 }
 
+function isSourceUnavailableContract(value) {
+  const contract = ensureJsonObject(value);
+  const version = normalizeNonEmptyString(contract.contract_version).toLowerCase();
+  const status = normalizeNonEmptyString(contract.status).toLowerCase();
+  return version === 'external_seed.source_unavailable.v1' || status === 'source_unavailable';
+}
+
+function isSourceUnavailableSeed(row, seedData, snapshot) {
+  return Boolean(
+    isSourceUnavailableContract(row?.source_unavailable_v1) ||
+      isSourceUnavailableContract(seedData?.source_unavailable_v1) ||
+      isSourceUnavailableContract(snapshot?.source_unavailable_v1) ||
+      isSourceUnavailableContract(seedData?.transaction_readiness_blocker_v1) ||
+      isSourceUnavailableContract(snapshot?.transaction_readiness_blocker_v1)
+  );
+}
+
 function getCanonicalUrl(row, snapshot, seedData) {
   return normalizeUrlLike(
     snapshot?.canonical_url ||
@@ -375,6 +392,27 @@ function auditExternalSeedRow(row, options = {}) {
   const detectedLanguage = options.detectedLanguage || detectLanguage(description);
   const lastExtractedAt = getLastExtractedAt(row, snapshot);
   const seedDescriptionOrigin = getSeedDescriptionOrigin(row);
+  const sourceUnavailable = isSourceUnavailableSeed(row, seedData, snapshot);
+
+  if (sourceUnavailable && options.includeSourceUnavailable !== true) {
+    return {
+      row: {
+        id: normalizeNonEmptyString(row?.id),
+        domain: normalizeNonEmptyString(row?.domain),
+        market,
+        canonical_url: canonicalUrl,
+        title,
+        description,
+        image_count: imageUrls.length,
+        variant_count: variants.length,
+        last_extracted_at: lastExtractedAt,
+        source_unavailable: true,
+      },
+      findings,
+      source_unavailable: true,
+      skipped_reason: 'source_unavailable',
+    };
+  }
 
   if (expectedLocale && localeSegment && !localeSegmentsAreLanguageCompatible(expectedLocale, localeSegment)) {
     findings.push(
