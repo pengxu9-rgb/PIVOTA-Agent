@@ -13910,6 +13910,70 @@ function isSearchProductPdpResolvable(product = {}) {
   return hasProductRef && (hasMerchantRef || hasUrl);
 }
 
+function ensureSearchProductPdpOpen(product = {}) {
+  if (!isPlainObject(product)) return product;
+  if (isPlainObject(product.pdp_open)) return product;
+
+  const ref = isPlainObject(product.canonical_product_ref) ? product.canonical_product_ref : {};
+  const signatureId = firstNonEmptyString(
+    ref.pivota_signature_id,
+    product.pivota_signature_id,
+    String(product.product_id || '').startsWith('sig_') ? product.product_id : '',
+    String(product.id || '').startsWith('sig_') ? product.id : '',
+  );
+  const productId = firstNonEmptyString(
+    ref.product_id,
+    product.source_product_id,
+    product.platform_product_id,
+    product.external_product_id,
+    product.external_seed_product_id,
+    product.product_id,
+    product.id,
+    signatureId,
+  );
+  const merchantId = firstNonEmptyString(
+    ref.merchant_id,
+    product.merchant_id,
+    product.merchantId,
+    String(product.platform || product.source || '').includes('external_seed') ? EXTERNAL_SEED_MERCHANT_ID : '',
+  );
+  if (!productId || !merchantId) return product;
+
+  const platform = firstNonEmptyString(
+    ref.platform,
+    product.platform,
+    String(product.source || '').includes('external_seed') ? 'external_seed' : '',
+    merchantId === EXTERNAL_SEED_MERCHANT_ID ? 'external_seed' : '',
+  );
+  const productKey = firstNonEmptyString(ref.product_key, product.product_key, product.catalog_product_key);
+  const productRef = {
+    merchant_id: merchantId,
+    product_id: productId,
+    ...(platform ? { platform } : {}),
+    ...(productKey ? { product_key: productKey } : {}),
+    ...(signatureId ? { pivota_signature_id: signatureId } : {}),
+  };
+  const subjectId = signatureId || firstNonEmptyString(product.pivota_signature_id, product.product_id, product.id, productId);
+  const next = {
+    ...product,
+    canonical_product_ref: isPlainObject(product.canonical_product_ref) ? product.canonical_product_ref : productRef,
+    pdp_open: {
+      path: 'internal',
+      product_ref: productRef,
+      canonical_product_ref: productRef,
+      subject: {
+        type: 'product_group',
+        id: subjectId,
+      },
+    },
+  };
+  if (signatureId && !next.pivota_signature_id) next.pivota_signature_id = signatureId;
+  if (signatureId && !next.pivota_canonical_url) {
+    next.pivota_canonical_url = `https://agent.pivota.cc/products/${signatureId}`;
+  }
+  return next;
+}
+
 function getSearchProductServingEligibility(product = {}, options = {}) {
   const reasons = [];
   if (!isPlainObject(product)) {
@@ -16035,7 +16099,7 @@ function compactBeautyMainlineProductForResponse(product, intent = null, queryTe
       recommendation_reason: recommendationReason,
     };
   }
-  return next;
+  return ensureSearchProductPdpOpen(next);
 }
 
 function filterBeautyMainlineProductsByQuery(products = [], queryText = '', options = {}) {
@@ -40644,6 +40708,7 @@ module.exports._debug = {
   attachCanonicalChainRecallTelemetry,
   filterSearchServingEligibleProducts,
   getSearchProductServingEligibility,
+  ensureSearchProductPdpOpen,
   buildCanonicalChainMainlineProduct,
   mergeCanonicalChainProductsWithSeedProducts,
   resolveCatalogSyncMerchantIds,

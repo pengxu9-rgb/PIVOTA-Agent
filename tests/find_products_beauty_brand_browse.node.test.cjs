@@ -8,6 +8,7 @@ const app = require('../src/server');
 const {
   attachCanonicalChainRecallTelemetry,
   buildBeautyExternalSeedCategoryTerms,
+  compactBeautyMainlineProductForResponse,
   filterSearchServingEligibleProducts,
   inferBeautyMainlineIntent,
   resolveBeautyBrandBrowseQuery,
@@ -194,6 +195,33 @@ test('beauty brand plus category scoring rejects non-brand category matches', ()
   });
 
   assert.equal(scored.relevant, false);
+});
+
+test('beauty mainline cards receive explicit pdp_open refs', () => {
+  const product = compactBeautyMainlineProductForResponse({
+    id: 'sig_lip_1',
+    product_id: 'sig_lip_1',
+    merchant_id: 'external_seed',
+    platform: 'external_seed',
+    source: 'external_seed',
+    source_product_id: 'ext_lip_1',
+    title: 'Fenty Icon Velvet Liquid Lipstick',
+    brand: 'Fenty Beauty',
+    price: 29,
+    image_url: 'https://cdn.shopify.com/fenty/lip.jpg',
+    category: 'Lipstick',
+    product_type: 'Lipstick',
+    category_path: ['beauty', 'makeup', 'lip', 'lipstick'],
+    catalog_category_path: 'beauty/makeup/lip/lipstick',
+    destination_url: 'https://fentybeauty.com/products/lip',
+  }, inferBeautyMainlineIntent('fenty lipstick'), 'fenty lipstick');
+
+  assert.equal(product.pdp_open.path, 'internal');
+  assert.equal(product.pdp_open.product_ref.merchant_id, 'external_seed');
+  assert.equal(product.pdp_open.product_ref.product_id, 'ext_lip_1');
+  assert.equal(product.pdp_open.product_ref.pivota_signature_id, 'sig_lip_1');
+  assert.equal(product.pdp_open.subject.id, 'sig_lip_1');
+  assert.equal(product.canonical_product_ref.product_id, 'ext_lip_1');
 });
 
 test('canonical chain replaces degraded products for beauty brand browse', () => {
