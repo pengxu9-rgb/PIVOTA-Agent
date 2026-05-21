@@ -8,10 +8,10 @@ const CATALOG_SERVING_GATEWAY_CONTRACT_VERSION = 'pivota.catalog_serving.gateway
 const DEFAULT_MARKET = 'US';
 const DEFAULT_LIMIT = 24;
 const MAX_LIMIT = 100;
-// 'serving_eligible_only' is a stricter form of 'allow_local_shadow' that
-// pre-filters local shadow results to products marked serving_eligible=TRUE
-// in index_pipeline_state. Enable only after ≥1000 products are eligible.
-const VALID_SHADOW_MODES = new Set(['external_only', 'allow_local_shadow', 'serving_eligible_only']);
+// 'serving_eligible_only' is a stricter form of DB serving that pre-filters
+// local DB results to products marked serving_eligible=TRUE in
+// index_pipeline_state. Enable only after >=1000 products are eligible.
+const VALID_SERVING_MODES = new Set(['auto', 'external_only', 'db_serving', 'serving_eligible_only']);
 
 function asString(value) {
   const normalized = String(value || '').trim();
@@ -39,13 +39,47 @@ function uniqStrings(values = [], limit = 24) {
   return out;
 }
 
-function resolveCatalogServingGatewayShadowMode(rawValue) {
+function resolveCatalogServingGatewayServingMode(rawValue, fallback = 'auto') {
   const normalized = asString(rawValue).toLowerCase();
-  if (VALID_SHADOW_MODES.has(normalized)) return normalized;
+  if (normalized === 'allow_local_shadow' || normalized === 'local_shadow') return 'db_serving';
+  if (VALID_SERVING_MODES.has(normalized)) return normalized;
+  return VALID_SERVING_MODES.has(fallback) ? fallback : 'auto';
+}
+
+function legacyShadowModeForServingMode(servingMode) {
+  if (servingMode === 'db_serving') return 'allow_local_shadow';
+  if (servingMode === 'serving_eligible_only') return 'serving_eligible_only';
   return 'external_only';
 }
 
+function resolveCatalogServingGatewayShadowMode(rawValue) {
+  return legacyShadowModeForServingMode(resolveCatalogServingGatewayServingMode(rawValue, 'external_only'));
+}
+
+function resolveEffectiveCatalogServingGatewayServingMode(request, env = process.env) {
+  const requested = resolveCatalogServingGatewayServingMode(request?.serving_mode, 'auto');
+  if (requested !== 'auto') return requested;
+  const indexConfig = getCatalogServingIndexConfig(env);
+  if (indexConfig.enabled === true) return 'external_only';
+  if (canUseLocalCatalogServingSearch(env)) return 'db_serving';
+  return 'external_only';
+}
+
+function normalizeCatalogServingGatewaySource(rawSource) {
+  const source = asString(rawSource) || 'disabled';
+  return source === 'local_shadow' ? 'db_serving' : source;
+}
+
+function resolveCatalogServingGatewayMode(normalizedSource) {
+  if (normalizedSource === 'db_serving') return 'db_serving';
+  if (normalizedSource === 'opensearch_compatible') return 'external_index';
+  return 'disabled';
+}
+
 function normalizeCatalogServingGatewayRequest(input = {}) {
+  const requestedMode = resolveCatalogServingGatewayServingMode(
+    input.serving_mode || input.servingMode || input.shadow_mode || input.shadowMode,
+  );
   return {
     query_text: asString(input.query_text || input.queryText),
     brand_names: uniqStrings(input.brand_names || input.brandNames, 16),
@@ -56,9 +90,8 @@ function normalizeCatalogServingGatewayRequest(input = {}) {
     sort: asString(input.sort) || 'popular',
     timeout_ms: clampInt(input.timeout_ms || input.timeoutMs, 800, 100, 5000),
     local_scan_limit: clampInt(input.local_scan_limit || input.localScanLimit, 1000, 50, 5000),
-    shadow_mode: resolveCatalogServingGatewayShadowMode(
-      input.shadow_mode || input.shadowMode,
-    ),
+    serving_mode: requestedMode,
+    shadow_mode: legacyShadowModeForServingMode(requestedMode),
   };
 }
 
@@ -67,11 +100,11 @@ async function searchCatalogServingGateway(input = {}, {
   searchCatalogServingIndexFn = searchCatalogServingIndex,
 } = {}) {
   const request = normalizeCatalogServingGatewayRequest(input);
-  const servingEligibleOnly = request.shadow_mode === 'serving_eligible_only';
-  // serving_eligible_only implies allowing the local shadow path
-  const allowLocalShadow = servingEligibleOnly || request.shadow_mode === 'allow_local_shadow';
+  const effectiveServingMode = resolveEffectiveCatalogServingGatewayServingMode(request, env);
+  const servingEligibleOnly = effectiveServingMode === 'serving_eligible_only';
+  const allowDbServing = servingEligibleOnly || effectiveServingMode === 'db_serving';
   const indexConfig = getCatalogServingIndexConfig(env);
-  const localShadowAvailable = canUseLocalCatalogServingSearch(env);
+  const dbServingAvailable = canUseLocalCatalogServingSearch(env);
   const result = await searchCatalogServingIndexFn(
     {
       query_text: request.query_text,
@@ -86,16 +119,20 @@ async function searchCatalogServingGateway(input = {}, {
     },
     {
       env,
-      allowLocalShadow,
+      allowLocalShadow: allowDbServing,
       servingEligibleOnly,
     },
   );
+  const internalSource = asString(result?.source) || 'disabled';
+  const source = normalizeCatalogServingGatewaySource(internalSource);
 
   return {
     contract_version: CATALOG_SERVING_GATEWAY_CONTRACT_VERSION,
-    gateway_mode: 'shadow',
-    shadow_mode: request.shadow_mode,
-    source: asString(result?.source) || 'disabled',
+    gateway_mode: resolveCatalogServingGatewayMode(source),
+    serving_mode: effectiveServingMode,
+    requested_serving_mode: request.serving_mode,
+    shadow_mode: legacyShadowModeForServingMode(effectiveServingMode),
+    source,
     items: Array.isArray(result?.items) ? result.items : [],
     cursor_info:
       result?.cursor_info && typeof result.cursor_info === 'object'
@@ -115,9 +152,12 @@ async function searchCatalogServingGateway(input = {}, {
     available_facets: [],
     debug_metadata: {
       external_index_enabled: indexConfig.enabled === true,
-      local_shadow_requested: allowLocalShadow,
-      local_shadow_available: localShadowAvailable,
-      local_shadow_used: asString(result?.source) === 'local_shadow',
+      db_serving_requested: allowDbServing,
+      db_serving_available: dbServingAvailable,
+      db_serving_used: internalSource === 'local_shadow',
+      local_shadow_requested: allowDbServing,
+      local_shadow_available: dbServingAvailable,
+      local_shadow_used: internalSource === 'local_shadow',
       serving_eligible_filter: servingEligibleOnly,
     },
   };
@@ -126,6 +166,7 @@ async function searchCatalogServingGateway(input = {}, {
 module.exports = {
   CATALOG_SERVING_GATEWAY_CONTRACT_VERSION,
   normalizeCatalogServingGatewayRequest,
+  resolveCatalogServingGatewayServingMode,
   resolveCatalogServingGatewayShadowMode,
   searchCatalogServingGateway,
 };

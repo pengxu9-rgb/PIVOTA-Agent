@@ -29079,6 +29079,7 @@ app.post('/api/admin/catalog-serving/search', requireAdmin, async (req, res) => 
       sort: body.sort,
       timeout_ms: body.timeout_ms ?? body.timeoutMs,
       local_scan_limit: body.local_scan_limit ?? body.localScanLimit,
+      serving_mode: body.serving_mode ?? body.servingMode,
       shadow_mode: body.shadow_mode ?? body.shadowMode,
     });
     return res.json({ ok: true, result });

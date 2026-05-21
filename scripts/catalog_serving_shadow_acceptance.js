@@ -346,26 +346,29 @@ async function collectRuntimeSummary(
     }
   }
 
-  const localShadowProbeEnabled = canSearchCatalogServingIndex(process.env, { allowLocalShadow: true });
+  const dbServingProbeEnabled = canSearchCatalogServingIndex(process.env, { allowLocalShadow: true });
+  const requestedServingMode = config.enabled ? 'external_only' : 'db_serving';
   const requestedShadowMode = config.enabled ? 'external_only' : 'allow_local_shadow';
   let searchProbe = {
-    status: options.skipSearch ? 'skipped' : localShadowProbeEnabled ? 'pending' : 'disabled',
-    source: config.enabled ? 'opensearch_compatible' : localShadowProbeEnabled ? 'local_shadow' : 'disabled',
+    status: options.skipSearch ? 'skipped' : dbServingProbeEnabled ? 'pending' : 'disabled',
+    source: config.enabled ? 'opensearch_compatible' : dbServingProbeEnabled ? 'db_serving' : 'disabled',
+    serving_mode: requestedServingMode,
     shadow_mode: requestedShadowMode,
     returned: 0,
     has_next_page: false,
   };
-  if (!options.skipSearch && localShadowProbeEnabled) {
+  if (!options.skipSearch && dbServingProbeEnabled) {
     try {
       const response = await searchCatalogServingGatewayFn({
         query_text: sampleQuery,
         market,
         limit: sampleLimit,
-        shadow_mode: requestedShadowMode,
+        serving_mode: requestedServingMode,
       });
       searchProbe = {
         status: 'ok',
         source: safeToken(response?.source, 'opensearch_compatible'),
+        serving_mode: safeToken(response?.serving_mode, requestedServingMode),
         returned: Array.isArray(response?.items) ? response.items.length : 0,
         has_next_page: response?.cursor_info?.has_next_page === true,
         shadow_mode: safeToken(response?.shadow_mode, requestedShadowMode),
@@ -374,6 +377,7 @@ async function collectRuntimeSummary(
       searchProbe = {
         status: 'error',
         source: 'opensearch_compatible',
+        serving_mode: requestedServingMode,
         returned: 0,
         has_next_page: false,
         shadow_mode: requestedShadowMode,

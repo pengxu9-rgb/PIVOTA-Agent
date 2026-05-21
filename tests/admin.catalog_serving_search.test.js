@@ -41,12 +41,14 @@ describe('POST /api/admin/catalog-serving/search', () => {
     expect(resp.body).toEqual(expect.objectContaining({ error: 'UNAUTHORIZED' }));
   });
 
-  test('returns the shadow gateway contract and forwards explicit local-shadow intent', async () => {
+  test('returns the DB serving gateway contract and forwards explicit serving intent', async () => {
     const searchCatalogServingGateway = jest.fn(async () => ({
       contract_version: 'pivota.catalog_serving.gateway.v1',
-      gateway_mode: 'shadow',
+      gateway_mode: 'db_serving',
+      serving_mode: 'db_serving',
+      requested_serving_mode: 'db_serving',
       shadow_mode: 'allow_local_shadow',
-      source: 'local_shadow',
+      source: 'db_serving',
       items: [{ doc_id: 'sellable:sig_1', title: 'Barrier Serum' }],
       cursor_info: {
         next_cursor: 'cursor_1',
@@ -62,6 +64,7 @@ describe('POST /api/admin/catalog-serving/search', () => {
       },
       available_facets: [],
       debug_metadata: {
+        db_serving_requested: true,
         local_shadow_requested: true,
       },
     }));
@@ -76,7 +79,7 @@ describe('POST /api/admin/catalog-serving/search', () => {
       .send({
         query_text: 'barrier serum',
         brand_names: ['KraveBeauty'],
-        shadow_mode: 'allow_local_shadow',
+        serving_mode: 'db_serving',
       });
 
     expect(resp.status).toBe(200);
@@ -84,9 +87,10 @@ describe('POST /api/admin/catalog-serving/search', () => {
       expect.objectContaining({
         ok: true,
         result: expect.objectContaining({
-          gateway_mode: 'shadow',
+          gateway_mode: 'db_serving',
+          serving_mode: 'db_serving',
           shadow_mode: 'allow_local_shadow',
-          source: 'local_shadow',
+          source: 'db_serving',
         }),
       }),
     );
@@ -94,7 +98,8 @@ describe('POST /api/admin/catalog-serving/search', () => {
       expect.objectContaining({
         query_text: 'barrier serum',
         brand_names: ['KraveBeauty'],
-        shadow_mode: 'allow_local_shadow',
+        serving_mode: 'db_serving',
+        shadow_mode: undefined,
       }),
     );
   });

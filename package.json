@@ -147,6 +147,7 @@
     "external-seeds:audit:pdp-quality": "node scripts/audit-external-product-pdp-quality.js",
     "pdp-identity:audit:source-payload-drift": "node scripts/audit-pdp-identity-source-payload-drift.cjs",
     "external-seeds:audit:pdp-readiness": "node scripts/audit-external-seed-pdp-readiness.js",
+    "commerce-index:audit:kb-readiness": "node scripts/audit-kb-commerce-index-readiness.cjs",
     "external-seeds:audit:image-health": "node scripts/audit-external-seed-image-health.js",
     "external-seeds:audit:shade-visual-quality": "node scripts/audit-shade-visual-quality.cjs",
     "external-seeds:backfill:image-cache": "node scripts/backfill-external-seed-image-cache.cjs",
