@@ -1195,6 +1195,7 @@ function buildAuthoritativeIngredientView(product, options = {}) {
   const generatedAt = options.generatedAt || new Date().toISOString();
   const productFamilySuppression = buildExternalSeedProductFamilySuppression(product, generatedAt);
   if (productFamilySuppression) return productFamilySuppression;
+  const reviewedPartialQuality = readReviewedPartialIngredientQuality(product);
 
   const existingAuthority = asPlainObject(inputs.authoritative);
   if (existingAuthority) {
@@ -1209,7 +1210,15 @@ function buildAuthoritativeIngredientView(product, options = {}) {
       suppressedReason: existingAuthority.suppressed_reason,
       generatedAt: existingAuthority.generated_at || generatedAt,
     });
-    if (normalizedExisting.items.length || normalizedExisting.active_items.length) {
+    const existingIsActiveOnlySuppressedAuthority =
+      !normalizedExisting.items.length &&
+      normalizedExisting.active_items.length > 0 &&
+      asString(normalizedExisting.purity_status).toLowerCase() === 'suppressed' &&
+      asString(normalizedExisting.suppressed_reason).toLowerCase() === 'full_inci_low_purity';
+    if (
+      (normalizedExisting.items.length || normalizedExisting.active_items.length) &&
+      !(existingIsActiveOnlySuppressedAuthority && reviewedPartialQuality)
+    ) {
       const reviewedActiveCandidate = readReviewedActiveCandidates(product, inputs);
       const explicitActiveCandidate = readExplicitActiveCandidates(product, inputs);
       const sourceActiveCandidate = reviewedActiveCandidate?.items?.length
