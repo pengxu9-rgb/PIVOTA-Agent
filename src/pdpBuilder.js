@@ -4227,10 +4227,19 @@ function buildRecommendations(items, currencyFallback) {
       const imageUrl =
         normalizePdpImageUrl(p.image_url || p.image || (Array.isArray(p.images) ? p.images[0] : undefined)) ||
         undefined;
+      // Carry brand through so UI cards can render `Brand · Title`.
+      // Upstream `p.brand` is sometimes a `{ name }` object (PDP shape) and
+      // sometimes a plain string (catalog/search shape); flatten to a string.
+      const brandRaw =
+        typeof p.brand === 'string'
+          ? p.brand
+          : p.brand?.name || p.brand_name || p.vendor || p.vendor_name;
+      const brand = asNonEmptyString(brandRaw) || undefined;
       return {
         product_id: p.product_id || p.id,
         merchant_id: p.merchant_id || p.merchant?.id || p.merchant_uuid,
         title: p.title || p.name,
+        ...(brand ? { brand } : {}),
         description,
         category: asNonEmptyString(p.category) || undefined,
         product_type: asNonEmptyString(p.product_type || p.productType) || undefined,
