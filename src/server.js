@@ -32370,13 +32370,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         if (!data) missing.push({ type: 'reviews_preview', reason: reviewsMissingReason || 'unavailable' });
       }
 
-      if (wantsBundleComposition && identityGraphLive?.canonical_scope === 'synthetic') {
+      if (wantsBundleComposition) {
         const bundleModuleStartedAt = Date.now();
         const refsForEnrichment = normalizeBundleComponentRefsForPdp(canonicalProductForPdp);
         let bundleData = null;
         let bundleReason = null;
         if (refsForEnrichment.length === 0) {
-          bundleReason = 'no_components';
+          bundleReason = identityGraphLive?.canonical_scope === 'synthetic'
+            ? 'no_components'
+            : 'not_a_bundle';
         } else {
           const componentIds = refsForEnrichment
             .map((r) => String(r.product_id || r.external_product_id || '').trim())
@@ -32414,14 +32416,18 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           });
           if (!bundleData) bundleReason = 'no_components';
         }
-        modules.push({
-          type: 'bundle_composition',
-          required: false,
-          data: bundleData,
-          ...(bundleData ? {} : { reason: bundleReason || 'unavailable' }),
-        });
-        if (!bundleData) {
-          missing.push({ type: 'bundle_composition', reason: bundleReason || 'unavailable' });
+        const isBundleLike =
+          identityGraphLive?.canonical_scope === 'synthetic' || refsForEnrichment.length > 0;
+        if (bundleData || isBundleLike) {
+          modules.push({
+            type: 'bundle_composition',
+            required: false,
+            data: bundleData,
+            ...(bundleData ? {} : { reason: bundleReason || 'unavailable' }),
+          });
+          if (!bundleData) {
+            missing.push({ type: 'bundle_composition', reason: bundleReason || 'unavailable' });
+          }
         }
         markPdpV2Module('bundle_composition', bundleModuleStartedAt);
       }
