@@ -1,3 +1,5 @@
+const { lookupBrandForRow } = require('./recommendationBrandBackfill');
+
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -1067,6 +1069,7 @@ function normalizeRecommendationProductCard(raw, options = {}) {
     peerCountByRoleId = new Map(),
     roleLabelById = new Map(),
     peerCandidatesByRoleId = new Map(),
+    brandLookupMap = null,
   } = options;
   const {
     row,
@@ -1095,7 +1098,10 @@ function normalizeRecommendationProductCard(raw, options = {}) {
     asString(product.brand) ||
     asString(product.vendor) ||
     asString(sku.brand) ||
-    asString(sku.Brand);
+    asString(sku.Brand) ||
+    // Final fallback: catalog_products / external_product_seeds lookup
+    // built upstream in applyLegacyRecoPdpEnrichment. Pure read; row untouched.
+    (brandLookupMap ? lookupBrandForRow(row, brandLookupMap) : '');
   if (!name && !brand) return null;
 
   const matchedRoleId =
@@ -1314,6 +1320,13 @@ function normalizeRecommendationProductCard(raw, options = {}) {
 function buildRecommendationCardContext(payload, recommendations) {
   const roleLabelById = new Map();
   const recommendationMeta = isPlainObject(payload.recommendation_meta) ? payload.recommendation_meta : {};
+  const payloadMetadata = isPlainObject(payload.metadata) ? payload.metadata : {};
+  // Optional brand-lookup map produced by applyLegacyRecoPdpEnrichment via
+  // recommendationBrandBackfill. Read-only fallback used in
+  // normalizeRecommendationProductCard's brand extraction.
+  const brandLookupMap = isPlainObject(payloadMetadata.recommendation_brand_lookup)
+    ? payloadMetadata.recommendation_brand_lookup
+    : {};
   const roles = [
     ...(Array.isArray(payload.roles) ? payload.roles : []),
     ...(Array.isArray(payload.framework_summary && payload.framework_summary.prioritized_roles)
@@ -1370,6 +1383,7 @@ function buildRecommendationCardContext(payload, recommendations) {
     peerCountByRoleId,
     roleLabelById,
     peerCandidatesByRoleId,
+    brandLookupMap,
   };
 }
 
