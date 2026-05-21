@@ -12809,6 +12809,11 @@ function buildBeautyExternalSeedRecallPatterns({ queryText = '', intent = null }
     patterns.push(`%${normalized}%`);
   };
   push(queryText);
+  if (intent?.brandBrowse && intent.brandBrowse.contract === 'brand_browse') {
+    push(intent.brandBrowse.brand);
+    push(intent.brandBrowse.alias);
+  }
+  buildBeautyExternalSeedCategoryTerms(intent).forEach(push);
   buildBeautyMainlineRetrievalQueries(queryText, intent).forEach(push);
   return patterns.slice(0, 14);
 }
@@ -13240,6 +13245,118 @@ async function queryBeautyExternalSeedRowsFast({
       };
     }
   };
+  const runTextRecallQuery = async (tool, queryMarket = safeMarket, marketScope = 'text_recall_underfill') => {
+    const safePatterns = recallPatterns.filter(Boolean).slice(0, 14);
+    if (!safePatterns.length) {
+      return {
+        tool,
+        rows: [],
+        variant: {
+          query: String(queryText || '').trim(),
+          row_count: 0,
+          category_terms: categoryTerms,
+          recall_pattern_count: 0,
+          market: String(queryMarket || safeMarket).trim().toUpperCase() || safeMarket,
+          market_scope: marketScope,
+          tool_scope: tool || '(empty)',
+          text_recall_underfill: true,
+        },
+      };
+    }
+    try {
+      const safeQueryMarket = String(queryMarket || safeMarket).trim().toUpperCase() || safeMarket;
+      const patternClauses = safePatterns.map((_, index) => {
+        const bind = `$${index + 3}`;
+        return `(
+          lower(coalesce(title, '')) LIKE ${bind}
+          OR lower(coalesce(domain, '')) LIKE ${bind}
+          OR lower(coalesce(seed_data->>'brand', '')) LIKE ${bind}
+          OR lower(coalesce(seed_data->>'vendor', '')) LIKE ${bind}
+          OR lower(coalesce(seed_data->>'title', '')) LIKE ${bind}
+          OR lower(coalesce(seed_data->>'category', '')) LIKE ${bind}
+          OR lower(coalesce(seed_data->>'product_type', '')) LIKE ${bind}
+          OR lower(coalesce(seed_data->'snapshot'->>'brand', '')) LIKE ${bind}
+          OR lower(coalesce(seed_data->'snapshot'->>'title', '')) LIKE ${bind}
+          OR lower(coalesce(seed_data->'snapshot'->>'category', '')) LIKE ${bind}
+          OR lower(coalesce(seed_data->'derived'->'recall'->>'brand_name', '')) LIKE ${bind}
+          OR lower(coalesce(seed_data->'derived'->'recall'->>'retrieval_title', '')) LIKE ${bind}
+          OR lower(coalesce(seed_data->'derived'->'recall'->>'retrieval_summary', '')) LIKE ${bind}
+          OR lower(coalesce(seed_data->'derived'->'recall'->>'category', '')) LIKE ${bind}
+        )`;
+      });
+      const limitBind = `$${safePatterns.length + 3}`;
+      const sql = `
+        SELECT
+          id,
+          external_product_id,
+          market,
+          tool,
+          destination_url,
+          canonical_url,
+          domain,
+          title,
+          image_url,
+          price_amount,
+          price_currency,
+          availability,
+          seed_data,
+          updated_at,
+          created_at,
+          ${catalogMirrorProjectionSql}
+        FROM external_product_seeds
+        WHERE status = 'active'
+          AND attached_product_key IS NULL
+          AND market = $1
+          AND tool = $2
+          AND (${patternClauses.join('\n          OR ')})
+          ${inStockOnly ? `AND coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')` : ''}
+        ORDER BY
+          updated_at DESC NULLS LAST,
+          created_at DESC NULLS LAST
+        LIMIT ${limitBind}
+      `;
+      const queryStartedAt = Date.now();
+      const result = await queryBeautyExternalSeedRowsWithTimeout(
+        sql,
+        [safeQueryMarket, tool, ...safePatterns, perScopeRowLimit],
+        1200,
+      );
+      const queryDurationMs = Math.max(0, Date.now() - queryStartedAt);
+      const rows = Array.isArray(result?.rows) ? result.rows : [];
+      return {
+        tool,
+        rows,
+        variant: {
+          query: String(queryText || '').trim(),
+          row_count: rows.length,
+          category_terms: categoryTerms,
+          recall_pattern_count: safePatterns.length,
+          market: safeQueryMarket,
+          market_scope: marketScope,
+          tool_scope: tool || '(empty)',
+          text_recall_underfill: true,
+          query_duration_ms: queryDurationMs,
+        },
+      };
+    } catch (err) {
+      return {
+        tool,
+        rows: [],
+        variant: {
+          query: String(queryText || '').trim(),
+          row_count: 0,
+          category_terms: categoryTerms,
+          recall_pattern_count: safePatterns.length,
+          market: String(queryMarket || safeMarket).trim().toUpperCase() || safeMarket,
+          market_scope: marketScope,
+          tool_scope: tool || '(empty)',
+          text_recall_underfill: true,
+          error_code: String(err?.code || err?.name || 'query_failed').slice(0, 80),
+          timeout: String(err?.code || '').trim() === '57014' || /timeout|cancel/i.test(String(err?.message || '')),
+        },
+      };
+    }
+  };
   const appendScopeRows = (scopeResult, { requireTargetMarketAuthority = false } = {}) => {
     if (!scopeResult || typeof scopeResult !== 'object') return;
     if (scopeResult.variant) variantResults.push(scopeResult.variant);
@@ -13281,6 +13398,20 @@ async function queryBeautyExternalSeedRowsFast({
     for (const tool of toolScopes) {
       if (rawProducts.length >= rawProductCap) break;
       appendScopeRows(await runScopeQuery(tool));
+    }
+  }
+
+  if (rawProducts.length < safeLimit && recallPatterns.length > 0) {
+    if (PIVOT_BEAUTY_PARALLEL_SCOPE_RECALL_ENABLED) {
+      const textScopeResults = await Promise.all(toolScopes.map((tool) => runTextRecallQuery(tool)));
+      for (const scopeResult of textScopeResults) {
+        appendScopeRows(scopeResult);
+      }
+    } else {
+      for (const tool of toolScopes) {
+        if (rawProducts.length >= rawProductCap) break;
+        appendScopeRows(await runTextRecallQuery(tool));
+      }
     }
   }
 
@@ -14155,13 +14286,19 @@ function getSearchQualityContractHardConstraintResult(product = {}, contract = n
   }
 
   const categoryPathPrefix = String(hard.category_path_prefix || '').trim();
-  if (
-    categoryPathPrefix &&
-    ['brand_category', 'category_browse', 'need_solution', 'constraint_search', 'exact_product'].includes(queryClass) &&
-    !beautyProductMatchesCategoryPathPrefix(product, categoryPathPrefix) &&
-    !beautyProductMatchesCategoryPathQuery(product, queryText || contract.effective_query, categoryPathPrefix)
-  ) {
-    reasons.push('category_mismatch');
+  if (categoryPathPrefix && ['brand_category', 'category_browse', 'need_solution', 'constraint_search', 'exact_product'].includes(queryClass)) {
+    const existingCategoryPath = firstSearchProductCategoryPath(product).toLowerCase().replace(/^\/+|\/+$/g, '');
+    const pathMatches = beautyProductMatchesCategoryPathPrefix(product, categoryPathPrefix);
+    const textMatches = beautyProductMatchesCategoryPathQuery(
+      product,
+      queryText || contract.effective_query,
+      categoryPathPrefix,
+    );
+    if (existingCategoryPath) {
+      if (!pathMatches) reasons.push('category_mismatch');
+    } else if (!textMatches) {
+      reasons.push('category_mismatch');
+    }
   }
 
   if (hard.strict_lipstick === true && !beautyProductMatchesStrictLipstickIntent(product)) {
@@ -14176,6 +14313,27 @@ function getSearchQualityContractHardConstraintResult(product = {}, contract = n
     eligible: reasons.length === 0,
     reasons,
   };
+}
+
+function applySearchQualityContractResponseHints(product = {}, contract = null, queryText = '') {
+  if (!isPlainObject(product) || !isBeautySearchQualityContractApplied(contract)) return product;
+  const hard = contract.hard_constraints || {};
+  const categoryPathPrefix = String(hard.category_path_prefix || '').trim();
+  if (!categoryPathPrefix || firstSearchProductCategoryPath(product)) return product;
+  const gate = getSearchQualityContractHardConstraintResult(product, contract, queryText || contract.effective_query);
+  if (!gate.eligible) return product;
+  const inferredPath = categoryPathPrefix.replace(/^\/+|\/+$/g, '');
+  if (!inferredPath) return product;
+  const next = {
+    ...product,
+    catalog_category_path: inferredPath,
+    category_path: inferredPath,
+  };
+  if (!firstNonEmptyString(next.category, next.product_type)) {
+    next.category = inferredPath.split('/').filter(Boolean).slice(-1)[0] || 'Beauty';
+    next.product_type = next.category;
+  }
+  return next;
 }
 
 function scoreBeautySearchQualityContract({ product, contract = null, queryText = '', baseScore = 0 } = {}) {
@@ -16538,11 +16696,26 @@ function beautyProductMatchesCategoryPathQuery(product = {}, queryText = '', cat
   if (prefix.startsWith('beauty/makeup/eye')) {
     return /\b(mascara|eyeliner|eye\s*liner|eyeshadow|eye\s*shadow|brow|lash)\b|睫毛膏|眼线|眼線|眼影|眉笔|眉筆/i.test(text);
   }
+  if (prefix.startsWith('beauty/makeup/cheek')) {
+    return /\b(blush|blusher|cheek\s*(?:color|colour|tint|stain|balm)?|liquid\s*blush|cream\s*blush|powder\s*blush|luminizer|highlighter)\b|腮红|腮紅/i.test(text);
+  }
   if (prefix.startsWith('beauty/makeup/face')) {
     return /\b(foundation|concealer|primer|blush|bronzer|highlighter|setting\s*powder|powder|cushion)\b|粉底|遮瑕|妆前|妝前|腮红|腮紅|高光|修容|气垫|氣墊/i.test(text);
   }
   if (prefix.startsWith('beauty/fragrance')) {
     return /\b(fragrance|perfume|parfum|eau\s+de\s+parfum|eau\s+de\s+toilette|edt|edp|cologne|scent)\b|香水|香氛/i.test(text);
+  }
+  if (prefix.startsWith('beauty/skincare/treat')) {
+    return /\b(serum|essence|ampoule|treatment|concentrate|booster|niacinamide|retinol|retinal|retinoid|vitamin\s*c|ascorbic|azelaic|salicylic|bha|aha|glycolic|lactic|peptide|zinc)\b|精华|精華|美容液|烟酰胺|煙酰胺|视黄醇|視黃醇|壬二酸|水杨酸|水楊酸/i.test(text);
+  }
+  if (prefix.startsWith('beauty/skincare/moisturize')) {
+    return /\b(moisturi[sz]er|cream|lotion|gel\s*cream|barrier|balm)\b|面霜|乳液|保湿|保濕/i.test(text);
+  }
+  if (prefix.startsWith('beauty/skincare/cleanse')) {
+    return /\b(cleanser|cleansing|face\s*wash|facial\s*wash|wash|cleansing\s*(?:foam|gel|milk|oil|balm))\b|洁面|潔面|洗顔/i.test(text);
+  }
+  if (prefix.startsWith('beauty/skincare/sun')) {
+    return /\b(sunscreen|sun\s*screen|sunblock|spf\b|broad\s*spectrum|uv|uva|uvb)\b|防晒|防曬/i.test(text);
   }
   return hasBeautyCatalogProductSignal(text);
 }
@@ -17149,7 +17322,10 @@ async function searchBeautyExternalSeedProductsMainline({
               creator_rank: creatorRank,
             }
           : row.product;
-        return compactBeautyMainlineProductForResponse(productForResponse, beautyIntent, queryText);
+        const compactProduct = compactBeautyMainlineProductForResponse(productForResponse, beautyIntent, queryText);
+        return searchQualityContractApplied
+          ? applySearchQualityContractResponseHints(compactProduct, searchQualityContract, queryText)
+          : compactProduct;
       }),
     ),
     queryText,
