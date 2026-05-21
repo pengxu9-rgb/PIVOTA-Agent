@@ -891,10 +891,18 @@ const EXTERNAL_SEED_RECALL_SQL_FIELDS = Object.freeze({
   retrievalTitle: "lower(coalesce(seed_data->'derived'->'recall'->>'retrieval_title', ''))",
   retrievalSummary: "lower(coalesce(seed_data->'derived'->'recall'->>'retrieval_summary', ''))",
   retrievalBody: "lower(coalesce(seed_data->'derived'->'recall'->>'retrieval_body', ''))",
+  // `brand` and `category` are wrapped in lower() for case-insensitive search/matching.
+  // For display, use `brandDisplay` / `categoryDisplay` (same coalesce chain, no lower)
+  // — never read the lower()'d projection as a display fallback or you'll render
+  // "fenty beauty" instead of "Fenty Beauty".
   brand:
     "lower(coalesce(seed_data->'derived'->'recall'->>'brand', seed_data->>'brand', seed_data->>'brand_name', seed_data->>'vendor', seed_data->>'vendor_name', seed_data->'snapshot'->>'brand', seed_data->'snapshot'->>'brand_name', seed_data->'snapshot'->>'vendor', seed_data->'snapshot'->>'vendor_name', ''))",
+  brandDisplay:
+    "coalesce(seed_data->'derived'->'recall'->>'brand', seed_data->>'brand', seed_data->>'brand_name', seed_data->>'vendor', seed_data->>'vendor_name', seed_data->'snapshot'->>'brand', seed_data->'snapshot'->>'brand_name', seed_data->'snapshot'->>'vendor', seed_data->'snapshot'->>'vendor_name', '')",
   category:
     "lower(coalesce(seed_data->'derived'->'recall'->>'category', seed_data->>'category', seed_data->'product'->>'category', seed_data->'snapshot'->>'category', seed_data->>'product_type', seed_data->'product'->>'product_type', seed_data->'snapshot'->>'product_type', ''))",
+  categoryDisplay:
+    "coalesce(seed_data->'derived'->'recall'->>'category', seed_data->>'category', seed_data->'product'->>'category', seed_data->'snapshot'->>'category', seed_data->>'product_type', seed_data->'product'->>'product_type', seed_data->'snapshot'->>'product_type', '')",
   vertical: "lower(coalesce(seed_data->'derived'->'recall'->>'vertical', ''))",
   ingredientTokens: "lower(coalesce(seed_data#>>'{derived,recall,ingredient_tokens}', ''))",
   aliasTokens: `lower(concat_ws(' ',

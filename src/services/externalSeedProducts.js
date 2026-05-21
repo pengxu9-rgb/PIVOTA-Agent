@@ -3927,7 +3927,9 @@ function buildExternalSeedProduct(row, options = {}) {
     snapshot.brand_name,
     snapshot.vendor,
     snapshot.vendor_name,
-    row.seed_brand,
+    // `row.seed_brand_display` is the same coalesce chain WITHOUT lower();
+    // `row.seed_brand` is lowercased for search matching — never read it for display.
+    row.seed_brand_display,
     row.seed_vendor,
     row.brand,
     row.vendor,
@@ -3941,7 +3943,7 @@ function buildExternalSeedProduct(row, options = {}) {
     normalizeExplicitBeautyCategory(seedData.productType) ||
     normalizeExplicitBeautyCategory(snapshot.product_type) ||
     normalizeExplicitBeautyCategory(snapshot.productType) ||
-    normalizeExplicitBeautyCategory(row.seed_category) ||
+    normalizeExplicitBeautyCategory(row.seed_category_display) ||
     normalizeExplicitBeautyCategory(row.seed_product_type) ||
     normalizeExplicitBeautyCategory(row.category) ||
     normalizeExplicitBeautyCategory(row.product_type);
@@ -4433,7 +4435,9 @@ function buildExternalSeedBrandSearchProduct(row) {
   );
   const brand = firstNonEmptyString(
     recall.brand,
-    row.seed_brand,
+    // `row.seed_brand_display` is the non-lowered coalesce projection;
+    // `row.seed_brand` is the lowercased search key and must not be used here.
+    row.seed_brand_display,
     row.seed_merchant_display_name,
     row.seed_vendor,
     effectiveSeedData.brand,
@@ -4448,7 +4452,7 @@ function buildExternalSeedBrandSearchProduct(row) {
   const explicitCategory =
     normalizeExplicitBeautyCategory(
       recall.category,
-      row.seed_category,
+      row.seed_category_display,
       row.seed_product_type,
       row.snapshot_category,
       row.snapshot_product_type,
