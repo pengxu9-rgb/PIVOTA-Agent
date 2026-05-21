@@ -3270,6 +3270,64 @@ describe('discovery feed service', () => {
     );
   });
 
+  test('commerce-index brand reader returns normalizable canonical candidates', async () => {
+    jest.resetModules();
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = 'postgres://commerce-index-brand-reader-test';
+    const dbQueryMock = jest.fn(async () => ({
+      rows: [
+        {
+          content_key: 'content_cosrx_clear_pad',
+          pivota_signature_id: 'sig_cosrx_clear_pad',
+          external_product_id: 'ext_cosrx_clear_pad',
+          external_product_key: 'external_seed::external_seed::ext_cosrx_clear_pad',
+          brand: 'COSRX',
+          title: 'One Step Original Clear Pad',
+          description: 'Pre-soaked clear-skin pads',
+          image_url: 'https://cdn.example.com/clear-pad.jpg',
+          image_urls: ['https://cdn.example.com/clear-pad.jpg'],
+          currency: 'USD',
+          price_min: 15.4,
+          price_max: 15.4,
+          offer_count: 1,
+          offers: [],
+          category_path: ['beauty', 'skincare', 'toner_pad'],
+        },
+      ],
+    }));
+    jest.doMock('../src/db', () => ({
+      query: dbQueryMock,
+    }));
+
+    try {
+      const fresh = require('../src/services/discoveryFeed');
+      const candidates = await fresh._internals.fetchBrandScopedCanonicalCandidates({
+        brandAliases: ['COSRX'],
+        limit: 12,
+      });
+
+      expect(candidates).toHaveLength(1);
+      expect(candidates[0]).toEqual(
+        expect.objectContaining({
+          merchant_id: 'external_seed',
+          platform: 'external_seed',
+          product_id: 'sig_cosrx_clear_pad',
+          pivota_signature_id: 'sig_cosrx_clear_pad',
+          external_product_id: 'ext_cosrx_clear_pad',
+          source_product_id: 'ext_cosrx_clear_pad',
+          source: 'commerce_index',
+        }),
+      );
+      expect(fresh._internals.buildProductKey(candidates[0].merchant_id, candidates[0].product_id)).toBe(
+        'external_seed::sig_cosrx_clear_pad',
+      );
+    } finally {
+      jest.dontMock('../src/db');
+      if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = prevDatabaseUrl;
+    }
+  });
+
   test('browse_products default response still hydrates reviewed card fields from product intel KB', async () => {
     const kbStore = require('../src/auroraBff/productIntelKbStore');
     const kbEntry = {

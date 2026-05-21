@@ -8546,6 +8546,8 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
         return {
           id: productId,
           product_id: productId,
+          merchant_id: 'external_seed',
+          platform: 'external_seed',
           pivota_signature_id: productId,
           ...(row.external_product_id ? { external_product_id: String(row.external_product_id), source_product_id: String(row.external_product_id) } : {}),
           ...(row.external_product_key ? { external_product_key: String(row.external_product_key) } : {}),
