@@ -9,6 +9,11 @@ const { PRODUCT_INTEL_CONTRACT_VERSION } = require('../src/pdpProductIntel');
 const {
   deriveReviewContractFromReportRow,
 } = require('../src/services/pivotaProductIntelReviewPolicy');
+const {
+  assessPivotaInsightReplacement,
+  ensureAgentContextOnBundle,
+  stampReplacementProvenance,
+} = require('../src/services/pivotaInsightsQuality');
 
 function parseArgs(argv) {
   const out = {
@@ -83,7 +88,7 @@ function stampReviewedBundle(bundle, reviewContract) {
     review_tier: reviewContract.review_tier,
     ...(originalQualityState ? { pre_review_quality_state: originalQualityState } : {}),
   };
-  return next;
+  return ensureAgentContextOnBundle(next);
 }
 
 function buildKbEntriesForRow(row) {
@@ -152,6 +157,56 @@ async function assertProductIntelKbWritable(queryFn = query) {
   return true;
 }
 
+async function fetchExistingProductIntelKbRows(kbKeys, queryFn = query) {
+  const keys = Array.from(new Set((kbKeys || []).map(asString).filter(Boolean)));
+  if (!keys.length) return new Map();
+  const result = await queryFn(
+    `
+      SELECT
+        kb_key,
+        analysis,
+        source,
+        source_meta,
+        last_success_at,
+        last_error,
+        updated_at
+      FROM aurora_product_intel_kb
+      WHERE kb_key = ANY($1::text[])
+    `,
+    [keys],
+  );
+  return new Map((result.rows || []).map((row) => [asString(row.kb_key), row]));
+}
+
+function prepareEntriesForWrite(entries, sourceRows, existingByKey) {
+  const rowsByCaseId = new Map((sourceRows || []).map((row) => [asString(row.case_id), row]));
+  const preparedEntries = [];
+  const blockedEntries = [];
+  for (const entry of entries) {
+    const existingEntry = existingByKey.get(entry.kb_key) || null;
+    const sourceRow = rowsByCaseId.get(asString(entry.source_meta?.case_id)) || null;
+    const assessment = assessPivotaInsightReplacement({
+      existingEntry,
+      candidateEntry: entry,
+      sourceRow,
+    });
+    if (!assessment.allowed) {
+      blockedEntries.push({
+        kb_key: entry.kb_key,
+        case_id: asString(entry.source_meta?.case_id),
+        reason: assessment.reason,
+        previous_bundle_hash: assessment.previous_bundle_hash || null,
+        candidate_bundle_hash: assessment.candidate_bundle_hash || null,
+        existing_quality_lane: assessment.existing?.lane || null,
+        candidate_quality_lane: assessment.candidate?.lane || null,
+      });
+      continue;
+    }
+    preparedEntries.push(stampReplacementProvenance(entry, assessment));
+  }
+  return { preparedEntries, blockedEntries };
+}
+
 async function main() {
   const args = parseArgs(process.argv);
   const rootDir = path.resolve(__dirname, '..');
@@ -177,10 +232,28 @@ async function main() {
 
   if (args.write) {
     await assertProductIntelKbWritable();
-    for (const entry of entries) {
+    const existingByKey = await fetchExistingProductIntelKbRows(entries.map((entry) => entry.kb_key));
+    const { preparedEntries, blockedEntries } = prepareEntriesForWrite(entries, rows, existingByKey);
+    for (const entry of preparedEntries) {
       // eslint-disable-next-line no-await-in-loop
       await upsertProductIntelKbEntry(entry);
     }
+    if (blockedEntries.length) {
+      process.stderr.write(
+        `[product-intel-publish] blocked ${blockedEntries.length} lower-quality replacement(s)\n`,
+      );
+    }
+    entries.splice(0, entries.length, ...preparedEntries);
+    skippedRows.push(
+      ...blockedEntries.map((row) => ({
+        case_id: row.case_id,
+        product_id: asString(row.kb_key).replace(/^product:/, ''),
+        review_status: 'blocked',
+        review_decision: row.reason,
+        previous_bundle_hash: row.previous_bundle_hash,
+        candidate_bundle_hash: row.candidate_bundle_hash,
+      })),
+    );
   }
 
   process.stdout.write(
@@ -212,4 +285,6 @@ if (require.main === module) {
 module.exports = {
   assertProductIntelKbWritable,
   buildKbEntriesForRow,
+  fetchExistingProductIntelKbRows,
+  prepareEntriesForWrite,
 };
