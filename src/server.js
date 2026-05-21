@@ -13171,6 +13171,12 @@ function normalizeCatalogCategoryPathArray(value) {
   return text.split('/').map((part) => part.trim()).filter(Boolean);
 }
 
+function normalizeBrandCase(brand) {
+  if (typeof brand !== 'string') return brand;
+  if (!brand || /\p{Lu}/u.test(brand)) return brand;
+  return brand.replace(/\b\p{L}/gu, (ch) => ch.toUpperCase());
+}
+
 function buildCanonicalChainMainlineProduct(row) {
   if (!row || typeof row !== 'object' || Array.isArray(row)) return null;
   const payload = parseCanonicalCatalogPayload(row.product_payload);
@@ -13203,8 +13209,7 @@ function buildCanonicalChainMainlineProduct(row) {
   );
   if (!productId || !title) return null;
   const merchantId = firstNonEmptyString(row.merchant_id, EXTERNAL_SEED_MERCHANT_ID);
-  const brand = firstNonEmptyString(
-    row.brand,
+  const brand = normalizeBrandCase(firstNonEmptyString(
     seedData.brand,
     seedData.brand_name,
     seedData.vendor,
@@ -13214,7 +13219,10 @@ function buildCanonicalChainMainlineProduct(row) {
     externalSeed.vendor,
     externalSeed.merchant_name,
     externalSnapshot.brand,
-  );
+    externalSnapshot.vendor,
+    externalSnapshot.merchant_name,
+    row.brand,
+  ));
   const categoryPathText = firstCatalogPayloadString(
     row.category_path,
     seedData.category_path,
