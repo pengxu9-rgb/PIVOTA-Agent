@@ -43,6 +43,77 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     expect(payload.product.availability).toEqual({ in_stock: false, available_quantity: 0 });
   });
 
+  test('keeps reviewed PDP content visible for source-unavailable external seeds', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_tirtir_post_essay',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Post Essay Hand Lotion',
+        description: 'A lightweight hand lotion with a soft scent.',
+        image_url: 'https://cdn.example.com/post-essay.jpg',
+        product_family: 'single_formula',
+        external_seed_product_family: 'single_formula',
+        pdp_schema_profile: 'beauty_formula',
+        transaction_ready: false,
+        transaction_readiness_blocker_v1: {
+          contract_version: 'external_seed.source_unavailable.v1',
+          status: 'source_unavailable',
+          reason: 'official_pdp_404_public_products_json_not_transaction_ready',
+        },
+        source_unavailable_v1: {
+          contract_version: 'external_seed.source_unavailable.v1',
+          status: 'source_unavailable',
+        },
+        reviewed_price_offer_patch_v1: {
+          contract_version: 'external_seed.reviewed_price_offer_patch.v1',
+          source_origin: 'official_shopify_products_feed',
+        },
+        pdp_how_to_use_raw:
+          'After washing your hands, apply an appropriate amount on your hands when you feel dry.',
+        seed_data: {
+          transaction_readiness_blocker_v1: {
+            contract_version: 'external_seed.source_unavailable.v1',
+            status: 'source_unavailable',
+          },
+          source_unavailable_v1: {
+            contract_version: 'external_seed.source_unavailable.v1',
+            status: 'source_unavailable',
+          },
+          reviewed_price_offer_patch_v1: {
+            contract_version: 'external_seed.reviewed_price_offer_patch.v1',
+            source_origin: 'official_shopify_products_feed',
+          },
+        },
+        price: 5,
+        currency: 'USD',
+        in_stock: false,
+        variants: [
+          {
+            variant_id: 'post_essay_001',
+            title: '001 Jan Brilliant, 330 mL / 11.15 fl oz',
+            option_name: 'Scent',
+            option_value: '001 Jan Brilliant, 330 mL / 11.15 fl oz',
+            price: { current: { amount: 5, currency: 'USD' } },
+            in_stock: false,
+          },
+        ],
+      },
+    });
+
+    expect(payload.modules.some((module) => module.type === 'price_promo')).toBe(false);
+    expect(payload.actions).toEqual([]);
+    expect(payload.product.price).toBeUndefined();
+    expect(payload.modules.find((module) => module.type === 'how_to_use')?.data).toEqual(
+      expect.objectContaining({
+        title: 'How to use',
+        steps: expect.arrayContaining([
+          expect.stringContaining('apply an appropriate amount'),
+        ]),
+      }),
+    );
+  });
+
   test('emits variant selector and structured detail modules from canonical product data', () => {
     const payload = buildPdpPayload({
       product: {
