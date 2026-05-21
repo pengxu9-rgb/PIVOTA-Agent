@@ -85,6 +85,37 @@ describe('publish_product_intel_pilot_to_kb', () => {
     expect(entries).toEqual([]);
   });
 
+  test('preserves owner-delegated assistant review metadata without upgrading to human', () => {
+    const row = {
+      ...reviewedPublishRow(),
+      reviewer: 'codex_quality_reviewer',
+      reviewer_kind: 'assistant',
+      owner_delegated_review: {
+        contract_version: 'pivota.owner_delegated_review.v1',
+        delegated_to: 'codex_quality_reviewer',
+        reviewer_kind: 'assistant',
+        owner_instruction: 'Owner delegated review.',
+      },
+    };
+
+    const entries = buildKbEntriesForRow(row);
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0].source_meta.reviewer_kind).toBe('assistant');
+    expect(entries[0].source_meta.review_tier).toBe('assistant_reviewed');
+    expect(entries[0].source_meta.owner_delegated_review).toEqual(
+      expect.objectContaining({
+        reviewer_kind: 'assistant',
+      }),
+    );
+    expect(entries[0].analysis.product_intel_v1.provenance.owner_delegated_review).toEqual(
+      expect.objectContaining({
+        reviewer_kind: 'assistant',
+      }),
+    );
+    expect(entries[0].analysis.product_intel_v1.owner_delegated_review).toBeUndefined();
+  });
+
   test('skips strict baseline_only selected rows', () => {
     const entries = buildKbEntriesForRow({
       case_id: 'pilot_baseline_only_case',
