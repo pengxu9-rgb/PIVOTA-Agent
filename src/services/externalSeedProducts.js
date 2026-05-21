@@ -3553,6 +3553,12 @@ function canonicalizeExternalSeedSnapshot(seedData, row, options = {}) {
 }
 
 function resolveExternalSeedTransactionHold(seedData = {}, snapshot = {}) {
+  const reviewedPricePatch = [
+    seedData.reviewed_price_offer_patch_v1,
+    snapshot.reviewed_price_offer_patch_v1,
+  ]
+    .map(ensureJsonObject)
+    .find((contract) => firstNonEmptyString(contract.contract_version, contract.source_origin, contract.source_url));
   const explicitHold = [
     seedData.transaction_readiness_blocker_v1,
     snapshot.transaction_readiness_blocker_v1,
@@ -3560,21 +3566,25 @@ function resolveExternalSeedTransactionHold(seedData = {}, snapshot = {}) {
     snapshot.non_merch_terminal_hold_v1,
   ]
     .map(ensureJsonObject)
-    .find((contract) => Boolean(firstNonEmptyString(contract.status, contract.reason, contract.contract_version)));
+    .find((contract) => {
+      if (!firstNonEmptyString(contract.status, contract.reason, contract.contract_version)) return false;
+      if (reviewedPricePatch && isExternalSeedSourceUnavailableContract(contract)) return false;
+      return true;
+    });
   if (explicitHold) return explicitHold;
 
   const sourceUnavailableHold = resolveExternalSeedSourceUnavailableContract(seedData, snapshot);
   if (!sourceUnavailableHold) return null;
 
-  const reviewedPricePatch = [
-    seedData.reviewed_price_offer_patch_v1,
-    snapshot.reviewed_price_offer_patch_v1,
-  ]
-    .map(ensureJsonObject)
-    .find((contract) => firstNonEmptyString(contract.contract_version, contract.source_origin, contract.source_url));
   if (reviewedPricePatch) return null;
 
   return sourceUnavailableHold;
+}
+
+function isExternalSeedSourceUnavailableContract(contract = {}) {
+  const version = String(contract.contract_version || '').toLowerCase();
+  const status = String(contract.status || '').toLowerCase();
+  return version === 'external_seed.source_unavailable.v1' || status === 'source_unavailable';
 }
 
 function resolveExternalSeedSourceUnavailableContract(seedData = {}, snapshot = {}) {
