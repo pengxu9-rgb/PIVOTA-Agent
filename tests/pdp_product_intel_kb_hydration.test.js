@@ -433,7 +433,7 @@ describe('pdpProductIntel KB hydration', () => {
     ]);
   });
 
-  test('blocks seller-only KB bundles from reviewed public PDP hydration', async () => {
+  test('allows reviewed seller-only KB bundles in public PDP hydration', async () => {
     jest.doMock('../src/auroraBff/productIntelKbStore', () => ({
       getProductIntelKbEntry: jest.fn(async (kbKey) => {
         if (kbKey !== 'product:ext_reviewed_seller_only') return null;
@@ -523,13 +523,8 @@ describe('pdpProductIntel KB hydration', () => {
       requireReviewedBundle: true,
     });
 
-    expect(hydrated.product_intel).toBeUndefined();
-    expect(hydrated.product_intel_unavailable).toEqual(
-      expect.objectContaining({
-        reason: 'needs_review',
-        kb_key: 'product:ext_reviewed_seller_only',
-      }),
-    );
+    expect(hydrated.product_intel).toBeTruthy();
+    expect(hydrated.provenance.kb_key).toBe('product:ext_reviewed_seller_only');
 
     const bundle = buildProductIntelBundle({
       product: hydrated,
@@ -540,7 +535,15 @@ describe('pdpProductIntel KB hydration', () => {
       requireReviewedBundle: true,
     });
 
-    expect(bundle).toBeNull();
+    expect(bundle).toBeTruthy();
+    expect(bundle.evidence_profile).toBe('seller_only');
+    expect(bundle.product_intel_core.what_it_is.body).toMatch(/focused masking routines/i);
+    expect(bundle.product_intel_core.why_it_stands_out).toEqual([
+      expect.objectContaining({
+        headline: 'Gel-mask format',
+        body: expect.stringMatching(/cooling wear time/i),
+      }),
+    ]);
   });
 
   test('blocks seller-only fallback review decisions from reviewed public PDP bundles', () => {
