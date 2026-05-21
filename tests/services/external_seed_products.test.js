@@ -3444,6 +3444,13 @@ describe('externalSeedProducts helper', () => {
           transaction_ready: false,
           price_current: false,
         },
+        transaction_readiness_blocker_v1: {
+          contract_version: 'external_seed.source_unavailable.v1',
+          status: 'source_unavailable',
+          reason: 'official_pdp_404_public_products_json_not_transaction_ready',
+          transaction_ready: false,
+          price_current: false,
+        },
         variants: [
           {
             variant_id: '47798658302171',
@@ -3463,6 +3470,13 @@ describe('externalSeedProducts helper', () => {
             source_origin: 'official_shopify_products_feed',
             source_url: 'https://tirtir.global/products.json?limit=250',
             review_state: 'assistant_reviewed',
+          },
+          transaction_readiness_blocker_v1: {
+            contract_version: 'external_seed.source_unavailable.v1',
+            status: 'source_unavailable',
+            reason: 'official_pdp_404_public_products_json_not_transaction_ready',
+            transaction_ready: false,
+            price_current: false,
           },
         },
       },
