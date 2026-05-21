@@ -374,6 +374,9 @@ function inferProductKindFromContext(context) {
   const sunscreenPositioningText = titleCategoryDescription
     .replace(/\buse sunscreen daily\b[^.]*\.?/g, ' ')
     .replace(/\bsunscreen can increase sun sensitivity\b[^.]*\.?/g, ' ');
+  if (/\b(?:brightening\s+\+?\s*blurring powder|brightening blurring powder|blurring powder|setting powder|set it down\b.*\bpowder)\b/.test(titleCategoryDescription)) {
+    return 'color_makeup';
+  }
   if (/\b(?:set|kit|duo|bundle|collection(?:\s+tin)?)\b/.test(titleCategory) && /\b(?:fragrance|parfum|eau de parfum|travel spray|body cr[eè]me)\b/.test(titleCategoryDescription)) {
     return 'fragrance';
   }
@@ -524,11 +527,13 @@ function inferSpecificBeautySubtypeLabel(context) {
   if (/\b(?:lippatch|lip patch)\b/.test(text)) return 'Lip patches';
   if (/\b(?:lip\s+mask|lip sleeping mask|plush puddin)\b/.test(text)) return 'Lip mask';
   if (/\b(?:retinol oil|overnight .* oil|face oil|facial oil|essence oil)\b/.test(text)) return 'Face oil';
+  if (/\b(?:brightening\s+\+?\s*blurring powder|brightening blurring powder|blurring powder|setting powder|blotting powder|mattifying powder|invisimatte|set it down\b.*\bpowder)\b/.test(text)) return 'Setting powder';
+  if (/\b(?:match stix shimmer|shimmer skin\s*stick|shimmer skinstick)\b/.test(text)) return 'Highlighter';
   if (/\b(?:set|kit|duo|bundle|collection(?:\s+tin)?)\b/.test(title) && /\b(?:fragrance|parfum|eau de parfum|travel spray|body cr[eè]me)\b/.test(text)) return 'Fragrance set';
   if (/\b(?:set|kit|duo|bundle)\b/.test(title) && /\b(?:hair|conditioner|heat protectant|leave-in|styling)\b/.test(text)) return 'Hair care set';
   if (/\b(?:eye duo|eye trio|eye set|eye kit|eye colour routine|eye color routine|essential eye duo|mascara.*(?:duo|set)|(?:duo|set).*mascara)\b/.test(text)) return 'Eye makeup set';
   if (/\b(?:lip duo|lip set|lip kit)\b/.test(text)) return 'Lip set';
-  if (/\b(?:collection(?:\s+tin)?|match stix|contour\s*\+\s*highlighter|set|kit|duo|trio|bundle)\b/.test(title) && /\b(?:highlighter|contour|eye|lash|mascara|liner|brow|lip|blush|makeup|shade|tin)\b/.test(text)) return 'Makeup set';
+  if (/\b(?:collection(?:\s+tin)?|contour\s*\+\s*highlighter|set|kit|duo|trio|bundle)\b/.test(title) && /\b(?:highlighter|contour|eye|lash|mascara|liner|brow|lip|blush|makeup|shade|tin)\b/.test(text)) return 'Makeup set';
   if (/\b(?:bha toner|salicylic acid.*toner|toner.*salicylic acid)\b/.test(text)) return 'BHA toner';
   if (/\b(?:toner|toning water)\b/.test(title) || category === 'toner') return 'Hydrating toner';
   if (/\b(?:eye brightener|undereye brightener|under-eye brightener)\b/.test(text)) return 'Eye brightener';
@@ -1551,7 +1556,7 @@ function buildHumanStandardBodyFromFacts(context, kind, formulaSignals) {
     return `A face oil${withFormula} for PM treatment layering, soft feel, and moisture-sealing support.`;
   }
   if (kind === 'lip_balm') {
-    return `A lip balm${withFormula} for soft-feeling lips, moisture comfort, and reapplication through the day.`;
+    return 'A lip balm for soft-feeling lips, moisture comfort, and reapplication through the day.';
   }
   if (kind === 'cleansing_oil') {
     return `A cleansing oil${withFormula} for dissolving sunscreen, makeup, sebum, and daily buildup before a second cleanse.`;
@@ -2737,7 +2742,152 @@ function buildHumanStandardWatchouts(context, baselineBundle) {
       });
     }
   }
-  return baselineWatchouts.slice(0, 3);
+  const retainedWatchouts = baselineWatchouts.slice(0, 3);
+  if (retainedWatchouts.length) return retainedWatchouts;
+  return buildHumanStandardFallbackWatchouts(context, kind).slice(0, 2);
+}
+
+function buildHumanStandardFallbackWatchouts(context, kind) {
+  const contextText = `${context?.title || ''} ${context?.category || ''} ${context?.description || ''}`.toLowerCase();
+  if (kind === 'anti_chafe_stick') return [];
+  if (kind === 'treatment_pads' || /\b(tonic|toner|pad)\b/i.test(contextText)) {
+    return [
+      {
+        type: 'routine_fit',
+        label: 'Introduce gradually when layering with other active or exfoliating steps.',
+        severity: 'medium',
+      },
+    ];
+  }
+  if (kind === 'serum') {
+    return [
+      {
+        type: 'routine_fit',
+        label: 'Layer carefully with other active treatments and adjust frequency if skin feels sensitized.',
+        severity: 'medium',
+      },
+    ];
+  }
+  if (kind === 'mascara' || /\b(mascara|lash)\b/i.test(contextText)) {
+    return [
+      {
+        type: 'finish_preference',
+        label: 'May not fit shoppers who prefer a very natural lash look; compare volume and lift expectations before choosing.',
+        severity: 'medium',
+      },
+    ];
+  }
+  if (
+    kind === 'complexion_makeup' ||
+    kind === 'color_makeup' ||
+    /\b(setting powder|powder|skin tint|foundation|concealer|skinstick|skin stick|correcting|highlighter|blush|body luminizing tint|body sauce)\b/i.test(
+      contextText,
+    )
+  ) {
+    if (/\b(correcting|color-correct)\b/i.test(contextText)) {
+      return [
+        {
+          type: 'shade_match',
+          label: 'Color-correction fit depends on undertone and the discoloration target; choose shade separately.',
+          severity: 'medium',
+        },
+      ];
+    }
+    if (/\b(setting powder|powder)\b/i.test(contextText)) {
+      return [
+        {
+          type: 'shade_finish_fit',
+          label: 'Shade and finish can vary by skin tone, base makeup, and application amount; choose shade separately.',
+          severity: 'medium',
+        },
+      ];
+    }
+    return [
+      {
+        type: 'shade_finish_fit',
+        label: 'Tint, coverage, and finish can vary by skin tone and application amount; choose shade separately.',
+        severity: 'medium',
+      },
+    ];
+  }
+  if (kind === 'lip' || /\b(lip oil|gloss)\b/i.test(contextText)) {
+    return [
+      {
+        type: 'finish_preference',
+        label: 'May not fit shoppers who want a matte or low-shine lip finish; reapply when gloss and comfort fade.',
+        severity: 'medium',
+      },
+    ];
+  }
+  if (kind === 'lip_balm' || /\b(lip balm|lip mask|lip treatment)\b/i.test(contextText)) {
+    return [
+      {
+        type: 'routine_fit',
+        label: 'Best judged as a comfort and reapplication step, not a long-wear lip color replacement.',
+        severity: 'low',
+      },
+    ];
+  }
+  if (
+    kind === 'moisturizer' ||
+    kind === 'body_lotion' ||
+    kind === 'body_oil' ||
+    /\b(body cream|body milk|body lotion|moisturizer|cream)\b/i.test(contextText)
+  ) {
+    return [
+      {
+        type: 'routine_fit',
+        label: 'Best evaluated as a comfort and hydration step; current source evidence does not establish treatment-level results.',
+        severity: 'low',
+      },
+    ];
+  }
+  if (kind === 'makeup_set' || kind === 'routine_bundle' || /\b(trio|duo|kit|set)\b/i.test(contextText)) {
+    return [
+      {
+        type: 'set_fit',
+        label: 'Included shades or steps may not replace individual shade matching; verify each item in the set.',
+        severity: 'medium',
+      },
+    ];
+  }
+  if (kind === 'brush_set' || kind === 'makeup_brush' || kind === 'makeup_tool') {
+    return [
+      {
+        type: 'fit',
+        label: 'Utility depends on the makeup texture and application area it is paired with.',
+        severity: 'low',
+      },
+    ];
+  }
+  if (kind === 'fragrance' || kind === 'body_mist' || /\b(fragrance|scent|perfume|mist)\b/i.test(contextText)) {
+    return [
+      {
+        type: 'preference_fit',
+        label: 'Scent fit is highly personal; use source-grounded notes only and avoid implying broad consensus.',
+        severity: 'medium',
+      },
+    ];
+  }
+  if (kind === 'hair_treatment' || kind === 'conditioner' || kind === 'shampoo' || kind === 'dry_shampoo') {
+    return [
+      {
+        type: 'hair_fit',
+        label: 'Fit can vary by hair type, scalp feel, and styling routine; compare use case before choosing.',
+        severity: 'low',
+      },
+    ];
+  }
+  if (kind === 'cleanser' || kind === 'cleansing_oil') {
+    return [
+      {
+        type: 'routine_fit',
+        label: 'Use as a cleansing step rather than a leave-on treatment; follow with moisturizer if skin feels tight.',
+        severity: 'low',
+      },
+    ];
+  }
+  return [];
 }
 
 function buildHumanStandardPairingNotes(kind) {
@@ -3798,6 +3948,17 @@ function buildSelectedBundle(caseRow, baselineBundle, geminiCandidateBundle, qua
       if (hasMeaningfulTextureFinish(patch.texture_finish)) {
         fieldSources.texture_finish = 'human_standard';
       }
+    }
+  }
+  if (
+    !generatedUnsafeForRepair &&
+    (!Array.isArray(selected.product_intel_core?.watchouts) ||
+      selected.product_intel_core.watchouts.length === 0)
+  ) {
+    const patch = humanStandardPatch();
+    if (Array.isArray(patch?.product_intel_core?.watchouts) && patch.product_intel_core.watchouts.length) {
+      selected.product_intel_core.watchouts = deepClone(patch.product_intel_core.watchouts);
+      fieldSources.watchouts = 'human_standard';
     }
   }
   if (Array.isArray(selected.product_intel_core?.watchouts)) {

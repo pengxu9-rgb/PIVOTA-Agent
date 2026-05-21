@@ -804,6 +804,177 @@ describe('product_intel pilot compare selection', () => {
     expect(rewrite.product_intel_core.what_it_is.body).not.toMatch(/lip oil|glossy/i);
     expect(rewrite.product_intel_core.routine_fit.step).toBe('lip balm');
     expect(rewrite.product_intel_core.routine_fit.pairing_notes.join(' ')).toMatch(/lip balm/i);
+
+    const powderyLipBalmRewrite = buildHumanStandardRewriteOutput(
+      {
+        case_id: 'live_ext_fenty_pro_kissr_lip_balm',
+        product: {
+          title: "Pro Kiss'r Luscious Lip Balm - Pinch Me",
+          category: 'Lip Balm',
+          description: 'A lip balm for soft-feeling lips, moisture comfort, and reapplication through the day.',
+          ingredients_inci: ['Silica', 'Polymethyl Methacrylate'],
+        },
+      },
+      {
+        product_intel_core: {
+          what_it_is: { headline: 'Lip balm', body: 'A lip balm.' },
+          routine_fit: { step: 'lip balm' },
+        },
+      },
+      null,
+    );
+    expect(powderyLipBalmRewrite.product_intel_core.what_it_is.body).toMatch(/moisture comfort/i);
+    expect(powderyLipBalmRewrite.product_intel_core.what_it_is.body).not.toMatch(/soft-focus powders/i);
+  });
+
+  test('human-standard rewrite adds grounded watchouts for public-ready makeup candidates', () => {
+    const powderRewrite = buildHumanStandardRewriteOutput(
+      {
+        case_id: 'live_ext_fenty_setting_powder',
+        product: {
+          title: 'Bright Fix Instant Brightening + Blurring Powder - Banana',
+          category: 'Setting Powder',
+          description: 'A setting powder for setting complexion makeup, soft-focus blur, and finish control.',
+          ingredients_inci: ['Mica', 'Dimethicone', 'Silica'],
+        },
+      },
+      {
+        product_intel_core: {
+          what_it_is: { headline: 'Setting powder', body: 'A setting powder.' },
+          routine_fit: { step: 'makeup' },
+          watchouts: [],
+        },
+      },
+      null,
+    );
+    expect(powderRewrite.product_intel_core.watchouts).toEqual([
+      expect.objectContaining({
+        type: 'shade_finish_fit',
+        label: expect.stringMatching(/choose shade separately/i),
+      }),
+    ]);
+
+    const lipOilRewrite = buildHumanStandardRewriteOutput(
+      {
+        case_id: 'live_ext_fenty_lip_oil',
+        product: {
+          title: "Gloss Bomb Oil Luminizing Lip Oil 'N Gloss - Fu$$y",
+          category: 'Lip Oil',
+          description: 'A lip oil focused on glossy shine, cushion, and soft-feeling lips.',
+          ingredients_inci: ['Glycerin', 'Squalane'],
+        },
+      },
+      {
+        product_intel_core: {
+          what_it_is: { headline: 'Lip oil', body: 'A lip oil.' },
+          routine_fit: { step: 'lip treatment' },
+          watchouts: [],
+        },
+      },
+      null,
+    );
+    expect(lipOilRewrite.product_intel_core.watchouts).toEqual([
+      expect.objectContaining({
+        type: 'finish_preference',
+        label: expect.stringMatching(/matte|low-shine/i),
+      }),
+    ]);
+
+    const setItDownCase = {
+        case_id: 'live_ext_fenty_set_it_down_powder',
+        product: {
+          title: 'Set it Down Superfine Blurring Setting Powder - Strawberry Milk',
+          category: 'Setting Powder',
+          description: 'A superfine setting powder for blurring, setting makeup, and finish control.',
+          ingredients_inci: ['Mica', 'Silica'],
+        },
+      };
+    const setItDownRewrite = buildHumanStandardRewriteOutput(
+      setItDownCase,
+      {
+        product_intel_core: {
+          what_it_is: { headline: 'Setting powder', body: 'A setting powder.' },
+          routine_fit: { step: 'makeup' },
+          watchouts: [],
+        },
+      },
+      null,
+    );
+    expect(inferProductKindFromContext(setItDownCase.product)).not.toBe('makeup_set');
+    expect(setItDownRewrite.product_intel_core.what_it_is.body).toMatch(/setting powder/i);
+    expect(setItDownRewrite.product_intel_core.what_it_is.body).not.toMatch(/makeup set/i);
+    expect(setItDownRewrite.product_intel_core.why_it_stands_out[0].headline).toBe('Makeup setting step');
+
+    const shimmerSkinstickRewrite = buildHumanStandardRewriteOutput(
+      {
+        case_id: 'live_ext_fenty_shimmer_skinstick',
+        product: {
+          title: 'Match Stix Shimmer Skinstick - Confetti',
+          category: 'Highlighter',
+          description: 'A shimmer highlighter stick for targeted glow, shade placement, and reflective finish.',
+          ingredients_inci: ['Mica', 'Dimethicone'],
+        },
+      },
+      {
+        product_intel_core: {
+          what_it_is: { headline: 'Highlighter stick', body: 'A highlighter stick.' },
+          routine_fit: { step: 'makeup' },
+          watchouts: [],
+        },
+      },
+      null,
+    );
+    expect(shimmerSkinstickRewrite.product_intel_core.what_it_is.body).toMatch(/highlighter/i);
+    expect(shimmerSkinstickRewrite.product_intel_core.what_it_is.body).not.toMatch(/blush product/i);
+    expect(shimmerSkinstickRewrite.product_intel_core.watchouts).toEqual([
+      expect.objectContaining({
+        type: 'shade_finish_fit',
+        label: expect.stringMatching(/finish|shade/i),
+      }),
+    ]);
+    expect(shimmerSkinstickRewrite.product_intel_core.watchouts[0].label).not.toMatch(/color-correction/i);
+
+    const powderCaseRow = {
+      case_id: 'live_ext_fenty_setting_powder_selected',
+      canonical_product_ref: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_fenty_setting_powder_selected',
+      },
+      product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_fenty_setting_powder_selected',
+        title: 'Bright Fix Instant Brightening + Blurring Powder - Banana',
+        category: 'Setting Powder',
+        description: 'A setting powder for setting complexion makeup, soft-focus blur, and finish control.',
+        ingredients_inci: ['Mica', 'Dimethicone', 'Silica'],
+      },
+    };
+    const powderBaseline = buildProductIntelDraftBundle({
+      product: powderCaseRow.product,
+      canonicalProductRef: powderCaseRow.canonical_product_ref,
+    });
+    powderBaseline.product_intel_core.watchouts = [];
+    const selected = buildSelectedBundle(
+      powderCaseRow,
+      powderBaseline,
+      null,
+      {
+        candidate_available: false,
+        overall_pass: false,
+        quality_score: 0,
+        fail_reasons: ['missing_candidate'],
+        field_decisions: {},
+      },
+      null,
+    );
+    expect(selected.selected_mode).toBe('human_standard_rewrite');
+    expect(selected.field_sources.watchouts).toBe('human_standard');
+    expect(selected.bundle.product_intel_core.watchouts).toEqual([
+      expect.objectContaining({
+        type: 'shade_finish_fit',
+        label: expect.stringMatching(/choose shade separately/i),
+      }),
+    ]);
   });
 
   test('human-standard rewrite preserves hair and color makeup product families', () => {

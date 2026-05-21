@@ -20,6 +20,7 @@ function parseArgs(argv) {
     report: '',
     caseIds: [],
     write: false,
+    validateReplacements: false,
   };
 
   for (let i = 2; i < argv.length; i += 1) {
@@ -36,6 +37,8 @@ function parseArgs(argv) {
       i += 1;
     } else if (token === '--write') {
       out.write = true;
+    } else if (token === '--validate-replacements') {
+      out.validateReplacements = true;
     }
   }
 
@@ -73,6 +76,8 @@ function cloneJson(value) {
 function stampReviewedBundle(bundle, reviewContract) {
   const next = cloneJson(bundle) || {};
   const originalQualityState = asString(next.quality_state || next.product_intel_core?.quality_state);
+  const ownerDelegatedReview = next.owner_delegated_review || null;
+  if (ownerDelegatedReview) delete next.owner_delegated_review;
   next.quality_state = 'reviewed';
   next.product_intel_core = {
     ...(next.product_intel_core || {}),
@@ -86,6 +91,7 @@ function stampReviewedBundle(bundle, reviewContract) {
     reviewer_kind: reviewContract.reviewer_kind,
     reviewed_at: reviewContract.reviewed_at,
     review_tier: reviewContract.review_tier,
+    ...(ownerDelegatedReview ? { owner_delegated_review: ownerDelegatedReview } : {}),
     ...(originalQualityState ? { pre_review_quality_state: originalQualityState } : {}),
   };
   return ensureAgentContextOnBundle(next);
@@ -100,7 +106,14 @@ function buildKbEntriesForRow(row) {
   if (!reviewContract.approved) return [];
   const selectedMode = asString(row?.selected?.selected_mode);
   if (selectedMode === 'baseline_only') return [];
-  const reviewedBundle = stampReviewedBundle(selectedBundle, reviewContract);
+  const ownerDelegatedReview = row?.owner_delegated_review || null;
+  const selectedBundleWithReviewMeta = ownerDelegatedReview
+    ? {
+        ...selectedBundle,
+        owner_delegated_review: ownerDelegatedReview,
+      }
+    : selectedBundle;
+  const reviewedBundle = stampReviewedBundle(selectedBundleWithReviewMeta, reviewContract);
 
   const sourceMeta = {
     case_id: asString(row.case_id),
@@ -128,6 +141,7 @@ function buildKbEntriesForRow(row) {
     reviewer_kind: reviewContract.reviewer_kind,
     reviewed_at: reviewContract.reviewed_at,
     review_tier: reviewContract.review_tier,
+    ...(ownerDelegatedReview ? { owner_delegated_review: ownerDelegatedReview } : {}),
   };
 
   const analysis = {
@@ -230,13 +244,15 @@ async function main() {
       review_decision: asString(row?.review_decision || row?.decision),
     }));
 
-  if (args.write) {
+  if (args.write || args.validateReplacements) {
     await assertProductIntelKbWritable();
     const existingByKey = await fetchExistingProductIntelKbRows(entries.map((entry) => entry.kb_key));
     const { preparedEntries, blockedEntries } = prepareEntriesForWrite(entries, rows, existingByKey);
-    for (const entry of preparedEntries) {
-      // eslint-disable-next-line no-await-in-loop
-      await upsertProductIntelKbEntry(entry);
+    if (args.write) {
+      for (const entry of preparedEntries) {
+        // eslint-disable-next-line no-await-in-loop
+        await upsertProductIntelKbEntry(entry);
+      }
     }
     if (blockedEntries.length) {
       process.stderr.write(
@@ -259,7 +275,7 @@ async function main() {
   process.stdout.write(
     `${JSON.stringify({
       status: 'ok',
-      mode: args.write ? 'write' : 'dry_run',
+      mode: args.write ? 'write' : args.validateReplacements ? 'dry_run_validate_replacements' : 'dry_run',
       report: reportPath,
       rows: rows.map((row) => asString(row.case_id)),
       entries: entries.map((entry) => entry.kb_key),
