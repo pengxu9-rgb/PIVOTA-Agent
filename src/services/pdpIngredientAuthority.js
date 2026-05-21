@@ -788,6 +788,7 @@ function buildAuthorityRecord({
   sourceOrigin = '',
   activeSourceOrigin = '',
   purityStatus = '',
+  authorityScope = '',
   suppressedReason = null,
   generatedAt = null,
 } = {}) {
@@ -801,6 +802,7 @@ function buildAuthorityRecord({
     source_origin: asString(sourceOrigin) || undefined,
     active_source_origin: asString(activeSourceOrigin) || undefined,
     purity_status: asString(purityStatus) || undefined,
+    authority_scope: asString(authorityScope) || undefined,
     suppressed_reason: asString(suppressedReason) || undefined,
     generated_at: asString(generatedAt) || new Date().toISOString(),
   };
@@ -925,6 +927,55 @@ function parseCandidateRawText(rawText, sourceOrigin) {
   });
 }
 
+function readReviewedPartialIngredientQuality(product) {
+  const quality = asPlainObject(product?.pdp_field_quality_summary) || {};
+  const candidates = [quality.ingredients_raw, quality.ingredients_inci]
+    .map((value) => asPlainObject(value))
+    .filter(Boolean);
+  return candidates.find((candidate) => {
+    const status = asString(candidate.source_quality_status || candidate.sourceQualityStatus).toLowerCase();
+    const scope = asString(candidate.authority_scope || candidate.authorityScope).toLowerCase();
+    if (
+      [
+        'manual_source_review_required',
+        'component_ref_review_required',
+        'component_refs_linked',
+        'mark_inci_not_applicable',
+        'not_applicable',
+        'blocked',
+      ].includes(status)
+    ) {
+      return false;
+    }
+    return (
+      /reviewed.*key[_\s-]?ingredients?.*partial.*not[_\s-]?full[_\s-]?inci/.test(status) ||
+      /reviewed.*key[_\s-]?ingredients?.*not[_\s-]?full[_\s-]?inci/.test(scope)
+    );
+  }) || null;
+}
+
+function parseReviewedPartialIngredientText(rawText, quality) {
+  const sanitized = sanitizeIngredientRawText(rawText);
+  if (!sanitized) return null;
+  const items = normalizeIngredientItems(splitIngredientText(sanitized), { max: 16 });
+  if (items.length < 2) return null;
+  const structuredCount = items.filter((item) => isLikelyInciStructuredItem(item)).length;
+  const marketingCount = items.filter((item) => INCI_MARKETING_ONLY_RE.test(item) || MARKETING_SIGNAL_RE.test(item)).length;
+  if (marketingCount > 0) return null;
+  if (structuredCount < 1 && !items.some((item) => HERO_ACTIVE_RE.test(item) || REGULATORY_ACTIVE_RE.test(item))) {
+    return null;
+  }
+  return buildAuthorityRecord({
+    rawText: sanitized,
+    items,
+    sourceOrigin: asString(quality?.source_origin || quality?.sourceOrigin) || 'reviewed_key_ingredients',
+    purityStatus: 'authoritative',
+    authorityScope:
+      asString(quality?.authority_scope || quality?.authorityScope) ||
+      'reviewed_key_ingredients_not_full_inci',
+  });
+}
+
 function buildAuthorityFromSections(product, sections) {
   const ranked = [];
   for (const section of sections) {
@@ -953,6 +1004,7 @@ function buildAuthorityFromSections(product, sections) {
 }
 
 function buildAuthorityFromLegacyRaw(product, inputs) {
+  const reviewedPartialQuality = readReviewedPartialIngredientQuality(product);
   const candidates = [
     product?.pdp_ingredients_raw,
     product?.pdpIngredientsRaw,
@@ -971,6 +1023,10 @@ function buildAuthorityFromLegacyRaw(product, inputs) {
   ];
   const parsed = [];
   for (const candidate of candidates) {
+    if (reviewedPartialQuality) {
+      const partialAuthority = parseReviewedPartialIngredientText(candidate, reviewedPartialQuality);
+      if (partialAuthority) parsed.push(partialAuthority);
+    }
     const authority = parseCandidateRawText(candidate, 'pdp_section');
     if (authority) parsed.push(authority);
   }
@@ -1149,6 +1205,7 @@ function buildAuthoritativeIngredientView(product, options = {}) {
       activeItems: existingAuthority.active_items,
       sourceOrigin: existingSourceOrigin,
       purityStatus: existingAuthority.purity_status || 'authoritative',
+      authorityScope: existingAuthority.authority_scope || existingAuthority.authorityScope,
       suppressedReason: existingAuthority.suppressed_reason,
       generatedAt: existingAuthority.generated_at || generatedAt,
     });
@@ -1232,6 +1289,7 @@ function buildAuthoritativeIngredientView(product, options = {}) {
       sourceOrigin: picked.source_origin,
       activeSourceOrigin: activeCandidateResult.source_origin,
       purityStatus: 'authoritative',
+      authorityScope: picked.authority_scope,
       suppressedReason:
         candidateActiveItems.length && !reconciledActiveItems.length
           ? classifySuppressedActiveItems(candidateActiveItems)
@@ -1357,6 +1415,7 @@ function buildStructuredPdpIngredientModules(product, options = {}) {
           raw_text: authority.raw_text || undefined,
           source_origin: authority.source_origin || 'pdp_section',
           source_quality_status: authority.purity_status,
+          authority_scope: authority.authority_scope || undefined,
         }
       : forceFillContract?.contract_version === 'pivota.pdp.force_fill.v1' && forceFillNote
         && !forceFillBlocked
