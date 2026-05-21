@@ -55,7 +55,9 @@ const {
 } = require('./offers/offersPriority');
 const {
   buildPdpPayload,
+  buildBundleCompositionModuleData,
   isExternalSeedLikeProduct,
+  normalizeBundleComponentRefsForPdp,
   resolveProductExternalRedirectUrl,
 } = require('./pdpBuilder');
 const {
@@ -30602,6 +30604,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 		      const wantsSupplementalDetails =
 		        includeAll || includeList.includes('supplemental_details') || wantsProductDetails;
 		      const wantsProductFacts = includeAll || includeList.includes('product_facts');
+      const wantsBundleComposition =
+        includeAll ||
+        includeList.includes('bundle_composition') ||
+        includeList.includes('similar') ||
+        includeList.includes('recommendations');
 		      markPdpV2Phase('parse_request', parseRequestStartedAt);
 
 		      // Resolve the canonical product group first so every client sees the same details.
@@ -32319,6 +32326,62 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           ...(data ? {} : { reason: reviewsMissingReason || 'unavailable' }),
         });
         if (!data) missing.push({ type: 'reviews_preview', reason: reviewsMissingReason || 'unavailable' });
+      }
+
+      if (wantsBundleComposition && identityGraphLive?.canonical_scope === 'synthetic') {
+        const bundleModuleStartedAt = Date.now();
+        const refsForEnrichment = normalizeBundleComponentRefsForPdp(canonicalProductForPdp);
+        let bundleData = null;
+        let bundleReason = null;
+        if (refsForEnrichment.length === 0) {
+          bundleReason = 'no_components';
+        } else {
+          const componentIds = refsForEnrichment
+            .map((r) => String(r.product_id || r.external_product_id || '').trim())
+            .filter(Boolean);
+          const enrichmentMap = new Map();
+          if (componentIds.length > 0) {
+            try {
+              const enrichmentRes = await query(
+                `SELECT DISTINCT ON (external_product_id)
+                   external_product_id, title, image_url, canonical_url,
+                   price_amount, price_currency,
+                   COALESCE(seed_data->>'brand', seed_data->'snapshot'->>'brand') AS brand
+                 FROM external_product_seeds
+                 WHERE status = 'active' AND external_product_id = ANY($1::text[])
+                 ORDER BY external_product_id, updated_at DESC NULLS LAST, created_at DESC NULLS LAST`,
+                [componentIds],
+              );
+              for (const row of enrichmentRes.rows || []) {
+                if (!row?.external_product_id) continue;
+                enrichmentMap.set(String(row.external_product_id), row);
+              }
+            } catch (err) {
+              logger.warn(
+                {
+                  err: err?.message || String(err),
+                  product_id: canonicalProductRef?.product_id || null,
+                },
+                'bundle_composition enrichment query failed',
+              );
+            }
+          }
+          bundleData = buildBundleCompositionModuleData(canonicalProductForPdp, {
+            enrichmentMap,
+            currencyFallback: canonicalProductForPdp.currency || 'USD',
+          });
+          if (!bundleData) bundleReason = 'no_components';
+        }
+        modules.push({
+          type: 'bundle_composition',
+          required: false,
+          data: bundleData,
+          ...(bundleData ? {} : { reason: bundleReason || 'unavailable' }),
+        });
+        if (!bundleData) {
+          missing.push({ type: 'bundle_composition', reason: bundleReason || 'unavailable' });
+        }
+        markPdpV2Module('bundle_composition', bundleModuleStartedAt);
       }
 
       if (wantsSimilar) {

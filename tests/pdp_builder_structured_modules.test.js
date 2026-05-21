@@ -1,4 +1,4 @@
-const { buildPdpPayload } = require('../src/pdpBuilder');
+const { buildPdpPayload, buildBundleCompositionModuleData } = require('../src/pdpBuilder');
 const { buildLivePdpGate } = require('../src/services/externalSeedPdpQuality');
 
 describe('pdpBuilder structured modules for external-seed style products', () => {
@@ -2475,5 +2475,85 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     expect(payload.product.description).toContain('lightweight yet hydrating cream');
     expect(overviewText).toContain('lightweight yet hydrating cream');
     expect(overviewText).not.toMatch(/Privacy Policy|Terms of Use|Brand Ambassador Program/i);
+  });
+});
+
+describe('buildBundleCompositionModuleData', () => {
+  test('returns null when product has no bundle component refs', () => {
+    expect(buildBundleCompositionModuleData({})).toBeNull();
+    expect(buildBundleCompositionModuleData({ bundle_component_refs: [] })).toBeNull();
+  });
+
+  test('shapes refs into items without enrichment, flagged as partial', () => {
+    const data = buildBundleCompositionModuleData({
+      bundle_component_refs: [
+        {
+          product_id: 'ext_a',
+          title: 'Glycolic Acid 7% Toner',
+          canonical_url: 'https://merchant.example/glycolic',
+          size_label: '30ml',
+          component_role: 'exfoliator',
+        },
+      ],
+    });
+    expect(data).toMatchObject({
+      strategy: 'bundle_components',
+      total_count: 1,
+    });
+    expect(data.items[0]).toMatchObject({
+      product_id: 'ext_a',
+      title: 'Glycolic Acid 7% Toner',
+      canonical_url: 'https://merchant.example/glycolic',
+      size_label: '30ml',
+      component_role: 'exfoliator',
+      source_quality_status: 'partial',
+    });
+    expect(data.items[0]).not.toHaveProperty('image_url');
+    expect(data.items[0]).not.toHaveProperty('price');
+  });
+
+  test('merges enrichment for ready cards with image, brand, and price', () => {
+    const enrichmentMap = new Map([
+      [
+        'ext_a',
+        {
+          title: 'Glycolic Acid 7% Exfoliating Toner',
+          brand: 'the ordinary',
+          image_url: 'https://example.com/glycolic.png',
+          canonical_url: 'https://theordinary.com/glycolic',
+          price_amount: 13.5,
+          price_currency: 'USD',
+        },
+      ],
+    ]);
+    const data = buildBundleCompositionModuleData(
+      {
+        bundle_component_refs: [
+          { product_id: 'ext_a', title: 'Glycolic Acid 7% Toner', size_label: '30ml' },
+        ],
+      },
+      { enrichmentMap, currencyFallback: 'USD' },
+    );
+    expect(data.items[0]).toMatchObject({
+      product_id: 'ext_a',
+      title: 'Glycolic Acid 7% Exfoliating Toner',
+      brand: { name: 'the ordinary' },
+      image_url: 'https://example.com/glycolic.png',
+      canonical_url: 'https://theordinary.com/glycolic',
+      price: { amount: 13.5, currency: 'USD' },
+      size_label: '30ml',
+      source_quality_status: 'ready',
+    });
+  });
+
+  test('drops zero or negative prices from enrichment', () => {
+    const enrichmentMap = new Map([
+      ['ext_a', { title: 'X', image_url: 'https://example.com/x.png', price_amount: 0 }],
+    ]);
+    const data = buildBundleCompositionModuleData(
+      { bundle_component_refs: [{ product_id: 'ext_a', title: 'X' }] },
+      { enrichmentMap },
+    );
+    expect(data.items[0]).not.toHaveProperty('price');
   });
 });

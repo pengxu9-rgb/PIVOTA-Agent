@@ -4280,6 +4280,46 @@ function buildRecommendations(items, currencyFallback) {
   };
 }
 
+function buildBundleCompositionModuleData(product, options = {}) {
+  const refs = normalizeBundleComponentRefsForPdp(product);
+  if (!refs.length) return null;
+  const enrichmentMap =
+    options.enrichmentMap instanceof Map ? options.enrichmentMap : new Map();
+  const currencyFallback = asNonEmptyString(options.currencyFallback) || 'USD';
+  const items = refs.map((ref) => {
+    const enrichKey = String(ref.product_id || ref.external_product_id || '').trim();
+    const enriched = enrichKey ? enrichmentMap.get(enrichKey) || {} : {};
+    const title = asNonEmptyString(enriched.title) || asNonEmptyString(ref.title);
+    const brandLabel = asNonEmptyString(enriched.brand);
+    const imageUrl = normalizePdpImageUrl(enriched.image_url) || undefined;
+    const canonicalUrl = normalizePdpHttpUrl(enriched.canonical_url || ref.canonical_url) || undefined;
+    const priceAmount = normalizeAmount(enriched.price_amount ?? enriched.price);
+    const priceCurrency = normalizeCurrency(
+      { currency: enriched.price_currency || enriched.currency },
+      currencyFallback,
+    );
+    const hasPrice = Number.isFinite(priceAmount) && priceAmount > 0;
+    return {
+      product_id: ref.product_id,
+      ...(ref.merchant_id ? { merchant_id: ref.merchant_id } : {}),
+      title: title || ref.title,
+      ...(brandLabel ? { brand: { name: brandLabel } } : {}),
+      ...(imageUrl ? { image_url: imageUrl } : {}),
+      ...(canonicalUrl ? { canonical_url: canonicalUrl } : {}),
+      ...(hasPrice ? { price: { amount: priceAmount, currency: priceCurrency } } : {}),
+      ...(asNonEmptyString(ref.component_role) ? { component_role: ref.component_role } : {}),
+      ...(asNonEmptyString(ref.size_label) ? { size_label: ref.size_label } : {}),
+      ...(asNonEmptyString(ref.review_state) ? { review_state: ref.review_state } : {}),
+      source_quality_status: imageUrl && title ? 'ready' : 'partial',
+    };
+  });
+  return {
+    strategy: 'bundle_components',
+    items,
+    total_count: items.length,
+  };
+}
+
 function normalizeProductLineOptions(product) {
   const rawOptions = Array.isArray(product.product_line_options)
     ? product.product_line_options
@@ -4716,9 +4756,11 @@ function buildPdpPayload(args) {
 
 module.exports = {
   buildPdpPayload,
+  buildBundleCompositionModuleData,
   detectTemplateHint,
   resolvePdpSchemaProfile,
   isExternalSeedLikeProduct,
+  normalizeBundleComponentRefsForPdp,
   normalizePdpHttpUrl,
   resolveProductExternalRedirectUrl,
 };
