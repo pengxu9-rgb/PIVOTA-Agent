@@ -1286,6 +1286,69 @@ describe('external seed product detail hydration', () => {
     expect(product.fashion_meta).toBeUndefined();
   });
 
+  test('surfaces reviewed partial key-ingredient scope without treating it as low quality', async () => {
+    const { db, debug } = loadServerWithDb();
+
+    db.query.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 'eps_tirtir_partial_key_ingredients',
+          external_product_id: 'ext_tirtir_partial_key_ingredients',
+          canonical_url: 'https://tirtir.global/products/dermatir-intensive-lotion-md-1',
+          destination_url: 'https://tirtir.global/products/dermatir-intensive-lotion-md-1',
+          domain: 'tirtir.global',
+          title: 'Dermatir Intensive Lotion MD',
+          image_url: 'https://cdn.shopify.com/dermatir.jpg',
+          price_amount: '7.00',
+          price_currency: 'USD',
+          availability: 'In Stock',
+          status: 'active',
+          seed_data: {
+            brand: 'TIRTIR Global',
+            pdp_ingredients_raw: 'Ceramides, Panthenol',
+            raw_ingredient_text_clean: 'Ceramides, Panthenol',
+            inci_list: 'Ceramides, Panthenol',
+            ingredient_intel: {
+              raw_ingredient_text_clean: 'Ceramides, Panthenol',
+              inci_list: 'Ceramides, Panthenol',
+            },
+            pdp_field_quality_summary: {
+              ingredients_raw: {
+                source_origin: 'reviewed_exact_product_source_partial_ingredient_scope',
+                source_quality_status: 'reviewed_key_ingredients_partial_not_full_inci',
+                authority_scope: 'reviewed_key_ingredients_not_full_inci',
+              },
+              ingredients_inci: {
+                source_origin: 'reviewed_exact_product_source_partial_ingredient_scope',
+                source_quality_status: 'reviewed_key_ingredients_partial_not_full_inci',
+                authority_scope: 'reviewed_key_ingredients_not_full_inci',
+              },
+            },
+            snapshot: {
+              canonical_url: 'https://tirtir.global/products/dermatir-intensive-lotion-md-1',
+            },
+          },
+        },
+      ],
+    });
+
+    const product = await debug.fetchProductDetailForOffers({
+      merchantId: 'external_seed',
+      productId: 'ext_tirtir_partial_key_ingredients',
+    });
+
+    expect(product).toMatchObject({
+      product_id: 'ext_tirtir_partial_key_ingredients',
+      pdp_ingredients_raw: 'Ceramides, Panthenol',
+      raw_ingredient_text_clean: 'Ceramides, Panthenol',
+    });
+    expect(product.inci_list).toEqual(['Ceramides', 'Panthenol']);
+    expect(product.pdp_field_quality_summary.ingredients_raw).toMatchObject({
+      source_quality_status: 'reviewed_key_ingredients_partial_not_full_inci',
+      authority_scope: 'reviewed_key_ingredients_not_full_inci',
+    });
+  });
+
   test('get_pdp_v2 fails fast for inactive external seed routes before legacy detail fallback', async () => {
     const { app, db } = loadServerWithDb({
       PIVOTA_API_BASE: 'https://backend.test',

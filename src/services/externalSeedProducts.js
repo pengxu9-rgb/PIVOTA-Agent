@@ -239,9 +239,11 @@ function normalizePdpFieldQualitySummary(value) {
     if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
     const sourceQualityStatus = normalizeNonEmptyString(row.source_quality_status || row.sourceQualityStatus).toLowerCase();
     const sourceOrigin = normalizeNonEmptyString(row.source_origin || row.sourceOrigin).toLowerCase();
+    const authorityScope = normalizeNonEmptyString(row.authority_scope || row.authorityScope).toLowerCase();
     next[key] = {
       ...(sourceQualityStatus ? { source_quality_status: sourceQualityStatus } : {}),
       ...(sourceOrigin ? { source_origin: sourceOrigin } : {}),
+      ...(authorityScope ? { authority_scope: authorityScope } : {}),
     };
   }
   return Object.keys(next).length > 0 ? next : null;
@@ -275,12 +277,21 @@ function readPdpFieldQualityStatus(summary, key) {
   return normalizeNonEmptyString(summary?.[key]?.source_quality_status).toLowerCase();
 }
 
+function isReviewedPartialIngredientQualityStatus(status) {
+  return /reviewed.*key[_\s-]*ingredients?.*partial|partial.*key[_\s-]*ingredients?/i.test(
+    normalizeNonEmptyString(status),
+  );
+}
+
 function isSurfaceablePdpField(summary, key) {
   const status = readPdpFieldQualityStatus(summary, key);
   if (!status) return true;
   if (status === 'high' || status === 'medium') return true;
   if (key === 'how_to_use_raw' && status === 'force_filled_reviewed_pattern') return true;
   if (key === 'ingredients_inci' && status === 'force_filled_pending_source') return true;
+  if ((key === 'ingredients_raw' || key === 'ingredients_inci') && isReviewedPartialIngredientQualityStatus(status)) {
+    return true;
+  }
   return false;
 }
 
