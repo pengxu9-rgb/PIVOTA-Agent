@@ -3201,6 +3201,75 @@ describe('discovery feed service', () => {
     );
   });
 
+  test('browse_products commerce-index sig candidates hydrate product intel from external seed KB keys', async () => {
+    const kbStore = require('../src/auroraBff/productIntelKbStore');
+    const kbEntry = {
+      kb_key: 'product:ext_cosrx_vitamin_c_23',
+      analysis: {
+        product_intel_v1: {
+          evidence_profile: 'seller_plus_formula',
+          quality_state: 'reviewed',
+          shopping_card: {
+            contract_version: 'pivota.shopping_card.v1',
+            title: 'Advanced The Vitamin C 23 Serum',
+            subtitle: 'High-strength vitamin C serum',
+            highlight: '23% vitamin C tone care',
+          },
+          search_card: {
+            title_candidate: 'Advanced The Vitamin C 23 Serum',
+            compact_candidate: 'High-strength vitamin C serum',
+            highlight_candidate: '23% vitamin C tone care',
+          },
+        },
+      },
+    };
+    const bulkSpy = jest.spyOn(kbStore, 'getProductIntelKbEntries').mockResolvedValue(
+      new Map([[kbEntry.kb_key, kbEntry]]),
+    );
+    const singleSpy = jest.spyOn(kbStore, 'getProductIntelKbEntry').mockResolvedValue(null);
+
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        response_detail: 'card',
+        context: {
+          locale: 'en-US',
+        },
+      },
+      {
+        candidateProducts: [
+          makeProduct({
+            merchant_id: 'external_seed',
+            product_id: 'sig_cosrx_vitamin_c_23',
+            external_product_id: 'ext_cosrx_vitamin_c_23',
+            source_product_id: 'ext_cosrx_vitamin_c_23',
+            pivota_signature_id: 'sig_cosrx_vitamin_c_23',
+            title: 'Advanced The Vitamin C 23 Serum',
+            brand: 'COSRX',
+            category: 'Serum',
+            product_type: 'Serum',
+            price: 25,
+          }),
+        ],
+      },
+    );
+
+    expect(bulkSpy).toHaveBeenCalledWith(['product:sig_cosrx_vitamin_c_23', 'product:ext_cosrx_vitamin_c_23']);
+    expect(singleSpy).not.toHaveBeenCalled();
+    expect(response.products).toHaveLength(1);
+    expect(response.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'sig_cosrx_vitamin_c_23',
+        external_product_id: 'ext_cosrx_vitamin_c_23',
+        card_title: 'Advanced The Vitamin C 23 Serum',
+        card_subtitle: 'High-strength vitamin C serum',
+        card_highlight: '23% vitamin C tone care',
+      }),
+    );
+  });
+
   test('browse_products default response still hydrates reviewed card fields from product intel KB', async () => {
     const kbStore = require('../src/auroraBff/productIntelKbStore');
     const kbEntry = {
