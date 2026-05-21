@@ -11,6 +11,9 @@ artifacts
 reports
 tests
 docs
+!docs/
+docs/*
+!docs/tool-schema.json
 datasets
 fixtures
 .github
