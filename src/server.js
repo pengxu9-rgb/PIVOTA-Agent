@@ -194,6 +194,7 @@ const {
   buildBrandQueryVariants,
   hasExplicitCategoryHint,
   normalizeBrandText,
+  resolveBeautyBrandBrowseQuery,
 } = require('./findProductsMulti/brandLexicon');
 const { buildClarification } = require('./findProductsMulti/clarification');
 const { mountAgentCenterLlmProbe } = require('./internal/agentCenterLlmProbe');
@@ -12533,10 +12534,46 @@ const BEAUTY_EXTERNAL_SEED_CATEGORY_TERMS_BY_FAMILY = Object.freeze({
   serum: ['serum', 'essence', 'ampoule'],
 });
 
+const BEAUTY_EXTERNAL_SEED_BRAND_BROWSE_CATEGORY_TERMS = Object.freeze([
+  'foundation',
+  'concealer',
+  'skin tint',
+  'primer',
+  'powder',
+  'blush',
+  'bronzer',
+  'highlighter',
+  'lipstick',
+  'lip gloss',
+  'lip liner',
+  'lip balm',
+  'mascara',
+  'eyeliner',
+  'eyeshadow',
+  'brow',
+  'fragrance',
+  'perfume',
+  'parfum',
+  'body mist',
+  'cleanser',
+  'moisturizer',
+  'serum',
+  'sunscreen',
+  'mask',
+  'shampoo',
+  'conditioner',
+  'hair care',
+  'styling',
+  'set',
+  'bundle',
+  'tool',
+]);
+
 function buildBeautyExternalSeedCategoryTerms(intent = null) {
   const families = Array.isArray(intent?.families) ? intent.families : [];
   const rawQuery = String(intent?.raw || intent?.query || intent?.queryText || '').trim();
   const categoryPathPrefix = resolveBeautyCategoryPathPrefixForQuery(rawQuery);
+  const brandBrowse = intent?.brandBrowse && intent.brandBrowse.contract === 'brand_browse';
   const terms = [];
   const seen = new Set();
   const push = (value) => {
@@ -12559,6 +12596,9 @@ function buildBeautyExternalSeedCategoryTerms(intent = null) {
     } else if (categoryPathPrefix.startsWith('beauty/fragrance/')) {
       push('fragrance');
     }
+  }
+  if (terms.length === 0 && brandBrowse) {
+    BEAUTY_EXTERNAL_SEED_BRAND_BROWSE_CATEGORY_TERMS.forEach(push);
   }
   if (terms.length === 0) {
     [
@@ -13320,6 +13360,13 @@ function buildCanonicalChainMainlineProduct(row) {
     snapshot.canonical_url,
   );
   const pivotaCanonicalUrl = firstNonEmptyString(row.pivota_canonical_url);
+  const canonicalProductRef = {
+    merchant_id: merchantId,
+    product_id: sourceProductId || productId,
+    platform: firstNonEmptyString(row.platform, row.merchant_primary_platform, merchantId === EXTERNAL_SEED_MERCHANT_ID ? 'external_seed' : 'catalog'),
+    ...(firstNonEmptyString(row.product_key) ? { product_key: firstNonEmptyString(row.product_key) } : {}),
+    ...(pivotaSignatureId ? { pivota_signature_id: pivotaSignatureId } : {}),
+  };
   const category = firstNonEmptyString(
     row.category,
     row.product_type,
@@ -13415,6 +13462,16 @@ function buildCanonicalChainMainlineProduct(row) {
     catalog_product_key: firstNonEmptyString(row.product_key),
     product_key: firstNonEmptyString(row.product_key),
     source_product_id: sourceProductId || undefined,
+    canonical_product_ref: canonicalProductRef,
+    pdp_open: {
+      path: 'internal',
+      product_ref: canonicalProductRef,
+      canonical_product_ref: canonicalProductRef,
+      subject: {
+        type: 'product_group',
+        id: pivotaSignatureId || productId,
+      },
+    },
     ...(pivotaSignatureId ? { pivota_signature_id: pivotaSignatureId } : {}),
     ...(pivotaCanonicalUrl ? { pivota_canonical_url: pivotaCanonicalUrl } : {}),
     url: pivotaCanonicalUrl || merchantCanonicalUrl || undefined,
@@ -13539,6 +13596,232 @@ function mergeCanonicalChainProductsWithSeedProducts(seedProducts = [], canonica
     products: merged,
     canonical_dedupe_count: canonicalDedupeCount,
     canonical_product_keys: canonicalProductKeys,
+  };
+}
+
+const SEARCH_CARD_GENERIC_CATEGORY_LABELS = new Set([
+  '',
+  'all',
+  'catalog',
+  'external',
+  'misc',
+  'other',
+  'product',
+  'products',
+  'unknown',
+  'uncategorized',
+]);
+
+function firstSearchProductImageUrl(product = {}) {
+  if (!isPlainObject(product)) return '';
+  const seedData = isPlainObject(product.seed_data) ? product.seed_data : {};
+  const snapshot = isPlainObject(seedData.snapshot) ? seedData.snapshot : {};
+  const externalSeed = isPlainObject(product.external_seed) ? product.external_seed : {};
+  const externalSnapshot = isPlainObject(externalSeed.snapshot) ? externalSeed.snapshot : {};
+  return firstCatalogPayloadString(
+    product.image_url,
+    product.imageUrl,
+    product.image,
+    product.thumbnail_url,
+    product.thumbnailUrl,
+    product.images,
+    product.image_urls,
+    product.gallery_images,
+    externalSeed.image_url,
+    externalSeed.imageUrl,
+    externalSeed.images,
+    externalSeed.image_urls,
+    externalSnapshot.image_url,
+    externalSnapshot.images,
+    externalSnapshot.image_urls,
+    seedData.image_url,
+    seedData.imageUrl,
+    seedData.images,
+    seedData.image_urls,
+    snapshot.image_url,
+    snapshot.images,
+    snapshot.image_urls,
+  ) || '';
+}
+
+function firstSearchProductCategoryPath(product = {}) {
+  if (!isPlainObject(product)) return '';
+  return firstNonEmptyString(
+    product.catalog_category_path,
+    Array.isArray(product.category_path) ? product.category_path.join('/') : product.category_path,
+    product.categoryPath,
+    product.seed_data?.catalog_category_path,
+    product.seed_data?.category_path,
+    product.external_seed?.catalog_category_path,
+    product.external_seed?.category_path,
+  ) || '';
+}
+
+function getSearchProductPriceAmount(product = {}) {
+  if (!isPlainObject(product)) return null;
+  const candidates = [
+    product.price_amount,
+    product.priceAmount,
+    product.current_price,
+    product.currentPrice,
+    product.price,
+    product.price?.amount,
+    product.price?.value,
+    product.price?.current?.amount,
+    product.best_deal?.price,
+    product.bestDeal?.price,
+  ];
+  if (Array.isArray(product.offers)) {
+    for (const offer of product.offers) {
+      candidates.push(offer?.price, offer?.price?.amount, offer?.price?.current?.amount);
+    }
+  }
+  if (Array.isArray(product.variants)) {
+    for (const variant of product.variants) {
+      candidates.push(variant?.price, variant?.price?.amount, variant?.price?.current?.amount);
+    }
+  }
+  for (const candidate of candidates) {
+    const amount = Number(candidate);
+    if (Number.isFinite(amount)) return amount;
+  }
+  return null;
+}
+
+function hasExplicitUnknownPrice(product = {}) {
+  if (!isPlainObject(product)) return false;
+  const label = firstNonEmptyString(product.price_label, product.priceLabel);
+  return Boolean(
+    product.price_unknown === true ||
+      product.priceUnknown === true ||
+      product.price?.unknown === true ||
+      (label && /price\s+(?:unknown|unavailable)|暂不可得|未知/i.test(label)),
+  );
+}
+
+function hasExplicitFreePrice(product = {}) {
+  if (!isPlainObject(product)) return false;
+  const text = normalizeSearchTextForMatch(
+    [
+      product.price_label,
+      product.priceLabel,
+      product.title,
+      product.name,
+      product.product_type,
+      product.category,
+    ].filter(Boolean).join(' '),
+  );
+  return Boolean(
+    product.price_is_free === true ||
+      product.is_free === true ||
+      product.free_sample === true ||
+      /\b(free|sample|gift\s+with\s+purchase)\b/.test(text),
+  );
+}
+
+function isSearchProductPdpResolvable(product = {}) {
+  if (!isPlainObject(product)) return false;
+  const ref = isPlainObject(product.canonical_product_ref) ? product.canonical_product_ref : {};
+  const hasProductRef = Boolean(
+    firstNonEmptyString(product.product_id, product.id, ref.product_id, product.pivota_signature_id),
+  );
+  const hasMerchantRef = Boolean(firstNonEmptyString(product.merchant_id, ref.merchant_id));
+  const hasUrl = Boolean(
+    firstNonEmptyString(
+      product.pivota_canonical_url,
+      product.canonical_url,
+      product.destination_url,
+      product.merchant_canonical_url,
+      product.url,
+    ),
+  );
+  return hasProductRef && (hasMerchantRef || hasUrl);
+}
+
+function getSearchProductServingEligibility(product = {}, options = {}) {
+  const reasons = [];
+  if (!isPlainObject(product)) {
+    return { eligible: false, reasons: ['invalid_product'] };
+  }
+
+  const imageUrl = firstSearchProductImageUrl(product);
+  if (!imageUrl) reasons.push('missing_image');
+
+  const categoryPath = firstSearchProductCategoryPath(product).toLowerCase().replace(/^\/+|\/+$/g, '');
+  const categoryKind = String(product.category_kind || product.categoryKind || '').trim().toLowerCase();
+  const profile = String(product.pdp_schema_profile || '').trim().toLowerCase();
+  const category = String(firstNonEmptyString(product.category, product.product_type) || '')
+    .trim()
+    .toLowerCase();
+  const beautyCategory =
+    categoryPath === 'beauty' ||
+    categoryPath.startsWith('beauty/') ||
+    categoryKind === 'beauty' ||
+    profile === 'beauty_formula' ||
+    hasBeautyCatalogProductSignal(buildFallbackCandidateText(product));
+  if (options.requireBeauty === true && !beautyCategory) reasons.push('non_beauty_product');
+  if (!beautyCategory && SEARCH_CARD_GENERIC_CATEGORY_LABELS.has(category)) {
+    reasons.push('generic_category');
+  }
+
+  const amount = getSearchProductPriceAmount(product);
+  if (amount == null) {
+    if (!hasExplicitUnknownPrice(product)) reasons.push('missing_price');
+  } else if (amount <= 0 && !hasExplicitFreePrice(product)) {
+    reasons.push('non_positive_price');
+  }
+
+  if (!isSearchProductPdpResolvable(product)) reasons.push('unresolved_pdp_ref');
+
+  return {
+    eligible: reasons.length === 0,
+    reasons,
+    image_url: imageUrl || null,
+    price_amount: amount,
+    category_path: categoryPath || null,
+  };
+}
+
+function searchProductMatchesBeautyBrandBrowse(product = {}, brandBrowse = null, candidateText = '') {
+  if (!brandBrowse || brandBrowse.contract !== 'brand_browse') return true;
+  const requestedBrand = normalizeSearchTextForMatch(brandBrowse.brand || '');
+  const requestedAlias = normalizeSearchTextForMatch(brandBrowse.alias || '');
+  if (!requestedBrand && !requestedAlias) return true;
+  const productBrand = normalizeSearchTextForMatch(
+    firstNonEmptyString(product?.brand, product?.vendor, product?.merchant_name),
+  );
+  const text = String(candidateText || buildFallbackCandidateText(product) || '');
+  const matches = (needle) => Boolean(
+    needle &&
+      (
+        (productBrand && (productBrand.includes(needle) || needle.includes(productBrand))) ||
+        text.includes(needle)
+      )
+  );
+  return matches(requestedBrand) || matches(requestedAlias);
+}
+
+function filterSearchServingEligibleProducts(products = [], options = {}) {
+  const eligible = [];
+  const rejected = [];
+  for (const product of Array.isArray(products) ? products : []) {
+    const gate = getSearchProductServingEligibility(product, options);
+    if (gate.eligible) {
+      eligible.push(product);
+    } else {
+      rejected.push({
+        product_id: firstNonEmptyString(product?.product_id, product?.id, product?.pivota_signature_id) || null,
+        title: firstNonEmptyString(product?.title, product?.name) || null,
+        source: firstNonEmptyString(product?.source, product?.search_recall_source, product?.catalog_source) || null,
+        reasons: gate.reasons,
+      });
+    }
+  }
+  return {
+    products: eligible,
+    rejected,
+    rejected_count: rejected.length,
+    input_count: Array.isArray(products) ? products.length : 0,
   };
 }
 
@@ -13674,6 +13957,7 @@ async function fetchCanonicalChainRecallForFindProductsMulti({ search = {} } = {
   if (!process.env.DATABASE_URL) return null;
   const queryText = extractSearchQueryText(search);
   if (!String(queryText || '').trim()) return null;
+  const beautyBrandBrowse = resolveBeautyBrandBrowseQuery(queryText);
   const safeLimit = Math.max(
     1,
     Math.min(SEARCH_LIMIT_MAX, Math.floor(Number(search.limit || search.page_size || 20) || 20)),
@@ -13724,6 +14008,17 @@ async function fetchCanonicalChainRecallForFindProductsMulti({ search = {} } = {
         canonical_product_count: products.length,
         canonical_category_path_prefix: canonicalCategoryPathPrefix,
         canonical_duration_ms: Math.max(0, Date.now() - startedAt),
+        query_text: queryText,
+        requested_limit: safeLimit,
+        beauty_brand_browse: beautyBrandBrowse.matched
+          ? {
+              contract: beautyBrandBrowse.contract,
+              brand: beautyBrandBrowse.brand,
+              alias: beautyBrandBrowse.alias,
+              brand_only: beautyBrandBrowse.brand_only,
+              explicit_category: beautyBrandBrowse.explicit_category,
+            }
+          : null,
       },
     };
   } catch (err) {
@@ -13736,6 +14031,17 @@ async function fetchCanonicalChainRecallForFindProductsMulti({ search = {} } = {
         canonical_category_path_prefix: canonicalCategoryPathPrefix,
         canonical_duration_ms: Math.max(0, Date.now() - startedAt),
         canonical_error: String(err?.code || err?.message || err || 'canonical_query_failed').slice(0, 160),
+        query_text: queryText,
+        requested_limit: safeLimit,
+        beauty_brand_browse: beautyBrandBrowse.matched
+          ? {
+              contract: beautyBrandBrowse.contract,
+              brand: beautyBrandBrowse.brand,
+              alias: beautyBrandBrowse.alias,
+              brand_only: beautyBrandBrowse.brand_only,
+              explicit_category: beautyBrandBrowse.explicit_category,
+            }
+          : null,
       },
     };
   }
@@ -13774,13 +14080,71 @@ function attachCanonicalChainRecallTelemetry(body, canonicalResult) {
   const canonicalProducts = Array.isArray(canonicalResult?.products)
     ? canonicalResult.products.filter(Boolean)
     : [];
+  const canonicalQueryText = firstNonEmptyString(
+    telemetry.query_text,
+    metadata?.search_trace?.raw_query,
+    metadata?.search_trace?.expanded_query,
+  ) || '';
+  const beautyBrandBrowse =
+    telemetry.beauty_brand_browse && typeof telemetry.beauty_brand_browse === 'object'
+      ? telemetry.beauty_brand_browse
+      : resolveBeautyBrandBrowseQuery(canonicalQueryText);
+  const isBeautyBrandBrowse = Boolean(beautyBrandBrowse?.matched || beautyBrandBrowse?.contract === 'brand_browse');
+  const brandMatchedCanonicalProducts = isBeautyBrandBrowse
+    ? canonicalProducts.filter((product) => searchProductMatchesBeautyBrandBrowse(product, beautyBrandBrowse))
+    : canonicalProducts;
+  const currentBrandMatchedProducts = isBeautyBrandBrowse
+    ? products.filter((product) => searchProductMatchesBeautyBrandBrowse(product, beautyBrandBrowse))
+    : products;
+  const canonicalServingGate = filterSearchServingEligibleProducts(brandMatchedCanonicalProducts, {
+    queryText: canonicalQueryText,
+    requireBeauty: isBeautyBrandBrowse,
+  });
+  const currentServingGate = isBeautyBrandBrowse
+    ? filterSearchServingEligibleProducts(currentBrandMatchedProducts, {
+        queryText: canonicalQueryText,
+        requireBeauty: true,
+      })
+    : null;
+  const requestedLimit = Math.max(
+    1,
+    Math.min(
+      SEARCH_LIMIT_MAX,
+      Math.floor(
+        Number(
+          telemetry.requested_limit ||
+            metadata.page_size ||
+            metadata.limit ||
+            body.page_size ||
+            body.limit ||
+            products.length ||
+            20,
+        ) || 20,
+      ),
+    ),
+  );
+  const brandBrowseMinimum = beautyBrandBrowse?.brand_only === false ? 1 : Math.min(3, requestedLimit);
+  const canonicalEligibleProducts = canonicalServingGate.products.slice(0, requestedLimit);
   const shouldApplyCanonicalProducts =
-    products.length === 0 &&
-    canonicalProducts.length > 0 &&
-    isNonBeautyCanonicalCategoryPathPrefix(telemetry.canonical_category_path_prefix);
-  const finalProducts = shouldApplyCanonicalProducts ? canonicalProducts : products;
+    canonicalEligibleProducts.length > 0 &&
+    (
+      (
+        isBeautyBrandBrowse &&
+        canonicalEligibleProducts.length >= brandBrowseMinimum &&
+        (
+          products.length === 0 ||
+          (currentServingGate && currentServingGate.products.length < canonicalEligibleProducts.length) ||
+          responseCanonicalReturnedCount === 0
+        )
+      ) ||
+      (
+        products.length === 0 &&
+        isNonBeautyCanonicalCategoryPathPrefix(telemetry.canonical_category_path_prefix)
+      )
+    );
+  const finalProducts = shouldApplyCanonicalProducts ? canonicalEligibleProducts : products;
   const finalCanonicalReturnedCount = shouldApplyCanonicalProducts
-    ? canonicalProducts.length
+    ? canonicalEligibleProducts.length
     : canonicalReturnedCount;
   const searchDecision =
     metadata.search_decision && typeof metadata.search_decision === 'object' && !Array.isArray(metadata.search_decision)
@@ -13805,6 +14169,7 @@ function attachCanonicalChainRecallTelemetry(body, canonicalResult) {
           results: Array.isArray(body.results) ? finalProducts : body.results,
           total: Math.max(Number(body.total || 0) || 0, finalProducts.length),
           page_size: finalProducts.length,
+          reply: null,
         }
       : {}),
     metadata: {
@@ -13814,6 +14179,7 @@ function attachCanonicalChainRecallTelemetry(body, canonicalResult) {
             query_source: 'canonical_chain_catalog',
             strict_empty: false,
             strict_empty_reason: null,
+            reply: null,
           }
         : {}),
       canonical_path_executed: true,
@@ -13823,6 +14189,27 @@ function attachCanonicalChainRecallTelemetry(body, canonicalResult) {
       canonical_duration_ms: Math.max(0, Number(telemetry.canonical_duration_ms || 0) || 0),
       canonical_dedupe_count: canonicalDedupeCount,
       canonical_returned_count: finalCanonicalReturnedCount,
+      search_card_quality_gate: {
+        applied: isBeautyBrandBrowse,
+        mode: isBeautyBrandBrowse ? 'beauty_brand_browse' : 'telemetry_only',
+        canonical_input_count: canonicalServingGate.input_count,
+        canonical_eligible_count: canonicalServingGate.products.length,
+        canonical_rejected_count: canonicalServingGate.rejected_count,
+        current_input_count: products.length,
+        current_eligible_count: currentServingGate ? currentServingGate.products.length : null,
+        current_rejected_count: currentServingGate ? currentServingGate.rejected_count : null,
+      },
+      ...(isBeautyBrandBrowse
+        ? {
+            beauty_brand_browse: {
+              contract: 'brand_browse',
+              brand: beautyBrandBrowse.brand || null,
+              alias: beautyBrandBrowse.alias || null,
+              brand_only: beautyBrandBrowse.brand_only === true,
+              explicit_category: beautyBrandBrowse.explicit_category === true,
+            },
+          }
+        : {}),
       ...(telemetry.canonical_error ? { canonical_error: telemetry.canonical_error } : {}),
       ...(shouldApplyCanonicalProducts
         ? {
@@ -13856,6 +14243,14 @@ function attachCanonicalChainRecallTelemetry(body, canonicalResult) {
           Number(sourceBreakdown.canonical_chain_candidate_count || 0) || 0,
           canonicalProductCount,
         ),
+        ...(shouldApplyCanonicalProducts
+          ? {
+              external_seed_count: Math.max(
+                0,
+                finalProducts.length - finalCanonicalReturnedCount,
+              ),
+            }
+          : {}),
       },
       route_health: {
         ...routeHealth,
@@ -13865,6 +14260,11 @@ function attachCanonicalChainRecallTelemetry(body, canonicalResult) {
         canonical_dedupe_count: canonicalDedupeCount,
         canonical_returned_count: finalCanonicalReturnedCount,
         canonical_duration_ms: Math.max(0, Number(telemetry.canonical_duration_ms || 0) || 0),
+        search_card_quality_gate_applied: isBeautyBrandBrowse,
+        canonical_eligible_count: canonicalServingGate.products.length,
+        canonical_rejected_count: canonicalServingGate.rejected_count,
+        current_eligible_count: currentServingGate ? currentServingGate.products.length : null,
+        current_rejected_count: currentServingGate ? currentServingGate.rejected_count : null,
         ...(shouldApplyCanonicalProducts
           ? {
               fallback_triggered: false,
@@ -14111,6 +14511,7 @@ async function searchCreatorHumanApparelExternalSeedProductsDirect({
 function inferBeautyMainlineIntent(queryText = '') {
   const raw = String(queryText || '');
   const normalized = normalizeSearchTextForMatch(raw);
+  const beautyBrandBrowse = resolveBeautyBrandBrowseQuery(raw);
   const families = new Set();
   const safety = new Set();
 
@@ -14175,7 +14576,21 @@ function inferBeautyMainlineIntent(queryText = '') {
   return {
     raw,
     normalized,
-    beautyLike: hasBeautyMakeupSearchSignal(raw) || detectBeautyQueryBucket(raw) != null || families.size > 0,
+    beautyLike:
+      beautyBrandBrowse.matched ||
+      hasBeautyMakeupSearchSignal(raw) ||
+      detectBeautyQueryBucket(raw) != null ||
+      families.size > 0,
+    brandBrowse: beautyBrandBrowse.matched
+      ? {
+          contract: beautyBrandBrowse.contract,
+          brand_key: beautyBrandBrowse.brand_key,
+          brand: beautyBrandBrowse.brand,
+          alias: beautyBrandBrowse.alias,
+          brand_only: beautyBrandBrowse.brand_only,
+          explicit_category: beautyBrandBrowse.explicit_category,
+        }
+      : null,
     families: Array.from(families),
     safety: Array.from(safety),
   };
@@ -15687,9 +16102,105 @@ function buildBeautyMainlineRecommendationReason(product = {}, queryText = '', i
   return '';
 }
 
+const BEAUTY_BRAND_BROWSE_HAIR_BRAND_KEYS = new Set([
+  'moroccanoil',
+  'gisou',
+  'pattern_beauty',
+  'jvn',
+  'fable_and_mane',
+  'living_proof',
+  'r_and_co',
+  'dae',
+]);
+
+const BEAUTY_BRAND_BROWSE_FRAGRANCE_BRAND_KEYS = new Set([
+  'tom_ford',
+  'jo_malone',
+  'byredo',
+  'diptyque',
+  'le_labo',
+]);
+
+const BEAUTY_BRAND_BROWSE_SKINCARE_BRAND_KEYS = new Set([
+  'the_ordinary',
+  'cerave',
+  'la_roche_posay',
+  'kiehls',
+  'tatcha',
+  'drunk_elephant',
+  'la_mer',
+  'laneige',
+  'innisfree',
+  'glow_recipe',
+  'paulas_choice',
+  'youth_to_the_people',
+  'sunday_riley',
+  'ole_henriksen',
+  'dermalogica',
+  'naturium',
+  'biossance',
+  'first_aid_beauty',
+  'pixi_beauty',
+  'biologique_recherche',
+  'nuxe',
+  'jurlique',
+]);
+
+function scoreBeautyBrandBrowseCategoryPriority(product = {}, intent = null, candidateText = '') {
+  const brandBrowse = intent?.brandBrowse || null;
+  if (!brandBrowse || brandBrowse.contract !== 'brand_browse' || brandBrowse.brand_only === false) return 0;
+  const brandKey = String(brandBrowse.brand_key || '').trim().toLowerCase();
+  const text = normalizeSearchTextForMatch(
+    [
+      candidateText,
+      buildBeautyProductPrimarySurfaceText(product),
+      firstSearchProductCategoryPath(product),
+      product?.category,
+      product?.product_type,
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+  if (!text) return 0;
+
+  const isMakeup =
+    /\b(makeup|foundation|concealer|skin\s*tint|primer|powder|blush|bronzer|highlighter|lipstick|lip\s*gloss|lip\s*liner|mascara|eyeliner|eyeshadow|brow|eye\s*brightener)\b/.test(text) ||
+    /\bbeauty\/makeup\b/.test(text);
+  const isHair = /\b(hair|curl|shampoo|conditioner|scalp|frizz|heat\s*protectant|styling|leave[-\s]?in)\b/.test(text);
+  const isFragrance = /\b(fragrance|perfume|parfum|cologne|eau\s+de|body\s*mist)\b/.test(text);
+  const isSkincare = /\b(skincare|skin\s*care|cleanser|moisturi[sz]er|serum|sunscreen|spf|mask|toner|body\s*(?:cream|scrub|wash|lotion|oil|butter))\b/.test(text);
+  const isSet = /\b(set|bundle|kit|duo|trio|routine|regimen|gift|collector|case|minis?|mystery\s*box|box)\b/.test(text);
+  const isAccessory = /\b(accessory|tool|brush|case|mirror|pouch|bag|washcloth|delivery\s*protection|shipping\s*protection)\b/.test(text);
+  const isLimitedOrPromo = /\b(arcane|mystery\s*box|collector|limited\s*edition|delivery\s*protection|shipping\s*protection)\b/.test(text);
+
+  let score = 0;
+  if (BEAUTY_BRAND_BROWSE_HAIR_BRAND_KEYS.has(brandKey)) {
+    if (isHair) score += 34;
+    if (isMakeup || isFragrance) score -= 16;
+  } else if (BEAUTY_BRAND_BROWSE_FRAGRANCE_BRAND_KEYS.has(brandKey)) {
+    if (isFragrance) score += 34;
+    if (isHair || isSkincare) score -= 12;
+  } else if (BEAUTY_BRAND_BROWSE_SKINCARE_BRAND_KEYS.has(brandKey)) {
+    if (isSkincare) score += 34;
+    if (isMakeup || isFragrance || isHair) score -= 14;
+  } else {
+    if (isMakeup) score += 38;
+    if (isSkincare) score += 8;
+    if (isFragrance) score += 4;
+    if (isHair) score -= 18;
+  }
+  if (isSet) score -= 34;
+  if (isAccessory) score -= 30;
+  if (isLimitedOrPromo) score -= 44;
+  return score;
+}
+
 function scoreBeautyExternalSeedProduct({ product, queryText, intent, normalizedQuery, queryTokens }) {
   const candidateText = buildFallbackCandidateText(product);
   if (!candidateText) return { product, relevant: false, score: -100 };
+  if (!searchProductMatchesBeautyBrandBrowse(product, intent?.brandBrowse, candidateText)) {
+    return { product, relevant: false, score: -90 };
+  }
   if (isBeautyProductContraindicatedForQuery(product, queryText, intent)) {
     return { product, relevant: false, score: -100 };
   }
@@ -15746,7 +16257,13 @@ function scoreBeautyExternalSeedProduct({ product, queryText, intent, normalized
   const productBrand = normalizeSearchTextForMatch(
     firstNonEmptyString(product?.brand, product?.vendor, product?.merchant_name),
   );
-  if (productBrand && normalizedQuery && normalizedQuery.includes(productBrand)) score += 220;
+  if (
+    productBrand &&
+    normalizedQuery &&
+    (normalizedQuery.includes(productBrand) || productBrand.includes(normalizedQuery))
+  ) {
+    score += 220;
+  }
   if (categoryPathMatch) score += 140;
   else if (categoryLexicalMatch) score += 64;
   if (acneOilControlIntent) {
@@ -15762,6 +16279,28 @@ function scoreBeautyExternalSeedProduct({ product, queryText, intent, normalized
   if (String(product?.source || product?.search_recall_source || product?.catalog_source || '') === 'canonical_chain') {
     score += 24;
   }
+  const sourceProductId = String(
+    firstNonEmptyString(
+      product?.source_product_id,
+      product?.external_product_id,
+      product?.external_seed_product_id,
+      product?.platform_product_id,
+    ) || '',
+  );
+  const quality = getSearchProductServingEligibility(product, { requireBeauty: false });
+  const qualityReasons = new Set(Array.isArray(quality.reasons) ? quality.reasons : []);
+  if (qualityReasons.has('missing_image')) score -= 34;
+  else score += 18;
+  if (qualityReasons.has('non_positive_price')) score -= 44;
+  else if (qualityReasons.has('missing_price')) score -= 18;
+  else score += 16;
+  if (qualityReasons.has('generic_category')) score -= 18;
+  if (qualityReasons.has('unresolved_pdp_ref')) score -= 28;
+  if (qualityReasons.has('non_beauty_product')) score -= 22;
+  if (hasOfferProductTransactionHold(product)) score -= 80;
+  if (/^ext_[a-z0-9]+$/i.test(sourceProductId)) score += 12;
+  if (!/^ext_[a-z0-9]+$/i.test(sourceProductId) && qualityReasons.size > 0) score -= 18;
+  score += scoreBeautyBrandBrowseCategoryPriority(product, intent, candidateText);
   score += familyMatches.length * 24;
   const bucket = classifyBeautyBucketFromText(candidateText);
   if (bucket === 'skincare' && !explicitCategoryPathQuery) score += 12;
@@ -15911,6 +16450,9 @@ async function searchBeautyExternalSeedProductsMainline({
     canonical_product_count: canonicalProducts.length,
     canonical_category_path_prefix: canonicalCategoryPathPrefix,
     canonical_duration_ms: Math.max(0, Number(canonicalResult?.duration_ms || 0) || 0),
+    query_text: queryText,
+    requested_limit: safeLimit,
+    beauty_brand_browse: beautyIntent.brandBrowse || null,
     ...(canonicalResult?.error ? { canonical_error: canonicalResult.error } : {}),
   };
   const creatorScopedProducts = Array.isArray(creatorScopedRows?.rawProducts)
@@ -15974,7 +16516,7 @@ async function searchBeautyExternalSeedProductsMainline({
       if (right.score !== left.score) return right.score - left.score;
       return String(left.product?.title || '').localeCompare(String(right.product?.title || ''));
     });
-  const rankedProducts = polishBeautyProductRankingForDisplay(
+  const displayRankedProducts = polishBeautyProductRankingForDisplay(
     dedupeBeautyProductsByDisplayKey(
       scored.map((row) => {
         const creatorRank = creatorScoped
@@ -15992,6 +16534,19 @@ async function searchBeautyExternalSeedProductsMainline({
     queryText,
     safeLimit,
   );
+  const brandBrowseGateRequired = Boolean(beautyIntent.brandBrowse?.contract === 'brand_browse');
+  const servingEligibilityGate = brandBrowseGateRequired
+    ? filterSearchServingEligibleProducts(displayRankedProducts, {
+        queryText,
+        requireBeauty: true,
+      })
+    : {
+        products: displayRankedProducts,
+        rejected: [],
+        rejected_count: 0,
+        input_count: displayRankedProducts.length,
+      };
+  const rankedProducts = servingEligibilityGate.products;
   const balancedProducts = balanceBeautyMainlineFamilyCoverage(rankedProducts, beautyIntent, safeLimit);
   const pagedProducts = balancedProducts.slice(safeOffset, safeOffset + safeLimit);
   const pagedCanonicalCount = pagedProducts.filter((product) => (
@@ -16033,6 +16588,19 @@ async function searchBeautyExternalSeedProductsMainline({
         target_families: beautyIntent.families,
         safety_rules: beautyIntent.safety,
       },
+      search_card_quality_gate: {
+        applied: brandBrowseGateRequired,
+        mode: brandBrowseGateRequired ? 'beauty_brand_browse' : 'not_required',
+        input_count: servingEligibilityGate.input_count,
+        eligible_count: rankedProducts.length,
+        rejected_count: servingEligibilityGate.rejected_count,
+        rejected: servingEligibilityGate.rejected.slice(0, 8),
+      },
+      ...(beautyIntent.brandBrowse
+        ? {
+            beauty_brand_browse: beautyIntent.brandBrowse,
+          }
+        : {}),
       beauty_strict_quality_ranker: {
         applied: PIVOT_BEAUTY_STRICT_RECO_QUALITY_ENABLED,
         version: 'beauty_strict_quality_2026_04_30',
@@ -16085,6 +16653,12 @@ async function searchBeautyExternalSeedProductsMainline({
           broadened_tool_scope: Boolean(broadenedRows),
           destination_brand_market_bridge: selectedRows?.destinationBrandMarketBridge || null,
           canonical_chain: canonicalTelemetry,
+          search_card_quality_gate: {
+            applied: brandBrowseGateRequired,
+            input_count: servingEligibilityGate.input_count,
+            eligible_count: rankedProducts.length,
+            rejected_count: servingEligibilityGate.rejected_count,
+          },
         },
       },
       route_health: {
@@ -16094,6 +16668,8 @@ async function searchBeautyExternalSeedProductsMainline({
         canonical_path_executed: canonicalTelemetry.canonical_path_executed,
         canonical_raw_count: canonicalTelemetry.canonical_raw_count,
         canonical_dedupe_count: canonicalTelemetry.canonical_dedupe_count,
+        search_card_quality_gate_applied: brandBrowseGateRequired,
+        search_card_quality_gate_rejected_count: servingEligibilityGate.rejected_count,
         ...(queryUnderstanding
           ? {
               query_understanding_executed: true,
@@ -39827,6 +40403,12 @@ module.exports._debug = {
   normalizeSearchAvailabilityState,
   postProcessTravelLookupProductsResponse,
   resolveSearchDedupePerTitleLimit,
+  resolveBeautyBrandBrowseQuery,
+  inferBeautyMainlineIntent,
+  buildBeautyExternalSeedCategoryTerms,
+  attachCanonicalChainRecallTelemetry,
+  filterSearchServingEligibleProducts,
+  getSearchProductServingEligibility,
   buildCanonicalChainMainlineProduct,
   mergeCanonicalChainProductsWithSeedProducts,
   resolveCatalogSyncMerchantIds,

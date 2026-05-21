@@ -178,6 +178,39 @@ describe('externalSeedPdpQuality', () => {
     expect(livePdpGate.failure_reasons).not.toContain('polluted_product_details');
   });
 
+  test('does not flag fill weight as polluted product detail copy', () => {
+    const livePdpGate = buildLivePdpGate({
+      extractorProduct: {
+        description_raw: 'A soft matte bronzer for a warm-looking finish.',
+        variants: [{ price: '38.00' }],
+      },
+      livePayload: {
+        product: {
+          description: 'A soft matte bronzer for a warm-looking finish.',
+        },
+        modules: [
+          {
+            type: 'price_promo',
+            data: { price: { amount: 38, currency: 'USD' } },
+          },
+          {
+            type: 'product_details',
+            data: {
+              sections: [
+                {
+                  heading: 'Details',
+                  content: 'Soft matte powder bronzer. Fill weight: 6.23 g / 0.22 oz.',
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+
+    expect(livePdpGate.failure_reasons).not.toContain('polluted_product_details');
+  });
+
   test('uses exact seed price when auditing variant-scoped PDP live output', () => {
     const livePdpGate = buildLivePdpGate({
       expectedPrice: 56,

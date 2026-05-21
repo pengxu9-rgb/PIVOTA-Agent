@@ -240,7 +240,17 @@ function buildPublicGatewayPayload(operation, payload = {}) {
   return { operation, payload };
 }
 
-async function fetchRows({ market, seedId, externalProductId, domain, brand, limit, offset }) {
+async function fetchRows({
+  market,
+  seedId,
+  externalProductId,
+  domain,
+  brand,
+  limit,
+  offset,
+  includeAttached = false,
+  includeAllTools = false,
+}) {
   const focusedLookup = Boolean(seedId || externalProductId);
   const where = focusedLookup
     ? [
@@ -249,10 +259,10 @@ async function fetchRows({ market, seedId, externalProductId, domain, brand, lim
       ]
     : [
         `status = 'active'`,
-        `attached_product_key IS NULL`,
         `market = $1`,
-        `(tool = '*' OR tool = 'creator_agents')`,
       ];
+  if (!focusedLookup && !includeAttached) where.splice(1, 0, `attached_product_key IS NULL`);
+  if (!focusedLookup && !includeAllTools) where.push(`(tool = '*' OR tool = 'creator_agents')`);
   const params = [market];
   const bind = (value) => {
     params.push(value);
@@ -303,8 +313,8 @@ async function fetchRows({ market, seedId, externalProductId, domain, brand, lim
   const expectedDomain = normalizeNonEmptyString(domain);
   const expectedBrand = normalizeNonEmptyString(brand).toLowerCase();
   return rows.filter((row) => {
-    if (row.attached_product_key != null) return false;
-    if (!['*', 'creator_agents'].includes(normalizeNonEmptyString(row.tool))) return false;
+    if (!includeAttached && row.attached_product_key != null) return false;
+    if (!includeAllTools && !['*', 'creator_agents'].includes(normalizeNonEmptyString(row.tool))) return false;
     if (expectedDomain && normalizeNonEmptyString(row.domain) !== expectedDomain) return false;
     if (expectedBrand) {
       const seedData = ensureJsonObject(row.seed_data);
@@ -874,6 +884,8 @@ async function main() {
     brand: argValue('brand'),
     limit,
     offset,
+    includeAttached: hasArg('include-attached') || hasArg('includeAttached'),
+    includeAllTools: hasArg('include-all-tools') || hasArg('includeAllTools'),
   });
 
   const results = [];
