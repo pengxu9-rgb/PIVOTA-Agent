@@ -1,8 +1,10 @@
 const {
   detectBrandEntities,
+  resolveBeautyBrandBrowseQuery,
 } = require('./brandLexicon');
 
 const QUERY_UNDERSTANDING_VERSION = 'query_understanding_v1';
+const SEARCH_QUALITY_CONTRACT_VERSION = 'search_quality_contract_v1';
 
 const CATEGORY_TYPO_CORRECTIONS = Object.freeze([
   {
@@ -42,6 +44,16 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
     pattern: /\bmascara\b|睫毛膏/i,
   },
   {
+    category: 'blush',
+    categoryPathPrefix: 'beauty/makeup/cheek/',
+    pattern: /\b(blush|blusher|rouge\s+blush|cheek\s+color|cheek\s+colour|cheek\s+tint|liquid\s+blush|cream\s+blush)\b|腮红|腮紅/i,
+  },
+  {
+    category: 'foundation',
+    categoryPathPrefix: 'beauty/makeup/face/',
+    pattern: /\b(foundation|skin\s*tint|tinted\s+moisturi[sz]er|concealer|base\s+makeup)\b|粉底|遮瑕|底妆|底妝/i,
+  },
+  {
     category: 'sunscreen',
     categoryPathPrefix: 'beauty/skincare/sun/',
     pattern: /\b(sunscreen|sun\s*screen|sunblock|spf\b|broad spectrum|uv|uva|uvb|pa\+{1,4})\b|防晒|防曬|日焼け止め/i,
@@ -73,6 +85,8 @@ const GENERIC_CATEGORY_BY_PREFIX = Object.freeze({
   'beauty/fragrance/': 'fragrance',
   'beauty/makeup/lip/': 'lipstick',
   'beauty/makeup/eye/': 'mascara',
+  'beauty/makeup/cheek/': 'blush',
+  'beauty/makeup/face/': 'foundation',
   'beauty/skincare/sun/': 'sunscreen',
   'beauty/skincare/cleanse/': 'cleanser',
   'beauty/skincare/moisturize/': 'moisturizer',
@@ -161,6 +175,233 @@ function isStrictLipstickQuery(text) {
   if (!raw) return false;
   if (!/\b(lipsticks?|lip\s*sticks?)\b/i.test(raw) && !/口红|口紅/.test(raw)) return false;
   return !/\b(lip\s*gloss(?:es)?|lip\s*oils?|lip\s*balms?|lip\s*treatments?|lip\s*masks?)\b/i.test(raw);
+}
+
+function extractConstraintSignals(text) {
+  const raw = String(text || '');
+  const normalized = normalizeQueryTextForUnderstanding(raw);
+  const constraints = [];
+  const push = (value) => {
+    if (!value || constraints.includes(value)) return;
+    constraints.push(value);
+  };
+
+  if (hasFragranceFreeSkincareSignal(raw)) push('fragrance_free');
+  if (/\b(unscented|no\s+fragrance|without\s+fragrance|sans\s+parfum)\b/i.test(raw)) push('fragrance_free');
+  if (
+    /\b(pregnan\w*|pregnancy|ttc|trying\s+to\s+conceive|retinol[-\s]?free|retinoid[-\s]?free)\b/i.test(raw) ||
+    /怀孕|懷孕|备孕|備孕|孕期|不要视黄醇|不含视黄醇|避开视黄醇/.test(raw)
+  ) {
+    push('pregnancy_safe');
+    if (/\b(retinol[-\s]?free|retinoid[-\s]?free|avoid\s+retinoid|no\s+retinol)\b/i.test(raw)) {
+      push('avoid_retinoids');
+    }
+  }
+  if (/\b(sensitive|sensiti[sz]ed|gentle|rosacea|redness|non[-\s]?irritating)\b/.test(normalized) || /敏感|泛红|泛紅|玫瑰痤疮|酒糟|温和|溫和/.test(raw)) {
+    push('sensitive_or_redness');
+  }
+  if (/\b(non[-\s]?comedogenic|won'?t\s+clog\s+pores|oil[-\s]?free)\b/i.test(raw)) push('non_comedogenic_or_oil_free');
+  return constraints;
+}
+
+function extractIngredientSignals(text) {
+  const normalized = normalizeQueryTextForUnderstanding(text);
+  const ingredients = [];
+  const push = (value) => {
+    if (!value || ingredients.includes(value)) return;
+    ingredients.push(value);
+  };
+  const rules = [
+    ['niacinamide', /\bniacinamide\b|烟酰胺|煙酰胺/],
+    ['retinoid', /\b(retinol|retinal|retinoid|adapalene)\b|视黄醇|視黃醇/],
+    ['vitamin_c', /\b(vitamin\s*c|ascorbic)\b|维生素c|維生素c/],
+    ['ceramide', /\bceramides?\b|神经酰胺|神經醯胺/],
+    ['hyaluronic_acid', /\bhyaluronic\b|透明质酸|透明質酸/],
+    ['azelaic_acid', /\bazelaic\b|壬二酸/],
+    ['salicylic_acid', /\b(salicylic|bha)\b|水杨酸|水楊酸/],
+    ['benzoyl_peroxide', /\bbenzoyl\s+peroxide\b|过氧化苯甲酰|過氧化苯甲酰/],
+    ['peptide', /\bpeptides?\b|胜肽|胜肽/],
+    ['zinc', /\bzinc\b|锌|鋅/],
+  ];
+  for (const [name, pattern] of rules) {
+    if (pattern.test(normalized)) push(name);
+  }
+  return ingredients;
+}
+
+function extractFormatSignals(text) {
+  const normalized = normalizeQueryTextForUnderstanding(text);
+  const formats = [];
+  const push = (value) => {
+    if (!value || formats.includes(value)) return;
+    formats.push(value);
+  };
+  if (/\b(waterproof|water\s+resistant)\b/.test(normalized)) push('waterproof');
+  if (/\b(mini|travel|travel\s+size|portable)\b/.test(normalized)) push('travel_size');
+  if (/\b(stick|balm|cream|gel|lotion|spray|mist|powder|liquid)\b/.test(normalized)) {
+    const match = normalized.match(/\b(stick|balm|cream|gel|lotion|spray|mist|powder|liquid)\b/);
+    if (match) push(match[1]);
+  }
+  return formats;
+}
+
+function extractLocalDestinationSignals(text) {
+  const normalized = normalizeQueryTextForUnderstanding(text);
+  const signals = [];
+  const push = (value) => {
+    if (!value || signals.includes(value)) return;
+    signals.push(value);
+  };
+  if (/\b(k[-\s]?beauty|korean|korea|seoul)\b/.test(normalized) || /韩国|韓國|首尔|首爾/.test(String(text || ''))) {
+    push('k_beauty');
+  }
+  if (/\b(j[-\s]?beauty|japanese|japan|tokyo)\b/.test(normalized) || /日本|东京|東京/.test(String(text || ''))) {
+    push('j_beauty');
+  }
+  return signals;
+}
+
+function hasBeautySearchSignal(text) {
+  const raw = String(text || '');
+  const normalized = normalizeQueryTextForUnderstanding(raw);
+  return Boolean(
+    resolveBeautyCategoryPathPrefixFromText(raw) ||
+      extractBeautyConcernSignals(raw).has_concern_signal ||
+      extractConstraintSignals(raw).length ||
+      /\b(makeup|cosmetics?|beauty|skincare|skin\s+care|haircare|hair\s+care|fragrance|perfume|pdp|spf|serum|cleanser|moisturi[sz]er|lipstick|mascara|blush|foundation|concealer)\b/.test(normalized) ||
+      /护肤|護膚|彩妆|彩妝|美妆|美妝|香水|粉底|口红|口紅|睫毛膏|腮红|腮紅/.test(raw)
+  );
+}
+
+function stripBrandTokensFromNormalizedQuery(normalizedQuery, brandBrowse) {
+  const normalized = normalizeQueryTextForUnderstanding(normalizedQuery);
+  if (!normalized || !brandBrowse?.matched) return normalized;
+  const partsToRemove = [
+    brandBrowse.brand,
+    brandBrowse.alias,
+    String(brandBrowse.brand || '').replace(/\bbeauty\b/g, '').trim(),
+  ]
+    .map((value) => normalizeQueryTextForUnderstanding(value))
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length);
+  let out = ` ${normalized} `;
+  for (const part of partsToRemove) {
+    out = out.replace(new RegExp(`\\s${part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s`, 'g'), ' ');
+  }
+  return out.replace(/\b(beauty|cosmetics?|products?|shop|buy|show|find|recommend|recommendations|best)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function inferExactProductAnchor({ correctedQuery, categoryPathPrefix, brandBrowse }) {
+  const remainder = stripBrandTokensFromNormalizedQuery(correctedQuery, brandBrowse);
+  if (!remainder) return null;
+  if (categoryPathPrefix) return null;
+  const tokens = remainder.split(/\s+/).filter((token) => token.length >= 3);
+  if (tokens.length >= 4) return remainder;
+  if (/\b(no\.?\s*\d+|spf\s*\d+|[a-z]+\s+\d{2,})\b/i.test(String(correctedQuery || ''))) return remainder;
+  return null;
+}
+
+function buildSearchQualityContract({
+  rawQuery,
+  conversationMessages = [],
+  sessionRecentQueries = [],
+  market = null,
+  source = null,
+  allowContextBinding = true,
+} = {}) {
+  const understanding = understandShoppingQuery({
+    rawQuery,
+    conversationMessages,
+    sessionRecentQueries,
+    market,
+    source,
+    allowContextBinding,
+  });
+  const effectiveQuery = understanding.effective_query || understanding.corrected_query || understanding.raw_query || '';
+  const normalized = normalizeQueryTextForUnderstanding(effectiveQuery);
+  const categoryPathPrefix = understanding.category_path_prefix || resolveBeautyCategoryPathPrefixFromText(effectiveQuery) || null;
+  const beautyBrandBrowse = resolveBeautyBrandBrowseQuery(effectiveQuery);
+  const brandCandidates = Array.isArray(understanding.brand_candidates) ? understanding.brand_candidates : [];
+  const brand = beautyBrandBrowse.matched
+    ? {
+        brand_key: beautyBrandBrowse.brand_key || null,
+        canonical: beautyBrandBrowse.brand || null,
+        alias: beautyBrandBrowse.alias || null,
+      }
+    : null;
+  const concernSignals = understanding.beauty_context?.effective_concerns || extractBeautyConcernSignals(effectiveQuery);
+  const profileSignals = understanding.beauty_context?.effective_profile || extractBeautyProfileSignals(effectiveQuery);
+  const constraints = extractConstraintSignals(effectiveQuery);
+  const ingredientTokens = extractIngredientSignals(effectiveQuery);
+  const formatSignals = extractFormatSignals(effectiveQuery);
+  const localDestinationSignals = extractLocalDestinationSignals(effectiveQuery);
+  const exactProductAnchor = inferExactProductAnchor({
+    correctedQuery: effectiveQuery,
+    categoryPathPrefix,
+    brandBrowse: beautyBrandBrowse,
+  });
+  const hasKnownBeautyBrand = Boolean(beautyBrandBrowse.matched);
+  const hasStaticNonBeautyBrand = Boolean(brandCandidates.length && !hasKnownBeautyBrand);
+  const targetDomain =
+    hasKnownBeautyBrand || categoryPathPrefix || concernSignals?.has_concern_signal || constraints.length || hasBeautySearchSignal(effectiveQuery)
+      ? 'beauty'
+      : 'other';
+
+  let queryClass = 'ambiguous_or_non_shopping';
+  if (targetDomain === 'beauty') {
+    if (exactProductAnchor) {
+      queryClass = 'exact_product';
+    } else if (hasKnownBeautyBrand && categoryPathPrefix) {
+      queryClass = 'brand_category';
+    } else if (hasKnownBeautyBrand && constraints.length) {
+      queryClass = 'constraint_search';
+    } else if (hasKnownBeautyBrand && !categoryPathPrefix && beautyBrandBrowse.brand_only) {
+      queryClass = 'brand_browse';
+    } else if (constraints.length) {
+      queryClass = 'constraint_search';
+    } else if (concernSignals?.has_concern_signal) {
+      queryClass = 'need_solution';
+    } else if (categoryPathPrefix) {
+      queryClass = 'category_browse';
+    } else if (hasKnownBeautyBrand) {
+      queryClass = 'brand_browse';
+    }
+  } else if (hasStaticNonBeautyBrand && !hasBeautySearchSignal(effectiveQuery)) {
+    queryClass = 'ambiguous_or_non_shopping';
+  }
+
+  const exclusions = [];
+  if (understanding.hard_negatives?.fragrance_free_skincare) exclusions.push('fragrance_product');
+  if (understanding.hard_negatives?.strict_lipstick) exclusions.push('lip_gloss_oil_balm_mask');
+  if (constraints.includes('pregnancy_safe') || constraints.includes('avoid_retinoids')) exclusions.push('retinoid_forward');
+
+  return {
+    contract_version: SEARCH_QUALITY_CONTRACT_VERSION,
+    target_domain: targetDomain,
+    query_class: queryClass,
+    effective_query: effectiveQuery,
+    clarification_allowed: queryClass === 'ambiguous_or_non_shopping',
+    hard_constraints: {
+      brand,
+      category_path_prefix: categoryPathPrefix,
+      market: market ? String(market).trim().toUpperCase() : null,
+      exclusions,
+      exact_product_anchor: exactProductAnchor,
+      strict_lipstick: Boolean(understanding.hard_negatives?.strict_lipstick),
+      fragrance_free_skincare: Boolean(understanding.hard_negatives?.fragrance_free_skincare),
+    },
+    soft_preferences: {
+      concerns: Array.isArray(concernSignals?.concerns) ? concernSignals.concerns : [],
+      primary_concern: concernSignals?.primary_concern || null,
+      ingredient_tokens: ingredientTokens,
+      skin_type: profileSignals?.skin_type || null,
+      format: formatSignals,
+      local_destination: localDestinationSignals,
+    },
+    query_understanding: understanding,
+  };
 }
 
 function isGenericCategoryOnlyQuery(text, categoryPathPrefix) {
@@ -513,7 +754,9 @@ function understandShoppingQuery({
 
 module.exports = {
   QUERY_UNDERSTANDING_VERSION,
+  SEARCH_QUALITY_CONTRACT_VERSION,
   understandShoppingQuery,
+  buildSearchQualityContract,
   normalizeQueryTextForUnderstanding,
   resolveBeautyCategoryPathPrefixFromText,
   hasFragranceFreeSkincareSignal,

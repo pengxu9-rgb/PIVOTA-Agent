@@ -21,6 +21,8 @@ const {
 } = require('./beautyQueryProfile');
 const {
   understandShoppingQuery,
+  buildSearchQualityContract,
+  SEARCH_QUALITY_CONTRACT_VERSION,
   hasFragranceFreeSkincareSignal,
   hasFragranceProductQuerySignal,
 } = require('./queryUnderstanding');
@@ -4439,6 +4441,13 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     market: search?.market || payload?.market || metadata?.market,
     source: metadata?.source || search?.source || payload?.source,
   });
+  const searchQualityContract = buildSearchQualityContract({
+    rawQuery: rawLatestUserQuery,
+    conversationMessages: recentMessages,
+    sessionRecentQueries,
+    market: search?.market || payload?.market || metadata?.market,
+    source: metadata?.source || search?.source || payload?.source,
+  });
   const latestUserQuery = queryUnderstanding?.effective_query || rawLatestUserQuery;
   const recentQueries =
     queryUnderstanding?.context_scope === 'session_explicit'
@@ -5117,6 +5126,7 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
       ...(effectiveExpandedQuery ? { query: effectiveExpandedQuery } : {}),
       ...(beautyContextRetrievalQuery ? { query: beautyContextRetrievalQuery } : {}),
       ...(queryUnderstanding ? { query_understanding: queryUnderstanding } : {}),
+      ...(searchQualityContract ? { search_quality_contract: searchQualityContract } : {}),
       ...(effectiveCatalogSurface ? { catalog_surface: effectiveCatalogSurface } : {}),
       ...(effectiveCommerceSurface ? { commerce_surface: effectiveCommerceSurface } : {}),
       ...(effectiveTargetStepFamily ? { target_step_family: effectiveTargetStepFamily } : {}),
@@ -5151,6 +5161,13 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     query_understanding_executed: Boolean(queryUnderstanding?.query_understanding_executed),
     query_understanding: queryUnderstanding || null,
     query_understanding_decision: queryUnderstanding?.decision || null,
+    search_quality_contract: searchQualityContract || null,
+    search_quality_contract_applied: Boolean(
+      searchQualityContract &&
+        searchQualityContract.contract_version === SEARCH_QUALITY_CONTRACT_VERSION &&
+        searchQualityContract.target_domain === 'beauty' &&
+        searchQualityContract.query_class !== 'ambiguous_or_non_shopping'
+    ),
     corrected_query:
       queryUnderstanding && String(queryUnderstanding.corrected_query || '') !== String(rawLatestUserQuery || '')
         ? queryUnderstanding.corrected_query
@@ -6129,6 +6146,32 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
         query_understanding_decision: policyQueryUnderstanding.decision || null,
       }
     : {};
+  const policySearchQualityContract =
+    metadata?.search_quality_contract && typeof metadata.search_quality_contract === 'object'
+      ? metadata.search_quality_contract
+      : requestPayload?.search?.search_quality_contract && typeof requestPayload.search.search_quality_contract === 'object'
+        ? requestPayload.search.search_quality_contract
+        : null;
+  const policySearchQualityContractApplied = Boolean(
+    policySearchQualityContract &&
+      policySearchQualityContract.contract_version === SEARCH_QUALITY_CONTRACT_VERSION &&
+      policySearchQualityContract.target_domain === 'beauty' &&
+      policySearchQualityContract.query_class !== 'ambiguous_or_non_shopping'
+  );
+  const policySearchQualityMetadata = policySearchQualityContract
+    ? {
+        search_quality_contract: {
+          contract_version: policySearchQualityContract.contract_version || SEARCH_QUALITY_CONTRACT_VERSION,
+          target_domain: policySearchQualityContract.target_domain || null,
+          query_class: policySearchQualityContract.query_class || null,
+          effective_query: policySearchQualityContract.effective_query || null,
+          clarification_allowed: Boolean(policySearchQualityContract.clarification_allowed),
+          hard_constraints: policySearchQualityContract.hard_constraints || {},
+          soft_preferences: policySearchQualityContract.soft_preferences || {},
+        },
+        search_quality_contract_applied: policySearchQualityContractApplied,
+      }
+    : {};
 
   const responsePayload = {
     ...augmented,
@@ -6140,6 +6183,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
             strategy_version: STRATEGY_VERSION,
             brand_query_bypass_ambiguity: Boolean(brandQueryBypassAmbiguity),
             ...policyQueryUnderstandingMetadata,
+            ...policySearchQualityMetadata,
             search_decision: {
               query_class: queryClass,
               query_semantic_class: querySemanticClass,
@@ -6181,6 +6225,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
             strategy_version: STRATEGY_VERSION,
             brand_query_bypass_ambiguity: Boolean(brandQueryBypassAmbiguity),
             ...policyQueryUnderstandingMetadata,
+            ...policySearchQualityMetadata,
             search_decision: {
               query_class: queryClass,
               query_semantic_class: querySemanticClass,

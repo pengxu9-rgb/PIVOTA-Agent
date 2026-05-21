@@ -196,6 +196,10 @@ const {
   normalizeBrandText,
   resolveBeautyBrandBrowseQuery,
 } = require('./findProductsMulti/brandLexicon');
+const {
+  buildSearchQualityContract,
+  SEARCH_QUALITY_CONTRACT_VERSION,
+} = require('./findProductsMulti/queryUnderstanding');
 const { buildClarification } = require('./findProductsMulti/clarification');
 const { mountAgentCenterLlmProbe } = require('./internal/agentCenterLlmProbe');
 const {
@@ -446,6 +450,18 @@ const PIVOT_BEAUTY_LEGACY_TOOL_SCOPE_RECALL_ENABLED = parseBooleanEnv(
 );
 const PIVOT_BEAUTY_STRICT_RECO_QUALITY_ENABLED = parseBooleanEnv(
   process.env.PIVOT_BEAUTY_STRICT_RECO_QUALITY_ENABLED,
+  true,
+);
+const SEARCH_QUALITY_CONTRACT_V1_ENABLED = parseBooleanEnv(
+  process.env.SEARCH_QUALITY_CONTRACT_V1_ENABLED,
+  true,
+);
+const SEARCH_QUALITY_CONTRACT_V1_MODE = (() => {
+  const mode = String(process.env.SEARCH_QUALITY_CONTRACT_V1_MODE || 'enforce').trim().toLowerCase();
+  return mode === 'shadow' ? 'shadow' : 'enforce';
+})();
+const SEARCH_SERVING_QUALITY_HOLD_ENABLED = parseBooleanEnv(
+  process.env.SEARCH_SERVING_QUALITY_HOLD_ENABLED,
   true,
 );
 const PIVOT_CREATOR_RANKING_OVERLAY_ENABLED = parseBooleanEnv(
@@ -13999,6 +14015,9 @@ function getSearchProductServingEligibility(product = {}, options = {}) {
   if (!beautyCategory && SEARCH_CARD_GENERIC_CATEGORY_LABELS.has(category)) {
     reasons.push('generic_category');
   }
+  if (hasOfferProductTransactionHold(product)) {
+    reasons.push('source_unavailable_or_non_merchandise');
+  }
 
   const amount = getSearchProductPriceAmount(product);
   if (amount == null) {
@@ -14059,6 +14078,212 @@ function filterSearchServingEligibleProducts(products = [], options = {}) {
     rejected_count: rejected.length,
     input_count: Array.isArray(products) ? products.length : 0,
   };
+}
+
+function isBeautySearchQualityContractApplied(contract = null) {
+  return Boolean(
+    SEARCH_QUALITY_CONTRACT_V1_ENABLED &&
+      contract &&
+      contract.contract_version === SEARCH_QUALITY_CONTRACT_VERSION &&
+      contract.target_domain === 'beauty' &&
+      contract.query_class !== 'ambiguous_or_non_shopping'
+  );
+}
+
+function projectSearchQualityContractForMetadata(contract = null) {
+  if (!contract || typeof contract !== 'object') return null;
+  return {
+    contract_version: contract.contract_version || SEARCH_QUALITY_CONTRACT_VERSION,
+    target_domain: contract.target_domain || null,
+    query_class: contract.query_class || null,
+    effective_query: contract.effective_query || null,
+    clarification_allowed: Boolean(contract.clarification_allowed),
+    hard_constraints: contract.hard_constraints || {},
+    soft_preferences: contract.soft_preferences || {},
+  };
+}
+
+function normalizeSearchQualityBrandNeedle(value) {
+  return normalizeSearchTextForMatch(value).replace(/\bbeauty\b/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function productMatchesSearchQualityBrand(product = {}, brand = null, candidateText = '') {
+  const canonical = normalizeSearchQualityBrandNeedle(brand?.canonical || brand?.brand || '');
+  const alias = normalizeSearchQualityBrandNeedle(brand?.alias || '');
+  if (!canonical && !alias) return true;
+  const productBrand = normalizeSearchQualityBrandNeedle(
+    firstNonEmptyString(product?.brand, product?.vendor, product?.merchant_name),
+  );
+  const text = normalizeSearchTextForMatch(candidateText || buildFallbackCandidateText(product));
+  const compactText = text.replace(/\s+/g, '');
+  const matches = (needle) => {
+    if (!needle) return false;
+    if (productBrand) return productBrand.includes(needle) || needle.includes(productBrand);
+    const compactNeedle = needle.replace(/\s+/g, '');
+    return Boolean(
+      text.includes(needle) ||
+        (compactNeedle && compactText.includes(compactNeedle))
+    );
+  };
+  return matches(canonical) || matches(alias);
+}
+
+function productLooksLikeFragranceMerchandise(product = {}) {
+  const categoryPath = firstSearchProductCategoryPath(product).toLowerCase();
+  if (categoryPath.startsWith('beauty/fragrance')) return true;
+  const text = buildBeautyProductPrimarySurfaceText(product);
+  if (!text) return false;
+  if (/\b(fragrance[-\s]?free|unscented|no\s+fragrance|without\s+fragrance)\b/i.test(text)) return false;
+  return /\b(perfume|parfum|eau\s+de|cologne|body\s*mist|fragrance)\b/i.test(text);
+}
+
+function getSearchQualityContractHardConstraintResult(product = {}, contract = null, queryText = '') {
+  if (!isBeautySearchQualityContractApplied(contract)) return { eligible: true, reasons: [] };
+  const reasons = [];
+  const hard = contract.hard_constraints || {};
+  const candidateText = buildFallbackCandidateText(product);
+  const queryClass = String(contract.query_class || '').trim().toLowerCase();
+
+  if (hasOfferProductTransactionHold(product)) reasons.push('source_unavailable_or_non_merchandise');
+
+  if (
+    ['brand_browse', 'brand_category', 'exact_product'].includes(queryClass) &&
+    hard.brand &&
+    !productMatchesSearchQualityBrand(product, hard.brand, candidateText)
+  ) {
+    reasons.push('brand_mismatch');
+  }
+
+  const categoryPathPrefix = String(hard.category_path_prefix || '').trim();
+  if (
+    categoryPathPrefix &&
+    ['brand_category', 'category_browse', 'need_solution', 'constraint_search', 'exact_product'].includes(queryClass) &&
+    !beautyProductMatchesCategoryPathPrefix(product, categoryPathPrefix) &&
+    !beautyProductMatchesCategoryPathQuery(product, queryText || contract.effective_query, categoryPathPrefix)
+  ) {
+    reasons.push('category_mismatch');
+  }
+
+  if (hard.strict_lipstick === true && !beautyProductMatchesStrictLipstickIntent(product)) {
+    reasons.push('strict_lipstick_mismatch');
+  }
+
+  if (hard.fragrance_free_skincare === true && productLooksLikeFragranceMerchandise(product)) {
+    reasons.push('fragrance_product_for_fragrance_free_query');
+  }
+
+  return {
+    eligible: reasons.length === 0,
+    reasons,
+  };
+}
+
+function scoreBeautySearchQualityContract({ product, contract = null, queryText = '', baseScore = 0 } = {}) {
+  if (!isBeautySearchQualityContractApplied(contract)) return 0;
+  const hard = contract.hard_constraints || {};
+  const soft = contract.soft_preferences || {};
+  const candidateText = buildFallbackCandidateText(product);
+  const primaryText = buildBeautyProductPrimarySurfaceText(product);
+  let score = 0;
+
+  if (String(product?.source || product?.search_recall_source || product?.catalog_source || '') === 'canonical_chain') {
+    score += 42;
+  }
+  if (productMatchesSearchQualityBrand(product, hard.brand, candidateText)) score += hard.brand ? 34 : 0;
+  if (hard.category_path_prefix && beautyProductMatchesCategoryPathPrefix(product, hard.category_path_prefix)) {
+    score += 72;
+  } else if (hard.category_path_prefix && beautyProductMatchesCategoryPathQuery(product, queryText, hard.category_path_prefix)) {
+    score += 34;
+  }
+
+  const ingredients = Array.isArray(soft.ingredient_tokens) ? soft.ingredient_tokens : [];
+  for (const token of ingredients) {
+    const pattern = String(token || '').replace(/_/g, '[\\s-]?');
+    if (pattern && new RegExp(`\\b${pattern}\\b`, 'i').test(candidateText)) score += 16;
+  }
+
+  const concerns = Array.isArray(soft.concerns) ? soft.concerns : [];
+  if (concerns.includes('acne') && beautyProductHasAcneOilControlEvidence(product, candidateText)) score += 28;
+  if (concerns.includes('oil_control') && /\b(oil[-\s]?control|sebum|shine[-\s]?control|non[-\s]?comedogenic|niacinamide|zinc)\b/i.test(candidateText)) score += 18;
+  if (concerns.includes('clogged_pores') && /\b(pore|comedogenic|salicylic|bha|azelaic|clarifying)\b/i.test(candidateText)) score += 18;
+
+  const formats = Array.isArray(soft.format) ? soft.format : [];
+  if (formats.includes('waterproof') && /\b(waterproof|water\s+resistant)\b/i.test(candidateText)) score += 14;
+  if (formats.includes('travel_size') && /\b(mini|travel|travel\s+size|portable)\b/i.test(candidateText)) score += 10;
+
+  const quality = getSearchProductServingEligibility(product, { requireBeauty: true });
+  const qualityReasons = new Set(Array.isArray(quality.reasons) ? quality.reasons : []);
+  if (quality.eligible) score += 28;
+  if (qualityReasons.has('missing_image')) score -= 70;
+  if (qualityReasons.has('non_positive_price')) score -= 70;
+  if (qualityReasons.has('unresolved_pdp_ref')) score -= 60;
+  if (qualityReasons.has('generic_category')) score -= 36;
+  if (qualityReasons.has('source_unavailable_or_non_merchandise')) score -= 120;
+
+  if (/\b(set|bundle|kit|duo|trio|routine|regimen|gift|collector|case|minis?|mystery\s*box)\b/i.test(primaryText)) {
+    score -= 22;
+  }
+  if (/\b(accessory|tool|brush|case|mirror|pouch|bag|delivery\s*protection|shipping\s*protection)\b/i.test(primaryText)) {
+    score -= 42;
+  }
+  if (Number(baseScore) < -50) score -= 10;
+  return score;
+}
+
+function buildSearchQualityTierCounts(products = [], contract = null, queryText = '') {
+  const counts = {
+    input_count: Array.isArray(products) ? products.length : 0,
+    canonical_chain_count: 0,
+    external_seed_count: 0,
+    hard_constraint_pass_count: 0,
+    hard_constraint_reject_count: 0,
+    serving_eligible_count: 0,
+    missing_image_count: 0,
+    invalid_price_count: 0,
+    missing_or_unresolved_pdp_count: 0,
+    polluted_or_unavailable_count: 0,
+  };
+  for (const product of Array.isArray(products) ? products : []) {
+    const source = String(product?.source || product?.search_recall_source || product?.catalog_source || '').trim();
+    if (source === 'canonical_chain') counts.canonical_chain_count += 1;
+    else counts.external_seed_count += 1;
+
+    const hardGate = getSearchQualityContractHardConstraintResult(product, contract, queryText);
+    if (hardGate.eligible) counts.hard_constraint_pass_count += 1;
+    else counts.hard_constraint_reject_count += 1;
+
+    const serving = getSearchProductServingEligibility(product, { requireBeauty: true });
+    const reasons = new Set(Array.isArray(serving.reasons) ? serving.reasons : []);
+    if (serving.eligible) counts.serving_eligible_count += 1;
+    if (reasons.has('missing_image')) counts.missing_image_count += 1;
+    if (reasons.has('non_positive_price')) counts.invalid_price_count += 1;
+    if (reasons.has('missing_price')) counts.invalid_price_count += 1;
+    if (reasons.has('unresolved_pdp_ref')) counts.missing_or_unresolved_pdp_count += 1;
+    if (
+      reasons.has('generic_category') ||
+      reasons.has('source_unavailable_or_non_merchandise') ||
+      hardGate.reasons.includes('source_unavailable_or_non_merchandise')
+    ) {
+      counts.polluted_or_unavailable_count += 1;
+    }
+  }
+  return counts;
+}
+
+function summarizeSearchQualityFailureReasons({ scoredRejected = [], servingRejected = [] } = {}) {
+  const counts = {};
+  const add = (reason) => {
+    const key = String(reason || '').trim();
+    if (!key) return;
+    counts[key] = (counts[key] || 0) + 1;
+  };
+  for (const row of Array.isArray(scoredRejected) ? scoredRejected : []) {
+    for (const reason of Array.isArray(row?.reasons) ? row.reasons : []) add(reason);
+  }
+  for (const row of Array.isArray(servingRejected) ? servingRejected : []) {
+    for (const reason of Array.isArray(row?.reasons) ? row.reasons : []) add(reason);
+  }
+  return counts;
 }
 
 function resolveCanonicalCategoryPathPrefixForQuery(queryText) {
@@ -16431,9 +16656,26 @@ function scoreBeautyBrandBrowseCategoryPriority(product = {}, intent = null, can
   return score;
 }
 
-function scoreBeautyExternalSeedProduct({ product, queryText, intent, normalizedQuery, queryTokens }) {
+function scoreBeautyExternalSeedProduct({
+  product,
+  queryText,
+  intent,
+  normalizedQuery,
+  queryTokens,
+  searchQualityContract = null,
+}) {
   const candidateText = buildFallbackCandidateText(product);
   if (!candidateText) return { product, relevant: false, score: -100 };
+  const contractGate = getSearchQualityContractHardConstraintResult(product, searchQualityContract, queryText);
+  if (!contractGate.eligible) {
+    return {
+      product,
+      relevant: false,
+      score: -100,
+      rejection_reasons: contractGate.reasons,
+      search_quality_rejected: true,
+    };
+  }
   if (!searchProductMatchesBeautyBrandBrowse(product, intent?.brandBrowse, candidateText)) {
     return { product, relevant: false, score: -90 };
   }
@@ -16596,6 +16838,12 @@ function scoreBeautyExternalSeedProduct({ product, queryText, intent, normalized
     (token) => token.length >= 3 && candidateText.includes(token),
   ).length;
   score += Math.min(18, overlap * 3);
+  score += scoreBeautySearchQualityContract({
+    product,
+    contract: searchQualityContract,
+    queryText,
+    baseScore: score,
+  });
   return { product, relevant: true, score };
 }
 
@@ -16607,15 +16855,38 @@ async function searchBeautyExternalSeedProductsMainline({
 } = {}) {
   if (!PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED) return null;
   if (!process.env.DATABASE_URL) return null;
-  const queryText = extractSearchQueryText(search);
-  const beautyIntent = inferBeautyMainlineIntent(queryText);
-  if (!beautyIntent.beautyLike || !String(queryText || '').trim()) return null;
   const queryUnderstanding =
     search?.query_understanding && typeof search.query_understanding === 'object'
       ? search.query_understanding
       : metadata?.query_understanding && typeof metadata.query_understanding === 'object'
         ? metadata.query_understanding
         : null;
+  const rawQueryText = extractSearchQueryText(search);
+  const market =
+    String(search.market || metadata.market || process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US')
+      .trim()
+      .toUpperCase() || 'US';
+  const searchQualityContract = SEARCH_QUALITY_CONTRACT_V1_ENABLED
+    ? buildSearchQualityContract({
+        rawQuery: rawQueryText,
+        market,
+        source: metadata?.source || search?.source || null,
+        allowContextBinding: false,
+      })
+    : null;
+  const searchQualityContractApplied = isBeautySearchQualityContractApplied(searchQualityContract);
+  const searchQualityEnforced =
+    searchQualityContractApplied && SEARCH_QUALITY_CONTRACT_V1_MODE === 'enforce';
+  const queryText =
+    (searchQualityContractApplied && searchQualityContract?.effective_query) ||
+    rawQueryText;
+  const beautyIntent = inferBeautyMainlineIntent(queryText);
+  if (
+    (!beautyIntent.beautyLike && !searchQualityContractApplied) ||
+    !String(queryText || '').trim()
+  ) {
+    return null;
+  }
 
   const safeLimit = Math.max(1, Math.min(SEARCH_LIMIT_MAX, Math.floor(Number(search.limit || 20) || 20)));
   const safePage = Math.max(1, Math.floor(Number(search.page || 1) || 1));
@@ -16626,14 +16897,17 @@ async function searchBeautyExternalSeedProductsMainline({
       : (safePage - 1) * safeLimit,
   );
   const inStockOnly = parseQueryBoolean(search.in_stock_only ?? search.inStockOnly) !== false;
-  const market =
-    String(search.market || metadata.market || process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US')
-      .trim()
-      .toUpperCase() || 'US';
   const retrievalQueries = buildBeautyMainlineRetrievalQueries(queryText, beautyIntent);
-  const perQueryLimit = Math.max(safeLimit, Math.min(24, safeLimit * 2));
-  const canonicalCategoryPathPrefix = resolveBeautyCategoryPathPrefixForQuery(queryText) || null;
-  const canonicalLimit = Math.max(6, Math.min(12, Math.ceil(safeLimit / 2)));
+  const perQueryLimit = searchQualityContractApplied
+    ? Math.max(safeLimit * 2, Math.min(48, safeLimit * 4))
+    : Math.max(safeLimit, Math.min(24, safeLimit * 2));
+  const canonicalCategoryPathPrefix =
+    searchQualityContract?.hard_constraints?.category_path_prefix ||
+    resolveBeautyCategoryPathPrefixForQuery(queryText) ||
+    null;
+  const canonicalLimit = searchQualityContractApplied
+    ? Math.max(18, Math.min(48, safeLimit * 4))
+    : Math.max(6, Math.min(12, Math.ceil(safeLimit / 2)));
   const canonicalStartedAt = Date.now();
   const canonicalRowsPromise = fetchCanonicalChainRows({
     query: queryText,
@@ -16703,6 +16977,7 @@ async function searchBeautyExternalSeedProductsMainline({
         intent: beautyIntent,
         normalizedQuery: beautyIntent.normalized,
         queryTokens: Array.from(new Set(tokenizeSearchTextForMatch(beautyIntent.normalized))),
+        searchQualityContract: searchQualityEnforced ? searchQualityContract : null,
       }).relevant !== true,
     );
   const broadenedRows = shouldBroaden
@@ -16722,6 +16997,12 @@ async function searchBeautyExternalSeedProductsMainline({
   const mergedCanonical = mergeCanonicalChainProductsWithSeedProducts(seedProducts, canonicalProducts);
   const recallProducts = mergedCanonical.products;
   canonicalTelemetry.canonical_dedupe_count = mergedCanonical.canonical_dedupe_count;
+  const searchQualityTierCounts = buildSearchQualityTierCounts(
+    recallProducts,
+    searchQualityContractApplied ? searchQualityContract : null,
+    queryText,
+  );
+  const scoreRejected = [];
   const scored = recallProducts
     .map((product) => {
       const base = scoreBeautyExternalSeedProduct({
@@ -16730,7 +17011,16 @@ async function searchBeautyExternalSeedProductsMainline({
         intent: beautyIntent,
         normalizedQuery,
         queryTokens,
+        searchQualityContract: searchQualityEnforced ? searchQualityContract : null,
       });
+      if (base.relevant !== true) {
+        scoreRejected.push({
+          product_id: firstNonEmptyString(product?.product_id, product?.id, product?.pivota_signature_id) || null,
+          title: firstNonEmptyString(product?.title, product?.name) || null,
+          source: firstNonEmptyString(product?.source, product?.search_recall_source, product?.catalog_source) || null,
+          reasons: Array.isArray(base.rejection_reasons) ? base.rejection_reasons : ['ranker_rejected'],
+        });
+      }
       if (base.relevant === true && creatorScoped) {
         const creatorOverlayScore = scoreBeautyCreatorCurationOverlay({
           product,
@@ -16771,7 +17061,12 @@ async function searchBeautyExternalSeedProductsMainline({
     safeLimit,
   );
   const brandBrowseGateRequired = Boolean(beautyIntent.brandBrowse?.contract === 'brand_browse');
-  const servingEligibilityGate = brandBrowseGateRequired
+  const searchQualityServingGateRequired = Boolean(
+    searchQualityEnforced &&
+      SEARCH_SERVING_QUALITY_HOLD_ENABLED &&
+      searchQualityContractApplied
+  );
+  const servingEligibilityGate = (searchQualityServingGateRequired || brandBrowseGateRequired)
     ? filterSearchServingEligibleProducts(displayRankedProducts, {
         queryText,
         requireBeauty: true,
@@ -16783,6 +17078,10 @@ async function searchBeautyExternalSeedProductsMainline({
         input_count: displayRankedProducts.length,
       };
   const rankedProducts = servingEligibilityGate.products;
+  const searchQualityFailureReasons = summarizeSearchQualityFailureReasons({
+    scoredRejected: scoreRejected,
+    servingRejected: servingEligibilityGate.rejected,
+  });
   const balancedProducts = balanceBeautyMainlineFamilyCoverage(rankedProducts, beautyIntent, safeLimit);
   const pagedProducts = balancedProducts.slice(safeOffset, safeOffset + safeLimit);
   const pagedCanonicalCount = pagedProducts.filter((product) => (
@@ -16815,6 +17114,11 @@ async function searchBeautyExternalSeedProductsMainline({
             query_understanding_decision: queryUnderstanding.decision || null,
           }
         : {}),
+      search_quality_contract: projectSearchQualityContractForMetadata(searchQualityContract),
+      search_quality_contract_applied: searchQualityContractApplied,
+      search_quality_contract_mode: SEARCH_QUALITY_CONTRACT_V1_MODE,
+      search_quality_failure_reasons: searchQualityFailureReasons,
+      search_quality_tier_counts: searchQualityTierCounts,
       ...canonicalTelemetry,
       canonical_returned_count: pagedCanonicalCount,
       creator_external_seed_tool_scope: broadenedRows ? 'all_tools' : (creatorScoped ? 'creator_preferred' : 'all_tools'),
@@ -16825,8 +17129,12 @@ async function searchBeautyExternalSeedProductsMainline({
         safety_rules: beautyIntent.safety,
       },
       search_card_quality_gate: {
-        applied: brandBrowseGateRequired,
-        mode: brandBrowseGateRequired ? 'beauty_brand_browse' : 'not_required',
+        applied: searchQualityServingGateRequired || brandBrowseGateRequired,
+        mode: searchQualityServingGateRequired
+          ? 'beauty_search_quality_contract_v1'
+          : brandBrowseGateRequired
+            ? 'beauty_brand_browse'
+            : 'not_required',
         input_count: servingEligibilityGate.input_count,
         eligible_count: rankedProducts.length,
         rejected_count: servingEligibilityGate.rejected_count,
@@ -16889,8 +17197,10 @@ async function searchBeautyExternalSeedProductsMainline({
           broadened_tool_scope: Boolean(broadenedRows),
           destination_brand_market_bridge: selectedRows?.destinationBrandMarketBridge || null,
           canonical_chain: canonicalTelemetry,
+          search_quality_contract_applied: searchQualityContractApplied,
+          search_quality_contract_mode: SEARCH_QUALITY_CONTRACT_V1_MODE,
           search_card_quality_gate: {
-            applied: brandBrowseGateRequired,
+            applied: searchQualityServingGateRequired || brandBrowseGateRequired,
             input_count: servingEligibilityGate.input_count,
             eligible_count: rankedProducts.length,
             rejected_count: servingEligibilityGate.rejected_count,
@@ -16904,7 +17214,9 @@ async function searchBeautyExternalSeedProductsMainline({
         canonical_path_executed: canonicalTelemetry.canonical_path_executed,
         canonical_raw_count: canonicalTelemetry.canonical_raw_count,
         canonical_dedupe_count: canonicalTelemetry.canonical_dedupe_count,
-        search_card_quality_gate_applied: brandBrowseGateRequired,
+        search_quality_contract_applied: searchQualityContractApplied,
+        search_quality_contract_mode: SEARCH_QUALITY_CONTRACT_V1_MODE,
+        search_card_quality_gate_applied: searchQualityServingGateRequired || brandBrowseGateRequired,
         search_card_quality_gate_rejected_count: servingEligibilityGate.rejected_count,
         ...(queryUnderstanding
           ? {
@@ -40708,6 +41020,9 @@ module.exports._debug = {
   attachCanonicalChainRecallTelemetry,
   filterSearchServingEligibleProducts,
   getSearchProductServingEligibility,
+  getSearchQualityContractHardConstraintResult,
+  buildSearchQualityTierCounts,
+  projectSearchQualityContractForMetadata,
   ensureSearchProductPdpOpen,
   buildCanonicalChainMainlineProduct,
   mergeCanonicalChainProductsWithSeedProducts,

@@ -1,5 +1,6 @@
 const {
   understandShoppingQuery,
+  buildSearchQualityContract,
   resolveBeautyCategoryPathPrefixFromText,
 } = require('../src/findProductsMulti/queryUnderstanding');
 
@@ -129,5 +130,45 @@ describe('find_products_multi query understanding', () => {
 
     expect(out.effective_query).toBe('i think i am an oily skin, and i live in SF.');
     expect(out.context_scope).toBe('none');
+  });
+
+  test.each([
+    ['fenty', 'brand_browse', 'beauty', 'fenty beauty', null],
+    ['fenty lipstick', 'brand_category', 'beauty', 'fenty beauty', 'beauty/makeup/lip/'],
+    ['rare beauty blush', 'brand_category', 'beauty', 'rare beauty', 'beauty/makeup/cheek/'],
+    ['the ordinary niacinamide', 'brand_category', 'beauty', 'the ordinary', 'beauty/skincare/treat/'],
+    ['lipstick', 'category_browse', 'beauty', null, 'beauty/makeup/lip/'],
+    ['barrier moisturizer', 'category_browse', 'beauty', null, 'beauty/skincare/moisturize/'],
+    ['acne oily skin serum', 'need_solution', 'beauty', null, 'beauty/skincare/treat/'],
+    ['fragrance-free sunscreen', 'constraint_search', 'beauty', null, 'beauty/skincare/sun/'],
+    ['pregnancy safe cleanser', 'constraint_search', 'beauty', null, 'beauty/skincare/cleanse/'],
+    ['zara', 'ambiguous_or_non_shopping', 'other', null, null],
+    ['nike shoes', 'ambiguous_or_non_shopping', 'other', null, null],
+    ['wireless earbuds', 'ambiguous_or_non_shopping', 'other', null, null],
+  ])('builds search quality contract for %s', (query, queryClass, domain, brand, categoryPathPrefix) => {
+    const contract = buildSearchQualityContract({ rawQuery: query, market: 'US' });
+
+    expect(contract.contract_version).toBe('search_quality_contract_v1');
+    expect(contract.query_class).toBe(queryClass);
+    expect(contract.target_domain).toBe(domain);
+    expect(contract.hard_constraints.brand?.canonical || null).toBe(brand);
+    expect(contract.hard_constraints.category_path_prefix).toBe(categoryPathPrefix);
+  });
+
+  test('search quality contract preserves fragrance-free skincare as skincare constraint', () => {
+    const contract = buildSearchQualityContract({ rawQuery: 'fragrance-free moisturizer' });
+
+    expect(contract.query_class).toBe('constraint_search');
+    expect(contract.hard_constraints.category_path_prefix).toBe('beauty/skincare/moisturize/');
+    expect(contract.hard_constraints.exclusions).toEqual(expect.arrayContaining(['fragrance_product']));
+    expect(contract.hard_constraints.fragrance_free_skincare).toBe(true);
+  });
+
+  test('search quality contract marks strict lipstick exclusions', () => {
+    const contract = buildSearchQualityContract({ rawQuery: 'fenty lipstick' });
+
+    expect(contract.query_class).toBe('brand_category');
+    expect(contract.hard_constraints.strict_lipstick).toBe(true);
+    expect(contract.hard_constraints.exclusions).toEqual(expect.arrayContaining(['lip_gloss_oil_balm_mask']));
   });
 });

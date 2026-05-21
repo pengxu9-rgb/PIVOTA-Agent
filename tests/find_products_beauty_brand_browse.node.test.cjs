@@ -4,12 +4,15 @@ const test = require('node:test');
 process.env.NODE_ENV = 'test';
 
 const app = require('../src/server');
+const { buildSearchQualityContract } = require('../src/findProductsMulti/queryUnderstanding');
 
 const {
   attachCanonicalChainRecallTelemetry,
+  buildSearchQualityTierCounts,
   buildBeautyExternalSeedCategoryTerms,
   compactBeautyMainlineProductForResponse,
   filterSearchServingEligibleProducts,
+  getSearchQualityContractHardConstraintResult,
   inferBeautyMainlineIntent,
   resolveBeautyBrandBrowseQuery,
   scoreBeautyExternalSeedProduct,
@@ -195,6 +198,79 @@ test('beauty brand plus category scoring rejects non-brand category matches', ()
   });
 
   assert.equal(scored.relevant, false);
+});
+
+test('search quality contract enforces brand and strict lipstick before ranking', () => {
+  const contract = buildSearchQualityContract({ rawQuery: 'fenty lipstick', market: 'US' });
+  const intent = inferBeautyMainlineIntent('fenty lipstick');
+  const lipOil = canonicalFentyProduct('ext_fenty_lip_oil', 'Fenty Treatz Hydrating + Strengthening Lip Oil', {
+    source_product_id: 'ext_fenty_lip_oil',
+    category: 'Lip Oil',
+    product_type: 'Lip Oil',
+    category_path: ['beauty', 'makeup', 'lip', 'lip oil'],
+    catalog_category_path: 'beauty/makeup/lip/lip-oil',
+  });
+  const rareLipstick = canonicalFentyProduct('ext_rare_lip', 'Rare Beauty Kind Words Matte Lipstick', {
+    brand: 'Rare Beauty',
+    merchant_name: 'Rare Beauty',
+    source_product_id: 'ext_rare_lip',
+    category: 'Lipstick',
+    product_type: 'Lipstick',
+    category_path: ['beauty', 'makeup', 'lip', 'lipstick'],
+    catalog_category_path: 'beauty/makeup/lip/lipstick',
+  });
+
+  const oilGate = getSearchQualityContractHardConstraintResult(lipOil, contract, 'fenty lipstick');
+  const rareGate = getSearchQualityContractHardConstraintResult(rareLipstick, contract, 'fenty lipstick');
+
+  assert.equal(oilGate.eligible, false);
+  assert.ok(oilGate.reasons.includes('strict_lipstick_mismatch'));
+  assert.equal(rareGate.eligible, false);
+  assert.ok(rareGate.reasons.includes('brand_mismatch'));
+
+  const scored = scoreBeautyExternalSeedProduct({
+    product: lipOil,
+    queryText: 'fenty lipstick',
+    intent,
+    normalizedQuery: 'fenty lipstick',
+    queryTokens: ['fenty', 'lipstick'],
+    searchQualityContract: contract,
+  });
+
+  assert.equal(scored.relevant, false);
+  assert.ok(scored.rejection_reasons.includes('strict_lipstick_mismatch'));
+});
+
+test('search quality tier counts expose polluted candidate inventory', () => {
+  const contract = buildSearchQualityContract({ rawQuery: 'rare beauty blush', market: 'US' });
+  const healthy = canonicalFentyProduct('rare_blush_1', 'Rare Beauty Soft Pinch Liquid Blush', {
+    brand: 'Rare Beauty',
+    merchant_name: 'Rare Beauty',
+    category: 'Blush',
+    product_type: 'Blush',
+    category_path: ['beauty', 'makeup', 'cheek', 'blush'],
+    catalog_category_path: 'beauty/makeup/cheek/blush',
+  });
+  const polluted = {
+    product_id: 'sig_bad',
+    merchant_id: 'external_seed',
+    title: 'Rare Beauty Shipping Protection',
+    brand: 'Rare Beauty',
+    source: 'external_seed',
+    category: 'external',
+    product_type: 'external',
+    price: 0,
+    transaction_ready: false,
+  };
+
+  const counts = buildSearchQualityTierCounts([healthy, polluted], contract, 'rare beauty blush');
+
+  assert.equal(counts.input_count, 2);
+  assert.equal(counts.canonical_chain_count, 1);
+  assert.equal(counts.external_seed_count, 1);
+  assert.equal(counts.serving_eligible_count, 1);
+  assert.equal(counts.invalid_price_count, 1);
+  assert.equal(counts.polluted_or_unavailable_count, 1);
 });
 
 test('beauty mainline cards receive explicit pdp_open refs', () => {
