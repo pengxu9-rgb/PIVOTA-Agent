@@ -13401,7 +13401,12 @@ async function queryBeautyExternalSeedRowsFast({
     }
   }
 
-  if (rawProducts.length < safeLimit && recallPatterns.length > 0) {
+  const brandCategoryTextRecallRequired = Boolean(
+    intent?.brandBrowse &&
+      intent.brandBrowse.contract === 'brand_browse' &&
+      intent.brandBrowse.brand_only === false,
+  );
+  if ((rawProducts.length < safeLimit || brandCategoryTextRecallRequired) && recallPatterns.length > 0) {
     if (PIVOT_BEAUTY_PARALLEL_SCOPE_RECALL_ENABLED) {
       const textScopeResults = await Promise.all(toolScopes.map((tool) => runTextRecallQuery(tool)));
       for (const scopeResult of textScopeResults) {
