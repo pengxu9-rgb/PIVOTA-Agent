@@ -677,6 +677,119 @@ describe('external seed product detail hydration', () => {
     );
   });
 
+  test('get_pdp_v2 serving_eligible_only blocks index-ineligible sig_* PDPs before sparse detail render', async () => {
+    const { app, db } = loadServerWithDb({
+      PIVOTA_API_BASE: 'https://backend.test',
+      PIVOTA_API_KEY: 'test-token',
+    });
+
+    const signatureRow = {
+      content_key: 'ck_blocked_fenty_concealer',
+      merchant_id: 'external_seed',
+      platform: 'external_seed',
+      source_product_id: 'fenty-beauty:aaee8f1fd286214f',
+      product_key: 'prod::external_seed::external_seed::fenty-beauty:aaee8f1fd286214f',
+      pivota_signature_id: 'sig_cef6200022e629cf83f06e539bdf0644',
+      external_seed_id: 'eps_blocked_fenty_concealer',
+      external_seed_external_product_id: 'fenty-beauty:aaee8f1fd286214f',
+      external_seed_status: 'active',
+    };
+    const statusRow = {
+      id: 'eps_blocked_fenty_concealer',
+      external_product_id: 'fenty-beauty:aaee8f1fd286214f',
+      status: 'active',
+    };
+    const sparseDetailRow = {
+      ...statusRow,
+      canonical_url:
+        'https://www.fentybeauty.com/pro-filtr-instant-retouch-concealer/FB30006.html?shade=260',
+      destination_url:
+        'https://www.fentybeauty.com/pro-filtr-instant-retouch-concealer/FB30006.html?shade=260',
+      title: "Pro Filt'r Instant Retouch Concealer",
+      image_url: null,
+      price_amount: null,
+      price_currency: 'USD',
+      availability: 'In Stock',
+      seed_data: {
+        brand: 'Fenty Beauty',
+        description: '',
+        snapshot: {
+          variants: [
+            {
+              variant_id: 'fenty-beauty:aaee8f1fd286214f',
+              price: null,
+              currency: 'USD',
+            },
+          ],
+        },
+      },
+    };
+    const servingEligibilityRow = {
+      content_key: 'ck_blocked_fenty_concealer',
+      product_key: signatureRow.product_key,
+      pivota_signature_id: 'sig_cef6200022e629cf83f06e539bdf0644',
+      sync_status: 'live',
+      pdp_lifecycle_stage: 'draft',
+      serving_eligible: false,
+      pipeline_stage: 'discovered',
+      blocker_code: 'no_seed',
+      blocker_detail:
+        'no external_product_seeds row and no agent_pdp_view title+description source document',
+      content_quality_score: 28.6,
+    };
+
+    db.query.mockImplementation((sql) => {
+      const text = String(sql || '');
+      if (text.includes('FROM catalog_products cp') && text.includes('LEFT JOIN index_pipeline_state ips')) {
+        return Promise.resolve({ rows: [servingEligibilityRow] });
+      }
+      if (text.includes('FROM catalog_products') && text.includes('pivota_signature_id = $1')) {
+        return Promise.resolve({ rows: [signatureRow] });
+      }
+      if (text.includes('FROM pdp_identity_listing pil') && text.includes('source_listing_ref = $1')) {
+        return Promise.resolve({ rows: [] });
+      }
+      if (text.includes('FROM external_product_seeds') && text.includes('destination_url')) {
+        return Promise.resolve({ rows: [sparseDetailRow] });
+      }
+      if (text.includes('FROM external_product_seeds') && text.includes('status')) {
+        return Promise.resolve({ rows: [statusRow] });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'get_pdp_v2',
+        payload: {
+          product_ref: {
+            merchant_id: 'external_seed',
+            product_id: 'sig_cef6200022e629cf83f06e539bdf0644',
+          },
+          options: {
+            serving_eligible_only: true,
+          },
+        },
+      })
+      .expect(404);
+
+    expect(res.body).toMatchObject({
+      error: 'PRODUCT_NOT_SERVABLE',
+      message: 'Product not found',
+      reason_code: 'PRODUCT_NOT_SERVABLE',
+      details: {
+        reason: 'no_seed',
+        serving_eligible: false,
+        index_row_found: true,
+        content_key: 'ck_blocked_fenty_concealer',
+        blocker_code: 'no_seed',
+        content_quality_score: 28.6,
+      },
+    });
+    expect(res.body.modules).toBeUndefined();
+  });
+
   test('get_pdp_v2 reuses canonical catalog signature resolution for sig_* external_seed PDPs', async () => {
     const { app, db } = loadServerWithDb({
       PIVOTA_API_BASE: 'https://backend.test',

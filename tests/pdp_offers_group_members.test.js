@@ -1224,6 +1224,14 @@ describe('PDP grouped offers', () => {
           price_amount: 0,
           priceAmount: 0,
           currency: 'USD',
+          variants: [
+            {
+              variant_id: 'unknown-default',
+              title: 'Default',
+              price: { current: { amount: 0, currency: 'USD' } },
+              price_amount: 0,
+            },
+          ],
         },
       },
       {
@@ -1242,6 +1250,8 @@ describe('PDP grouped offers', () => {
     expect(payload.product.price).toBeUndefined();
     expect(payload.product.price_amount).toBeUndefined();
     expect(payload.product.priceAmount).toBeUndefined();
+    expect(payload.product.variants[0].price).toBeUndefined();
+    expect(payload.product.variants[0].price_amount).toBeUndefined();
   });
 
   test('hydrates empty canonical PDP media from the default offer variant images', () => {
