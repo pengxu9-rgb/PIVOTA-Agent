@@ -5113,6 +5113,160 @@ async function fetchExternalSeedRouteStatusFromDb(args) {
   }
 }
 
+function normalizePdpServingMode(value) {
+  return String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+}
+
+function isTruthyPdpOption(value) {
+  if (value === true) return true;
+  const normalized = String(value || '').trim().toLowerCase();
+  return normalized === 'true' || normalized === '1' || normalized === 'yes';
+}
+
+function shouldRequirePdpServingEligible(payload, options) {
+  const servingMode = normalizePdpServingMode(
+    options?.serving_mode ||
+      options?.servingMode ||
+      payload?.serving_mode ||
+      payload?.servingMode ||
+      payload?.metadata?.serving_mode ||
+      payload?.metadata?.servingMode,
+  );
+  return (
+    servingMode === 'serving_eligible_only' ||
+    isTruthyPdpOption(options?.serving_eligible_only) ||
+    isTruthyPdpOption(options?.servingEligibleOnly) ||
+    isTruthyPdpOption(payload?.serving_eligible_only) ||
+    isTruthyPdpOption(payload?.servingEligibleOnly)
+  );
+}
+
+function normalizePdpServingEligibilityRow(row) {
+  if (!row || typeof row !== 'object') return null;
+  return {
+    catalog_row_found: true,
+    content_key: firstNonEmptyString(row.content_key) || null,
+    product_key: firstNonEmptyString(row.product_key) || null,
+    pivota_signature_id: firstNonEmptyString(row.pivota_signature_id) || null,
+    sync_status: firstNonEmptyString(row.sync_status) || null,
+    pdp_lifecycle_stage: firstNonEmptyString(row.pdp_lifecycle_stage) || null,
+    serving_eligible: row.serving_eligible === true,
+    index_row_found: row.serving_eligible !== null && row.serving_eligible !== undefined,
+    pipeline_stage: firstNonEmptyString(row.pipeline_stage) || null,
+    blocker_code: firstNonEmptyString(row.blocker_code) || null,
+    blocker_detail: firstNonEmptyString(row.blocker_detail) || null,
+    content_quality_score: Number.isFinite(Number(row.content_quality_score))
+      ? Number(row.content_quality_score)
+      : null,
+  };
+}
+
+async function fetchPdpServingEligibilityFromDb(args = {}) {
+  if (!process.env.DATABASE_URL) return null;
+  const contentKey = String(args.contentKey || '').trim();
+  const merchantId = String(args.merchantId || '').trim();
+  const productId = String(args.productId || '').trim();
+  if (!contentKey && (!merchantId || !productId)) return null;
+
+  try {
+    const result = await query(
+      `
+        SELECT
+          cp.content_key,
+          cp.product_key,
+          cp.pivota_signature_id,
+          cp.sync_status,
+          cp.pdp_lifecycle_stage,
+          ips.serving_eligible,
+          ips.pipeline_stage,
+          ips.blocker_code,
+          ips.blocker_detail,
+          ips.content_quality_score
+        FROM catalog_products cp
+        LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id
+        LEFT JOIN index_pipeline_state ips ON ips.content_key = cp.content_key
+        WHERE (
+          ($1::text <> '' AND cp.content_key = $1)
+          OR (
+            $2::text <> ''
+            AND $3::text <> ''
+            AND cp.merchant_id = $2
+            AND cp.source_product_id = $3
+          )
+        )
+          AND ${activeCatalogProductSourceWhere('cp', 'cm')}
+        ORDER BY
+          CASE WHEN $1::text <> '' AND cp.content_key = $1 THEN 0 ELSE 1 END,
+          CASE WHEN cp.source_system = 'external_product_seeds_mirror_v1' THEN 0 ELSE 1 END,
+          cp.updated_at DESC NULLS LAST,
+          cp.product_key ASC
+        LIMIT 1
+      `,
+      [contentKey, merchantId, productId],
+    );
+    const row = Array.isArray(result?.rows) ? result.rows[0] : null;
+    return normalizePdpServingEligibilityRow(row);
+  } catch (err) {
+    const message = String(err?.message || err || '');
+    if (
+      err?.code === 'NO_DATABASE' ||
+      err?.code === '42P01' ||
+      message.includes('index_pipeline_state') ||
+      message.includes('catalog_products')
+    ) {
+      return null;
+    }
+    logger.warn(
+      {
+        err: err?.message || String(err),
+        content_key: contentKey || null,
+        merchant_id: merchantId || null,
+        product_id: productId || null,
+      },
+      'Failed to fetch PDP serving eligibility',
+    );
+    return null;
+  }
+}
+
+function shouldFailClosedForMissingPdpServingEligibility({
+  requestedPivotaSignatureId = null,
+  canonicalProductRef = null,
+} = {}) {
+  const merchantId = String(canonicalProductRef?.merchant_id || '').trim();
+  const productId = String(canonicalProductRef?.product_id || '').trim();
+  return Boolean(
+    requestedPivotaSignatureId ||
+      merchantId === EXTERNAL_SEED_MERCHANT_ID ||
+      isExternalSeedProductId(productId) ||
+      isPivotaSignatureProductId(productId),
+  );
+}
+
+function buildPdpServingEligibilityDetails(eligibility, fallbackReason = 'serving_eligibility_missing') {
+  if (!eligibility) {
+    return {
+      reason: fallbackReason,
+      serving_eligible: false,
+    };
+  }
+  return {
+    reason:
+      eligibility.blocker_code ||
+      (eligibility.index_row_found ? 'not_serving_eligible' : 'serving_eligibility_missing'),
+    serving_eligible: eligibility.serving_eligible === true,
+    index_row_found: eligibility.index_row_found === true,
+    content_key: eligibility.content_key || null,
+    pivota_signature_id: eligibility.pivota_signature_id || null,
+    pipeline_stage: eligibility.pipeline_stage || null,
+    blocker_code: eligibility.blocker_code || null,
+    blocker_detail: eligibility.blocker_detail || null,
+    content_quality_score: eligibility.content_quality_score,
+    pdp_lifecycle_stage: eligibility.pdp_lifecycle_stage || null,
+    sync_status: eligibility.sync_status || null,
+  };
+}
+
 function attachProductDetailSource(product, detailSource) {
   if (!product || typeof product !== 'object') return product;
   const source = String(detailSource || '').trim();
@@ -6956,6 +7110,21 @@ function productHasUsableImage(product) {
   return dedupePdpImageUrls(urls).length > 0;
 }
 
+function stripNonPositiveVariantPrice(variant) {
+  if (!variant || typeof variant !== 'object' || Array.isArray(variant)) return variant;
+  const amount = readPriceAmountForNormalization(
+    variant.price ?? variant.price_amount ?? variant.priceAmount ?? variant.amount ?? variant.value,
+  );
+  if (Number.isFinite(amount) && amount > 0) return variant;
+
+  const next = { ...variant };
+  delete next.price;
+  delete next.price_amount;
+  delete next.priceAmount;
+  if (next.price_source === 'default_offer') delete next.price_source;
+  return next;
+}
+
 function hydrateCanonicalPdpMediaFromOfferImages(pdpPayload, product, offerImageUrls) {
   if (!offerImageUrls.length) return pdpPayload;
   const shouldHydrateProductImage = !productHasUsableImage(product);
@@ -7060,6 +7229,9 @@ function hydrateCanonicalPdpPayloadFromOffers(pdpPayload, offersData) {
     delete product.price;
     delete product.price_amount;
     delete product.priceAmount;
+    if (Array.isArray(product.variants)) {
+      product.variants = product.variants.map((variant) => stripNonPositiveVariantPrice(variant));
+    }
     if (product.price_source === 'default_offer') delete product.price_source;
   }
 
@@ -30573,6 +30745,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 		        String(options.cache_bypass || options.bypass_cache || '')
 		          .trim()
 		          .toLowerCase() === 'true';
+          const servingEligibleOnly = shouldRequirePdpServingEligible(payload, options);
 
 		      const includeRaw = payload.include;
 		      const includeList = Array.isArray(includeRaw)
@@ -31312,6 +31485,62 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      canonicalizationAppliedCtx = canonicalizationApplied;
 	      canonicalizationReasonCodeCtx = canonicalizationReasonCode;
 	      identityResolutionSourceCtx = identityResolutionSource;
+
+          if (servingEligibleOnly) {
+            const servingEligibilityStartedAt = Date.now();
+            const servingEligibility = await fetchPdpServingEligibilityFromDb({
+              contentKey: canonicalProductRef?.content_key || null,
+              merchantId: canonicalProductRef?.merchant_id,
+              productId: canonicalProductRef?.product_id,
+            });
+            markPdpV2Phase('serving_eligibility_gate', servingEligibilityStartedAt);
+            const failClosedForMissingEligibility = shouldFailClosedForMissingPdpServingEligibility({
+              requestedPivotaSignatureId,
+              canonicalProductRef,
+            });
+            const isBlocked =
+              servingEligibility
+                ? servingEligibility.serving_eligible !== true
+                : failClosedForMissingEligibility;
+            if (isBlocked) {
+              const details = buildPdpServingEligibilityDetails(
+                servingEligibility,
+                failClosedForMissingEligibility
+                  ? 'serving_eligibility_missing'
+                  : 'serving_eligibility_unavailable',
+              );
+              logger.info(
+                {
+                  gateway_request_id: gatewayRequestId,
+                  operation: 'get_pdp_v2',
+                  requested_product_id: requestedProductIdForDiagnostics || entryProductId || productId || null,
+                  resolved_product_id: canonicalProductRef?.product_id || null,
+                  requested_merchant_id: requestedMerchantIdForDiagnostics,
+                  resolved_merchant_id: canonicalProductRef?.merchant_id || null,
+                  reason: details.reason,
+                  blocker_code: details.blocker_code || null,
+                  content_key: details.content_key || null,
+                },
+                'get_pdp_v2 blocked by serving eligibility gate',
+              );
+              return res.status(404).json({
+                ...buildPdpV2ErrorBody({
+                  error: 'PRODUCT_NOT_SERVABLE',
+                  message: 'Product not found',
+                  reasonCode: 'PRODUCT_NOT_SERVABLE',
+                  details,
+                  requestedProductId: requestedProductIdForDiagnostics || entryProductId || productId || null,
+                  requestedMerchantId: requestedMerchantIdForDiagnostics,
+                  resolvedProductId: canonicalProductRef?.product_id || null,
+                  resolvedMerchantId: canonicalProductRef?.merchant_id || null,
+                  entryPrecheckMissing: precheckEntryProductMissing,
+                  canonicalizationApplied,
+                  canonicalizationReasonCode,
+                  resolutionSource: identityResolutionSource,
+                }),
+              });
+            }
+          }
 
 	      let identityGraphLive = null;
 	      let identityGraphPublishedIntel = null;
