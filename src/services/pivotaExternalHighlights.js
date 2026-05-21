@@ -7,6 +7,7 @@ const {
   normalizeExternalHighlightSignals,
   normalizeMarketSignalBadges,
   normalizeReviewSummary,
+  normalizeSurfaceText,
   normalizeTimestamp,
 } = require('./pivotaEvidenceSignals');
 
@@ -451,6 +452,24 @@ function applyExternalHighlightReviewDecision({
   };
   next.shopping_card = buildShoppingCardPayload({ product, bundle: next });
   next.search_card = buildSearchCardPayload({ product, bundle: next });
+  if (normalizedDecision === 'rewrite') {
+    const rewrittenShoppingHighlight = normalizeSurfaceText(rewrite?.shopping_card?.highlight);
+    const rewrittenSearchHighlight = normalizeSurfaceText(
+      rewrite?.search_card?.highlight_candidate || rewrittenShoppingHighlight,
+    );
+    if (rewrittenShoppingHighlight) {
+      next.shopping_card = {
+        ...(next.shopping_card || {}),
+        highlight: rewrittenShoppingHighlight,
+      };
+    }
+    if (rewrittenSearchHighlight) {
+      next.search_card = {
+        ...(next.search_card || {}),
+        highlight_candidate: rewrittenSearchHighlight,
+      };
+    }
+  }
   return next;
 }
 

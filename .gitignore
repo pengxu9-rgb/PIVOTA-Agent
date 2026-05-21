@@ -91,6 +91,7 @@ reports/beauty-cross-agent/
 reports/locality-backfill/
 reports/photo-skin-accuracy/
 reports/product-seed-fit-accuracy/
+reports/pivota-insights-quality/
 
 # Pivota specific - ensure no real API keys
 pivota-credentials.json
