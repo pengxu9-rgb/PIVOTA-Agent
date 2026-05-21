@@ -45,7 +45,7 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
   },
   {
     category: 'blush',
-    categoryPathPrefix: 'beauty/makeup/cheek/',
+    categoryPathPrefix: 'beauty/makeup/face/blush/',
     pattern: /\b(blush|blusher|rouge\s+blush|cheek\s+color|cheek\s+colour|cheek\s+tint|liquid\s+blush|cream\s+blush)\b|腮红|腮紅/i,
   },
   {
@@ -85,6 +85,7 @@ const GENERIC_CATEGORY_BY_PREFIX = Object.freeze({
   'beauty/fragrance/': 'fragrance',
   'beauty/makeup/lip/': 'lipstick',
   'beauty/makeup/eye/': 'mascara',
+  'beauty/makeup/face/blush/': 'blush',
   'beauty/makeup/cheek/': 'blush',
   'beauty/makeup/face/': 'foundation',
   'beauty/skincare/sun/': 'sunscreen',

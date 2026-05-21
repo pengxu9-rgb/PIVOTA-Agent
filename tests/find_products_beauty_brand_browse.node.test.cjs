@@ -248,8 +248,8 @@ test('search quality tier counts expose polluted candidate inventory', () => {
     merchant_name: 'Rare Beauty',
     category: 'Blush',
     product_type: 'Blush',
-    category_path: ['beauty', 'makeup', 'cheek', 'blush'],
-    catalog_category_path: 'beauty/makeup/cheek/blush',
+    category_path: ['beauty', 'makeup', 'face', 'blush'],
+    catalog_category_path: 'beauty/makeup/face/blush',
   });
   const polluted = {
     product_id: 'sig_bad',
