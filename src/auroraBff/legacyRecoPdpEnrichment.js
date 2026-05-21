@@ -1,3 +1,5 @@
+const { buildBrandLookupMap } = require('./recommendationBrandBackfill');
+
 function createLegacyRecoPdpEnrichmentRuntime(deps = {}) {
   const {
     isPlainObject,
@@ -19,6 +21,11 @@ function createLegacyRecoPdpEnrichmentRuntime(deps = {}) {
       isPlainObject(payload) ? { ...payload } : { recommendations: [] };
     const recoRows = Array.isArray(recommendations) ? recommendations : [];
 
+    // Build brand lookup map (DB-backed) BEFORE any return paths. Pure: does
+    // not touch `recoRows`. Failures return {} so downstream is unaffected.
+    // chatCardFactory reads this map as a final fallback in brand extraction.
+    const brandLookupMap = await buildBrandLookupMap(recoRows, { logger }).catch(() => ({}));
+
     if (deferUntilSafeWinner) {
       const prePdpDeduped = dedupeRecoRecommendationsStrict(recoRows, { maxItems: 8 });
       return {
@@ -31,6 +38,7 @@ function createLegacyRecoPdpEnrichmentRuntime(deps = {}) {
             resolve_fail_reason_counts: {},
             time_to_pdp_ms_stats: {},
             reco_post_pdp_dedupe_dropped: Number(prePdpDeduped.dropped_count || 0),
+            recommendation_brand_lookup: brandLookupMap,
           },
         },
         applied: false,
@@ -104,6 +112,7 @@ function createLegacyRecoPdpEnrichmentRuntime(deps = {}) {
           resolve_fail_reason_counts: pdpOpenOut.fail_reason_counts,
           time_to_pdp_ms_stats: pdpOpenOut.time_to_pdp_ms_stats,
           reco_post_pdp_dedupe_dropped: Number(pdpDeduped.dropped_count || 0),
+          recommendation_brand_lookup: brandLookupMap,
         },
       },
       applied: groundedRecoRows.length > 0,
