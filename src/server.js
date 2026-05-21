@@ -12654,14 +12654,17 @@ function buildBeautyExternalSeedMainlineProduct(row) {
     row.category,
     row.product_type,
   );
-  const brand = firstNonEmptyString(
+  const brand = firstBrandDisplayString(
+    seedData.brand_name,
+    snapshot.brand_name,
+    snapshot.brand,
+    snapshot.vendor_name,
+    snapshot.vendor,
+    seedData.brand,
+    seedData.vendor_name,
+    seedData.vendor,
     recall.brand_name,
     recall.brand,
-    seedData.brand,
-    seedData.brand_name,
-    seedData.vendor,
-    snapshot.brand,
-    snapshot.brand_name,
     row.brand,
     row.vendor,
   );
@@ -13177,6 +13180,16 @@ function normalizeBrandCase(brand) {
   return brand.replace(/\b\p{L}/gu, (ch) => ch.toUpperCase());
 }
 
+function firstBrandDisplayString(...values) {
+  const candidates = [];
+  for (const value of values) {
+    const candidate = firstNonEmptyString(value);
+    if (candidate) candidates.push(candidate);
+  }
+  if (!candidates.length) return null;
+  return normalizeBrandCase(candidates.find((candidate) => /\p{Lu}/u.test(candidate)) || candidates[0]);
+}
+
 function buildCanonicalChainMainlineProduct(row) {
   if (!row || typeof row !== 'object' || Array.isArray(row)) return null;
   const payload = parseCanonicalCatalogPayload(row.product_payload);
@@ -13209,7 +13222,7 @@ function buildCanonicalChainMainlineProduct(row) {
   );
   if (!productId || !title) return null;
   const merchantId = firstNonEmptyString(row.merchant_id, EXTERNAL_SEED_MERCHANT_ID);
-  const brand = normalizeBrandCase(firstNonEmptyString(
+  const brand = firstBrandDisplayString(
     seedData.brand,
     seedData.brand_name,
     seedData.vendor,
@@ -13222,7 +13235,7 @@ function buildCanonicalChainMainlineProduct(row) {
     externalSnapshot.vendor,
     externalSnapshot.merchant_name,
     row.brand,
-  ));
+  );
   const categoryPathText = firstCatalogPayloadString(
     row.category_path,
     seedData.category_path,
@@ -15360,6 +15373,23 @@ function compactBeautyMainlineProductForResponse(product, intent = null, queryTe
   if (!product || typeof product !== 'object' || Array.isArray(product)) return product;
   const localAuthority = buildBeautyProductLocalAuthorityForResponse(product);
   const fitAttributes = buildBeautyProductFitAttributesForResponse(product);
+  const seedData = isPlainObject(product.seed_data) ? product.seed_data : {};
+  const snapshot = isPlainObject(seedData.snapshot) ? seedData.snapshot : {};
+  const recall = isPlainObject(product.external_seed_recall) ? product.external_seed_recall : {};
+  const responseBrand = firstBrandDisplayString(
+    seedData.brand_name,
+    snapshot.brand_name,
+    snapshot.brand,
+    snapshot.vendor_name,
+    snapshot.vendor,
+    seedData.brand,
+    seedData.vendor_name,
+    seedData.vendor,
+    recall.brand_name,
+    recall.brand,
+    product.brand,
+    product.vendor,
+  );
   const {
     seed_data: _seedData,
     external_seed_recall: _externalSeedRecall,
@@ -15369,6 +15399,10 @@ function compactBeautyMainlineProductForResponse(product, intent = null, queryTe
     ...rest
   } = product;
   const next = { ...rest };
+  if (responseBrand) {
+    next.brand = responseBrand;
+    next.vendor = responseBrand;
+  }
   if (Array.isArray(next.images) && next.images.length > 4) next.images = next.images.slice(0, 4);
   if (Array.isArray(next.image_urls) && next.image_urls.length > 4) next.image_urls = next.image_urls.slice(0, 4);
   if (typeof next.description === 'string' && next.description.length > 520) {
