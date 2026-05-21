@@ -9,6 +9,16 @@ function asString(value) {
   return value.trim();
 }
 
+// Normalize all-lowercase brand strings to title case so chat cards render
+// "Fenty Beauty" instead of "fenty beauty" regardless of which source the
+// brand came from. Preserves any brand that already contains an uppercase
+// letter so stylized casings ("REN", "L'Oréal", "MAC") aren't mangled.
+function normalizeBrandCase(brand) {
+  if (typeof brand !== 'string') return brand;
+  if (!brand || /[A-Z]/.test(brand)) return brand;
+  return brand.replace(/\b\p{L}/gu, (ch) => ch.toUpperCase());
+}
+
 function asStringArray(value, max = 6) {
   const source = Array.isArray(value) ? value : value == null ? [] : [value];
   const out = [];
@@ -978,7 +988,9 @@ function recommendationProductIdentityKeys(raw) {
     asString(sku.merchantId) ||
     asString(canonicalProductRef && canonicalProductRef.merchant_id) ||
     asString(directProductRef && directProductRef.merchant_id);
-  const brand = asString(row.brand) || asString(product.brand) || asString(sku.brand);
+  const brand = normalizeBrandCase(
+    asString(row.brand) || asString(product.brand) || asString(sku.brand),
+  );
   const name =
     asString(row.product_name) ||
     asString(row.productName) ||
@@ -1093,15 +1105,16 @@ function normalizeRecommendationProductCard(raw, options = {}) {
     asString(sku.display_name) ||
     asString(sku.displayName) ||
     asString(sku.name);
-  const brand =
+  const brand = normalizeBrandCase(
     asString(row.brand) ||
-    asString(product.brand) ||
-    asString(product.vendor) ||
-    asString(sku.brand) ||
-    asString(sku.Brand) ||
-    // Final fallback: catalog_products / external_product_seeds lookup
-    // built upstream in applyLegacyRecoPdpEnrichment. Pure read; row untouched.
-    (brandLookupMap ? lookupBrandForRow(row, brandLookupMap) : '');
+      asString(product.brand) ||
+      asString(product.vendor) ||
+      asString(sku.brand) ||
+      asString(sku.Brand) ||
+      // Final fallback: catalog_products / external_product_seeds lookup
+      // built upstream in applyLegacyRecoPdpEnrichment. Pure read; row untouched.
+      (brandLookupMap ? lookupBrandForRow(row, brandLookupMap) : ''),
+  );
   if (!name && !brand) return null;
 
   const matchedRoleId =
@@ -1437,12 +1450,13 @@ function pickRecommendationProductId(raw) {
 
 function pickRecommendationProductTitle(raw) {
   const { row, sku, product } = flattenRecommendationProductSource(raw);
-  const brand =
+  const brand = normalizeBrandCase(
     asString(row.brand) ||
-    asString(product.brand) ||
-    asString(product.vendor) ||
-    asString(sku.brand) ||
-    asString(sku.Brand);
+      asString(product.brand) ||
+      asString(product.vendor) ||
+      asString(sku.brand) ||
+      asString(sku.Brand),
+  );
   const name =
     asString(row.product_name) ||
     asString(row.name) ||
@@ -1530,10 +1544,11 @@ function buildProductVerdictCard({ card, requestId, index, language = 'EN' }) {
     asString(payload.product_name) ||
     asString(payload.productName) ||
     asString((payload.product || {}).name);
-  const brand =
+  const brand = normalizeBrandCase(
     asString(assessment.brand) ||
-    asString(payload.brand) ||
-    asString((payload.product || {}).brand);
+      asString(payload.brand) ||
+      asString((payload.product || {}).brand),
+  );
   const matchScoreRaw =
     Number(assessment.match_score) ||
     Number(assessment.matchScore) ||
