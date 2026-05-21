@@ -75,6 +75,17 @@ function hasTransactionHoldContract(value) {
   );
 }
 
+function isSourceUnavailableContract(value) {
+  const object = asSafePlainObject(value);
+  const version = String(object.contract_version || '').trim().toLowerCase();
+  const status = String(object.status || '').trim().toLowerCase();
+  return version === 'external_seed.source_unavailable.v1' || status === 'source_unavailable';
+}
+
+function hasTerminalTransactionHoldContract(value) {
+  return hasTransactionHoldContract(value) && !isSourceUnavailableContract(value);
+}
+
 function suppressCommerceForPdpProduct(product = {}) {
   const seedData = asSafePlainObject(product.seed_data);
   const snapshot = asSafePlainObject(seedData.snapshot);
@@ -90,6 +101,21 @@ function suppressCommerceForPdpProduct(product = {}) {
       hasTransactionHoldContract(snapshot.non_merch_terminal_hold_v1) ||
       hasTransactionHoldContract(seedData.source_unavailable_v1) ||
       hasTransactionHoldContract(snapshot.source_unavailable_v1)
+  );
+}
+
+function suppressFormulaContentForPdpProduct(product = {}) {
+  const seedData = asSafePlainObject(product.seed_data);
+  const snapshot = asSafePlainObject(seedData.snapshot);
+  const family = String(product.product_family || product.external_seed_product_family || '').trim().toLowerCase();
+  return Boolean(
+    family === 'non_merch' ||
+      hasTerminalTransactionHoldContract(product.transaction_readiness_blocker_v1) ||
+      hasTerminalTransactionHoldContract(product.non_merch_terminal_hold_v1) ||
+      hasTerminalTransactionHoldContract(seedData.transaction_readiness_blocker_v1) ||
+      hasTerminalTransactionHoldContract(snapshot.transaction_readiness_blocker_v1) ||
+      hasTerminalTransactionHoldContract(seedData.non_merch_terminal_hold_v1) ||
+      hasTerminalTransactionHoldContract(snapshot.non_merch_terminal_hold_v1)
   );
 }
 
@@ -4295,6 +4321,7 @@ function buildPdpPayload(args) {
   const pdpSchemaProfile = resolvePdpSchemaProfile(product);
   const isBeautyFormulaProfile = isBeautyFormulaPdpProfile(pdpSchemaProfile);
   const commerceSuppressed = suppressCommerceForPdpProduct(product);
+  const formulaContentSuppressed = suppressFormulaContentForPdpProduct(product);
   const brandLabel = resolveProductBrandLabel(product);
   const currency = product.currency || 'USD';
   const variants = buildVariants(product);
@@ -4364,17 +4391,17 @@ function buildPdpPayload(args) {
     isBeautyFormulaProfile && isExternalSeedLikeProduct(product)
       ? buildStructuredPdpIngredientModules(product)
       : null;
-  const ingredientsInci = isBeautyFormulaProfile && !commerceSuppressed
+  const ingredientsInci = isBeautyFormulaProfile && !formulaContentSuppressed
     ? externalSeedIngredientAuthority
       ? externalSeedIngredientAuthority.ingredientsInciData
       : buildIngredientsInci(product)
     : null;
-  const activeIngredients = isBeautyFormulaProfile && !commerceSuppressed
+  const activeIngredients = isBeautyFormulaProfile && !formulaContentSuppressed
     ? externalSeedIngredientAuthority
       ? externalSeedIngredientAuthority.activeIngredientsData
       : buildActiveIngredients(product, ingredientsInci)
     : null;
-  const howToUse = commerceSuppressed ? null : buildHowToUse(product, structuredContentImagePlan);
+  const howToUse = formulaContentSuppressed ? null : buildHowToUse(product, structuredContentImagePlan);
   const genericAttributeModules = isBeautyFormulaProfile
     ? {}
     : buildGenericAttributeModules(product, pdpSchemaProfile, detailSections);
