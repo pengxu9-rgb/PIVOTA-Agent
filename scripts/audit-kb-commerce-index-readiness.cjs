@@ -7,6 +7,7 @@ const path = require('node:path');
 const { query, getPool } = require('../src/db');
 const {
   EXTERNAL_SEED_MERCHANT_ID,
+  buildExternalSeedProduct,
 } = require('../src/services/externalSeedProducts');
 const {
   buildSourceListingRef,
@@ -20,8 +21,13 @@ const {
 } = require('../src/services/catalogServingIndex');
 const {
   buildCheckpointedReadinessAudit,
-  fetchSeedRows,
 } = require('./audit-external-seed-pdp-readiness');
+
+const IDENTITY_CHUNK_SIZE = Math.max(1, Math.min(Number(process.env.AUDIT_IDENTITY_CHUNK_SIZE || 250), 1000));
+const KB_CHUNK_SIZE = Math.max(1, Math.min(Number(process.env.AUDIT_KB_CHUNK_SIZE || 250), 1000));
+const CATALOG_CHUNK_SIZE = Math.max(1, Math.min(Number(process.env.AUDIT_CATALOG_CHUNK_SIZE || 250), 1000));
+const OFFER_CHUNK_SIZE = Math.max(1, Math.min(Number(process.env.AUDIT_OFFER_CHUNK_SIZE || 250), 1000));
+const INDEX_CHUNK_SIZE = Math.max(1, Math.min(Number(process.env.AUDIT_INDEX_CHUNK_SIZE || 250), 1000));
 
 function argValue(name, fallback = '') {
   const prefix = `--${name}=`;
@@ -50,6 +56,11 @@ function asArray(value) {
 
 function asObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+function bindParam(params, value) {
+  params.push(value);
+  return `$${params.length}`;
 }
 
 function compactJson(value) {
@@ -176,7 +187,9 @@ async function queryRows(sql, params = [], { optional = false, label = 'query' }
 async function fetchIdentityRows(productIds) {
   const rows = [];
   const warnings = [];
-  for (const ids of chunk(productIds, 1000)) {
+  const chunks = chunk(productIds, IDENTITY_CHUNK_SIZE);
+  for (let index = 0; index < chunks.length; index += 1) {
+    const ids = chunks[index];
     const result = await queryRows(
       `
         SELECT to_jsonb(pil) AS row
@@ -189,6 +202,7 @@ async function fetchIdentityRows(productIds) {
     );
     rows.push(...result.rows.map((item) => item.row));
     if (result.warning) warnings.push(result.warning);
+    logStage(`identity chunk ${index + 1}/${chunks.length} rows=${result.rows?.length || 0}`);
   }
   return { rows, warnings };
 }
@@ -196,7 +210,9 @@ async function fetchIdentityRows(productIds) {
 async function fetchKbRows(productIds) {
   const rows = [];
   const warnings = [];
-  for (const ids of chunk(productIds, 1000)) {
+  const chunks = chunk(productIds, KB_CHUNK_SIZE);
+  for (let index = 0; index < chunks.length; index += 1) {
+    const ids = chunks[index];
     const result = await queryRows(
       `
         SELECT
@@ -215,6 +231,7 @@ async function fetchKbRows(productIds) {
     );
     rows.push(...result.rows);
     if (result.warning) warnings.push(result.warning);
+    logStage(`kb chunk ${index + 1}/${chunks.length} rows=${result.rows?.length || 0}`);
   }
   return { rows, warnings };
 }
@@ -223,7 +240,9 @@ async function fetchCatalogRows(productKeys) {
   const rows = [];
   const warnings = [];
   const keys = productKeys.filter(Boolean);
-  for (const keyChunk of chunk(keys, 1000)) {
+  const chunks = chunk(keys, CATALOG_CHUNK_SIZE);
+  for (let index = 0; index < chunks.length; index += 1) {
+    const keyChunk = chunks[index];
     const result = await queryRows(
       `
         SELECT
@@ -238,6 +257,7 @@ async function fetchCatalogRows(productKeys) {
     );
     rows.push(...result.rows);
     if (result.warning) warnings.push(result.warning);
+    logStage(`catalog chunk ${index + 1}/${chunks.length} rows=${result.rows?.length || 0}`);
   }
   return { rows, warnings };
 }
@@ -246,7 +266,9 @@ async function fetchOfferRows(productKeys) {
   const rows = [];
   const warnings = [];
   const keys = productKeys.filter(Boolean);
-  for (const keyChunk of chunk(keys, 1000)) {
+  const chunks = chunk(keys, OFFER_CHUNK_SIZE);
+  for (let index = 0; index < chunks.length; index += 1) {
+    const keyChunk = chunks[index];
     const result = await queryRows(
       `
         SELECT
@@ -265,6 +287,7 @@ async function fetchOfferRows(productKeys) {
     );
     rows.push(...result.rows);
     if (result.warning) warnings.push(result.warning);
+    logStage(`offer chunk ${index + 1}/${chunks.length} rows=${result.rows?.length || 0}`);
   }
   return { rows, warnings };
 }
@@ -273,7 +296,9 @@ async function fetchIndexRows(contentKeys) {
   const rows = [];
   const warnings = [];
   const keys = contentKeys.filter(Boolean);
-  for (const keyChunk of chunk(keys, 1000)) {
+  const chunks = chunk(keys, INDEX_CHUNK_SIZE);
+  for (let index = 0; index < chunks.length; index += 1) {
+    const keyChunk = chunks[index];
     const result = await queryRows(
       `
         SELECT
@@ -287,6 +312,7 @@ async function fetchIndexRows(contentKeys) {
     );
     rows.push(...result.rows);
     if (result.warning) warnings.push(result.warning);
+    logStage(`index chunk ${index + 1}/${chunks.length} rows=${result.rows?.length || 0}`);
   }
   return { rows, warnings };
 }
@@ -307,12 +333,162 @@ async function fetchMarketCounts() {
   return result.rows;
 }
 
-function buildSourceRows(seedRows) {
+async function fetchInventorySeedRowsProjectedByProductIds(productIds, options = {}) {
+  const ids = Array.from(new Set((productIds || []).map(asString).filter(Boolean)));
+  const rows = [];
+  const productionBuilderIds = new Set(
+    Array.from(options.productionBuilderProductIds || []).map(asString).filter(Boolean),
+  );
+  const chunkSize = Math.max(
+    1,
+    Math.min(Number(options.seedProjectionChunkSize || process.env.AUDIT_SEED_PROJECTION_CHUNK_SIZE || 100), 250),
+  );
+  const minimalChunkSize = Math.max(
+    1,
+    Math.min(Number(process.env.AUDIT_SEED_MINIMAL_CHUNK_SIZE || 1000), 2000),
+  );
+  const fetchChunk = async (idSubset, { includeSeedProjection, label }) => {
+    if (!idSubset.length) return [];
+    const params = [idSubset];
+    const where = [
+      `eps.status = 'active'`,
+      `eps.external_product_id LIKE 'ext_%'`,
+      `eps.external_product_id = ANY($1::text[])`,
+    ];
+    if (!options.allMarkets) where.push(`eps.market = ${bindParam(params, options.market || 'US')}`);
+    if (options.includeAttached !== true) where.push(`eps.attached_product_key IS NULL`);
+    const seedDataSql = includeSeedProjection
+      ? `
+          jsonb_strip_nulls(jsonb_build_object(
+            'brand', eps.seed_data->'brand',
+            'brand_name', eps.seed_data->'brand_name',
+            'vendor', eps.seed_data->'vendor',
+            'title', eps.seed_data->'title',
+            'name', eps.seed_data->'name',
+            'category', eps.seed_data->'category',
+            'product_type', eps.seed_data->'product_type',
+            'description', eps.seed_data->'description',
+            'summary', eps.seed_data->'summary',
+            'images', eps.seed_data->'images',
+            'image_urls', eps.seed_data->'image_urls',
+            'tags', eps.seed_data->'tags',
+            'variants', eps.seed_data->'variants',
+            'price_amount', eps.seed_data->'price_amount',
+            'price', eps.seed_data->'price',
+            'price_currency', eps.seed_data->'price_currency',
+            'currency', eps.seed_data->'currency',
+            'availability', eps.seed_data->'availability',
+            'snapshot', jsonb_strip_nulls(jsonb_build_object(
+              'brand', eps.seed_data #> '{snapshot,brand}',
+              'brand_name', eps.seed_data #> '{snapshot,brand_name}',
+              'vendor', eps.seed_data #> '{snapshot,vendor}',
+              'title', eps.seed_data #> '{snapshot,title}',
+              'name', eps.seed_data #> '{snapshot,name}',
+              'category', eps.seed_data #> '{snapshot,category}',
+              'product_type', eps.seed_data #> '{snapshot,product_type}',
+              'description', eps.seed_data #> '{snapshot,description}',
+              'summary', eps.seed_data #> '{snapshot,summary}',
+              'images', eps.seed_data #> '{snapshot,images}',
+              'image_urls', eps.seed_data #> '{snapshot,image_urls}',
+              'price_amount', eps.seed_data #> '{snapshot,price_amount}',
+              'price', eps.seed_data #> '{snapshot,price}',
+              'price_currency', eps.seed_data #> '{snapshot,price_currency}',
+              'currency', eps.seed_data #> '{snapshot,currency}',
+              'availability', eps.seed_data #> '{snapshot,availability}',
+              'canonical_url', eps.seed_data #> '{snapshot,canonical_url}',
+              'destination_url', eps.seed_data #> '{snapshot,destination_url}'
+            )),
+            'derived', jsonb_strip_nulls(jsonb_build_object(
+              'recall', jsonb_strip_nulls(jsonb_build_object(
+                'category', eps.seed_data #> '{derived,recall,category}',
+                'retrieval_title', eps.seed_data #> '{derived,recall,retrieval_title}',
+                'retrieval_summary', eps.seed_data #> '{derived,recall,retrieval_summary}',
+                'retrieval_body', eps.seed_data #> '{derived,recall,retrieval_body}'
+              ))
+            ))
+          ))`
+      : `
+          jsonb_strip_nulls(jsonb_build_object(
+            'title', eps.title,
+            'name', eps.title,
+            'images', CASE WHEN eps.image_url IS NOT NULL THEN jsonb_build_array(eps.image_url) ELSE NULL END,
+            'image_urls', CASE WHEN eps.image_url IS NOT NULL THEN jsonb_build_array(eps.image_url) ELSE NULL END,
+            'price_amount', eps.price_amount,
+            'price_currency', eps.price_currency,
+            'currency', eps.price_currency,
+            'availability', eps.availability,
+            'snapshot', jsonb_strip_nulls(jsonb_build_object(
+              'title', eps.title,
+              'name', eps.title,
+              'images', CASE WHEN eps.image_url IS NOT NULL THEN jsonb_build_array(eps.image_url) ELSE NULL END,
+              'image_urls', CASE WHEN eps.image_url IS NOT NULL THEN jsonb_build_array(eps.image_url) ELSE NULL END,
+              'price_amount', eps.price_amount,
+              'price_currency', eps.price_currency,
+              'currency', eps.price_currency,
+              'availability', eps.availability,
+              'canonical_url', eps.canonical_url,
+              'destination_url', eps.destination_url
+            ))
+          ))`;
+    const result = await queryRows(
+      `
+        SELECT
+          eps.id,
+          eps.external_product_id,
+          eps.market,
+          eps.tool,
+          eps.domain,
+          eps.title,
+          eps.canonical_url,
+          eps.destination_url,
+          eps.image_url,
+          eps.attached_product_key,
+          eps.price_amount,
+          eps.price_currency,
+          eps.availability,
+          eps.updated_at,
+          ${seedDataSql} AS seed_data
+        FROM external_product_seeds eps
+        WHERE ${where.join('\n          AND ')}
+      `,
+      params,
+      { label },
+    );
+    return result.rows || [];
+  };
+
+  const minimalChunks = chunk(ids.filter((id) => !productionBuilderIds.has(id)), minimalChunkSize);
+  for (let index = 0; index < minimalChunks.length; index += 1) {
+    const minimalIds = minimalChunks[index];
+    const minimalRows = await fetchChunk(minimalIds, {
+      includeSeedProjection: false,
+      label: 'external_product_seeds_minimal',
+    });
+    rows.push(...minimalRows);
+    logStage(`seed minimal chunk ${index + 1}/${minimalChunks.length} rows=${minimalRows.length}`);
+  }
+
+  const projectedChunks = chunk(ids.filter((id) => productionBuilderIds.has(id)), chunkSize);
+  for (let index = 0; index < projectedChunks.length; index += 1) {
+    const projectedIds = projectedChunks[index];
+    const projectedRows = await fetchChunk(projectedIds, {
+      includeSeedProjection: true,
+      label: 'external_product_seeds_projected',
+    });
+    rows.push(...projectedRows);
+    logStage(`seed projected chunk ${index + 1}/${projectedChunks.length} rows=${projectedRows.length}`);
+  }
+  return rows;
+}
+
+function buildSourceRows(seedRows, { productionBuilderProductIds = new Set() } = {}) {
   const rows = [];
   const failures = [];
   for (const row of seedRows) {
     try {
-      const product = buildLiteExternalSeedProduct(row);
+      const product = buildLiteExternalSeedProduct(row, {
+        useProductionBuilder: productionBuilderProductIds.has(asString(row.external_product_id)),
+      });
       const productId = firstString(product?.product_id, row.external_product_id, row.id);
       if (!product || !productId) {
         failures.push({
@@ -346,7 +522,27 @@ function buildSourceRows(seedRows) {
   return { rows, failures };
 }
 
-function buildLiteExternalSeedProduct(row) {
+async function hydrateSourceRowsForAudit(sourceRows, options = {}) {
+  const hydratedRows = [];
+  const hydrateChunkSize = Math.max(
+    1,
+    Math.min(Number(process.env.AUDIT_HYDRATE_CHUNK_SIZE || 1000), 4000),
+  );
+  const chunks = chunk(sourceRows || [], hydrateChunkSize);
+  for (let index = 0; index < chunks.length; index += 1) {
+    const hydratedChunk = await hydrateCatalogServingSourceRowsWithProductIntel(chunks[index], options);
+    hydratedRows.push(...hydratedChunk);
+    logStage(`hydrated source chunk ${index + 1}/${chunks.length} rows=${hydratedChunk.length}`);
+  }
+  return hydratedRows;
+}
+
+function buildLiteExternalSeedProduct(row, { useProductionBuilder = false } = {}) {
+  if (useProductionBuilder) {
+    const productionProduct = buildExternalSeedProduct(row);
+    if (productionProduct && typeof productionProduct === 'object') return productionProduct;
+  }
+
   const seedData = asObject(row.seed_data);
   const snapshot = asObject(seedData.snapshot);
   const facts = resolveSeedFacts(row);
@@ -490,6 +686,11 @@ function identityStatus(identity) {
   return { ok: issues.length === 0, issues };
 }
 
+function isSellerOnlyEvidenceProfile(value) {
+  const profile = lower(value);
+  return profile === 'seller_only' || profile === 'seller_grounded' || profile === 'seller_only_fallback';
+}
+
 function kbMainStatus(readiness) {
   const direct = asObject(asObject(readiness).pivota_insights).direct || {};
   const effective = asObject(asObject(readiness).pivota_insights).effective || {};
@@ -500,15 +701,22 @@ function kbMainStatus(readiness) {
       detail: effective.high_quality_ready ? 'direct_missing_effective_sibling_ready' : 'missing_direct_product_intel_kb',
     };
   }
-  if (direct.high_quality_ready) return { ok: true, blocker: '', detail: '' };
   const issues = asArray(direct.issues);
   const blocking = asArray(direct.blocking_issues);
-  const sellerOnly = direct.evidence_profile === 'seller_only' || issues.includes('seller_only_evidence');
-  if (direct.displayable && (sellerOnly || !blocking.length)) {
+  const sellerOnly = isSellerOnlyEvidenceProfile(direct.evidence_profile) || issues.includes('seller_only_evidence');
+  if (sellerOnly) {
     return {
       ok: false,
       blocker: 'kb_displayable_limited',
-      detail: sellerOnly ? 'seller_only_or_limited_evidence' : `limited_issues:${issues.join('|')}`,
+      detail: 'seller_only_or_limited_evidence',
+    };
+  }
+  if (direct.high_quality_ready) return { ok: true, blocker: '', detail: '' };
+  if (direct.displayable && !blocking.length) {
+    return {
+      ok: false,
+      blocker: 'kb_displayable_limited',
+      detail: `limited_issues:${issues.join('|')}`,
     };
   }
   return {
@@ -561,6 +769,28 @@ function resolveExternalIndexPublished(indexState = null) {
   );
 }
 
+function isDealTitle(title) {
+  return /^\s*\[deal\]/i.test(asString(title));
+}
+
+function hasDocPrice(doc) {
+  return doc?.price_min != null || doc?.price_max != null;
+}
+
+function isCategoryOnlyMissingToleratedByServingDoc(seedFacts, doc, { hasPublicDoc, hasDocInsightSummary } = {}) {
+  const missing = asArray(seedFacts?.missing).filter(Boolean);
+  if (!missing.length) return false;
+  if (!missing.every((field) => field === 'category')) return false;
+  if (isDealTitle(seedFacts?.facts?.title)) return false;
+  return Boolean(
+    hasPublicDoc &&
+      hasDocInsightSummary &&
+      doc?.external_offer_exists === true &&
+      hasDocPrice(doc) &&
+      asArray(doc?.category_paths).length,
+  );
+}
+
 function buildInventoryRows({
   seedRows,
   readinessByProductId,
@@ -589,11 +819,15 @@ function buildInventoryRows({
     const kbGate = kbMainStatus(readiness);
     const hasPublicDoc = Boolean(doc && asString(doc.publish_state) === 'public');
     const hasDocInsightSummary = Boolean(asString(doc?.pivota_insight_summary));
+    const categoryOnlyMissingToleratedByServingDoc = isCategoryOnlyMissingToleratedByServingDoc(seedFacts, doc, {
+      hasPublicDoc,
+      hasDocInsightSummary,
+    });
     const externalIndexPublished = resolveExternalIndexPublished(indexState);
 
     let mainBlocker = 'db_serving_ready';
     let blockerDetail = '';
-    if (seedFacts.missing.length) {
+    if (seedFacts.missing.length && !categoryOnlyMissingToleratedByServingDoc) {
       mainBlocker = 'seed_content_blocked';
       blockerDetail = `missing:${seedFacts.missing.join('|')}`;
     } else if (!identityGate.ok) {
@@ -625,6 +859,7 @@ function buildInventoryRows({
       attached_product_key: seed.attached_product_key,
       content_key: catalog?.content_key || '',
       seed_missing_fields: seedFacts.missing.join('|'),
+      seed_missing_tolerated_by_serving_builder: categoryOnlyMissingToleratedByServingDoc,
       identity_exists: Boolean(identity),
       identity_status: identity?.identity_status || '',
       identity_live_read_enabled: identity?.live_read_enabled === true,
@@ -778,7 +1013,9 @@ function summarizeInventory(inventoryRows, publicDocs, sourceBuildFailures, warn
     kb: {
       direct_displayable: inventoryRows.filter((row) => row.kb_direct_displayable).length,
       direct_high_quality_ready: inventoryRows.filter((row) => row.kb_direct_high_quality_ready).length,
-      direct_seller_only_or_limited: inventoryRows.filter((row) => row.kb_direct_evidence_profile === 'seller_only').length,
+      direct_seller_only_or_limited: inventoryRows.filter((row) =>
+        isSellerOnlyEvidenceProfile(row.kb_direct_evidence_profile),
+      ).length,
       missing_or_no_direct_kb: inventoryRows.filter((row) => !row.kb_exists).length,
     },
     identity: {
@@ -887,7 +1124,7 @@ async function main() {
   ensureDir(outDir);
 
   logStage(`start market=${options.market} limit=${options.limit} out_dir=${outDir}`);
-  await query(`SET statement_timeout = '90000ms'`, []);
+  await query(`SET statement_timeout = '240000ms'`, []);
 
   logStage('fetch market counts');
   const warnings = [];
@@ -910,11 +1147,32 @@ async function main() {
   writeJson(path.join(outDir, 'pdp_readiness_audit.json'), readinessAudit);
   logStage(`pdp readiness rows=${readinessAudit.rows?.length || 0}`);
 
-  logStage('fetch seed rows for inventory');
-  const seedRows = await fetchSeedRows({
+  const readinessProductIds = Array.from(
+    new Set((readinessAudit.rows || []).map((row) => asString(row.external_product_id)).filter(Boolean)),
+  );
+  const productionBuilderProductIds = new Set();
+  for (const row of readinessAudit.rows || []) {
+    const productId = asString(row.external_product_id);
+    const directIntel = asObject(asObject(row).pivota_insights).direct || {};
+    const effectiveIntel = asObject(asObject(row).pivota_insights).effective || {};
+    if (
+      productId &&
+      (directIntel.displayable === true ||
+        directIntel.high_quality_ready === true ||
+        effectiveIntel.displayable === true ||
+        effectiveIntel.high_quality_ready === true)
+    ) {
+      productionBuilderProductIds.add(productId);
+    }
+  }
+  logStage(`production builder candidates=${productionBuilderProductIds.size}`);
+  logStage(`fetch projected seed rows for inventory product_ids=${readinessProductIds.length}`);
+  const seedRows = await fetchInventorySeedRowsProjectedByProductIds(readinessProductIds, {
     market: options.market,
     includeAttached: true,
     limit: options.limit,
+    pageSize: options.pageSize,
+    productionBuilderProductIds,
   });
   if ((readinessAudit.rows?.length || 0) !== seedRows.length) {
     warnings.push({
@@ -944,6 +1202,10 @@ async function main() {
     if (productId) kbByProductId.set(productId, row);
   }
   logStage(`kb rows=${kbPayload.rows.length}`);
+  const readinessByProductId = new Map();
+  for (const row of readinessAudit.rows || []) {
+    readinessByProductId.set(asString(row.external_product_id), row);
+  }
 
   logStage(`fetch catalog rows attached_product_keys=${productKeys.length}`);
   const catalogPayload = await fetchCatalogRows(productKeys);
@@ -978,10 +1240,10 @@ async function main() {
   logStage(`index rows=${indexPayload.rows.length}`);
 
   logStage('build market-filtered source rows for commerce public dry-run');
-  const sourcePayload = buildSourceRows(seedRows);
+  const sourcePayload = buildSourceRows(seedRows, { productionBuilderProductIds });
   logStage(`source rows=${sourcePayload.rows.length} source_build_failures=${sourcePayload.failures.length}`);
   logStage('hydrate source rows from high-quality product-intel KB for commerce dry-run');
-  const hydratedSourceRows = await hydrateCatalogServingSourceRowsWithProductIntel(sourcePayload.rows, {
+  const hydratedSourceRows = await hydrateSourceRowsForAudit(sourcePayload.rows, {
     queryFn: query,
     env: process.env,
   });
@@ -1014,11 +1276,6 @@ async function main() {
   }
 
   logStage('build inventory rows and rollups');
-  const readinessByProductId = new Map();
-  for (const row of readinessAudit.rows || []) {
-    readinessByProductId.set(asString(row.external_product_id), row);
-  }
-
   const inventoryRows = buildInventoryRows({
     seedRows,
     readinessByProductId,
@@ -1052,6 +1309,7 @@ async function main() {
     'attached_product_key',
     'content_key',
     'seed_missing_fields',
+    'seed_missing_tolerated_by_serving_builder',
     'identity_exists',
     'identity_status',
     'identity_live_read_enabled',
