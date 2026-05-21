@@ -8503,6 +8503,8 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
         SELECT
           apv.content_key,
           apv.pivota_signature_id,
+          ext_seed.source_product_id AS external_product_id,
+          ext_seed.product_key AS external_product_key,
           apv.brand,
           apv.title,
           apv.description,
@@ -8517,6 +8519,16 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
         FROM agent_pdp_view apv
         JOIN brand_match bm ON bm.content_key = apv.content_key
         JOIN index_pipeline_state ips ON ips.content_key = apv.content_key
+        LEFT JOIN LATERAL (
+          SELECT cp.source_product_id, cp.product_key
+          FROM catalog_products cp
+          WHERE cp.content_key = apv.content_key
+            AND cp.merchant_id = 'external_seed'
+            AND cp.platform = 'external_seed'
+            AND cp.source_product_id LIKE 'ext_%'
+          ORDER BY cp.updated_at DESC NULLS LAST
+          LIMIT 1
+        ) ext_seed ON TRUE
         WHERE apv.pivota_signature_id IS NOT NULL
           AND ips.serving_eligible = TRUE
         ORDER BY apv.refreshed_at DESC NULLS LAST
@@ -8535,6 +8547,8 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
           id: productId,
           product_id: productId,
           pivota_signature_id: productId,
+          ...(row.external_product_id ? { external_product_id: String(row.external_product_id), source_product_id: String(row.external_product_id) } : {}),
+          ...(row.external_product_key ? { external_product_key: String(row.external_product_key) } : {}),
           ...(row.content_key ? { content_key: String(row.content_key) } : {}),
           ...(row.canonical_url ? { pivota_canonical_url: String(row.canonical_url) } : {}),
           title: String(row.title || '').trim() || productId,
@@ -9536,20 +9550,20 @@ function applyDiscoveryProductIntelBundle(candidate, bundle) {
 
 async function hydrateDiscoveryCandidateProductIntel(candidate) {
   if (!candidate || typeof candidate !== 'object') return candidate;
-  const raw = asPlainObject(candidate.raw);
-  if (!raw) return candidate;
-
-  const productId = String(raw.product_id || candidate.productId || '').trim();
-  if (!productId) return candidate;
+  const kbKeys = buildDiscoveryProductIntelKbKeys(candidate);
+  if (!kbKeys.length) return candidate;
 
   const { getProductIntelKbEntry } = getProductIntelKbStore();
   if (typeof getProductIntelKbEntry !== 'function') return candidate;
 
   let kbEntry = null;
-  try {
-    kbEntry = await getProductIntelKbEntry(`product:${productId}`);
-  } catch {
-    return candidate;
+  for (const kbKey of kbKeys) {
+    try {
+      kbEntry = await getProductIntelKbEntry(kbKey);
+    } catch {
+      kbEntry = null;
+    }
+    if (extractDiscoveryProductIntelBundle(kbEntry)) break;
   }
 
   const bundle = extractDiscoveryProductIntelBundle(kbEntry);
@@ -9557,10 +9571,34 @@ async function hydrateDiscoveryCandidateProductIntel(candidate) {
   return applyDiscoveryProductIntelBundle(candidate, bundle);
 }
 
-function buildDiscoveryProductIntelKbKey(candidate) {
+function buildDiscoveryProductIntelKbKeys(candidate) {
   const raw = asPlainObject(candidate?.raw);
-  const productId = String(raw?.product_id || candidate?.productId || '').trim();
-  return productId ? `product:${productId}` : '';
+  const keys = [];
+  const add = (value) => {
+    const productId = String(value || '').trim();
+    if (!productId) return;
+    const key = `product:${productId}`;
+    if (!keys.includes(key)) keys.push(key);
+  };
+  add(raw?.product_id);
+  add(candidate?.productId);
+  add(raw?.external_product_id);
+  add(candidate?.external_product_id);
+  add(raw?.source_product_id);
+  add(candidate?.source_product_id);
+  add(raw?.external_seed_product_id);
+  add(candidate?.external_seed_product_id);
+  add(raw?.pivota_signature_id);
+  add(candidate?.pivota_signature_id);
+  add(raw?.signature_id);
+  add(candidate?.signature_id);
+  add(raw?.parent_external_product_id);
+  add(candidate?.parent_external_product_id);
+  return keys;
+}
+
+function buildDiscoveryProductIntelKbKey(candidate) {
+  return buildDiscoveryProductIntelKbKeys(candidate)[0] || '';
 }
 
 async function hydrateDiscoveryCandidatesProductIntel(candidates, request) {
@@ -9572,17 +9610,19 @@ async function hydrateDiscoveryCandidatesProductIntel(candidates, request) {
     let kbEntriesByKey = null;
     try {
       kbEntriesByKey = await getProductIntelKbEntries(
-        candidates.map((candidate) => buildDiscoveryProductIntelKbKey(candidate)).filter(Boolean),
+        Array.from(new Set(candidates.flatMap((candidate) => buildDiscoveryProductIntelKbKeys(candidate)))),
       );
     } catch {
       kbEntriesByKey = null;
     }
     if (kbEntriesByKey && typeof kbEntriesByKey.get === 'function') {
       return candidates.map((candidate) => {
-        const kbKey = buildDiscoveryProductIntelKbKey(candidate);
-        const kbEntry = kbKey ? kbEntriesByKey.get(kbKey) : null;
-        const bundle = extractDiscoveryProductIntelBundle(kbEntry);
-        return bundle ? applyDiscoveryProductIntelBundle(candidate, bundle) : candidate;
+        for (const kbKey of buildDiscoveryProductIntelKbKeys(candidate)) {
+          const kbEntry = kbEntriesByKey.get(kbKey);
+          const bundle = extractDiscoveryProductIntelBundle(kbEntry);
+          if (bundle) return applyDiscoveryProductIntelBundle(candidate, bundle);
+        }
+        return candidate;
       });
     }
   }
@@ -11024,6 +11064,7 @@ module.exports = {
     computeDiscoveryStepTimeoutMs,
     fetchExternalSeedCandidates,
     fetchBrandScopedExternalSeedCandidates,
+    fetchBrandScopedCanonicalCandidates,
     fetchExternalSeedExactTitleCandidates,
     fetchBeautyInterestExternalSeedFastpathCandidates,
     buildDiscoveryExactTitleLookupVariants,
@@ -11054,6 +11095,8 @@ module.exports = {
     resolveDiscoveryProductsSearchBaseUrlConfig,
     loadCatalogCandidates,
     hydrateDiscoveryCandidateProductIntel,
+    buildDiscoveryProductIntelKbKey,
+    buildDiscoveryProductIntelKbKeys,
     matchesQueryTextCandidate,
     matchesStrictLipstickQueryCandidate,
     matchesBeautyCompoundQueryIntent,
