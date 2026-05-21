@@ -154,6 +154,42 @@ function pickSavingsPresentationFields(source) {
   }, {});
 }
 
+// Manual overrides for brands whose canonical casing is not Title Case
+// (e.g. ColourPop, KVD). Keys are stored fully lowercase; values are the
+// canonical display form. Expand as the catalog grows.
+const BRAND_DISPLAY_OVERRIDES = {
+  'kvd': 'KVD',
+  'kvd beauty': 'KVD Beauty',
+  'kvd vegan beauty': 'KVD Vegan Beauty',
+  'colourpop': 'ColourPop',
+  'colourpop cosmetics': 'ColourPop Cosmetics',
+  'mac': 'MAC',
+  'nyx': 'NYX',
+  'nars': 'NARS',
+  'glamglow': 'GLAMGLOW',
+  'milk makeup': 'Milk Makeup',
+};
+
+// Guard against the all-lowercase brand strings written by upstream
+// ingest (catalog_products.brand "fenty beauty"). Only acts when input
+// is fully lowercase — any uppercase character means the source already
+// supplied the canonical form and we leave it alone.
+function titleCaseBrand(input) {
+  const value = String(input || '').trim();
+  if (!value) return value;
+  if (value !== value.toLowerCase()) return value;
+  if (Object.prototype.hasOwnProperty.call(BRAND_DISPLAY_OVERRIDES, value)) {
+    return BRAND_DISPLAY_OVERRIDES[value];
+  }
+  return value
+    .split(/(\s+)/)
+    .map((part) => {
+      if (!part || /^\s+$/.test(part)) return part;
+      return part.charAt(0).toLocaleUpperCase() + part.slice(1);
+    })
+    .join('');
+}
+
 function resolveProductBrandLabel(product) {
   if (!product || typeof product !== 'object') return null;
   const brandObject =
@@ -170,7 +206,7 @@ function resolveProductBrandLabel(product) {
   ];
   for (const candidate of candidates) {
     const value = String(candidate || '').trim();
-    if (value) return value;
+    if (value) return titleCaseBrand(value);
   }
   return null;
 }
@@ -3969,7 +4005,8 @@ function buildReviewsPreview(product, options = {}) {
   const summaryBrandCard =
     summary?.brand_card && typeof summary.brand_card === 'object' ? summary.brand_card : null;
   const brandCardName =
-    String(summaryBrandCard?.name || '').trim() || resolveProductBrandLabel(product);
+    titleCaseBrand(String(summaryBrandCard?.name || '').trim()) ||
+    resolveProductBrandLabel(product);
   const brandCardSubtitle = String(summaryBrandCard?.subtitle || '').trim() || null;
 
   const distributionRaw =
@@ -4721,4 +4758,5 @@ module.exports = {
   isExternalSeedLikeProduct,
   normalizePdpHttpUrl,
   resolveProductExternalRedirectUrl,
+  titleCaseBrand,
 };
