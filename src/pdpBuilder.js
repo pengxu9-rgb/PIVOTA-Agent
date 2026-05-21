@@ -2668,6 +2668,78 @@ function extractSectionSoupSegments(value) {
     .filter((entry) => entry.heading && entry.content);
 }
 
+function findFirstSectionSoupLabelIndex(value) {
+  const text = asNonEmptyString(value);
+  if (!text) return -1;
+  SECTION_SOUP_LABEL_RE.lastIndex = 0;
+  let match = SECTION_SOUP_LABEL_RE.exec(text);
+  while (match) {
+    const rawLabel = String(match[1] || '');
+    const previousChar = match.index > 0 ? text[match.index - 1] : '';
+    if (previousChar === '-') {
+      match = SECTION_SOUP_LABEL_RE.exec(text);
+      continue;
+    }
+    const matchedText = String(match[0] || '');
+    const hasExplicitLabelDelimiter = matchedText.includes(':');
+    const startsNewLine = match.index === 0 || /[\r\n]\s*$/.test(text.slice(0, match.index));
+    const titleCaseInlineLabel = /^[A-Z][a-z]/.test(rawLabel);
+    if (!hasExplicitLabelDelimiter && !startsNewLine && !titleCaseInlineLabel) {
+      match = SECTION_SOUP_LABEL_RE.exec(text);
+      continue;
+    }
+    if (/^(coverage|finish|texture)$/i.test(rawLabel) && rawLabel[0] !== rawLabel[0].toUpperCase()) {
+      match = SECTION_SOUP_LABEL_RE.exec(text);
+      continue;
+    }
+    return match.index;
+  }
+  return -1;
+}
+
+function findFirstInlineColonLabelIndex(value) {
+  const text = asNonEmptyString(value);
+  if (!text) return -1;
+  const inlineLabelRe = /(^|[.!?]\s+)([A-Z][A-Za-z0-9&+/\- ]{2,50}):\s+/g;
+  let match = inlineLabelRe.exec(text);
+  while (match) {
+    const label = asNonEmptyString(match[2]);
+    const labelStart = match.index + String(match[1] || '').length;
+    if (
+      labelStart > 0 &&
+      label.split(/\s+/).length <= 5 &&
+      !/^(?:description|details?|overview|ingredients?|how to use|directions?)$/i.test(label)
+    ) {
+      return labelStart;
+    }
+    match = inlineLabelRe.exec(text);
+  }
+  return -1;
+}
+
+function extractLeadOverviewBeforeSectionSoup(value) {
+  const text = asNonEmptyString(value);
+  if (!text) return '';
+  const firstLabelIndex = [
+    findFirstSectionSoupLabelIndex(text),
+    findFirstInlineColonLabelIndex(text),
+  ]
+    .filter((index) => index >= 0)
+    .sort((a, b) => a - b)[0] ?? -1;
+  if (firstLabelIndex < 80) return '';
+  const lead = cleanStructuredToken(text.slice(0, firstLabelIndex));
+  if (lead.length < 80 || lead.split(/\s+/).length < 12) return '';
+  if (
+    looksLikeIngredientBlobText(lead) ||
+    looksLikeTransactionalNoiseText(lead) ||
+    hasPromotionalOverviewMarkers(lead) ||
+    looksLikeOverlongPromotionalOverviewText(lead)
+  ) {
+    return '';
+  }
+  return lead;
+}
+
 function looksLikeSectionSoupText(value) {
   const text = asNonEmptyString(value);
   if (!text) return false;
@@ -2723,6 +2795,8 @@ function cleanOverviewDescriptionText(value) {
     }
     return text;
   }
+  const leadOverview = extractLeadOverviewBeforeSectionSoup(text);
+  if (leadOverview) return leadOverview;
   const preferred =
     segments.find((section) => OVERVIEW_DETAIL_SECTION_RE.test(section.heading)) ||
     segments.find((section) => !STRUCTURED_DETAIL_SECTION_RE.test(section.heading) && !FACT_DETAIL_SECTION_RE.test(section.heading));

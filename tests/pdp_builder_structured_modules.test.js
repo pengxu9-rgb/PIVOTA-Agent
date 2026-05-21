@@ -731,6 +731,50 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     ]);
   });
 
+  test('uses source-backed lead narrative when official description has inline fact labels', () => {
+    const description =
+      'All in one moisturizer provides deep hydration with 5D multi low-molecular hyaluronic acid and peptide. ' +
+      "Contains low-molecular, reinforced 5D hyaluronic acid that provides intensive care and deep moisturization for combination men's skin. " +
+      "Deep Hydration: replenishes moisture from the surface to deep within, targeting dryness in men's skin. " +
+      "Wrinkle-Refining Care: firms and revitalizes men's skin for a more lifted, youthful look. " +
+      'Fresh Finish: lightweight formula absorbs without greasiness, even on oily, sebum-prone skin. ' +
+      'Texture: lightweight, non-sticky texture that absorbs fast and leaves skin feeling fresh.';
+
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_torriden_all_in_one',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'DIVE IN FOR MEN All In One',
+        category: 'Moisturizer',
+        description,
+        pdp_description_raw: description,
+        pdp_schema_profile: 'beauty_formula',
+        image_url: 'https://cdn.example.com/torriden-all-in-one.jpg',
+        price: { amount: 20.4, currency: 'USD' },
+        pdp_details_sections: [
+          {
+            heading: 'Benefits',
+            body: 'A quick moisturizer step focused on hydration, a fresh non-greasy finish, and gentle care for sensitive or acne-prone combination skin.',
+          },
+          {
+            heading: 'Key Ingredients',
+            body: 'The captured formula includes glycerin, panthenol, multiple hyaluronic acid forms, allantoin, zinc PCA, urea, adenosine, and peptide support.',
+          },
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+      includeEmptyReviews: true,
+    });
+
+    const overview = payload.modules.find((module) => module.type === 'product_overview');
+    expect(overview?.data?.sections?.[0]?.content).toBe(
+      "All in one moisturizer provides deep hydration with 5D multi low-molecular hyaluronic acid and peptide. Contains low-molecular, reinforced 5D hyaluronic acid that provides intensive care and deep moisturization for combination men's skin.",
+    );
+    expect(payload.product.description).toBe(overview.data.sections[0].content);
+  });
+
   test('keeps numeric duration ranges together in how-to steps', () => {
     const payload = buildPdpPayload({
       product: {
