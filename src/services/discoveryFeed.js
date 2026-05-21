@@ -8244,6 +8244,11 @@ async function fetchBrandScopedExternalSeedCandidates({
   try {
     const epsBrandFieldSql = EXTERNAL_SEED_RECALL_SQL_FIELDS.brand.replace(/seed_data/g, 'eps.seed_data');
     const epsCategoryFieldSql = EXTERNAL_SEED_RECALL_SQL_FIELDS.category.replace(/seed_data/g, 'eps.seed_data');
+    // `*Display` mirrors the same coalesce chain WITHOUT lower() so the builder
+    // can render the brand/category in its original case (e.g. "Fenty Beauty"
+    // not "fenty beauty"). The lower()'d projections stay for search matching.
+    const epsBrandDisplayFieldSql = EXTERNAL_SEED_RECALL_SQL_FIELDS.brandDisplay.replace(/seed_data/g, 'eps.seed_data');
+    const epsCategoryDisplayFieldSql = EXTERNAL_SEED_RECALL_SQL_FIELDS.categoryDisplay.replace(/seed_data/g, 'eps.seed_data');
     const baseSelectColumns = `
       eps.id,
       eps.external_product_id,
@@ -8260,7 +8265,9 @@ async function fetchBrandScopedExternalSeedCandidates({
       eps.attached_product_key,
       coalesce(eps.seed_data->'derived'->'recall', '{}'::jsonb) AS seed_recall,
       ${epsBrandFieldSql} AS seed_brand,
-      ${epsCategoryFieldSql} AS seed_category
+      ${epsBrandDisplayFieldSql} AS seed_brand_display,
+      ${epsCategoryFieldSql} AS seed_category,
+      ${epsCategoryDisplayFieldSql} AS seed_category_display
     `;
     const attachedSelectColumns = `
       ${baseSelectColumns},
