@@ -14416,15 +14416,30 @@ function buildCanonicalChainRecallSearchResponse({
 async function fetchCanonicalChainRecallForFindProductsMulti({ search = {} } = {}) {
   if (!PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED) return null;
   if (!process.env.DATABASE_URL) return null;
-  const queryText = extractSearchQueryText(search);
+  const searchQualityContract =
+    SEARCH_QUALITY_CONTRACT_V1_ENABLED &&
+    search?.search_quality_contract &&
+    typeof search.search_quality_contract === 'object' &&
+    !Array.isArray(search.search_quality_contract)
+      ? search.search_quality_contract
+      : null;
+  const searchQualityContractApplied = isBeautySearchQualityContractApplied(searchQualityContract);
+  const queryText =
+    (searchQualityContractApplied && searchQualityContract?.effective_query) ||
+    extractSearchQueryText(search);
   if (!String(queryText || '').trim()) return null;
   const beautyBrandBrowse = resolveBeautyBrandBrowseQuery(queryText);
   const safeLimit = Math.max(
     1,
     Math.min(SEARCH_LIMIT_MAX, Math.floor(Number(search.limit || search.page_size || 20) || 20)),
   );
-  const canonicalLimit = Math.max(12, Math.min(32, safeLimit * 2));
-  const canonicalCategoryPathPrefix = resolveCanonicalCategoryPathPrefixForQuery(queryText) || null;
+  const canonicalLimit = searchQualityContractApplied
+    ? Math.max(18, Math.min(48, safeLimit * 4))
+    : Math.max(12, Math.min(32, safeLimit * 2));
+  const canonicalCategoryPathPrefix =
+    searchQualityContract?.hard_constraints?.category_path_prefix ||
+    resolveCanonicalCategoryPathPrefixForQuery(queryText) ||
+    null;
   // Market-aware recall: pass the user's market into canonicalCatalogSearch
   // so non-matching Path B rows are filtered. Falls back to env / 'US' to
   // preserve existing behaviour for callers that don't pass market.
@@ -14471,6 +14486,7 @@ async function fetchCanonicalChainRecallForFindProductsMulti({ search = {} } = {
         canonical_duration_ms: Math.max(0, Date.now() - startedAt),
         query_text: queryText,
         requested_limit: safeLimit,
+        ...(searchQualityContract ? { search_quality_contract: searchQualityContract } : {}),
         beauty_brand_browse: beautyBrandBrowse.matched
           ? {
               contract: beautyBrandBrowse.contract,
@@ -14494,6 +14510,7 @@ async function fetchCanonicalChainRecallForFindProductsMulti({ search = {} } = {
         canonical_error: String(err?.code || err?.message || err || 'canonical_query_failed').slice(0, 160),
         query_text: queryText,
         requested_limit: safeLimit,
+        ...(searchQualityContract ? { search_quality_contract: searchQualityContract } : {}),
         beauty_brand_browse: beautyBrandBrowse.matched
           ? {
               contract: beautyBrandBrowse.contract,
@@ -14546,22 +14563,57 @@ function attachCanonicalChainRecallTelemetry(body, canonicalResult) {
     metadata?.search_trace?.raw_query,
     metadata?.search_trace?.expanded_query,
   ) || '';
+  const telemetrySearchQualityContract =
+    telemetry.search_quality_contract &&
+    typeof telemetry.search_quality_contract === 'object' &&
+    !Array.isArray(telemetry.search_quality_contract)
+      ? telemetry.search_quality_contract
+      : metadata.search_quality_contract &&
+          typeof metadata.search_quality_contract === 'object' &&
+          !Array.isArray(metadata.search_quality_contract)
+        ? metadata.search_quality_contract
+        : null;
+  const telemetrySearchQualityContractApplied = isBeautySearchQualityContractApplied(
+    telemetrySearchQualityContract,
+  );
   const beautyBrandBrowse =
     telemetry.beauty_brand_browse && typeof telemetry.beauty_brand_browse === 'object'
       ? telemetry.beauty_brand_browse
       : resolveBeautyBrandBrowseQuery(canonicalQueryText);
   const isBeautyBrandBrowse = Boolean(beautyBrandBrowse?.matched || beautyBrandBrowse?.contract === 'brand_browse');
-  const brandMatchedCanonicalProducts = isBeautyBrandBrowse
-    ? canonicalProducts.filter((product) => searchProductMatchesBeautyBrandBrowse(product, beautyBrandBrowse))
-    : canonicalProducts;
-  const currentBrandMatchedProducts = isBeautyBrandBrowse
-    ? products.filter((product) => searchProductMatchesBeautyBrandBrowse(product, beautyBrandBrowse))
-    : products;
+  const contractMatchedCanonicalProducts = telemetrySearchQualityContractApplied
+    ? canonicalProducts.filter((product) =>
+        getSearchQualityContractHardConstraintResult(
+          product,
+          telemetrySearchQualityContract,
+          canonicalQueryText,
+        ).eligible,
+      )
+    : null;
+  const contractMatchedCurrentProducts = telemetrySearchQualityContractApplied
+    ? products.filter((product) =>
+        getSearchQualityContractHardConstraintResult(
+          product,
+          telemetrySearchQualityContract,
+          canonicalQueryText,
+        ).eligible,
+      )
+    : null;
+  const brandMatchedCanonicalProducts = telemetrySearchQualityContractApplied
+    ? contractMatchedCanonicalProducts
+    : isBeautyBrandBrowse
+      ? canonicalProducts.filter((product) => searchProductMatchesBeautyBrandBrowse(product, beautyBrandBrowse))
+      : canonicalProducts;
+  const currentBrandMatchedProducts = telemetrySearchQualityContractApplied
+    ? contractMatchedCurrentProducts
+    : isBeautyBrandBrowse
+      ? products.filter((product) => searchProductMatchesBeautyBrandBrowse(product, beautyBrandBrowse))
+      : products;
   const canonicalServingGate = filterSearchServingEligibleProducts(brandMatchedCanonicalProducts, {
     queryText: canonicalQueryText,
-    requireBeauty: isBeautyBrandBrowse,
+    requireBeauty: isBeautyBrandBrowse || telemetrySearchQualityContractApplied,
   });
-  const currentServingGate = isBeautyBrandBrowse
+  const currentServingGate = (isBeautyBrandBrowse || telemetrySearchQualityContractApplied)
     ? filterSearchServingEligibleProducts(currentBrandMatchedProducts, {
         queryText: canonicalQueryText,
         requireBeauty: true,
@@ -14589,6 +14641,16 @@ function attachCanonicalChainRecallTelemetry(body, canonicalResult) {
   const shouldApplyCanonicalProducts =
     canonicalEligibleProducts.length > 0 &&
     (
+      (
+        telemetrySearchQualityContractApplied &&
+        SEARCH_QUALITY_CONTRACT_V1_MODE === 'enforce' &&
+        SEARCH_SERVING_QUALITY_HOLD_ENABLED &&
+        (
+          products.length === 0 ||
+          (currentServingGate && currentServingGate.products.length < canonicalEligibleProducts.length) ||
+          responseCanonicalReturnedCount === 0
+        )
+      ) ||
       (
         isBeautyBrandBrowse &&
         canonicalEligibleProducts.length >= brandBrowseMinimum &&
@@ -14650,9 +14712,31 @@ function attachCanonicalChainRecallTelemetry(body, canonicalResult) {
       canonical_duration_ms: Math.max(0, Number(telemetry.canonical_duration_ms || 0) || 0),
       canonical_dedupe_count: canonicalDedupeCount,
       canonical_returned_count: finalCanonicalReturnedCount,
+      ...(telemetrySearchQualityContract
+        ? {
+            search_quality_contract: projectSearchQualityContractForMetadata(telemetrySearchQualityContract),
+            search_quality_contract_applied: telemetrySearchQualityContractApplied,
+            search_quality_contract_mode: SEARCH_QUALITY_CONTRACT_V1_MODE,
+            search_quality_failure_reasons: summarizeSearchQualityFailureReasons({
+              servingRejected: [
+                ...canonicalServingGate.rejected,
+                ...(currentServingGate ? currentServingGate.rejected : []),
+              ],
+            }),
+            search_quality_tier_counts: buildSearchQualityTierCounts(
+              canonicalProducts,
+              telemetrySearchQualityContractApplied ? telemetrySearchQualityContract : null,
+              canonicalQueryText,
+            ),
+          }
+        : {}),
       search_card_quality_gate: {
-        applied: isBeautyBrandBrowse,
-        mode: isBeautyBrandBrowse ? 'beauty_brand_browse' : 'telemetry_only',
+        applied: isBeautyBrandBrowse || telemetrySearchQualityContractApplied,
+        mode: telemetrySearchQualityContractApplied
+          ? 'beauty_search_quality_contract_v1'
+          : isBeautyBrandBrowse
+            ? 'beauty_brand_browse'
+            : 'telemetry_only',
         canonical_input_count: canonicalServingGate.input_count,
         canonical_eligible_count: canonicalServingGate.products.length,
         canonical_rejected_count: canonicalServingGate.rejected_count,
@@ -14721,7 +14805,7 @@ function attachCanonicalChainRecallTelemetry(body, canonicalResult) {
         canonical_dedupe_count: canonicalDedupeCount,
         canonical_returned_count: finalCanonicalReturnedCount,
         canonical_duration_ms: Math.max(0, Number(telemetry.canonical_duration_ms || 0) || 0),
-        search_card_quality_gate_applied: isBeautyBrandBrowse,
+        search_card_quality_gate_applied: isBeautyBrandBrowse || telemetrySearchQualityContractApplied,
         canonical_eligible_count: canonicalServingGate.products.length,
         canonical_rejected_count: canonicalServingGate.rejected_count,
         current_eligible_count: currentServingGate ? currentServingGate.products.length : null,
@@ -16866,13 +16950,24 @@ async function searchBeautyExternalSeedProductsMainline({
     String(search.market || metadata.market || process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US')
       .trim()
       .toUpperCase() || 'US';
+  const requestSearchQualityContract =
+    search?.search_quality_contract &&
+    typeof search.search_quality_contract === 'object' &&
+    !Array.isArray(search.search_quality_contract)
+      ? search.search_quality_contract
+      : metadata?.search_quality_contract &&
+          typeof metadata.search_quality_contract === 'object' &&
+          !Array.isArray(metadata.search_quality_contract)
+        ? metadata.search_quality_contract
+        : null;
   const searchQualityContract = SEARCH_QUALITY_CONTRACT_V1_ENABLED
-    ? buildSearchQualityContract({
-        rawQuery: rawQueryText,
-        market,
-        source: metadata?.source || search?.source || null,
-        allowContextBinding: false,
-      })
+    ? requestSearchQualityContract ||
+      buildSearchQualityContract({
+          rawQuery: rawQueryText,
+          market,
+          source: metadata?.source || search?.source || null,
+          allowContextBinding: false,
+        })
     : null;
   const searchQualityContractApplied = isBeautySearchQualityContractApplied(searchQualityContract);
   const searchQualityEnforced =
@@ -31204,6 +31299,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     findProductsExpansionMeta.query_understanding_decision || null,
                 }
               : {}),
+            ...(findProductsExpansionMeta?.search_quality_contract &&
+            typeof findProductsExpansionMeta.search_quality_contract === 'object'
+              ? {
+                  search_quality_contract: findProductsExpansionMeta.search_quality_contract,
+                  search_quality_contract_applied: Boolean(
+                    findProductsExpansionMeta.search_quality_contract_applied,
+                  ),
+                }
+              : {}),
           }
         : metadata;
     const traceQueryClass =
@@ -34813,6 +34917,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         });
         strictCommerceFindProductsMulti = Boolean(strictFindProductsMultiDecision.enabled);
 	      const queryText = String(search.query || '').trim();
+      const routeSearchQualityContract =
+        SEARCH_QUALITY_CONTRACT_V1_ENABLED &&
+        search?.search_quality_contract &&
+        typeof search.search_quality_contract === 'object' &&
+        !Array.isArray(search.search_quality_contract)
+          ? search.search_quality_contract
+          : null;
+      const routeSearchQualityContractApplied = isBeautySearchQualityContractApplied(routeSearchQualityContract);
       const ingredientIntentIds = Array.isArray(strictFindProductsMultiDecision?.ingredientIntents)
         ? strictFindProductsMultiDecision.ingredientIntents
             .map((value) => String(value || '').trim().toLowerCase())
@@ -34823,6 +34935,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         pivotBeautyContractInvoke &&
         shouldPreserveIngredientDirectForPivotBeautyContract(queryText, ingredientIntentIds);
       if (
+        !routeSearchQualityContractApplied &&
         strictCommerceFindProductsMulti &&
         ingredientIntentIds.length > 0 &&
         (!pivotBeautyContractInvoke || preserveIngredientDirectForPivotBeautyContract)
@@ -34997,7 +35110,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         pivotBeautyContractInvoke &&
         queryText.length > 0 &&
         process.env.DATABASE_URL &&
-        earlyBeautyMainlineIntentForDirect.beautyLike &&
+        (earlyBeautyMainlineIntentForDirect.beautyLike || routeSearchQualityContractApplied) &&
         !earlyHasMerchantScopeForBeauty
       ) {
         try {
@@ -35012,7 +35125,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           const directProducts = Array.isArray(directResponse?.products)
             ? directResponse.products
             : [];
-          if (directProducts.length > 0 || String(directResponse?.status || '').toLowerCase() === 'failed') {
+          if (
+            directProducts.length > 0 ||
+            routeSearchQualityContractApplied ||
+            String(directResponse?.status || '').toLowerCase() === 'failed'
+          ) {
             const promotions = await getActivePromotions(now, creatorId);
             return res.json(applyDealsToResponse(directResponse, promotions, now, creatorId));
           }
@@ -35223,12 +35340,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const beautyMainlineIntentForDirect = inferBeautyMainlineIntent(queryText);
       const canonicalCategoryPathPrefixForDirect = resolveCanonicalCategoryPathPrefixForQuery(queryText);
       const shoppingCanonicalMainlineDirectEligible =
-        !strictCommerceFindProductsMulti &&
+        (!strictCommerceFindProductsMulti || routeSearchQualityContractApplied) &&
         queryText.length > 0 &&
         process.env.DATABASE_URL &&
         PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED &&
-        isShoppingSource(source) &&
-        beautyMainlineIntentForDirect.beautyLike &&
+        (isShoppingSource(source) || routeSearchQualityContractApplied) &&
+        (beautyMainlineIntentForDirect.beautyLike || routeSearchQualityContractApplied) &&
         !hasMerchantScope;
       const shoppingNonBeautyCanonicalMainlineDirectEligible =
         !strictCommerceFindProductsMulti &&
@@ -35419,11 +35536,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       }
 
       const creatorBeautyMainlineDirectEligible =
-        !strictCommerceFindProductsMulti &&
+        (!strictCommerceFindProductsMulti || routeSearchQualityContractApplied) &&
         queryText.length > 0 &&
         process.env.DATABASE_URL &&
-        (isPivotBeautyContractInvokeRequest({ operation, req }) || shoppingCanonicalMainlineDirectEligible) &&
-        beautyMainlineIntentForDirect.beautyLike &&
+        (
+          isPivotBeautyContractInvokeRequest({ operation, req }) ||
+          shoppingCanonicalMainlineDirectEligible ||
+          routeSearchQualityContractApplied
+        ) &&
+        (beautyMainlineIntentForDirect.beautyLike || routeSearchQualityContractApplied) &&
         !hasMerchantScope;
       if (creatorBeautyMainlineDirectEligible) {
         try {
@@ -35436,7 +35557,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           const directProducts = Array.isArray(directResponse?.products)
             ? directResponse.products
             : [];
-          if (directProducts.length > 0) {
+          if (directProducts.length > 0 || routeSearchQualityContractApplied) {
             const promotions = await getActivePromotions(now, creatorId);
             const enriched = applyDealsToResponse(directResponse, promotions, now, creatorId);
             return res.json(enriched);
