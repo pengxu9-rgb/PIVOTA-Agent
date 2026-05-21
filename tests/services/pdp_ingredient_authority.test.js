@@ -330,6 +330,45 @@ describe('pdpIngredientAuthority', () => {
     expect(modules.authority.purity_status).toBe('suppressed');
   });
 
+  test('lets reviewed partial ingredients replace stale active-only suppressed authority', () => {
+    const modules = buildStructuredPdpIngredientModules({
+      merchant_id: 'external_seed',
+      source: 'external_seed',
+      title: 'Dermatir Centella Cream',
+      pdp_ingredients_raw: 'Ceramides, Panthenol',
+      pdp_active_ingredients_raw: 'Ceramides, Panthenol',
+      active_ingredients: ['Ceramides', 'Panthenol'],
+      ingredient_intel: {
+        raw_ingredient_text_clean: 'Ceramides, Panthenol',
+        source_review_queue: {
+          status: 'manual_source_review_required',
+        },
+        authoritative: {
+          items: [],
+          active_items: ['Ceramides', 'Panthenol'],
+          source_origin: 'active_block',
+          active_source_origin: 'reviewed_active_ingredients',
+          purity_status: 'suppressed',
+          suppressed_reason: 'full_inci_low_purity',
+        },
+      },
+      pdp_field_quality_summary: {
+        ingredients_raw: {
+          source_origin: 'reviewed_exact_product_source_partial_ingredient_scope',
+          source_quality_status: 'reviewed_key_ingredients_partial_not_full_inci',
+          authority_scope: 'reviewed_key_ingredients_not_full_inci',
+        },
+      },
+    });
+
+    expect(modules.ingredientsInciData).toEqual(
+      expect.objectContaining({
+        items: ['Ceramides', 'Panthenol'],
+        authority_scope: 'reviewed_key_ingredients_not_full_inci',
+      }),
+    );
+  });
+
   test('filters stale non-reviewed existing authority active items against INCI', () => {
     const authority = buildAuthoritativeIngredientView({
       ingredient_intel: {
