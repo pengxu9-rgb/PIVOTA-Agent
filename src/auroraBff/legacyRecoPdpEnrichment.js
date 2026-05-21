@@ -1,3 +1,5 @@
+const { enrichRecommendationBrands } = require('./recommendationBrandBackfill');
+
 function createLegacyRecoPdpEnrichmentRuntime(deps = {}) {
   const {
     isPlainObject,
@@ -17,7 +19,13 @@ function createLegacyRecoPdpEnrichmentRuntime(deps = {}) {
   } = {}) {
     const basePayload =
       isPlainObject(payload) ? { ...payload } : { recommendations: [] };
-    const recoRows = Array.isArray(recommendations) ? recommendations : [];
+    // Backfill brand from catalog_products / external_product_seeds before
+    // downstream chat-card shaping so cards can render `Brand · Title`.
+    // Fails open (returns rows untouched) on DB error.
+    const recoRows = await enrichRecommendationBrands(
+      Array.isArray(recommendations) ? recommendations : [],
+      { logger },
+    );
 
     if (deferUntilSafeWinner) {
       const prePdpDeduped = dedupeRecoRecommendationsStrict(recoRows, { maxItems: 8 });
