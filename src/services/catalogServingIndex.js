@@ -1,10 +1,18 @@
 const axios = require('axios');
+const { query: defaultQuery } = require('../db');
 const {
   buildIdentityListingFromProduct,
   buildSourceListingRef,
   listLivePdpIdentityRowsForRefs,
   _internals: { fetchBackfillProducts },
 } = require('./pdpIdentityGraph');
+const {
+  classifyProductIntelKbRow,
+  readProductIntelBundleFromKbRow,
+} = require('./externalSeedPdpReadiness');
+const {
+  normalizePublishedProductIntelBundle,
+} = require('../pdpProductIntel');
 
 function asString(value) {
   const normalized = String(value || '').trim();
@@ -30,6 +38,11 @@ function firstNonEmptyString(...values) {
     if (normalized) return normalized;
   }
   return '';
+}
+
+function looksLikeMissingRelation(error) {
+  const message = asString(error?.message || error).toLowerCase();
+  return error?.code === '42P01' || message.includes('does not exist') || message.includes('relation');
 }
 
 function uniqStrings(values = [], limit = 64) {
@@ -162,6 +175,164 @@ function resolvePivotaInsightSummary(input = {}) {
     asString(input.shopping_card?.intro) ||
     asString(input.product_intel?.product_intel_core?.what_it_is?.body)
   );
+}
+
+function normalizeCatalogServingKbRow(row = {}) {
+  return {
+    kb_key: asString(row.kb_key || row.kbKey),
+    analysis: row.analysis || row.kb_analysis || null,
+    source: asString(row.source || row.kb_source),
+    source_meta: asPlainObject(row.source_meta || row.kb_source_meta),
+    last_error: row.last_error || row.kb_last_error || null,
+    last_success_at: row.last_success_at || row.kb_last_success_at || null,
+    updated_at: row.updated_at || row.kb_updated_at || null,
+  };
+}
+
+function buildCatalogServingPivotaInsightFromKbRow(row = {}) {
+  const normalizedRow = normalizeCatalogServingKbRow(row);
+  const classification = classifyProductIntelKbRow(
+    {
+      kb_key: normalizedRow.kb_key,
+      kb_analysis: normalizedRow.analysis,
+      kb_source: normalizedRow.source,
+      kb_source_meta: normalizedRow.source_meta,
+      kb_last_error: normalizedRow.last_error,
+      kb_last_success_at: normalizedRow.last_success_at,
+      kb_updated_at: normalizedRow.updated_at,
+    },
+    {},
+  );
+  if (classification.high_quality_ready !== true) return null;
+
+  const bundle = readProductIntelBundleFromKbRow({
+    kb_key: normalizedRow.kb_key,
+    kb_analysis: normalizedRow.analysis,
+    kb_source: normalizedRow.source,
+    kb_source_meta: normalizedRow.source_meta,
+  });
+  if (!bundle) return null;
+
+  const provenance = {
+    ...(asPlainObject(bundle.provenance) || {}),
+    ...(normalizedRow.source_meta || {}),
+    ...(normalizedRow.kb_key ? { kb_key: normalizedRow.kb_key } : {}),
+    source: normalizedRow.source || 'aurora_product_intel_kb',
+  };
+  const normalizedBundle = normalizePublishedProductIntelBundle(
+    {
+      ...bundle,
+      provenance,
+    },
+    {
+      requireReviewed: true,
+      provenance,
+    },
+  );
+  if (!normalizedBundle) return null;
+
+  const summary = firstNonEmptyString(
+    normalizedBundle.shopping_card?.intro,
+    normalizedBundle.search_card?.intro_candidate,
+    normalizedBundle.product_intel_core?.what_it_is?.body,
+  );
+  if (!summary) return null;
+
+  return {
+    product_id: classification.product_id,
+    summary,
+    quality_state: classification.quality_state || normalizedBundle.quality_state || null,
+    evidence_profile: classification.evidence_profile || normalizedBundle.evidence_profile || null,
+    source: 'aurora_product_intel_kb',
+  };
+}
+
+async function fetchCatalogServingProductIntelSummaries(productIds = [], { queryFn = defaultQuery } = {}) {
+  const ids = uniqStrings(productIds, 5000);
+  const out = new Map();
+  if (!ids.length || typeof queryFn !== 'function') return out;
+
+  try {
+    const result = await queryFn(
+      `
+        SELECT
+          kb_key,
+          analysis,
+          source,
+          source_meta,
+          last_error,
+          last_success_at,
+          updated_at
+        FROM aurora_product_intel_kb
+        WHERE kb_key = ANY($1::text[])
+      `,
+      [ids.map((id) => `product:${id}`)],
+    );
+    for (const row of result?.rows || []) {
+      const insight = buildCatalogServingPivotaInsightFromKbRow(row);
+      if (!insight?.product_id || !insight.summary) continue;
+      out.set(insight.product_id, insight);
+    }
+  } catch (error) {
+    if (!looksLikeMissingRelation(error)) throw error;
+  }
+
+  return out;
+}
+
+function resolveCatalogServingHydrationQueryFn({ queryFn, env } = {}) {
+  if (typeof queryFn === 'function') return queryFn;
+  if (canUseLocalCatalogServingSearch(env)) return defaultQuery;
+  return null;
+}
+
+async function hydrateCatalogServingSourceRowsWithProductIntel(
+  sourceRows = [],
+  {
+    queryFn,
+    env = process.env,
+    productIntelSummariesResolverFn = fetchCatalogServingProductIntelSummaries,
+  } = {},
+) {
+  if (typeof productIntelSummariesResolverFn !== 'function') return sourceRows;
+  const effectiveQueryFn = resolveCatalogServingHydrationQueryFn({ queryFn, env });
+  if (typeof effectiveQueryFn !== 'function') return sourceRows;
+
+  const productIds = uniqStrings(
+    asArray(sourceRows).map((row) =>
+      asString(row?.product_id || row?.product?.product_id || row?.product?.id),
+    ),
+    5000,
+  );
+  if (!productIds.length) return sourceRows;
+
+  const summaries = await productIntelSummariesResolverFn(productIds, { queryFn: effectiveQueryFn });
+  if (!summaries || typeof summaries.get !== 'function' || summaries.size < 1) return sourceRows;
+
+  return asArray(sourceRows).map((row) => {
+    const product = asPlainObject(row?.product);
+    if (!product) return row;
+    if (resolvePivotaInsightSummary(product)) return row;
+
+    const productId = asString(row?.product_id || product.product_id || product.id);
+    const insight = summaries.get(productId);
+    if (!insight?.summary) return row;
+
+    return {
+      ...row,
+      product: {
+        ...product,
+        pivota_insight_summary: insight.summary,
+        pivota_insight_status: 'available',
+      },
+      source_meta: {
+        ...(asPlainObject(row?.source_meta) || {}),
+        pivota_insight_hydrated_from: insight.source || 'aurora_product_intel_kb',
+        pivota_insight_quality_state: insight.quality_state || null,
+        pivota_insight_evidence_profile: insight.evidence_profile || null,
+      },
+    };
+  });
 }
 
 function resolvePivotaInsightStatus(input = {}) {
@@ -624,15 +795,21 @@ async function backfillCatalogServingIndex(
   {
     fetchBackfillProductsFn = fetchBackfillProducts,
     identityRowsResolverFn = listLivePdpIdentityRowsForRefs,
+    productIntelSummariesResolverFn = fetchCatalogServingProductIntelSummaries,
     bulkUpsertFn = bulkUpsertCatalogServingDocs,
     httpClient = axios,
     env = process.env,
   } = {},
 ) {
-  const sourceRows = await fetchBackfillProductsFn({
+  const rawSourceRows = await fetchBackfillProductsFn({
     limit,
     brandFilter: brand,
     ...(typeof queryFn === 'function' ? { queryFn } : {}),
+  });
+  const sourceRows = await hydrateCatalogServingSourceRowsWithProductIntel(rawSourceRows, {
+    queryFn,
+    env,
+    productIntelSummariesResolverFn,
   });
   const sourceListingRefs = uniqStrings(
     sourceRows.map((row) =>
@@ -880,6 +1057,7 @@ async function searchCatalogServingIndex(params = {}, {
   queryFn,
   fetchBackfillProductsFn = fetchBackfillProducts,
   identityRowsResolverFn = listLivePdpIdentityRowsForRefs,
+  productIntelSummariesResolverFn = fetchCatalogServingProductIntelSummaries,
   allowLocalShadow = false,
   // When true, filter local shadow results to only serving_eligible=TRUE products
   // (as determined by index_pipeline_state). Requires migrations 098+099 to be applied.
@@ -946,8 +1124,13 @@ async function searchCatalogServingIndex(params = {}, {
         // index_pipeline_state may not exist yet — fail open and serve all products
       }
     }
+    const effectiveSourceRows = await hydrateCatalogServingSourceRowsWithProductIntel(sourceRows, {
+      queryFn,
+      env,
+      productIntelSummariesResolverFn,
+    });
     const sourceListingRefs = uniqStrings(
-      sourceRows.map((row) =>
+      effectiveSourceRows.map((row) =>
         buildSourceListingRef({
           merchantId: row?.merchant_id,
           productId: row?.product_id,
@@ -959,7 +1142,7 @@ async function searchCatalogServingIndex(params = {}, {
       sourceListingRefs,
       ...(typeof queryFn === 'function' ? { queryFn } : {}),
     });
-    const docs = buildCatalogServingBackfillDocs(sourceRows, {
+    const docs = buildCatalogServingBackfillDocs(effectiveSourceRows, {
       identityRows,
       includeNonPublic: false,
       market: asString(params.market || 'US') || 'US',
@@ -1091,6 +1274,7 @@ module.exports = {
   bulkUpsertCatalogServingDocs,
   decodeCatalogServingCursor,
   encodeCatalogServingCursor,
+  fetchCatalogServingProductIntelSummaries,
   getCatalogServingIndexConfig,
   canUseLocalCatalogServingSearch,
   canSearchCatalogServingIndex,
@@ -1100,9 +1284,11 @@ module.exports = {
     buildLocalCatalogSearchBlob,
     buildCatalogServingBackfillEntries,
     buildCatalogServingGroupInput,
+    buildCatalogServingPivotaInsightFromKbRow,
     compareCatalogServingLocalSortTuples,
     filterLocalCatalogServingDocs,
     getCatalogServingLocalSortTuple,
+    hydrateCatalogServingSourceRowsWithProductIntel,
     resolveBackfillPublishState,
     sortCatalogServingEntries,
   },

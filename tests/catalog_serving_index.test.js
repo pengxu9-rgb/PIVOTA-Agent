@@ -10,9 +10,49 @@ const {
   getCatalogServingIndexConfig,
   isCatalogServingIndexEnabled,
   searchCatalogServingIndex,
+  _internals: {
+    buildCatalogServingPivotaInsightFromKbRow,
+  },
 } = require('../src/services/catalogServingIndex');
 
 describe('catalog serving index', () => {
+  function buildReviewedProductIntelBundle(overrides = {}) {
+    const evidenceProfile = overrides.evidence_profile || 'pivota_reviewed';
+    const qualityState = overrides.quality_state || 'verified';
+    return {
+      contract_version: 'pivota.product_intel.v1',
+      product_intel_core: {
+        what_it_is: {
+          body: 'A leave-on 10% vitamin C serum for dullness and uneven tone.',
+        },
+        best_for: [{ label: 'Dullness', tag: 'brightening' }],
+        why_it_stands_out: [
+          {
+            headline: 'Vitamin C format',
+            body: 'Pairs ascorbic acid with hydrating support for daily brightening routines.',
+          },
+        ],
+        routine_fit: {
+          step: 'serum',
+          pairing_notes: ['Use before moisturizer in the morning.'],
+        },
+        watchouts: [{ label: 'Sensitive skin', body: 'Patch test before daily use.' }],
+        quality_state: qualityState,
+        evidence_profile: evidenceProfile,
+      },
+      shopping_card: {
+        highlight: '10% vitamin C',
+        intro: 'Reviewed vitamin C serum for dullness and uneven tone.',
+      },
+      quality_state: qualityState,
+      evidence_profile: evidenceProfile,
+      provenance:
+        overrides.provenance || {
+          source: 'aurora_product_intel_kb',
+        },
+    };
+  }
+
   test('buildCatalogServingDoc maps exact-item identity and offer fields into a serving document', () => {
     const doc = buildCatalogServingDoc(
       {
@@ -68,6 +108,45 @@ describe('catalog serving index', () => {
         source_refs: ['external_seed:gbr_45ml', 'merch_internal:gbr_internal_45ml'],
       }),
     );
+  });
+
+  test('buildCatalogServingPivotaInsightFromKbRow accepts only high-quality reviewed KB summaries', () => {
+    expect(
+      buildCatalogServingPivotaInsightFromKbRow({
+        kb_key: 'product:ext_vitamin_c',
+        analysis: {
+          product_intel_v1: buildReviewedProductIntelBundle(),
+        },
+        source: 'aurora_product_intel_kb',
+        source_meta: {},
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        product_id: 'ext_vitamin_c',
+        summary: 'Reviewed vitamin C serum for dullness and uneven tone.',
+        evidence_profile: 'pivota_reviewed',
+      }),
+    );
+
+    expect(
+      buildCatalogServingPivotaInsightFromKbRow({
+        kb_key: 'product:ext_seller_only',
+        analysis: {
+          product_intel_v1: buildReviewedProductIntelBundle({
+            evidence_profile: 'seller_only',
+            quality_state: 'reviewed',
+            provenance: {
+              source: 'aurora_product_intel_kb',
+              review_status: 'completed',
+              review_decision: 'seller_only_fallback',
+              review_tier: 'strict_human',
+            },
+          }),
+        },
+        source: 'aurora_product_intel_kb',
+        source_meta: {},
+      }),
+    ).toBeNull();
   });
 
   test('buildCatalogServingSearchBody emits public exact-item search filters and search_after', () => {
@@ -237,6 +316,7 @@ describe('catalog serving index', () => {
         allowLocalShadow: true,
         fetchBackfillProductsFn,
         identityRowsResolverFn,
+        productIntelSummariesResolverFn: jest.fn(async () => new Map()),
       },
     );
 
@@ -474,6 +554,7 @@ describe('catalog serving index', () => {
           },
         ]),
         identityRowsResolverFn: jest.fn(async () => []),
+        productIntelSummariesResolverFn: jest.fn(async () => new Map()),
       },
     );
 
@@ -491,6 +572,89 @@ describe('catalog serving index', () => {
         },
         indexed: 0,
         source: 'dry_run',
+      }),
+    );
+  });
+
+  test('backfillCatalogServingIndex hydrates public docs with high-quality KB insight summaries', async () => {
+    const bulkUpsertFn = jest.fn(async (docs) => ({
+      indexed: docs.length,
+      source: 'mock_index',
+    }));
+    const queryFn = jest.fn(async (sql) => {
+      if (String(sql).includes('aurora_product_intel_kb')) {
+        return {
+          rows: [
+            {
+              kb_key: 'product:ext_vitamin_c',
+              analysis: {
+                product_intel_v1: buildReviewedProductIntelBundle(),
+              },
+              source: 'aurora_product_intel_kb',
+              source_meta: {},
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    const result = await backfillCatalogServingIndex(
+      {
+        limit: 10,
+        dryRun: false,
+        includeNonPublic: false,
+        market: 'US',
+        queryFn,
+      },
+      {
+        fetchBackfillProductsFn: jest.fn(async () => [
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_vitamin_c',
+            source_kind: 'external_seed',
+            product: {
+              product_id: 'ext_vitamin_c',
+              title: 'Vitamin C Serum',
+              brand: 'Example Beauty',
+              category: 'Serum',
+              canonical_url: 'https://brand.example/products/vitamin-c-serum',
+              image_url: 'https://images.example/vitamin-c.jpg',
+              price: 32,
+              destination_url: 'https://brand.example/products/vitamin-c-serum',
+            },
+            source_meta: { market: 'US' },
+          },
+        ]),
+        identityRowsResolverFn: jest.fn(async () => [
+          {
+            source_listing_ref: 'external_seed:ext_vitamin_c',
+            sellable_item_group_id: 'sig_vitamin_c',
+            product_line_id: 'pl_vitamin_c',
+            review_family_id: 'rf_vitamin_c',
+            source_tier: 'brand',
+            identity_status: 'approved',
+            live_read_enabled: true,
+            review_required: false,
+          },
+        ]),
+        bulkUpsertFn,
+      },
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        indexed: 1,
+        public_docs_built: 1,
+      }),
+    );
+    expect(bulkUpsertFn).toHaveBeenCalledTimes(1);
+    expect(bulkUpsertFn.mock.calls[0][0][0]).toEqual(
+      expect.objectContaining({
+        doc_id: 'sellable:sig_vitamin_c',
+        publish_state: 'public',
+        pivota_insight_status: 'available',
+        pivota_insight_summary: 'Reviewed vitamin C serum for dullness and uneven tone.',
       }),
     );
   });
