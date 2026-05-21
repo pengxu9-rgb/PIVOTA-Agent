@@ -686,7 +686,7 @@ describe('find_products_multi intent + filtering', () => {
     expect(expansion_meta?.search_quality_contract_applied).toBe(true);
     expect(expansion_meta?.search_quality_contract?.hard_constraints?.brand?.canonical).toBe('rare beauty');
     expect(expansion_meta?.search_quality_contract?.hard_constraints?.category_path_prefix).toBe(
-      'beauty/makeup/cheek/',
+      'beauty/makeup/face/blush/',
     );
   });
 

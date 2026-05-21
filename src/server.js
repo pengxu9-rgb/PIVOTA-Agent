@@ -12828,7 +12828,7 @@ function buildBeautyExternalSeedBrandCategoryTextTerms(queryText = '', intent = 
     terms.push(normalized);
   };
   const prefix = resolveBeautyCategoryPathPrefixForQuery(queryText);
-  if (prefix.startsWith('beauty/makeup/cheek/')) {
+  if (prefix.startsWith('beauty/makeup/face/blush/') || prefix.startsWith('beauty/makeup/cheek/')) {
     ['blush', 'cheek', 'luminizer', 'highlighter'].forEach(push);
   } else if (prefix.startsWith('beauty/makeup/lip/')) {
     ['lipstick', 'lip color', 'liquid lip', 'rouge'].forEach(push);
@@ -16837,7 +16837,7 @@ function beautyProductMatchesCategoryPathQuery(product = {}, queryText = '', cat
   if (prefix.startsWith('beauty/makeup/eye')) {
     return /\b(mascara|eyeliner|eye\s*liner|eyeshadow|eye\s*shadow|brow|lash)\b|睫毛膏|眼线|眼線|眼影|眉笔|眉筆/i.test(text);
   }
-  if (prefix.startsWith('beauty/makeup/cheek')) {
+  if (prefix.startsWith('beauty/makeup/face/blush') || prefix.startsWith('beauty/makeup/cheek')) {
     return /\b(blush|blusher|cheek\s*(?:color|colour|tint|stain|balm)?|liquid\s*blush|cream\s*blush|powder\s*blush|luminizer|highlighter)\b|腮红|腮紅/i.test(text);
   }
   if (prefix.startsWith('beauty/makeup/face')) {
