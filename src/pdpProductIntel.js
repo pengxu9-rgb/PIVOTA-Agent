@@ -2,11 +2,10 @@ const PRODUCT_INTEL_CONTRACT_VERSION = 'pivota.product_intel.v1';
 const PRODUCT_FEEDBACK_CONTRACT_VERSION = 'pivota.product_feedback.v1';
 const PRODUCT_RECOMMENDATION_INTENTS_CONTRACT_VERSION = 'pivota.product_recommendation_intents.v1';
 const PIVOTA_INSIGHTS_DISPLAY_NAME = 'Pivota Insights';
-const SELLER_ONLY_PUBLIC_INTEL_EVIDENCE_PROFILES = new Set([
-  'seller_only',
+const BLOCKED_PUBLIC_INTEL_EVIDENCE_PROFILES = new Set([
   'seller_only_fallback',
 ]);
-const SELLER_ONLY_PUBLIC_INTEL_REVIEW_DECISIONS = new Set([
+const BLOCKED_PUBLIC_INTEL_REVIEW_DECISIONS = new Set([
   'seller_only_fallback',
 ]);
 const { buildAuthoritativeIngredientView } = require('./services/pdpIngredientAuthority');
@@ -530,17 +529,17 @@ function normalizePublishedProductIntelBundle(bundle, {
     rawEvidenceProfile,
   ].map((value) => value.toLowerCase()).filter(Boolean);
   const publicReviewDecision = asString(source.provenance?.review_decision).toLowerCase();
+  const reviewedForPublicDisplay = isHumanReviewedProductIntelBundle(source);
+  if (requireReviewed && !reviewedForPublicDisplay) return null;
   if (
     requireReviewed &&
     (
-      publicEvidenceProfiles.some((profile) => SELLER_ONLY_PUBLIC_INTEL_EVIDENCE_PROFILES.has(profile)) ||
-      SELLER_ONLY_PUBLIC_INTEL_REVIEW_DECISIONS.has(publicReviewDecision)
+      publicEvidenceProfiles.some((profile) => BLOCKED_PUBLIC_INTEL_EVIDENCE_PROFILES.has(profile)) ||
+      BLOCKED_PUBLIC_INTEL_REVIEW_DECISIONS.has(publicReviewDecision)
     )
   ) {
     return null;
   }
-  const reviewedForPublicDisplay = isHumanReviewedProductIntelBundle(source);
-  if (requireReviewed && !reviewedForPublicDisplay) return null;
   if (shouldRejectGenericProductIntelBundle(source)) return null;
 
   const recommendationIntents =
