@@ -270,6 +270,66 @@ describe('pdpIngredientAuthority', () => {
     expect(modules.authority.purity_status).toBe('suppressed');
   });
 
+  test('surfaces reviewed partial key ingredients without treating them as generic fallback', () => {
+    const modules = buildStructuredPdpIngredientModules({
+      merchant_id: 'external_seed',
+      source: 'external_seed',
+      title: 'Dermatir Centella Cream',
+      pdp_ingredients_raw: 'Ceramides, Panthenol',
+      pdp_field_quality_summary: {
+        ingredients_raw: {
+          source_origin: 'official_tirtir_products_feed_package_images',
+          source_quality_status: 'reviewed_key_ingredients_partial_not_full_inci',
+          authority_scope: 'reviewed_key_ingredients_not_full_inci',
+        },
+      },
+    });
+
+    expect(modules.ingredientsInciData).toEqual(
+      expect.objectContaining({
+        items: ['Ceramides', 'Panthenol'],
+        source_origin: 'official_tirtir_products_feed_package_images',
+        source_quality_status: 'authoritative',
+        authority_scope: 'reviewed_key_ingredients_not_full_inci',
+      }),
+    );
+    expect(modules.ingredientsInciData.force_filled).toBeUndefined();
+  });
+
+  test('continues to suppress unreviewed short key ingredient lists', () => {
+    const modules = buildStructuredPdpIngredientModules({
+      merchant_id: 'external_seed',
+      source: 'external_seed',
+      title: 'Dermatir Centella Cream',
+      pdp_ingredients_raw: 'Ceramides, Panthenol',
+    });
+
+    expect(modules.ingredientsInciData).toBeNull();
+    expect(modules.authority.purity_status).toBe('suppressed');
+  });
+
+  test('does not surface reviewed partial ingredient lists when manual source review blocks the row', () => {
+    const modules = buildStructuredPdpIngredientModules({
+      merchant_id: 'external_seed',
+      source: 'external_seed',
+      title: 'Dermatir Centella Cream',
+      pdp_ingredients_raw: 'Ceramides, Panthenol',
+      ingredient_remediation_v1: {
+        action: 'manual_source_review_required',
+      },
+      pdp_field_quality_summary: {
+        ingredients_raw: {
+          source_origin: 'manual_source_review_required',
+          source_quality_status: 'blocked',
+          authority_scope: 'reviewed_key_ingredients_not_full_inci',
+        },
+      },
+    });
+
+    expect(modules.ingredientsInciData).toBeNull();
+    expect(modules.authority.purity_status).toBe('suppressed');
+  });
+
   test('filters stale non-reviewed existing authority active items against INCI', () => {
     const authority = buildAuthoritativeIngredientView({
       ingredient_intel: {
