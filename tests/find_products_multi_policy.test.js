@@ -663,6 +663,33 @@ describe('find_products_multi intent + filtering', () => {
     expect(expansion_meta?.query_semantic_class).toBe('fragrance');
   });
 
+  test('find_products_multi context carries search quality contract metadata', async () => {
+    const { adjustedPayload, expansion_meta } = await buildFindProductsMultiContext({
+      payload: {
+        search: {
+          query: 'rare beauty blush',
+          market: 'US',
+        },
+      },
+      metadata: {
+        source: 'shopping_agent_ui',
+      },
+    });
+
+    expect(adjustedPayload?.search?.search_quality_contract).toEqual(
+      expect.objectContaining({
+        contract_version: 'search_quality_contract_v1',
+        target_domain: 'beauty',
+        query_class: 'brand_category',
+      }),
+    );
+    expect(expansion_meta?.search_quality_contract_applied).toBe(true);
+    expect(expansion_meta?.search_quality_contract?.hard_constraints?.brand?.canonical).toBe('rare beauty');
+    expect(expansion_meta?.search_quality_contract?.hard_constraints?.category_path_prefix).toBe(
+      'beauty/makeup/cheek/',
+    );
+  });
+
   test('generic fragrance follow-up inherits brand context from current conversation only', async () => {
     const { adjustedPayload, expansion_meta } = await buildFindProductsMultiContext({
       payload: {
