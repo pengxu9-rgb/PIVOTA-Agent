@@ -1810,8 +1810,8 @@ function toVariantPrice(input, currency) {
 function buildVariants(product) {
   const currency = product.currency || 'USD';
   const rawVariants = Array.isArray(product.variants) ? product.variants : [];
+  const singleSkuSizeOption = buildSingleSkuSizeOption(product);
   if (!rawVariants.length) {
-    const singleSkuSizeOption = buildSingleSkuSizeOption(product);
     const availabilityInStock = normalizeInStock(product.in_stock);
     const rawQty =
       product.available_quantity ?? product.inventory_quantity ?? product.quantity ?? product.stock;
@@ -1923,11 +1923,19 @@ function buildVariants(product) {
       ...(Array.isArray(v.image_urls) ? v.image_urls : []),
     ]);
 
-    const filteredOptions = filterBuilderDisplayableVariantOptions(options);
+    let filteredOptions = filterBuilderDisplayableVariantOptions(options);
+    const hasReviewedSingleSkuSpecFallback =
+      rawVariants.length === 1 &&
+      singleSkuSizeOption &&
+      !filteredOptions.length &&
+      /^(default|default title|variant \d+|single item)$/i.test(asNonEmptyString(title));
+    if (hasReviewedSingleSkuSpecFallback) {
+      filteredOptions = [singleSkuSizeOption];
+    }
     return {
       variant_id: String(variantId),
       sku_id: attrs.sku || v.sku_id || v.sku || v.sku_code,
-      title: String(title),
+      title: hasReviewedSingleSkuSpecFallback ? singleSkuSizeOption.value : String(title),
       options: filteredOptions,
       swatch: swatchHex ? { hex: swatchHex } : undefined,
       price: toVariantPrice(
@@ -1958,9 +1966,15 @@ function buildVariants(product) {
       color_hex: normalizeHexColor(swatchHex) || undefined,
       images: variantImages,
       image_urls: variantImages,
-      axis_kind: asNonEmptyString(v.axis_kind || v.axisKind),
-      display_label: asNonEmptyString(v.display_label || v.displayLabel),
-      source_quality_status: asNonEmptyString(v.source_quality_status || v.sourceQualityStatus),
+      axis_kind: hasReviewedSingleSkuSpecFallback
+        ? singleSkuSizeOption.axis_kind
+        : asNonEmptyString(v.axis_kind || v.axisKind),
+      display_label: hasReviewedSingleSkuSpecFallback
+        ? `${singleSkuSizeOption.name}: ${singleSkuSizeOption.value}`
+        : asNonEmptyString(v.display_label || v.displayLabel),
+      source_quality_status: hasReviewedSingleSkuSpecFallback
+        ? 'captured'
+        : asNonEmptyString(v.source_quality_status || v.sourceQualityStatus),
       ...pickSavingsPresentationFields(v),
     };
   });

@@ -1616,6 +1616,61 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     expect(payload.product.variants).toEqual([]);
   });
 
+  test('uses reviewed product spec for a single external-seed Single item variant', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_tirtir_matcha_pad',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Matcha Tea Pads',
+        category: 'Toner Pad',
+        image_url: 'https://example.com/matcha-pads.png',
+        price: { amount: 18.4, currency: 'USD' },
+        size_detail_label: '70 pads / 160 mL',
+        reviewed_product_specs_v1: {
+          contract_version: 'external_seed.reviewed_product_specs.v1',
+          source_origin: 'reviewed_seed_map',
+          source_quality_status: 'high',
+        },
+        variants: [
+          {
+            id: 'v_single',
+            title: 'Single item',
+            options: [{ name: 'Format', value: 'Single item', axis_kind: 'format' }],
+            display_label: 'Format: Single item',
+            axis_kind: 'format',
+            source_quality_status: 'captured',
+            price: { amount: 18.4, currency: 'USD' },
+          },
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const variantSelector = payload.modules.find((module) => module.type === 'variant_selector');
+    expect(variantSelector?.data?.variants).toEqual([
+      expect.objectContaining({
+        title: '70 pads / 160 mL',
+        display_label: 'Size: 70 pads / 160 mL',
+        options: [{ name: 'Size', value: '70 pads / 160 mL', axis_kind: 'size' }],
+      }),
+    ]);
+    expect(variantSelector?.data?.options).toEqual([
+      {
+        name: 'Size',
+        axis_kind: 'size',
+        values: [
+          expect.objectContaining({
+            label: '70 pads / 160 mL',
+            value: '70 pads / 160 mL',
+            selected: true,
+          }),
+        ],
+      },
+    ]);
+  });
+
   test('preserves structured ingredient items without re-splitting numeric INCI commas', () => {
     const payload = buildPdpPayload({
       product: {
