@@ -818,6 +818,131 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     );
   });
 
+  const buildCuratedExternalSeedDetailsProduct = (overrides = {}) => ({
+    product_id: 'ext_fenty_bronzer_teddy',
+    merchant_id: 'external_seed',
+    source: 'external_seed',
+    title: 'Cheeks Out Freestyle Cream Bronzer - Teddy',
+    image_url: 'https://example.com/fenty-bronzer.png',
+    price: { amount: 36, currency: 'USD' },
+    in_stock: true,
+    pdp_description_raw: 'A buildable cream bronzer with a natural warm finish.',
+    pdp_field_quality_summary: {
+      details_sections: {
+        source_origin: 'official_html',
+        source_quality_status: 'high',
+      },
+    },
+    pdp_details_sections: [
+      {
+        heading: 'Overview',
+        body:
+          'A light-as-air, non-greasy cream bronzer that effortlessly melts into skin for a natural-looking warmth.',
+      },
+      {
+        heading: 'Benefits',
+        body: 'Buildable coverage with a sweat- and water-resistant finish.',
+      },
+      {
+        heading: 'How to use',
+        body: 'Apply with a brush. Blend into cheeks, temples, and anywhere the sun naturally hits.',
+      },
+      {
+        heading: 'Details',
+        body: 'Cream texture designed to layer over or under powder without disturbing makeup.',
+      },
+    ],
+    variants: [
+      {
+        variant_id: 'ext_fenty_bronzer_teddy_default',
+        title: 'Teddy',
+        price: { current: { amount: 36, currency: 'USD' } },
+        in_stock: true,
+      },
+    ],
+    ...overrides,
+  });
+
+  test('surfaces curated high-quality external-seed PDP detail sections in supplemental details', () => {
+    const payload = buildPdpPayload({
+      product: buildCuratedExternalSeedDetailsProduct(),
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const supplemental = payload.modules.find((module) => module.type === 'supplemental_details');
+    const howToUse = payload.modules.find((module) => module.type === 'how_to_use');
+    const supplementalHeadings = (supplemental?.data?.sections || []).map((section) => section.heading);
+
+    expect(supplemental?.data?.sections).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          heading: 'Overview',
+          content: expect.stringContaining('light-as-air'),
+        }),
+        expect.objectContaining({
+          heading: 'Benefits',
+          content: expect.stringContaining('Buildable coverage'),
+        }),
+        expect.objectContaining({
+          heading: 'Details',
+          content: expect.stringContaining('Cream texture'),
+        }),
+      ]),
+    );
+    expect(supplementalHeadings).not.toContain('How to Use');
+    expect(howToUse?.data?.steps).toEqual([
+      'Apply with a brush.',
+      'Blend into cheeks, temples, and anywhere the sun naturally hits.',
+    ]);
+  });
+
+  test('suppresses low-quality external-seed PDP detail sections', () => {
+    const payload = buildPdpPayload({
+      product: buildCuratedExternalSeedDetailsProduct({
+        pdp_field_quality_summary: {
+          details_sections: {
+            source_origin: 'official_html',
+            source_quality_status: 'low',
+          },
+        },
+      }),
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    expect(payload.modules.find((module) => module.type === 'supplemental_details')).toBeFalsy();
+    expect(payload.modules.find((module) => module.type === 'product_facts')).toBeFalsy();
+    expect(payload.modules.find((module) => module.type === 'how_to_use')).toBeFalsy();
+  });
+
+  test('leaves non-external-seed PDP detail filtering unchanged', () => {
+    const payload = buildPdpPayload({
+      product: buildCuratedExternalSeedDetailsProduct({
+        product_id: 'shopify_fenty_bronzer_teddy',
+        merchant_id: 'shopify_merchant',
+        source: 'shopify',
+        platform: 'shopify',
+      }),
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    expect(payload.modules.find((module) => module.type === 'supplemental_details')).toBeFalsy();
+    expect(payload.modules.find((module) => module.type === 'product_facts')?.data?.sections).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          heading: 'Benefits',
+          content: expect.stringContaining('Buildable coverage'),
+        }),
+      ]),
+    );
+    expect(payload.modules.find((module) => module.type === 'how_to_use')?.data?.steps).toEqual([
+      'Apply with a brush.',
+      'Blend into cheeks, temples, and anywhere the sun naturally hits.',
+    ]);
+  });
+
   test('filters transactional and marketing callout detail sections from external-seed primer PDPs', () => {
     const payload = buildPdpPayload({
       product: {

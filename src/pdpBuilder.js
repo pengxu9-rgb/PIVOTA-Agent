@@ -2301,8 +2301,47 @@ const OVERVIEW_DETAIL_SECTION_RE = /^(overview|product details|details|about|des
 const BRAND_STORY_SECTION_RE = /(?:brand story|our story|about the brand)/i;
 const FACT_DETAIL_SECTION_RE =
   /^(benefits?|clinical results?|results?|proven results?|key ingredients?|why it works|texture|finish|coverage|free of|set includes|best for|formulation|what else you should know|good to know)$/i;
+const EXTERNAL_SEED_CURATED_SUPPLEMENTAL_DETAIL_SECTION_RE =
+  /^(overview|benefits?|how to use|ingredients?|details?|about|key ingredients?|active ingredients?|application|directions?)$/i;
 const SECTION_SOUP_LABEL_RE =
   /\b(description|details?|overview|benefits?|clinical results?|results?|proven results?|key ingredients?|why it works|texture|finish|coverage|free of|set includes|best for|formulation|what else you should know|good to know|ingredients?|active ingredients?|how to use|how to apply|directions?|faq|frequently asked questions?|q\s*&\s*a|questions?)\b\s*:?\s*/gi;
+
+function readPdpDetailsSectionsSourceQualityStatus(product) {
+  const seedData = asSafePlainObject(product?.seed_data);
+  const snapshot = asSafePlainObject(seedData.snapshot || product?.snapshot);
+  const summaries = [
+    product?.pdp_field_quality_summary,
+    seedData.pdp_field_quality_summary,
+    snapshot.pdp_field_quality_summary,
+  ];
+  for (const summary of summaries) {
+    const status = asNonEmptyString(summary?.details_sections?.source_quality_status).toLowerCase();
+    if (status) return status;
+  }
+  return '';
+}
+
+function canSurfacePdpDetailSections(product) {
+  if (!isExternalSeedLikeProduct(product)) return true;
+  const status = readPdpDetailsSectionsSourceQualityStatus(product);
+  return !status || status === 'high' || status === 'medium';
+}
+
+function hasTrustedExternalSeedDetailSectionQuality(product) {
+  if (!isExternalSeedLikeProduct(product)) return false;
+  const status = readPdpDetailsSectionsSourceQualityStatus(product);
+  return status === 'high' || status === 'medium';
+}
+
+function isCuratedExternalSeedSupplementalDetailHeading(heading) {
+  return EXTERNAL_SEED_CURATED_SUPPLEMENTAL_DETAIL_SECTION_RE.test(heading);
+}
+
+function shouldSkipSupplementalHowToUseDetailSection(product, section) {
+  if (!isHowToDetailHeading(section?.heading)) return false;
+  if (suppressFormulaContentForPdpProduct(product)) return false;
+  return Boolean(buildHowToUseModuleData([product?.pdp_how_to_use_raw, section?.content], 'How to use'));
+}
 
 function hasCapturedExternalSeedPdpNarrative(product) {
   if (!isExternalSeedLikeProduct(product)) return false;
@@ -2719,9 +2758,10 @@ function collectStructuredDetailSections(product) {
       ? product.details_sections
       : Array.isArray(product.detail_sections)
         ? product.detail_sections
-        : Array.isArray(product.details)
-          ? product.details
-          : [];
+          : Array.isArray(product.details)
+            ? product.details
+            : [];
+  if (!canSurfacePdpDetailSections(product)) return [];
   const out = [];
   const seen = new Set();
   for (const section of rawSections) {
@@ -2851,6 +2891,7 @@ function buildProductOverviewSections(
 
 function buildSupplementalDetailSections(product, detailSections = collectStructuredDetailSections(product)) {
   const sections = [];
+  if (!canSurfacePdpDetailSections(product)) return sections;
   const desc = resolveProductDescriptionText(product, detailSections);
   const descKey = normalizeTextKey(desc);
   const capturedNarrativeSoup = looksLikeCapturedExternalSeedNarrativeSoup(
@@ -2860,6 +2901,18 @@ function buildSupplementalDetailSections(product, detailSections = collectStruct
   );
   detailSections
     .filter((section) => {
+      const isCuratedExternalSeedSection =
+        hasTrustedExternalSeedDetailSectionQuality(product) &&
+        isCuratedExternalSeedSupplementalDetailHeading(section.heading);
+      if (isCuratedExternalSeedSection) {
+        if (isAncillaryFaqOrPolicySection(section)) return false;
+        if (isFaqOrCrossSellDetailSection(section)) return false;
+        if (looksLikeCrossSellCardDetailSection(section)) return false;
+        if (desc && section.content === desc) return false;
+        if (descKey && normalizeTextKey(section.content) === descKey) return false;
+        if (shouldSkipSupplementalHowToUseDetailSection(product, section)) return false;
+        return true;
+      }
       if (STRUCTURED_DETAIL_SECTION_RE.test(section.heading)) return false;
       if (FACT_DETAIL_SECTION_RE.test(section.heading)) return false;
       if (BRAND_STORY_SECTION_RE.test(section.heading)) return false;
