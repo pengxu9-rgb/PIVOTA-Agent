@@ -236,8 +236,11 @@ async function processBooking(row, notifier) {
             errorCode: normalizeErrorCode(err),
           });
           await client.query('COMMIT');
+          // Omit err.message: adapter errors may wrap PG / HTTP responses
+          // that echo field values. error_name + error_code carry enough
+          // signal for ops triage.
           logger.warn(
-            { err: err?.message || String(err), booking_id: locked.booking_id },
+            { error_name: err?.name, error_code: err?.code || normalizeErrorCode(err), booking_id: locked.booking_id },
             'Transient service booking notification failure',
           );
           return { outcome: 'retried' };
@@ -245,7 +248,7 @@ async function processBooking(row, notifier) {
 
         const permanent = isPermanentNotifierError(err)
           ? err
-          : new NotifierPermanentError('NOTIFIER_FAILED', err?.message || String(err));
+          : new NotifierPermanentError('NOTIFIER_FAILED', err?.code || err?.name || 'UNKNOWN');
         await markProviderNotified(client, locked.booking_id);
         await insertOutboxRow(client, locked, payload, {
           channel: notifier.channel || 'manual_ops',
@@ -255,7 +258,7 @@ async function processBooking(row, notifier) {
         });
         await client.query('COMMIT');
         logger.error(
-          { err: permanent?.message || String(permanent), booking_id: locked.booking_id },
+          { error_name: permanent?.name, error_code: permanent?.code, booking_id: locked.booking_id },
           'Permanent service booking notification failure',
         );
         return { outcome: 'failed' };
@@ -292,7 +295,7 @@ async function runNotifyOnce({ limit = DEFAULT_LIMIT, notifier = null } = {}) {
     } catch (err) {
       counts.failed += 1;
       logger.error(
-        { err: err?.message || String(err), booking_id: row?.booking_id || null },
+        { error_name: err?.name, error_code: err?.code, booking_id: row?.booking_id || null },
         'Service booking notification row failed outside adapter handling',
       );
     }

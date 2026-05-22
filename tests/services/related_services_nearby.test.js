@@ -207,13 +207,19 @@ describe('catalogRelatedServicesNearby', () => {
     await expect(enrichProductWithRelatedServices(product)).resolves.toBe(product);
 
     expect(product._related_services_nearby).toBeUndefined();
+    // PII-safety: log carries error_name + error_code, not the raw message
+    // (PG errors can echo conflicting field values from metadata).
     expect(logger.warn).toHaveBeenCalledWith(
       expect.objectContaining({
-        err: 'provider query failed',
+        error_name: 'Error',
         category_path: CATEGORY_PATH,
       }),
       expect.stringContaining('PDP renders without related services'),
     );
+    const logCall = logger.warn.mock.calls.find((c) =>
+      typeof c[1] === 'string' && c[1].includes('PDP renders without related services'),
+    );
+    expect(logCall[0]).not.toHaveProperty('err');
   });
 
   test('cache hit avoids re-querying the DB for the same category_path', async () => {

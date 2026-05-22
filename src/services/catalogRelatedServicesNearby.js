@@ -293,8 +293,10 @@ async function readRelatedServicesNearbyByCategoryPath(categoryPath, { bypassCac
     _cacheSet(key, value);
     return value;
   } catch (err) {
+    // Omit err.message: PG errors can echo conflicting field values
+    // (e.g. metadata content) which may include free-text from extractors.
     logger.warn(
-      { err: err?.message || String(err), category_path: resolvedCategoryPath },
+      { error_name: err?.name, error_code: err?.code, category_path: resolvedCategoryPath },
       'catalog related services nearby lookup failed; PDP renders without related services',
     );
     _cacheSet(key, null);
@@ -313,7 +315,7 @@ async function enrichProductWithRelatedServices(product, { bypassCache = false }
     product._related_services_nearby = relatedServices;
   } catch (err) {
     logger.warn(
-      { err: err?.message || String(err) },
+      { error_name: err?.name, error_code: err?.code },
       'enrichProductWithRelatedServices failed; PDP renders without related services',
     );
   }

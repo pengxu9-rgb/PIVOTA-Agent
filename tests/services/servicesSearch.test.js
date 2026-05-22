@@ -257,10 +257,15 @@ describe('servicesSearch', () => {
 
     expect(res.status).toBe(500);
     expect(res.body).toEqual({ error: 'INTERNAL_ERROR' });
+    // PII-safety: catch-all log records error_name + error_code (no message
+    // — PG errors can echo conflicting field values).
     expect(logger.warn).toHaveBeenCalledWith(
-      expect.objectContaining({ err: 'db down' }),
+      expect.objectContaining({ error_name: 'Error', query_keys: ['q'] }),
       'Failed to search services',
     );
+    // Defense-in-depth: ensure raw `err` field with the message isn't present.
+    const logCall = logger.warn.mock.calls.find((c) => c[1] === 'Failed to search services');
+    expect(logCall[0]).not.toHaveProperty('err');
   });
 
   test('parameter normalization rejects duplicate query params', () => {
