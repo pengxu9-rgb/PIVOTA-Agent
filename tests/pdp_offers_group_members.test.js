@@ -806,6 +806,7 @@ describe('PDP grouped offers', () => {
               product_id: 'sig_late_seller_only',
               title: 'Late Seller Only Card',
               image_url: 'https://example.test/late-seller.jpg',
+              product_intel: { evidence_profile: 'community_supported' },
               shopping_card: { evidence_profile: 'seller_only', highlight: 'Seller-only copy' },
               search_card: { evidence_profile: 'seller_only', highlight_candidate: 'Seller-only copy' },
             },

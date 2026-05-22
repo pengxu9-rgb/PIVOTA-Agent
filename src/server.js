@@ -22138,8 +22138,19 @@ function readSimilarCardEvidenceProfile(product = {}) {
 }
 
 function isSellerOnlySimilarCardEvidence(product = {}) {
-  const profile = readSimilarCardEvidenceProfile(product);
-  return profile === 'seller_only' || profile === 'seller_only_fallback';
+  const profiles = [
+    product.evidence_profile,
+    product.evidenceProfile,
+    product.product_intel?.evidence_profile,
+    product.productIntel?.evidence_profile,
+    product.shopping_card?.evidence_profile,
+    product.shoppingCard?.evidence_profile,
+    product.search_card?.evidence_profile,
+    product.searchCard?.evidence_profile,
+  ]
+    .map((value) => readSimilarCardText(value).toLowerCase())
+    .filter(Boolean);
+  return profiles.some((profile) => profile === 'seller_only' || profile === 'seller_only_fallback');
 }
 
 function hasSimilarCardPresentation(product = {}) {
