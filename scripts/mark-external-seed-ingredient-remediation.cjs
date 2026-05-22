@@ -29,6 +29,15 @@ function asObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
 
+function normalizeForcedFamily(value) {
+  const normalized = asString(value).toLowerCase().replace(/[\s-]+/g, '_');
+  if (!normalized) return '';
+  if (['accessory', 'non_merch', 'set_or_collection', 'single_formula', 'sample', 'unknown_product'].includes(normalized)) {
+    return normalized;
+  }
+  throw new Error(`unsupported --force-family value: ${value}`);
+}
+
 function sanitizeJsonValue(value) {
   if (typeof value === 'string') return value.replace(/\u0000/g, '').replace(/\\+u0000/gi, '');
   if (Array.isArray(value)) return value.map(sanitizeJsonValue);
@@ -249,6 +258,31 @@ function patchBothRemediation(seedData, remediation) {
   snapshot.ingredient_remediation_v1 = remediation;
 }
 
+function patchForcedProductFamily(seedData, family, generatedAt) {
+  if (!family) return;
+  const snapshot = asObject(seedData.snapshot);
+  const productKind = family === 'accessory'
+    ? 'accessory'
+    : family === 'non_merch'
+      ? 'non_merch'
+      : family === 'set_or_collection'
+        ? 'bundle'
+        : family;
+  const review = {
+    source_origin: 'pivota_manual_component_repair',
+    review_state: 'reviewed',
+    reason: 'forced_product_family_override',
+    product_family: family,
+    updated_at: generatedAt,
+  };
+  seedData.product_family = family;
+  seedData.product_kind = productKind;
+  seedData.product_family_review_v1 = review;
+  snapshot.product_family = family;
+  snapshot.product_kind = productKind;
+  snapshot.product_family_review_v1 = review;
+}
+
 function buildApplicability(row, family, generatedAt) {
   return {
     contract_version: APPLICABILITY_CONTRACT_VERSION,
@@ -339,8 +373,10 @@ function buildPlan(row, options = {}) {
   const generatedAt = options.generatedAt;
   const seedData = sanitizeJsonValue(JSON.parse(JSON.stringify(asObject(row.seed_data))));
   seedData.snapshot = asObject(seedData.snapshot);
-  const family = classifyExternalSeedProductKind({ ...row, seed_data: seedData }).family;
+  const classifiedFamily = classifyExternalSeedProductKind({ ...row, seed_data: seedData }).family;
+  const family = options.forceFamily || classifiedFamily;
   const before = JSON.stringify(seedData);
+  if (options.forceFamily) patchForcedProductFamily(seedData, family, generatedAt);
   const currentInci = readInciText(seedData);
   const currentStructuredInci = hasStructuredInci(seedData);
   const forceFilledInci = hasForceFilledInci(seedData);
@@ -350,6 +386,8 @@ function buildPlan(row, options = {}) {
     external_product_id: row.external_product_id,
     title: row.title,
     family,
+    classified_family: classifiedFamily,
+    forced_family: options.forceFamily || null,
     status: 'unchanged',
     action: null,
     reason_codes: [],
@@ -385,14 +423,16 @@ function buildPlan(row, options = {}) {
       result.reason_codes = asArray(existingRemediation.reason_codes);
       return { result, nextSeedData: seedData, changed: before !== JSON.stringify(seedData) };
     }
-    result.status = 'already_remediated';
     result.action = existingRemediation.action;
     result.reason_codes = asArray(existingRemediation.reason_codes);
-    return { result, nextSeedData: seedData, changed: false };
+    const changed = before !== JSON.stringify(seedData);
+    result.status = changed ? (options.apply ? 'pending_apply' : 'dry_run') : 'already_remediated';
+    return { result, nextSeedData: seedData, changed };
   }
   if (
     ['component_refs_linked', 'manual_source_review_required'].includes(existingRemediation?.action)
     && existingIntelStatus.queueStatus === existingRemediation.action
+    && !options.forceFamily
   ) {
     result.status = 'already_remediated';
     result.action = existingRemediation.action;
@@ -476,6 +516,9 @@ function buildServingBlockPatch(seedData, options = {}) {
   const snapshot = asObject(seedData.snapshot);
   const patch = {};
   for (const key of [
+    'product_family',
+    'product_kind',
+    'product_family_review_v1',
     'pdp_field_quality_summary',
     'ingredient_intel',
     'ingredient_remediation_v1',
@@ -571,6 +614,10 @@ async function syncIngredientBlockerServingMirrors(externalProductId, seedData, 
 
 async function main() {
   const productIdFilter = argValue('product-ids');
+  const forceFamily = normalizeForcedFamily(argValue('force-family'));
+  if (forceFamily && !productIdFilter) {
+    throw new Error('--force-family requires explicit --product-ids');
+  }
   const readinessPayload = productIdFilter ? { rows: [] } : readJson(argValue('readiness-json'));
   const productIds = loadTargetIds(readinessPayload, productIdFilter);
   const options = {
@@ -578,6 +625,7 @@ async function main() {
     market: argValue('market') || 'US',
     domain: argValue('domain'),
     out: argValue('out'),
+    forceFamily,
     generatedAt: new Date().toISOString(),
   };
   const rows = await fetchRows(productIds, options);

@@ -115,6 +115,99 @@ describe('mark-external-seed-ingredient-remediation', () => {
     expect(plan.nextSeedData.ingredient_intel.force_fill_contract).toBeUndefined();
   });
 
+  test('allows explicit forced accessory family for manually reviewed component rows', () => {
+    const row = baseRow({
+      title: 'Lip Sleeping Mask Topper',
+      ingredient_intel: {
+        force_fill_contract: forceFillContract(),
+      },
+      pdp_field_quality_summary: {
+        ingredients_raw: {
+          source_origin: 'pivota_force_fill',
+          source_quality_status: 'force_filled_pending_source',
+        },
+      },
+    });
+    row.title = 'Lip Sleeping Mask Topper';
+
+    const plan = buildPlan(row, {
+      generatedAt: '2026-05-17T00:00:00.000Z',
+      apply: false,
+      forceFamily: 'accessory',
+    });
+
+    expect(plan.result.classified_family).toBe('single_formula');
+    expect(plan.result.family).toBe('accessory');
+    expect(plan.result.forced_family).toBe('accessory');
+    expect(plan.result.action).toBe('mark_inci_not_applicable');
+    expect(plan.nextSeedData.product_family).toBe('accessory');
+    expect(plan.nextSeedData.snapshot.product_family).toBe('accessory');
+    expect(plan.nextSeedData.ingredient_intel.inci_applicability.status).toBe('not_applicable');
+  });
+
+  test('forced accessory family can replace an existing manual source review queue', () => {
+    const row = baseRow({
+      title: 'Lip Sleeping Mask Topper',
+      ingredient_intel: {
+        source_review_queue: {
+          status: 'manual_source_review_required',
+        },
+      },
+      ingredient_remediation_v1: {
+        field: 'ingredients_inci',
+        source_origin: 'pivota_manual_component_repair',
+        action: 'manual_source_review_required',
+        reason_codes: ['manual_ingredient_source_review_required'],
+      },
+    });
+    row.title = 'Lip Sleeping Mask Topper';
+
+    const plan = buildPlan(row, {
+      generatedAt: '2026-05-17T00:00:00.000Z',
+      apply: false,
+      forceFamily: 'accessory',
+    });
+
+    expect(plan.changed).toBe(true);
+    expect(plan.result.family).toBe('accessory');
+    expect(plan.result.action).toBe('mark_inci_not_applicable');
+    expect(plan.nextSeedData.product_family).toBe('accessory');
+    expect(plan.nextSeedData.snapshot.product_family).toBe('accessory');
+    expect(plan.nextSeedData.ingredient_remediation_v1.action).toBe('mark_inci_not_applicable');
+    expect(plan.nextSeedData.ingredient_intel.inci_applicability.status).toBe('not_applicable');
+  });
+
+  test('forced accessory family can patch product family on already not-applicable rows', () => {
+    const row = baseRow({
+      title: 'Lip Sleeping Mask Topper',
+      ingredient_intel: {
+        inci_applicability: {
+          status: 'not_applicable',
+          reason: 'product_family_accessory',
+        },
+      },
+      ingredient_remediation_v1: {
+        field: 'ingredients_inci',
+        source_origin: 'pivota_manual_component_repair',
+        action: 'mark_inci_not_applicable',
+        reason_codes: ['product_family_accessory'],
+      },
+    });
+    row.title = 'Lip Sleeping Mask Topper';
+
+    const plan = buildPlan(row, {
+      generatedAt: '2026-05-17T00:00:00.000Z',
+      apply: false,
+      forceFamily: 'accessory',
+    });
+
+    expect(plan.changed).toBe(true);
+    expect(plan.result.status).toBe('dry_run');
+    expect(plan.result.action).toBe('mark_inci_not_applicable');
+    expect(plan.nextSeedData.product_family).toBe('accessory');
+    expect(plan.nextSeedData.snapshot.product_family).toBe('accessory');
+  });
+
   test('clears stale force-fill contract on already-remediated not-applicable rows', () => {
     const row = baseRow({
       title: 'Rumi Ultra-thin Spot Cover Patch with Case (28ea)',
