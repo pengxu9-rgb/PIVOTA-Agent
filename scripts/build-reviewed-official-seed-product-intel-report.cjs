@@ -70,6 +70,18 @@ function titleCaseFromPath(value) {
     .join(' ');
 }
 
+function brandFromUrl(value) {
+  const raw = text(value);
+  if (!raw) return '';
+  try {
+    const host = new URL(raw).hostname.replace(/^www\./, '');
+    const root = host.split('.')[0];
+    return titleCaseFromPath(root);
+  } catch {
+    return '';
+  }
+}
+
 function inferCategory(seed, inventoryRow) {
   const seedData = asObject(seed.seed_data);
   const snapshot = asObject(seedData.snapshot);
@@ -95,30 +107,62 @@ function inferCategoryPath(seed, inventoryRow) {
   );
 }
 
+function inferSetKind(titleCategoryText, descriptionText) {
+  if (/\b(?:lip patch|lippatch|lip kit|lip set|lip duo|lip trio|lip favourites|lip favorites)\b/.test(titleCategoryText)) return 'lip_set';
+  if (/\b(?:eye patch|eye patches|eye kit|eye set|eye trio|detoxifeye|fortifeye|dream-yeye|antioxifeye|beautifeye)\b/.test(titleCategoryText)) return 'eye_care_set';
+  if (/\b(?:makeup|lash|brow|blush|bronze|bronzer|complexion|liquidglow|superglow|blur & set|foundation|concealer|palette|eye shadow|eyeshadow)\b/.test(titleCategoryText)) {
+    return 'makeup_set';
+  }
+  if (/\b(?:skin|skincare|cleanse|cleanser|cleansing|tonic|toner|serum|mask|peel|clarity|glow)\b/.test(titleCategoryText)) {
+    return 'skincare_set';
+  }
+  const joined = `${titleCategoryText} ${descriptionText}`;
+  if (/\b(?:cleanse|cleanser|cleansing|tonic|toner|serum|skin|skincare|mask|peel|clarity|glow|rose)\b/.test(joined)) {
+    return 'skincare_set';
+  }
+  if (/\b(?:eye patch|eye patches|eye kit|eye set|eye trio)\b/.test(joined)) return 'eye_care_set';
+  if (/\b(?:lip kit|lip set|lip duo|lip trio|lip favourites|lip favorites)\b/.test(joined)) return 'lip_set';
+  if (/\b(?:makeup|lash|brow|blush|bronzer|foundation|concealer|palette|eye shadow|eyeshadow)\b/.test(joined)) {
+    return 'makeup_set';
+  }
+  return 'beauty_set';
+}
+
 function inferKind(title, category, categoryPath, description = '') {
-  const haystack = `${title} ${category} ${categoryPath} ${description}`.toLowerCase();
-  if (/\b(?:brush|applicator|beauty tool|makeup brush)\b/.test(haystack) && !/\bbrush cleanser\b/.test(haystack)) {
+  const titleCategoryText = `${title} ${category} ${categoryPath}`.toLowerCase();
+  const descriptionText = `${description}`.toLowerCase();
+  const haystack = `${titleCategoryText} ${descriptionText}`;
+  if (/\b(?:set|kit|duo|trio|quad|sampler|bundle|vault|favourites|favorites|collection|best of|holiday edition|choose your shades)\b/.test(titleCategoryText)) {
+    return inferSetKind(titleCategoryText, descriptionText);
+  }
+  if (
+    /\b(?:brush|beauty tool|makeup brush)\b/.test(titleCategoryText) &&
+    !/\bbrush cleanser\b/.test(titleCategoryText)
+  ) {
     return 'brush';
   }
-  if (/\bfoundation\b/.test(haystack)) return 'foundation';
+  if (/\bapplicator\b/.test(titleCategoryText) && !/\b(?:roll[-\s]?on|serum)\b/.test(titleCategoryText)) return 'brush';
+  if (/\b(?:foundation|skin tint|skintint|skin-tint)\b/.test(haystack)) return 'foundation';
   if (/\bconcealer\b/.test(haystack)) return 'concealer';
-  if (/\b(?:lipstick|lip color|lip balm|lip gloss|lip liner|lip pencil|lip luxe|gloss)\b/.test(haystack)) return 'lip';
+  if (/\b(?:lipstick|lip color|lip balm|lip gloss|lip liner|lip pencil|lip luxe|lip patch|lippatch|gloss)\b/.test(haystack)) return 'lip';
   if (/\b(?:candle)\b/.test(haystack)) return 'home_fragrance';
-  if (/\b(?:eau de parfum|parfum|eau de toilette|body spray|fragrance|cologne)\b/.test(haystack)) return 'fragrance';
-  if (/\b(?:perfumery|scent|olfactive|oud|ombre leather|ombré leather|soleil blanc|private blend)\b/.test(haystack)) {
+  if (/\b(?:eau de parfum|parfum|eau de toilette|body spray|fragrance|cologne)\b/.test(titleCategoryText)) return 'fragrance';
+  if (/\b(?:perfumery|scent|olfactive|oud|ombre leather|ombré leather|soleil blanc|private blend)\b/.test(titleCategoryText)) {
     return 'fragrance';
   }
   if (/\b(?:brow|eyebrow)\b/.test(haystack)) return 'brow';
-  if (/\b(?:eye repair|eye cream|eye treatment)\b/.test(haystack)) return 'eye_treatment';
+  if (/\b(?:eye repair|eye cream|eye treatment|eye serum|eye patch|eye patches|antioxifeye|beautifeye|detoxifeye|fortifeye|dream-yeye|dream-yeye|eye-surrounds)\b/.test(haystack)) return 'eye_treatment';
   if (/\b(?:eyeliner|mascara|eye color|eyeshadow|eye primer)\b/.test(haystack)) return 'eye_makeup';
   if (/\b(?:blush)\b/.test(haystack)) return 'blush';
-  if (/\b(?:bronzer)\b/.test(haystack)) return 'bronzer';
+  if (/\b(?:bronzer|bronze)\b/.test(haystack)) return 'bronzer';
   if (/\b(?:highlighting|highlighter|illuminate)\b/.test(haystack)) return 'highlighter';
   if (/\b(?:powder)\b/.test(haystack)) return 'face_powder';
   if (/\b(?:body oil)\b/.test(haystack)) return 'body_oil';
+  if (/\b(?:spot sticker|spot stickers|zit|blemish spot|blemish sticker|blemish stickers)\b/.test(haystack)) return 'blemish_patch';
+  if (/\b(?:sheet mask|face mask|lip patch|lippatch|body polish|retinol oil|concentrate)\b/.test(haystack)) return 'skincare';
   if (/\b(?:cleansing|cleanser)\b/.test(haystack)) return 'cleanser';
-  if (/\b(?:treatment lotion|treatment emulsion|emulsion|lotion|serum|toner)\b/.test(haystack)) return 'skincare';
-  if (/\b(?:moisturizer|cream|mist|serum|cleanser|skincare)\b/.test(haystack)) return 'skincare';
+  if (/\b(?:treatment lotion|treatment emulsion|emulsion|lotion|serum|toner|tonic|to-go|pads|cloths)\b/.test(haystack)) return 'skincare';
+  if (/\b(?:moisturizer|cream|mist|serum|cleanser|skincare|radiance|clarity|glow tonic)\b/.test(haystack)) return 'skincare';
   return 'beauty_product';
 }
 
@@ -136,10 +180,16 @@ function kindLabel(kind, category) {
     highlighter: 'highlighter',
     face_powder: 'face powder',
     body_oil: 'body oil',
+    blemish_patch: 'blemish patch',
     cleanser: 'cleanser',
     brush: 'beauty brush',
     skincare: 'skincare product',
     home_fragrance: 'home fragrance',
+    beauty_set: 'beauty set',
+    skincare_set: 'skincare set',
+    makeup_set: 'makeup set',
+    eye_care_set: 'eye care set',
+    lip_set: 'lip set',
     beauty_product: text(category).toLowerCase() || 'beauty product',
   };
   return labels[kind] || labels.beauty_product;
@@ -161,10 +211,16 @@ function displayCategoryForKind(kind, category) {
     highlighter: 'Highlighter',
     face_powder: 'Face Powder',
     body_oil: 'Body Oil',
+    blemish_patch: 'Blemish Patch',
     cleanser: 'Cleanser',
     brush: 'Beauty Brush',
     skincare: 'Skincare',
     home_fragrance: 'Home Fragrance',
+    beauty_set: 'Beauty Set',
+    skincare_set: 'Skincare Set',
+    makeup_set: 'Makeup Set',
+    eye_care_set: 'Eye Care Set',
+    lip_set: 'Lip Set',
     beauty_product: 'Beauty Product',
   };
   return labels[kind] || labels.beauty_product;
@@ -184,10 +240,16 @@ function routineStep(kind) {
     highlighter: 'complexion',
     face_powder: 'complexion',
     body_oil: 'body_care',
+    blemish_patch: 'spot_care',
     cleanser: 'cleanse',
     brush: 'tool',
     skincare: 'skin_care',
     home_fragrance: 'home_fragrance',
+    beauty_set: 'set',
+    skincare_set: 'set',
+    makeup_set: 'set',
+    eye_care_set: 'set',
+    lip_set: 'set',
     beauty_product: 'beauty',
   };
   return steps[kind] || 'beauty';
@@ -291,19 +353,27 @@ function buildHighlightPhrase(kind, category, description) {
   if (kind === 'highlighter') return 'Highlighter source identity';
   if (kind === 'face_powder') return 'Complexion powder detail';
   if (kind === 'body_oil') return 'Body oil source identity';
+  if (kind === 'blemish_patch') return 'Spot-care format detail';
   if (kind === 'cleanser') return 'Cleanser source identity';
   if (kind === 'brush') return 'Brush format source identity';
   if (kind === 'skincare') return 'Skincare source identity';
   if (kind === 'home_fragrance') return 'Home-fragrance source identity';
+  if (kind === 'beauty_set') return 'Set format source identity';
+  if (kind === 'skincare_set') return 'Skincare set source identity';
+  if (kind === 'makeup_set') return 'Makeup set source identity';
+  if (kind === 'eye_care_set') return 'Eye set source identity';
+  if (kind === 'lip_set') return 'Lip set source identity';
   return `${text(category) || 'Beauty'} source identity`.slice(0, 40).trim();
 }
 
 function buildBundle({ seed, inventoryRow, generatedAt, batchName, reviewer }) {
   const seedData = asObject(seed.seed_data);
+  const snapshot = asObject(seedData.snapshot);
   const productId = text(seed.external_product_id);
   const title = text(seed.title || seedData.title || inventoryRow.title);
-  const brand = text(seedData.brand || inventoryRow.brand || 'Tom Ford Beauty');
   const sourceUrl = text(seed.canonical_url || seed.destination_url || inventoryRow.canonical_url);
+  const brand = text(seedData.brand || snapshot.brand || inventoryRow.brand || brandFromUrl(sourceUrl));
+  const brandPrefix = brand ? `${brand} ` : '';
   const rawCategory = inferCategory(seed, inventoryRow);
   const categoryPath = inferCategoryPath(seed, inventoryRow);
   const description = sourceDescription(seedData);
@@ -315,10 +385,10 @@ function buildBundle({ seed, inventoryRow, generatedAt, batchName, reviewer }) {
   const evidenceProfile = ingredient.available ? 'seller_plus_formula' : 'official_pdp_seed';
   const highlight = buildHighlightPhrase(kind, category, description);
   const whatItIsBody = descriptionSentence
-    ? `A ${brand} ${label} listed on the official source page as ${title}. The official description identifies: ${descriptionSentence}`
-    : `A ${brand} ${label} listed on the official source page as ${title}.`;
+    ? `A ${brandPrefix}${label} listed on the official source page as ${title}. The official description identifies: ${descriptionSentence}`
+    : `A ${brandPrefix}${label} listed on the official source page as ${title}.`;
   const formulaBody = ingredient.available
-    ? `The seed includes official formula or ingredient-derived detail, so agents can cite source-backed product composition without making safety or medical claims.`
+    ? `Captured formula fields include ${ingredient.summary || `${ingredient.ingredient_count} ingredient tokens`}; agents should keep composition claims within those source fields.`
     : `No complete ingredient list was captured for this review batch, so formula-level claims stay unavailable.`;
 
   const sourceCoverage = {
@@ -375,7 +445,7 @@ function buildBundle({ seed, inventoryRow, generatedAt, batchName, reviewer }) {
         {
           headline: 'Official product detail',
           body: descriptionSentence
-            ? `The official seed description provides concrete product detail for ${title}, which is stronger than generic category copy.`
+            ? `The official page describes ${title} with product-specific detail: ${descriptionSentence}`
             : `The official title and reviewed category identify this PDP as ${category}, giving agents a grounded product type.`,
           evidence_strength: evidenceProfile,
         },
@@ -697,18 +767,29 @@ async function main() {
   );
 }
 
-main()
-  .catch((err) => {
-    process.stderr.write(`${err && err.stack ? err.stack : String(err)}\n`);
-    if (err && err.diagnostics) {
-      process.stderr.write(`${JSON.stringify(err.diagnostics, null, 2)}\n`);
-    }
-    if (err && err.blockedEntries) {
-      process.stderr.write(`${JSON.stringify(err.blockedEntries, null, 2)}\n`);
-    }
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    await closePool().catch(() => {});
-    if (process.exitCode && process.exitCode !== 0) process.exit(process.exitCode);
-  });
+if (require.main === module) {
+  main()
+    .catch((err) => {
+      process.stderr.write(`${err && err.stack ? err.stack : String(err)}\n`);
+      if (err && err.diagnostics) {
+        process.stderr.write(`${JSON.stringify(err.diagnostics, null, 2)}\n`);
+      }
+      if (err && err.blockedEntries) {
+        process.stderr.write(`${JSON.stringify(err.blockedEntries, null, 2)}\n`);
+      }
+      process.exitCode = 1;
+    })
+    .finally(async () => {
+      await closePool().catch(() => {});
+      if (process.exitCode && process.exitCode !== 0) process.exit(process.exitCode);
+    });
+}
+
+module.exports = {
+  _internals: {
+    brandFromUrl,
+    buildBundle,
+    buildHighlightPhrase,
+    inferKind,
+  },
+};
