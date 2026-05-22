@@ -262,6 +262,8 @@ function inferTitleSpecialtyCompactSubtitle(product) {
   if (/\b(?:scrunchie|hair scrunchie)\b/.test(text)) return 'Hair Accessory';
   if (/\b(?:satin scarf|hair scarf)\b/.test(text)) return 'Hair Scarf';
   if (/\b(?:baseball hat|bucket hat|hat|cap)\b/.test(text)) return 'Apparel Accessory';
+  if (/\b(?:nail polish display|polish display|nail polish display pack)\b/.test(text)) return 'Nail Polish Display';
+  if (/\b(?:razor blades?|replacement blades?|blade refills?)\b/.test(text)) return 'Razor Blades';
   if (/\b(?:pencil sharpener|dual sharpener|makeup sharpener|sharpener)\b/.test(titleCategory)) return 'Makeup Sharpener';
   if (/\b(?:cushion puff|makeup puff|puff)\b/.test(titleCategory)) return 'Makeup Puff';
   if (/\b(?:vanity mirror|led mirror|compact mirror|mirror)\b/.test(text)) return 'Vanity Mirror';
@@ -274,11 +276,14 @@ function inferTitleSpecialtyCompactSubtitle(product) {
     return /\brefill\b/.test(text) ? 'Cushion Refill' : 'Cushion Foundation';
   }
   if (/\b(?:body cr[eè]me|body cream|body butter|whipped oil body cream|butta drop)\b/.test(text)) return 'Body Cream';
+  if (/\b(?:baby oil)\b/.test(text)) return 'Baby Oil';
   if (/\b(?:brush cup|brush holder|brush storage|makeup brush cup)\b/.test(text)) return 'Brush Storage';
   if (/\b(?:brush bundle|brush trio|brush duo|brush set)\b/.test(text)) return 'Brush Set';
   if (/\b(?:blending|packing|shader|crease|definer|smudge|foundation|skin tint|concealer|face|eyeliner|kyliner|tapered)?\s*brush\s*\d*\b/.test(title)) return 'Makeup Brush';
   if (/\b(?:fragrance layering balm|fragrance balm|scent balm)\b/.test(text)) return 'Fragrance Balm';
+  if (/\b(?:essential oil|pure essential oil)\b/.test(text)) return 'Essential Oil';
   if (/\b(?:hair\s*\+\s*body fragrance mist|hair and body fragrance mist|hair\s*\+\s*body mist|hair and body mist|body fragrance mist|fragrance mist|fenty parfum hair\s*\+\s*body mist)\b/.test(text)) return 'Fragrance Mist';
+  if (/\b(?:clarity acid peel|acid peel)\b/.test(text) && /\b(?:acid|aha|bha|glycolic|lactic|salicylic|peel)\b/.test(text)) return 'Exfoliating Peel';
   if (/\b(?:eye duo|eye trio|eye set|eye kit|eye colour routine|eye color routine|essential eye duo|mascara.*(?:duo|set)|(?:duo|set).*mascara)\b/.test(text)) return 'Eye Makeup Set';
   if (/\b(?:lip duo|lip set|lip kit)\b/.test(text)) return 'Lip Set';
   if (/\b(?:makeup set|makeup kit|makeup essentials|makeup trio|beauty set|beauty kit)\b/.test(text)) return 'Makeup Set';
@@ -304,7 +309,9 @@ function inferTitleSpecialtyCompactSubtitle(product) {
   if (/\b(?:lip liner|pout liner)\b/.test(text)) return 'Lip Liner';
   if (/\b(?:lip oil)\b/.test(text)) return 'Lip Oil';
   if (/\b(?:lip glaze|lip gloss|gloss drip|plumping gloss|gloss bomb heat|gloss bomb universal|lip luminizer|plumper)\b/.test(text)) return 'Lip Gloss';
+  if (/\b(?:lip brightener|vit lip brightener|\+c vit lip brightener)\b/.test(text)) return 'Lip Brightener';
   if (/\b(?:lipstick|lip stick)\b/.test(text)) return 'Lipstick';
+  if (/\b(?:nail polish|breathable nail polish)\b/.test(text)) return 'Nail Polish';
   if (/\btoner\b/.test(text)) return 'Hydrating Toner';
   if (/\b(?:facial radiance|ingrown hair|aha|bha|glycolic|lactic)\s+pads?\b/.test(text) || /\bpads?\s+with\s+(?:bha|aha|glycolic|lactic)/.test(text)) {
     if (/\b(?:aha|bha|glycolic|lactic|salicylic)\b/.test(text)) return 'Exfoliating Pads';
