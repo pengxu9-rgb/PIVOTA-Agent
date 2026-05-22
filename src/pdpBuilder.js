@@ -2622,6 +2622,27 @@ function buildStructuredContentImagePlan(product) {
   };
 }
 
+function isAllCapsSectionSoupLabel(rawLabel) {
+  const letters = asNonEmptyString(rawLabel).replace(/[^A-Za-z]+/g, '');
+  return Boolean(letters && letters === letters.toUpperCase());
+}
+
+function isUndelimitedNarrativeSectionContinuation(text, match) {
+  const matchedText = String(match?.[0] || '');
+  if (matchedText.includes(':')) return false;
+  const rawLabel = asNonEmptyString(match?.[1]).toLowerCase();
+  const startsNewLine = match.index === 0 || /[\r\n]\s*$/.test(text.slice(0, match.index));
+  const nextToken = asNonEmptyString(text.slice(match.index + matchedText.length))
+    .match(/^[A-Za-z]+/)?.[0]
+    ?.toLowerCase();
+  if (startsNewLine) {
+    return rawLabel === 'finish' && nextToken === 'with';
+  }
+  return /^(?:include|includes|including|with|that|this|these|those|and|for|to|in|of|from|by|on|into|around|across|over|under|while|without|using|is|are|was|were|has|have|offers?|delivers?|provides?|supports?|targets?|leaves?)$/.test(
+    nextToken || '',
+  );
+}
+
 function extractSectionSoupSegments(value) {
   const text = asNonEmptyString(value);
   if (!text) return [];
@@ -2639,7 +2660,12 @@ function extractSectionSoupSegments(value) {
     const hasExplicitLabelDelimiter = matchedText.includes(':');
     const startsNewLine = match.index === 0 || /[\r\n]\s*$/.test(text.slice(0, match.index));
     const titleCaseInlineLabel = /^[A-Z][a-z]/.test(rawLabel);
-    if (!hasExplicitLabelDelimiter && !startsNewLine && !titleCaseInlineLabel) {
+    const allCapsInlineLabel = isAllCapsSectionSoupLabel(rawLabel);
+    if (!hasExplicitLabelDelimiter && !startsNewLine && !titleCaseInlineLabel && !allCapsInlineLabel) {
+      match = SECTION_SOUP_LABEL_RE.exec(text);
+      continue;
+    }
+    if (isUndelimitedNarrativeSectionContinuation(text, match)) {
       match = SECTION_SOUP_LABEL_RE.exec(text);
       continue;
     }
@@ -2684,7 +2710,12 @@ function findFirstSectionSoupLabelIndex(value) {
     const hasExplicitLabelDelimiter = matchedText.includes(':');
     const startsNewLine = match.index === 0 || /[\r\n]\s*$/.test(text.slice(0, match.index));
     const titleCaseInlineLabel = /^[A-Z][a-z]/.test(rawLabel);
-    if (!hasExplicitLabelDelimiter && !startsNewLine && !titleCaseInlineLabel) {
+    const allCapsInlineLabel = isAllCapsSectionSoupLabel(rawLabel);
+    if (!hasExplicitLabelDelimiter && !startsNewLine && !titleCaseInlineLabel && !allCapsInlineLabel) {
+      match = SECTION_SOUP_LABEL_RE.exec(text);
+      continue;
+    }
+    if (isUndelimitedNarrativeSectionContinuation(text, match)) {
       match = SECTION_SOUP_LABEL_RE.exec(text);
       continue;
     }

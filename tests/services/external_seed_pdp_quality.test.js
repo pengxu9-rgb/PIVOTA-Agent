@@ -739,6 +739,44 @@ describe('externalSeedPdpQuality', () => {
     expect(looksLikeSectionSoupText(text)).toBe(false);
   });
 
+  test('does not treat set regimen prose continuations as section soup', () => {
+    const text = [
+      'The Age Support Set includes peptide formulations to target signs of aging across the face and around the eyes.',
+      'This set includes a face serum, eye serum, and rich hydrating moisturizer for fine lines, elasticity, and hydration.',
+      'Multi-Peptide + HA Serum: a face serum designed to minimize the appearance of early signs of aging, including the look of fine lines, and the feel of skin elasticity and firmness.',
+      'Multi-Peptide Eye Serum: offers a similar multi-technology approach to signs of aging, and is designed specifically for the eye area.',
+      'Key ingredients include palmitoyl tripeptide-38, niacinamide, fraxinus excelsior bark extract, propyl gallate, gallyl glucoside, and epigallocatechin gallatyl glucoside.',
+      'Natural Moisturizing Factors + PhytoCeramides: a rich, replenishing moisturizer that delivers instant hydration to complete the regimen.',
+      'After cleansing, apply a few drops of Multi-Peptide + HA Serum and massage into skin.',
+      'Follow with a small amount of Multi-Peptide Eye Serum around the eye contour.',
+      'Finish with a small amount of Natural Moisturizing Factors + PhytoCeramides.',
+      'Clinical testing on 30 people after single application supports the hydration claim.',
+    ].join('\n');
+
+    expect(looksLikeSectionSoupText(text)).toBe(false);
+
+    const livePdpGate = buildLivePdpGate({
+      seedData: {
+        external_seed_snapshot_contract: {
+          authoritative: true,
+          legacy_fields_quarantined: true,
+          replace_strategy: 'replace_not_merge',
+        },
+      },
+      livePayload: {
+        product: { description: text },
+        modules: [
+          { type: 'price_promo', data: { price: { amount: 33, currency: 'USD' } } },
+          { type: 'product_intel', data: { product_intel_core: { what_it_is: { body: 'A peptide-focused set.' } } } },
+          { type: 'product_details', data: { sections: [{ heading: 'Details', content: text }] } },
+        ],
+      },
+    });
+
+    expect(livePdpGate.failure_reasons).not.toContain('product_details_section_soup');
+    expect(livePdpGate.failure_reasons).not.toContain('legacy_overview_render_risk');
+  });
+
   test('still detects stitched heading blobs as section soup', () => {
     const text =
       'Description: A breathable tinted sunscreen. Benefits: Helps even skin tone. ' +

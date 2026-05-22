@@ -485,6 +485,41 @@ describe('pdpBuilder structured PDP modules', () => {
     ]);
   });
 
+  test('keeps set regimen prose continuations in the overview instead of treating them as details soup', () => {
+    const description = [
+      'The Age Support Set includes peptide formulations to target signs of aging across the face and around the eyes.',
+      'This set includes a face serum, eye serum, and rich hydrating moisturizer for fine lines, elasticity, and hydration.',
+      'Multi-Peptide + HA Serum: a face serum designed to minimize the appearance of early signs of aging, including the look of fine lines, and the feel of skin elasticity and firmness.',
+      'Multi-Peptide Eye Serum: offers a similar multi-technology approach to signs of aging, and is designed specifically for the eye area.',
+      'Key ingredients include palmitoyl tripeptide-38, niacinamide, fraxinus excelsior bark extract, propyl gallate, gallyl glucoside, and epigallocatechin gallatyl glucoside.',
+      'Natural Moisturizing Factors + PhytoCeramides: a rich, replenishing moisturizer that delivers instant hydration to complete the regimen.',
+      'After cleansing, apply a few drops of Multi-Peptide + HA Serum and massage into skin.',
+      'Follow with a small amount of Multi-Peptide Eye Serum around the eye contour.',
+      'Finish with a small amount of Natural Moisturizing Factors + PhytoCeramides.',
+    ].join('\n');
+
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_theordinary_age_support',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'The Age Support Set',
+        category: 'Gift Set',
+        image_url: 'https://cdn.example.com/the-ordinary-age-support.png',
+        price: { amount: 33, currency: 'USD' },
+        pdp_description_raw: description,
+        pdp_details_sections: [{ heading: 'Details', body: description, source_kind: 'page_product_details' }],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const overviewContent = findModule(payload, 'product_overview')?.data?.sections?.[0]?.content || '';
+    expect(overviewContent).toContain('Key ingredients include palmitoyl tripeptide-38');
+    expect(overviewContent).toContain('Finish with a small amount of Natural Moisturizing Factors + PhytoCeramides.');
+    expect(payload.product.description).toContain('This set includes a face serum');
+  });
+
   test('routes repeated external-seed headings and separated content images into overview, facts, ingredients, and how-to modules', () => {
     const payload = buildPdpPayload({
       product: {

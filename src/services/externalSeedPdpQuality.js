@@ -615,10 +615,39 @@ function hasSectionSoupBoundary(text, index) {
   return /[:;.!?\n\r\u2022]/.test(prefix[prefix.length - 1]);
 }
 
+function isAllCapsSoupLabel(rawLabel) {
+  const letters = normalizeNonEmptyString(rawLabel).replace(/[^A-Za-z]+/g, '');
+  return Boolean(letters && letters === letters.toUpperCase());
+}
+
+function isUndelimitedNarrativeContinuation(text, match) {
+  const matchedText = String(match?.[0] || '');
+  if (matchedText.includes(':')) return false;
+  const rawLabel = normalizeNonEmptyString(match?.[1]).toLowerCase();
+  const startsNewLine = match.index === 0 || /[\r\n]\s*$/.test(text.slice(0, match.index));
+  const nextToken = normalizeNonEmptyString(text.slice(match.index + matchedText.length))
+    .match(/^[A-Za-z]+/)?.[0]
+    ?.toLowerCase();
+  if (startsNewLine) {
+    return rawLabel === 'finish' && nextToken === 'with';
+  }
+  return /^(?:include|includes|including|with|that|this|these|those|and|for|to|in|of|from|by|on|into|around|across|over|under|while|without|using|is|are|was|were|has|have|offers?|delivers?|provides?|supports?|targets?|leaves?)$/.test(
+    nextToken || '',
+  );
+}
+
 function isHeadingStyleSoupLabel(text, match) {
   const rawLabel = String(match?.[1] || '');
   if (!rawLabel) return false;
   if (!hasSectionSoupBoundary(text, match.index)) return false;
+  const matchedText = String(match?.[0] || '');
+  const hasExplicitLabelDelimiter = matchedText.includes(':');
+  const startsNewLine = match.index === 0 || /[\r\n]\s*$/.test(text.slice(0, match.index));
+  const titleCaseInlineLabel = /^[A-Z][a-z]/.test(rawLabel);
+  if (!hasExplicitLabelDelimiter && !startsNewLine && !titleCaseInlineLabel && !isAllCapsSoupLabel(rawLabel)) {
+    return false;
+  }
+  if (isUndelimitedNarrativeContinuation(text, match)) return false;
   if (/^(coverage|finish|texture)$/i.test(rawLabel) && rawLabel[0] !== rawLabel[0].toUpperCase()) {
     return false;
   }
