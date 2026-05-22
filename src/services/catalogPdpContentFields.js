@@ -61,6 +61,25 @@ function firstArray(...values) {
   return null;
 }
 
+function categoryPathArray(value) {
+  if (Array.isArray(value)) {
+    const parts = value.map(asString).filter(Boolean);
+    return parts.length ? parts : null;
+  }
+  const text = asString(value);
+  if (!text) return null;
+  const parts = text.split('/').map(asString).filter(Boolean);
+  return parts.length ? parts : null;
+}
+
+function firstCategoryPath(...values) {
+  for (const value of values) {
+    const parts = categoryPathArray(value);
+    if (parts) return parts;
+  }
+  return null;
+}
+
 function parseCatalogPayload(value) {
   const payload = coerceObject(value);
   const seedData = coerceObject(payload.seed_data);
@@ -245,6 +264,24 @@ function buildCatalogPdpContentFieldsFromRow(row) {
     if (remediation) out.ingredient_remediation_v1 = remediation;
   }
 
+  const catalogCategoryPath = firstString(
+    payload.catalog_category_path,
+    seedData.catalog_category_path,
+    snapshot.catalog_category_path,
+  );
+  if (catalogCategoryPath) out.catalog_category_path = catalogCategoryPath;
+  const categoryPath = firstCategoryPath(
+    payload.category_path,
+    seedData.category_path,
+    snapshot.category_path,
+    catalogCategoryPath,
+  );
+  if (categoryPath) out.category_path = categoryPath;
+  const category = firstString(payload.category, seedData.category, snapshot.category);
+  if (category) out.category = category;
+  const productType = firstString(payload.product_type, seedData.product_type, snapshot.product_type);
+  if (productType) out.product_type = productType;
+
   const score =
     (out.pdp_ingredients_raw ? 40 : 0) +
     (out.raw_ingredient_text_clean ? 30 : 0) +
@@ -341,6 +378,22 @@ function mergeCatalogPdpContentFieldsIntoProduct(product, fields) {
 
   if (!product.ingredient_remediation_v1 && fields.ingredient_remediation_v1) {
     product.ingredient_remediation_v1 = fields.ingredient_remediation_v1;
+  }
+
+  if (!asString(product.catalog_category_path) && fields.catalog_category_path) {
+    product.catalog_category_path = fields.catalog_category_path;
+  }
+  if (
+    (!Array.isArray(product.category_path) || product.category_path.length === 0) &&
+    fields.category_path
+  ) {
+    product.category_path = fields.category_path;
+  }
+  if (!asString(product.category) && fields.category) {
+    product.category = fields.category;
+  }
+  if (!asString(product.product_type) && fields.product_type) {
+    product.product_type = fields.product_type;
   }
 
   if (changedQualityKeys.size > 0) {

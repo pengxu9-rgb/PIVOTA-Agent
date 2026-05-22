@@ -2,6 +2,7 @@ const {
   enrichProductWithCatalogPdpContentFields,
   __test,
 } = require('../../src/services/catalogPdpContentFields');
+const { buildStructuredPdpIngredientModules } = require('../../src/services/pdpIngredientAuthority');
 
 describe('catalogPdpContentFields', () => {
   beforeEach(() => {
@@ -14,10 +15,15 @@ describe('catalogPdpContentFields', () => {
         {
           source_product_id: 'ext_tom_ford_payload',
           product_payload: {
+            category: 'Eyeliner',
+            category_path: ['beauty', 'makeup', 'eye', 'eyeliner'],
+            catalog_category_path: 'beauty/makeup/eye/eyeliner',
+            product_type: 'Eyeliner',
             seed_data: {
-              pdp_ingredients_raw: 'Isododecane, Mica, Trimethylsiloxysilicate, Titanium Dioxide, Iron Oxides',
+              pdp_ingredients_raw:
+                'Hydrogenated Polyisobutene, Trimethylsiloxysilicate, Isododecane, Synthetic Wax, Polybutene, Mica, Synthetic Fluorphlogopite, Lauroyl Lysine, Disteardimonium Hectorite, Propylene Carbonate, Ethylene/propylene Copolymer, Copernicia Cerifera (carnauba) Wax Copernicia Cerifera Cera Cire De Carnauba, Pentaerythrityl Tetra-di-t-butyl Hydroxyhydrocinnamate, Titanium Dioxide (ci 77891), Iron Oxides (ci 77491), Iron Oxides (ci 77492), Iron Oxides (ci 77499)',
               raw_ingredient_text_clean:
-                'Isododecane, Mica, Trimethylsiloxysilicate, Titanium Dioxide, Iron Oxides',
+                'Hydrogenated Polyisobutene, Trimethylsiloxysilicate, Isododecane, Synthetic Wax, Polybutene, Mica, Synthetic Fluorphlogopite, Lauroyl Lysine, Disteardimonium Hectorite, Propylene Carbonate, Ethylene/propylene Copolymer, Copernicia Cerifera (carnauba) Wax Copernicia Cerifera Cera Cire De Carnauba, Pentaerythrityl Tetra-di-t-butyl Hydroxyhydrocinnamate, Titanium Dioxide (ci 77891), Iron Oxides (ci 77491), Iron Oxides (ci 77492), Iron Oxides (ci 77499)',
               pdp_field_quality_summary: {
                 ingredients_raw: {
                   source_origin: 'official_html',
@@ -36,6 +42,9 @@ describe('catalogPdpContentFields', () => {
     const product = {
       product_id: 'ext_tom_ford_alias',
       merchant_id: 'external_seed',
+      title: 'Gel Eyeliner',
+      product_family: 'set_or_collection',
+      product_kind: 'bundle',
       ingredient_intel: {
         force_fill_contract: {
           contract_version: 'pivota.pdp.force_fill.v1',
@@ -60,6 +69,8 @@ describe('catalogPdpContentFields', () => {
 
     expect(product.pdp_ingredients_raw).toContain('Trimethylsiloxysilicate');
     expect(product.raw_ingredient_text_clean).toContain('Titanium Dioxide');
+    expect(product.category_path).toEqual(['beauty', 'makeup', 'eye', 'eyeliner']);
+    expect(product.product_type).toBe('Eyeliner');
     expect(product.ingredient_intel?.force_fill_contract).toBeUndefined();
     expect(product.pdp_field_quality_summary.ingredients_raw).toMatchObject({
       source_origin: 'official_html',
@@ -69,6 +80,12 @@ describe('catalogPdpContentFields', () => {
       source: 'catalog_products.product_payload',
       source_product_id: 'ext_tom_ford_payload',
     });
+    expect(buildStructuredPdpIngredientModules(product).ingredientsInciData).toEqual(
+      expect.objectContaining({
+        source_quality_status: 'authoritative',
+        items: expect.arrayContaining(['Trimethylsiloxysilicate']),
+      }),
+    );
   });
 
   test('does not overwrite existing high-quality PDP content with catalog payload text', async () => {
