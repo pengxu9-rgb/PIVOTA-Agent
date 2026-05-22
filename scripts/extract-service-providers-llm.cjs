@@ -251,6 +251,90 @@ function readJsonFile(filePath) {
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
 }
 
+function validationLines({ seedIndex, basePath, error }) {
+  const issues = schemaIssuesFromError(error);
+  if (!issues.length) return [`seed_index=${seedIndex} ${basePath}: validation failed`];
+  return issues.map((issue) => {
+    const fieldPath = issue.path ? `${basePath}.${issue.path}` : basePath;
+    const detail = [issue.code, issue.message].filter(Boolean).join(': ');
+    return `seed_index=${seedIndex} ${fieldPath}: ${detail || 'validation failed'}`;
+  });
+}
+
+function validateFromReportResults(rawResults, entries) {
+  const errors = [];
+  const results = rawResults.map((result) => {
+    const seedIndex = result?.seed_index;
+    if (!Number.isInteger(seedIndex) || seedIndex < 0 || seedIndex >= entries.length) {
+      errors.push(`seed_index=${seedIndex} seed_index: must reference an entry in report.input_path`);
+    }
+
+    const providerResult = ProviderSchema.safeParse(result?.provider);
+    if (!providerResult.success) {
+      errors.push(...validationLines({
+        seedIndex,
+        basePath: 'provider',
+        error: providerResult.error,
+      }));
+    }
+
+    const rawListings = Array.isArray(result?.listings) ? result.listings : [];
+    if (!Array.isArray(result?.listings)) {
+      errors.push(`seed_index=${seedIndex} listings: must be an array`);
+    }
+
+    const listings = rawListings.map((listing, listingIndex) => {
+      const listingResult = ListingSchema.safeParse(listing);
+      if (!listingResult.success) {
+        errors.push(...validationLines({
+          seedIndex,
+          basePath: `listings[${listingIndex}]`,
+          error: listingResult.error,
+        }));
+        return listing;
+      }
+      if (!TAXONOMY_SET.has(listingResult.data.service_type)) {
+        errors.push(
+          `seed_index=${seedIndex} listings[${listingIndex}].service_type: unknown taxonomy key "${listingResult.data.service_type}"`,
+        );
+      }
+      return listingResult.data;
+    });
+
+    return {
+      ...result,
+      provider: providerResult.success ? providerResult.data : result?.provider,
+      listings,
+    };
+  });
+
+  if (errors.length) {
+    throw new Error(['--from-report validation failed:', ...errors.map((line) => `- ${line}`)].join('\n'));
+  }
+
+  return results;
+}
+
+function loadFromReport({ reportPath, limit }) {
+  const report = readJsonFile(reportPath);
+  const inputArg = asString(report.input_path);
+  if (!inputArg) throw new Error('--from-report report.input_path must be a non-empty string');
+  if (!Array.isArray(report.results)) throw new Error('--from-report report.results must be an array');
+
+  const seedDoc = readJsonFile(path.resolve(process.cwd(), inputArg));
+  const entries = Array.isArray(seedDoc.entries) ? seedDoc.entries : [];
+  const rawResults = Number.isFinite(limit) && limit > 0
+    ? report.results.slice(0, Math.min(limit, report.results.length))
+    : report.results;
+  const results = validateFromReportResults(rawResults, entries);
+  const jobs = results.map((result) => ({
+    seed: entries[result.seed_index],
+    seedIndex: result.seed_index,
+  }));
+
+  return { entries, results, jobs };
+}
+
 async function fetchUrl(seedUrl) {
   if (typeof fetch !== 'function') {
     throw new Error('global fetch is unavailable; use Node 18+');
@@ -922,9 +1006,36 @@ async function main() {
   const onlyConfidence = asString(argValue('only-confidence')).toLowerCase();
   const write = hasFlag('write');
   const allowUpdate = hasFlag('allow-update');
+  const fromReportFlag = hasFlag('from-report');
+  const fromReportArg = asString(argValue('from-report'));
 
-  if (onlyConfidence && !['high', 'medium', 'low'].includes(onlyConfidence)) {
+  if (fromReportFlag && !fromReportArg) {
+    throw new Error('--from-report requires a path');
+  }
+
+  if (!fromReportFlag && onlyConfidence && !['high', 'medium', 'low'].includes(onlyConfidence)) {
     throw new Error('--only-confidence must be one of: high, medium, low');
+  }
+
+  if (fromReportFlag) {
+    const reportPath = path.resolve(process.cwd(), fromReportArg);
+    if (!write) {
+      throw new Error(`use --from-report with --write; a dry-run already exists at ${fromReportArg}`);
+    }
+
+    const { entries, results, jobs } = loadFromReport({ reportPath, limit });
+    for (let idx = 0; idx < results.length; idx += 1) {
+      const result = results[idx];
+      const seed = entries[result.seed_index] || {};
+      process.stderr.write(
+        `[${idx + 1}/${results.length}] ${seed.name_en || seed.name_kr || seed.url || result.seed_url} -> ${result.status}\n`,
+      );
+    }
+    const writeStats = await writeResults({ results, entries, jobs, allowUpdate });
+    process.stdout.write(
+      `WROTE_FROM_REPORT: ${fromReportArg} (providers_written=${writeStats.providers_written}, listings_written=${writeStats.listings_written})\n`,
+    );
+    return;
   }
 
   const seedDoc = readJsonFile(inputPath);
