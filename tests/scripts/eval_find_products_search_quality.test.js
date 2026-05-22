@@ -1,4 +1,5 @@
 const {
+  buildRequestFailureEvaluation,
   evaluateSearchResponse,
   requestJson,
   summarizeResults,
@@ -147,5 +148,54 @@ describe('eval-find-products-search-quality', () => {
     } finally {
       global.fetch = originalFetch;
     }
+  });
+
+  test('retries response body read failures before returning request failure', async () => {
+    const originalFetch = global.fetch;
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({
+        status: 200,
+        text: jest.fn().mockRejectedValue(new TypeError('terminated')),
+      })
+      .mockResolvedValueOnce({
+        status: 200,
+        text: jest.fn().mockResolvedValue(JSON.stringify({ status: 'success', products: [] })),
+      });
+
+    try {
+      const result = await requestJson({
+        url: 'https://example.test/agent/shop/v1/invoke',
+        payload: { operation: 'find_products_multi' },
+        timeoutMs: 10,
+        attempts: 2,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(result.body.status).toBe('success');
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  test('builds request failure evaluations without fake hard constraint failures', () => {
+    const result = buildRequestFailureEvaluation(
+      { id: 'brand_fenty', query: 'fenty', group: 'brand_browse' },
+      {
+        status: 200,
+        ok: false,
+        latency_ms: 500,
+        body: { status: 'error', error: { code: 'TypeError', message: 'terminated' } },
+      },
+    );
+
+    expect(result.passed).toBe(false);
+    expect(result.metrics.request_failure_count).toBe(1);
+    expect(result.metrics.hard_constraint_violation_count).toBe(0);
+    expect(result.metrics.underfill_count).toBe(0);
+    expect(result.top6_hard_constraint_violations[0]).toEqual(
+      expect.objectContaining({ type: 'request_failed', message: 'terminated' }),
+    );
   });
 });

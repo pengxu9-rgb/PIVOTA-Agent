@@ -115,11 +115,11 @@ function sleep(ms) {
 async function requestJson({ url, payload, headers = {}, timeoutMs = 30000, attempts = 2 }) {
   const startedAt = Date.now();
   let lastError = null;
+  let lastStatus = 0;
   const maxAttempts = Math.max(1, Number(attempts) || 1);
-  let response = null;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      response = await fetchWithTimeout(
+      const response = await fetchWithTimeout(
         url,
         {
           method: 'POST',
@@ -128,53 +128,35 @@ async function requestJson({ url, payload, headers = {}, timeoutMs = 30000, atte
         },
         timeoutMs,
       );
-      break;
+      lastStatus = response.status || 0;
+      const text = await response.text();
+      let body = null;
+      try {
+        body = text ? JSON.parse(text) : null;
+      } catch {
+        body = { parse_error: true, text };
+      }
+      return {
+        status: response.status,
+        ok: response.status >= 200 && response.status < 300,
+        body,
+        latency_ms: Math.max(0, Date.now() - startedAt),
+      };
     } catch (error) {
       lastError = error;
       if (attempt < maxAttempts) await sleep(250 * attempt);
     }
   }
-  if (!response) {
-    return {
-      status: 0,
-      ok: false,
-      body: {
-        status: 'error',
-        error: {
-          code: lastError?.code || lastError?.name || 'REQUEST_FAILED',
-          message: String(lastError?.message || lastError || 'request failed'),
-        },
-      },
-      latency_ms: Math.max(0, Date.now() - startedAt),
-    };
-  }
-  let text = '';
-  try {
-    text = await response.text();
-  } catch (error) {
-    return {
-      status: response.status || 0,
-      ok: false,
-      body: {
-        status: 'error',
-        error: {
-          code: error?.code || error?.name || 'RESPONSE_READ_FAILED',
-          message: String(error?.message || error || 'response read failed'),
-        },
-      },
-      latency_ms: Math.max(0, Date.now() - startedAt),
-    };
-  }
-  let body = null;
-  try {
-    body = text ? JSON.parse(text) : null;
-  } catch {
-    body = { parse_error: true, text };
-  }
   return {
-    status: response.status,
-    ok: response.status >= 200 && response.status < 300,
-    body,
+    status: lastStatus,
+    ok: false,
+    body: {
+      status: 'error',
+      error: {
+        code: lastError?.code || lastError?.name || 'REQUEST_FAILED',
+        message: String(lastError?.message || lastError || 'request failed'),
+      },
+    },
     latency_ms: Math.max(0, Date.now() - startedAt),
   };
 }
@@ -395,6 +377,51 @@ function evaluateSearchResponse(testCase, responseBody, { limit = 6, pdpProbeRes
   };
 }
 
+function buildRequestFailureEvaluation(testCase, response = {}) {
+  const body = response.body && typeof response.body === 'object' ? response.body : {};
+  const error = body.error && typeof body.error === 'object' ? body.error : {};
+  return {
+    case_id: testCase.id || testCase.query,
+    group: testCase.group || null,
+    query: testCase.query,
+    passed: false,
+    metrics: {
+      returned_count: 0,
+      hard_constraint_violation_count: 0,
+      missing_image_count: 0,
+      invalid_price_count: 0,
+      missing_or_open_failed_pdp_count: 0,
+      polluted_row_count: 0,
+      canonical_candidate_count: 0,
+      canonical_returned_count: 0,
+      underfill_count: 0,
+      request_failure_count: 1,
+      latency_ms: response.latency_ms || null,
+    },
+    top6_hard_constraint_violations: [
+      {
+        type: 'request_failed',
+        status: response.status || 0,
+        code: error.code || body.status || 'REQUEST_FAILED',
+        message: error.message || null,
+      },
+    ],
+    missing_image_indexes: [],
+    invalid_price_indexes: [],
+    missing_pdp_indexes: [],
+    pdp_open_failures: [],
+    polluted_indexes: [],
+    metadata: {
+      search_quality_contract: null,
+      search_quality_contract_applied: null,
+      search_quality_failure_reasons: null,
+      search_quality_tier_counts: null,
+    },
+    http_status: response.status || 0,
+    http_ok: false,
+  };
+}
+
 async function probePdpRefs(products, { baseUrl, headers, timeoutMs }) {
   const refs = new Map();
   for (const product of products) {
@@ -441,6 +468,10 @@ async function runEval({ cases, baseUrl, apiKey = '', limit = 6, market = 'US', 
       timeoutMs,
       payload: buildFindProductsPayload(testCase, { limit, market }),
     });
+    if (!response.ok || response.body?.status === 'error' || response.body?.error) {
+      results.push(buildRequestFailureEvaluation(testCase, response));
+      continue;
+    }
     const products = extractProducts(response.body);
     const pdpProbeResults = pdpProbe
       ? await probePdpRefs(products.slice(0, limit), { baseUrl, headers, timeoutMs })
@@ -473,6 +504,7 @@ function summarizeResults(results = []) {
     missing_or_open_failed_pdp_count: 0,
     polluted_row_count: 0,
     underfill_count: 0,
+    request_failure_count: 0,
     canonical_candidate_count: 0,
     canonical_returned_count: 0,
     p95_latency_ms: null,
@@ -485,6 +517,7 @@ function summarizeResults(results = []) {
     summary.missing_or_open_failed_pdp_count += Number(row.metrics.missing_or_open_failed_pdp_count || 0);
     summary.polluted_row_count += Number(row.metrics.polluted_row_count || 0);
     summary.underfill_count += Number(row.metrics.underfill_count || 0);
+    summary.request_failure_count += Number(row.metrics.request_failure_count || 0);
     summary.canonical_candidate_count += Number(row.metrics.canonical_candidate_count || 0);
     summary.canonical_returned_count += Number(row.metrics.canonical_returned_count || 0);
     if (Number.isFinite(Number(row.metrics.latency_ms))) latencies.push(Number(row.metrics.latency_ms));
@@ -567,6 +600,7 @@ module.exports = {
   buildFindProductsPayload,
   evaluateSearchResponse,
   extractProducts,
+  buildRequestFailureEvaluation,
   loadCases,
   requestJson,
   renderMarkdownReport,
