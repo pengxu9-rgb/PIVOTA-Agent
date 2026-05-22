@@ -33504,8 +33504,28 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const productFactsData = findPdpPayloadModuleData(pdpPayload, 'product_facts') || null;
       let productDetailsData = null;
       const variantSelectorData = findPdpPayloadModuleData(pdpPayload, 'variant_selector') || null;
-
       let canonicalPayload = stripResponseOwnedPdpModulesFromCanonicalPayload(pdpPayload);
+      const pdpProductForKind = canonicalPayload?.product || canonicalProductForPdp || {};
+      const pdpProductFamily = normalizeSearchTextForMatch(
+        firstNonEmptyString(
+          pdpProductForKind.product_family,
+          pdpProductForKind.external_seed_product_family,
+          canonicalProductForPdp?.product_family,
+          canonicalProductForPdp?.external_seed_product_family,
+        ),
+      );
+      const setOrCollectionPdp =
+        pdpProductFamily === 'set_or_collection' ||
+        /\b(?:set|duo|kit|bundle|collection|discovery\s+kit)\b/i.test(
+          String(
+            firstNonEmptyString(
+              pdpProductForKind.title,
+              pdpProductForKind.name,
+              canonicalProductForPdp?.title,
+              canonicalProductForPdp?.name,
+            ) || '',
+          ),
+        );
       if (catalogIdentity?.pivota_signature_id && canonicalPayload?.product) {
         canonicalPayload = {
           ...canonicalPayload,
@@ -33619,13 +33639,18 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
       const missing = [];
       if (wantsVariantSelector) {
+        const variantSelectorUnavailableReason = setOrCollectionPdp
+          ? 'not_applicable_set_or_collection'
+          : 'unavailable';
         modules.push({
           type: 'variant_selector',
           required: false,
           data: variantSelectorData,
-          ...(variantSelectorData ? {} : { reason: 'unavailable' }),
+          ...(variantSelectorData ? {} : { reason: variantSelectorUnavailableReason }),
         });
-        if (!variantSelectorData) missing.push({ type: 'variant_selector', reason: 'unavailable' });
+        if (!variantSelectorData && !setOrCollectionPdp) {
+          missing.push({ type: 'variant_selector', reason: 'unavailable' });
+        }
       }
       const reviewsMissingReason =
         wantsReviewsPreview && !reviewsModule?.data ? 'no_results' : null;
@@ -33942,13 +33967,19 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       }
 
       if (wantsSupplementalDetails) {
+        const supplementalDetailsUnavailableReason =
+          setOrCollectionPdp && (productFactsData || productDetailsData || productOverviewData)
+            ? 'not_applicable_component_summary_in_structured_details'
+            : 'unavailable';
         modules.push({
           type: 'supplemental_details',
           required: false,
           data: supplementalDetailsData,
-          ...(supplementalDetailsData ? {} : { reason: 'unavailable' }),
+          ...(supplementalDetailsData ? {} : { reason: supplementalDetailsUnavailableReason }),
         });
-        if (!supplementalDetailsData) missing.push({ type: 'supplemental_details', reason: 'unavailable' });
+        if (!supplementalDetailsData && supplementalDetailsUnavailableReason === 'unavailable') {
+          missing.push({ type: 'supplemental_details', reason: 'unavailable' });
+        }
       }
 
       if (wantsProductDetails) {
