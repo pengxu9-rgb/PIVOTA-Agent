@@ -859,14 +859,17 @@ function normalizeHttpUrl(value) {
   return url;
 }
 
-function normalizeExplicitBeautyCategory(value) {
-  const text = String(value || '').trim();
-  if (!text) return '';
-  if (/^external$/i.test(text)) return '';
-  for (const [label, pattern] of BEAUTY_CATEGORY_PATTERNS) {
-    if (pattern.test(text)) return label;
+function normalizeExplicitBeautyCategory(...values) {
+  for (const value of values) {
+    const text = String(value || '').trim();
+    if (!text) continue;
+    if (/^external$/i.test(text)) continue;
+    for (const [label, pattern] of BEAUTY_CATEGORY_PATTERNS) {
+      if (pattern.test(text)) return label;
+    }
+    return text;
   }
-  return text;
+  return '';
 }
 
 function categoryPathParentPrefix(categoryPath) {
@@ -1035,9 +1038,19 @@ function inferExternalSeedBeautyCategory({
     .join(' ');
   const primaryMakeupFormFactor = inferPrimaryMakeupFormFactor(primarySurfaceText);
   const descriptionText = String(description || '').trim();
+  const normalizedIngredientIds = Array.isArray(ingredientIds)
+    ? ingredientIds.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean)
+    : [];
   if (explicit) {
     if (explicit === 'Sunscreen' && primaryMakeupFormFactor) return primaryMakeupFormFactor;
     if (explicit === 'Fragrance' && SUNSCREEN_CATEGORY_RE.test(primarySurfaceText)) return 'Sunscreen';
+    if (
+      explicit === 'Treatment' &&
+      /\bsolution\b/i.test([primarySurfaceText, descriptionText].filter(Boolean).join(' ')) &&
+      normalizedIngredientIds.some((value) => STRONG_ACTIVE_SOLUTION_INGREDIENT_IDS.has(value))
+    ) {
+      return 'Serum';
+    }
     if (
       explicit === 'Cleanser' &&
       !/\b(cleanser|cleansing|face wash|facial wash|wash|makeup remover|oil cleanser|cleansing oil)\b/i.test(primarySurfaceText) &&
@@ -1051,10 +1064,6 @@ function inferExternalSeedBeautyCategory({
   }
   const surfaceText = [primarySurfaceText, descriptionText].filter(Boolean).join(' ');
   if (!surfaceText) return '';
-
-  const normalizedIngredientIds = Array.isArray(ingredientIds)
-    ? ingredientIds.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean)
-    : [];
   if (
     /\bsolution\b/i.test(surfaceText) &&
     normalizedIngredientIds.some((value) => STRONG_ACTIVE_SOLUTION_INGREDIENT_IDS.has(value))

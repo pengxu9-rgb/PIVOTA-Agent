@@ -45,10 +45,24 @@ describe('external seed recall doc', () => {
       ['Mushroom Sponge 2-Piece Makeup Blending Sponge', 'Moisturizer', 'Makeup Sponge'],
       ['Powder Puff Setting Brush 170', 'Powder', 'Makeup Brush'],
       ['Micellar Lotion - Cleansing and Make-up Remover', 'Cleanser', 'Makeup Remover'],
+      ['Soft Pinch Mini Cheek & Lip Set', '', 'Makeup Set'],
+      ['Soft Pinch Cheek & Lip Trio', '', 'Makeup Set'],
+      ["Blemish Defeat'r BHA Spot-Targeting Gel", '', 'Treatment'],
+      ['The Mista Hair + Body Fragrance Mist', '', 'Fragrance'],
     ];
 
     for (const [title, sourceCategory, expectedCategory] of cases) {
       expect(buildRecall({ title, category: sourceCategory }).category).toBe(expectedCategory);
     }
+  });
+
+  test('does not classify fragrance-free skincare as fragrance', () => {
+    expect(
+      buildRecall({
+        title: "Blemish Defeat'r BHA Spot-Targeting Gel",
+        description:
+          'A fragrance-free salicylic acid BHA spot-targeting gel for blemishes that layers under makeup.',
+      }).category,
+    ).toBe('Treatment');
   });
 });

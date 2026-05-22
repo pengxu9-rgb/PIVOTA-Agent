@@ -53,6 +53,10 @@ const AMBIGUOUS_RECALL_CATEGORY_KEYS = new Set([
   'sticks',
 ]);
 const RECALL_LEAF_CATEGORY_PATTERNS = Object.freeze([
+  [
+    'Makeup Set',
+    /\b(?:makeup|beauty|cheek|lip|blush|eye|brow|face|soft\s+pinch|gloss|mascara|foundation|concealer|powder|bronzer|highlighter|eyeshadow|lipstick)(?:[\s&+\-]+[a-z0-9']+){0,8}[\s&+\-]+(?:sets?|kits?|duos?|trios?|bundles?)\b/i,
+  ],
   ['Beard Balm', /\bbeard(?:[\s-]+[a-z0-9+-]+){0,3}[\s-]+balms?\b/i],
   ['Shave Cream', /\bshav(?:e|ing)(?:[\s-]+[a-z0-9+-]+){0,4}[\s-]+creams?\b/i],
   ['Shave Oil', /\bshav(?:e|ing)(?:[\s-]+[a-z0-9+-]+){0,4}[\s-]+oils?\b/i],
@@ -108,8 +112,14 @@ const RECALL_LEAF_CATEGORY_PATTERNS = Object.freeze([
   ['Toner', /\b(toner|toners|tonic|tonics)\b/i],
   ['Essence', /\b(essence|essences|ampoule|ampoules)\b/i],
   ['Moisturizer', /\b(moisturizer|moisturizers|moisturiser|moisturisers|gel[-\s]?cream|cream|creams|lotion|lotions)\b/i],
-  ['Treatment', /\b(treatment|treatments|mask|masks|peel|peels|exfoliant|exfoliants)\b/i],
-  ['Fragrance', /\b(fragrance|fragrances|fragarance|fragarances|fragance|fragances|fragrence|fragrences|fragrancee|perfume|perfumes|parfum|parfums|cologne|colognes|eau\s+de\s+(?:parfum|toilette))\b/i],
+  [
+    'Treatment',
+    /\b(?:treatments?|mask|masks|peel|peels|exfoliant|exfoliants|spot[-\s]?target(?:ing|ed)?|spot[-\s]?treatments?|blemish(?:es)?|acne|bha|salicylic\s+acid|clarifying\s+treatment|targeting\s+gel|treatment\s+gel)\b/i,
+  ],
+  [
+    'Fragrance',
+    /\b(fragrances?|fragarances?|fragances?|fragrences?|fragrancee)(?![-\s]?free)\b|\b(perfumes?|parfums?|colognes?|eau\s+de\s+(?:parfum|toilette))\b/i,
+  ],
 ]);
 const RECALL_SKINCARE_TEXT_CATEGORY_PATTERNS = Object.freeze([
   ['Sunscreen', /\b(sunscreen|sunscreens|spf)\b/i],
@@ -119,7 +129,10 @@ const RECALL_SKINCARE_TEXT_CATEGORY_PATTERNS = Object.freeze([
   ['Serum', /\bserums?\b(?![-\s]*like)\b/i],
   ['Moisturizer', /\b(moisturizer|moisturizers|moisturiser|moisturisers|gel[-\s]?cream|cream|creams|lotion|lotions)\b/i],
   ['Hydrating Mask', /\b(?:(?:hydrating|hydration|hyalu-cica|dew\s+n\s+plump)(?:[\s-]+[a-z0-9+-]+){0,6}[\s-]+mask|mask(?:[\s-]+[a-z0-9+-]+){0,3}hydrating)\b/i],
-  ['Treatment', /\b(treatment|treatments|peel|peels|exfoliant|exfoliants)\b/i],
+  [
+    'Treatment',
+    /\b(?:treatments?|peel|peels|exfoliant|exfoliants|spot[-\s]?target(?:ing|ed)?|spot[-\s]?treatments?|blemish(?:es)?|acne|bha|salicylic\s+acid|clarifying\s+treatment|targeting\s+gel|treatment\s+gel)\b/i,
+  ],
 ]);
 const EXTERNAL_SEED_SUPPRESSION_FLAG_KEYS = Object.freeze([
   'exclude_from_recall',
