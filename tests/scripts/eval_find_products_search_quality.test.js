@@ -56,6 +56,46 @@ describe('eval-find-products-search-quality', () => {
     expect(result.metrics.missing_or_open_failed_pdp_count).toBe(0);
   });
 
+  test('flags repeated shade variants for brand browse cases', () => {
+    const result = evaluateSearchResponse(
+      {
+        id: 'brand_fenty',
+        query: 'fenty',
+        expected_contract: { query_class: 'brand_browse', target_domain: 'beauty' },
+        allowed_brands: ['fenty beauty'],
+        min_result_count: 1,
+        max_product_line_repeats: 1,
+      },
+      {
+        products: [
+          product({
+            product_id: 'ext_concealer_100c',
+            title: "We're Even Hydrating Longwear Concealer — 100C",
+            category: 'Concealer',
+            product_type: 'Concealer',
+            catalog_category_path: 'beauty/makeup/face/concealer',
+          }),
+          product({
+            product_id: 'ext_concealer_225n',
+            title: "We're Even Hydrating Longwear Concealer — 225N",
+            category: 'Concealer',
+            product_type: 'Concealer',
+            catalog_category_path: 'beauty/makeup/face/concealer',
+          }),
+        ],
+        metadata: {
+          search_quality_contract: { query_class: 'brand_browse', target_domain: 'beauty' },
+        },
+      },
+    );
+
+    expect(result.passed).toBe(false);
+    expect(result.metrics.duplicate_product_line_count).toBe(1);
+    expect(result.top6_hard_constraint_violations).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: 'duplicate_product_line' })]),
+    );
+  });
+
   test('flags hard constraint and quality violations in top products', () => {
     const result = evaluateSearchResponse(
       {
@@ -98,13 +138,14 @@ describe('eval-find-products-search-quality', () => {
 
   test('summarizes eval results across cases', () => {
     const summary = summarizeResults([
-      { passed: true, metrics: { hard_constraint_violation_count: 0, missing_image_count: 0, invalid_price_count: 0, missing_or_open_failed_pdp_count: 0, polluted_row_count: 0, underfill_count: 0, canonical_candidate_count: 2, canonical_returned_count: 1, latency_ms: 100 } },
-      { passed: false, metrics: { hard_constraint_violation_count: 2, missing_image_count: 1, invalid_price_count: 1, missing_or_open_failed_pdp_count: 1, polluted_row_count: 1, underfill_count: 1, canonical_candidate_count: 0, canonical_returned_count: 0, latency_ms: 200 } },
+      { passed: true, metrics: { hard_constraint_violation_count: 0, duplicate_product_line_count: 0, missing_image_count: 0, invalid_price_count: 0, missing_or_open_failed_pdp_count: 0, polluted_row_count: 0, underfill_count: 0, canonical_candidate_count: 2, canonical_returned_count: 1, latency_ms: 100 } },
+      { passed: false, metrics: { hard_constraint_violation_count: 2, duplicate_product_line_count: 1, missing_image_count: 1, invalid_price_count: 1, missing_or_open_failed_pdp_count: 1, polluted_row_count: 1, underfill_count: 1, canonical_candidate_count: 0, canonical_returned_count: 0, latency_ms: 200 } },
     ]);
 
     expect(summary.cases).toBe(2);
     expect(summary.failed).toBe(1);
     expect(summary.hard_constraint_violations).toBe(2);
+    expect(summary.duplicate_product_line_count).toBe(1);
     expect(summary.p95_latency_ms).toBe(200);
   });
 

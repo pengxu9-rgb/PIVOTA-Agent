@@ -4,12 +4,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const DEFAULT_CASES = Object.freeze([
-  { id: 'brand_fenty', group: 'brand_browse', query: 'fenty', expected_contract: { query_class: 'brand_browse', target_domain: 'beauty' }, allowed_brands: ['fenty beauty'], min_result_count: 1, require_image: true, require_valid_price: true, require_pdp_open: true },
-  { id: 'brand_rare_beauty', group: 'brand_browse', query: 'rare beauty', expected_contract: { query_class: 'brand_browse', target_domain: 'beauty' }, allowed_brands: ['rare beauty'], min_result_count: 1, require_image: true, require_valid_price: true, require_pdp_open: true },
-  { id: 'brand_the_ordinary', group: 'brand_browse', query: 'the ordinary', expected_contract: { query_class: 'brand_browse', target_domain: 'beauty' }, allowed_brands: ['the ordinary'], min_result_count: 1, require_image: true, require_valid_price: true, require_pdp_open: true },
-  { id: 'brand_cat_fenty_lipstick', group: 'brand_category', query: 'fenty lipstick', expected_contract: { query_class: 'brand_category', target_domain: 'beauty' }, allowed_brands: ['fenty beauty'], allowed_category_prefixes: ['beauty/makeup/lip'], forbidden_terms: ['lip oil', 'lip balm', 'lip mask'], min_result_count: 1, require_image: true, require_valid_price: true, require_pdp_open: true },
-  { id: 'brand_cat_rare_blush', group: 'brand_category', query: 'rare beauty blush', expected_contract: { query_class: 'brand_category', target_domain: 'beauty' }, allowed_brands: ['rare beauty'], allowed_category_prefixes: ['beauty/makeup/face/blush'], min_result_count: 1, require_image: true, require_valid_price: true, require_pdp_open: true },
-  { id: 'brand_cat_ordinary_niacinamide', group: 'brand_category', query: 'the ordinary niacinamide', expected_contract: { query_class: 'brand_category', target_domain: 'beauty' }, allowed_brands: ['the ordinary'], allowed_category_prefixes: ['beauty/skincare/treat'], min_result_count: 1, require_image: true, require_valid_price: true, require_pdp_open: true },
+  { id: 'brand_fenty', group: 'brand_browse', query: 'fenty', expected_contract: { query_class: 'brand_browse', target_domain: 'beauty' }, allowed_brands: ['fenty beauty'], min_result_count: 1, max_product_line_repeats: 1, require_image: true, require_valid_price: true, require_pdp_open: true },
+  { id: 'brand_rare_beauty', group: 'brand_browse', query: 'rare beauty', expected_contract: { query_class: 'brand_browse', target_domain: 'beauty' }, allowed_brands: ['rare beauty'], min_result_count: 1, max_product_line_repeats: 1, require_image: true, require_valid_price: true, require_pdp_open: true },
+  { id: 'brand_the_ordinary', group: 'brand_browse', query: 'the ordinary', expected_contract: { query_class: 'brand_browse', target_domain: 'beauty' }, allowed_brands: ['the ordinary'], min_result_count: 1, max_product_line_repeats: 1, require_image: true, require_valid_price: true, require_pdp_open: true },
+  { id: 'brand_cat_fenty_lipstick', group: 'brand_category', query: 'fenty lipstick', expected_contract: { query_class: 'brand_category', target_domain: 'beauty' }, allowed_brands: ['fenty beauty'], allowed_category_prefixes: ['beauty/makeup/lip'], forbidden_terms: ['lip oil', 'lip balm', 'lip mask'], min_result_count: 1, max_product_line_repeats: 1, require_image: true, require_valid_price: true, require_pdp_open: true },
+  { id: 'brand_cat_rare_blush', group: 'brand_category', query: 'rare beauty blush', expected_contract: { query_class: 'brand_category', target_domain: 'beauty' }, allowed_brands: ['rare beauty'], allowed_category_prefixes: ['beauty/makeup/face/blush'], min_result_count: 1, max_product_line_repeats: 1, require_image: true, require_valid_price: true, require_pdp_open: true },
+  { id: 'brand_cat_ordinary_niacinamide', group: 'brand_category', query: 'the ordinary niacinamide', expected_contract: { query_class: 'brand_category', target_domain: 'beauty' }, allowed_brands: ['the ordinary'], allowed_category_prefixes: ['beauty/skincare/treat'], min_result_count: 1, max_product_line_repeats: 1, require_image: true, require_valid_price: true, require_pdp_open: true },
   { id: 'cat_lipstick', group: 'category_browse', query: 'lipstick', expected_contract: { query_class: 'category_browse', target_domain: 'beauty' }, allowed_category_prefixes: ['beauty/makeup/lip'], forbidden_terms: ['lip balm', 'lip oil'], min_result_count: 1, require_image: true, require_valid_price: true, require_pdp_open: true },
   { id: 'cat_fragrance', group: 'category_browse', query: 'fragrance', expected_contract: { query_class: 'category_browse', target_domain: 'beauty' }, allowed_category_prefixes: ['beauty/fragrance'], min_result_count: 1, require_image: true, require_valid_price: true, require_pdp_open: true },
   { id: 'cat_barrier_moisturizer', group: 'category_browse', query: 'barrier moisturizer', expected_contract: { query_class: 'category_browse', target_domain: 'beauty' }, allowed_category_prefixes: ['beauty/skincare/moisturize'], min_result_count: 1, require_image: true, require_valid_price: true, require_pdp_open: true },
@@ -228,6 +228,54 @@ function productText(product = {}) {
   ].filter(Boolean).join(' '));
 }
 
+function looksLikeBeautyVariantTitleSuffix(suffix = '', baseTitle = '') {
+  const normalizedSuffix = normalizeText(suffix);
+  const normalizedBase = normalizeText(baseTitle);
+  if (!normalizedSuffix || !normalizedBase) return false;
+  const suffixTokens = normalizedSuffix.split(/\s+/).filter(Boolean);
+  if (suffixTokens.length === 0 || suffixTokens.length > 5) return false;
+  if (!/\b(?:foundation|concealer|bronzer|blush|highlighter|lipstick|lip\s*color|lip\s*paint|lip\s*cream|lip\s*gloss|lip\s*balm|mascara|eyeliner|eyeshadow|brow|powder|primer|skin\s*tint|moisturi[sz]er|serum|cleanser|sunscreen|spf|fragrance|perfume|parfum|mist|shampoo|conditioner|cream|gel|oil|stick|pencil|liner)\b/.test(normalizedBase)) {
+    return false;
+  }
+  return !/\b(?:foundation|concealer|bronzer|blush|highlighter|lipstick|mascara|eyeliner|eyeshadow|moisturi[sz]er|serum|cleanser|sunscreen|fragrance|perfume|parfum|bundle|set|kit|duo|trio)\b/.test(normalizedSuffix);
+}
+
+function normalizeProductLineTitle(product = {}) {
+  const rawTitle = firstString(product.title, product.name, product.product_name, product.display_name);
+  const match = rawTitle.match(/^(.{8,}?)\s+(?:[-–—:|])\s+(.{1,80})$/u);
+  const baseTitle = match && looksLikeBeautyVariantTitleSuffix(match[2], match[1]) ? match[1] : rawTitle;
+  return normalizeText(baseTitle)
+    .replace(/\b(?:jumbo|supersize|super\s*size|value\s*size|value\s*pack|double\s*pack|duo|bundle|set|refill|mini|trial\s*size|travel\s*size|full\s*size)\b/g, ' ')
+    .replace(/\b\d+(?:\.\d+)?\s*(?:ml|m l|oz|fl\s*oz|g|gram|grams)\b/g, ' ')
+    .replace(/\b(?:pack\s*of\s*)?\d+\s*(?:pack|pc|pcs|piece|pieces|count|ct)\b/g, ' ')
+    .replace(/\b(?:two|three|four)\s*pack\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function findProductLineRepeatViolations(products = [], maxRepeats = 0) {
+  const limit = Number(maxRepeats || 0);
+  if (!Number.isFinite(limit) || limit <= 0) return [];
+  const groups = new Map();
+  products.forEach((product, index) => {
+    const lineTitle = normalizeProductLineTitle(product);
+    const brand = productBrand(product);
+    if (!lineTitle) return;
+    const key = `${brand || 'unbranded'}:${lineTitle}`;
+    const group = groups.get(key) || [];
+    group.push({ index, title: firstString(product.title, product.name), line_title: lineTitle });
+    groups.set(key, group);
+  });
+  return Array.from(groups.values())
+    .filter((group) => group.length > limit)
+    .map((group) => ({
+      type: 'duplicate_product_line',
+      line_title: group[0].line_title,
+      indexes: group.map((item) => item.index),
+      titles: group.map((item) => item.title),
+    }));
+}
+
 function productCategoryPath(product = {}) {
   return normalizeText(firstString(
     product.catalog_category_path,
@@ -317,6 +365,11 @@ function evaluateSearchResponse(testCase, responseBody, { limit = 6, pdpProbeRes
   const missingPdp = [];
   const polluted = [];
   const pdpOpenFailures = [];
+  const duplicateProductLineViolations = findProductLineRepeatViolations(
+    products,
+    testCase.max_product_line_repeats,
+  );
+  violations.push(...duplicateProductLineViolations);
 
   products.forEach((product, index) => {
     const text = productText(product);
@@ -363,6 +416,7 @@ function evaluateSearchResponse(testCase, responseBody, { limit = 6, pdpProbeRes
     metrics: {
       returned_count: products.length,
       hard_constraint_violation_count: violations.filter((item) => item.type !== 'underfill').length,
+      duplicate_product_line_count: duplicateProductLineViolations.length,
       missing_image_count: missingImage.length,
       invalid_price_count: invalidPrice.length,
       missing_or_open_failed_pdp_count: missingPdp.length + pdpOpenFailures.length,
@@ -398,6 +452,7 @@ function buildRequestFailureEvaluation(testCase, response = {}) {
     metrics: {
       returned_count: 0,
       hard_constraint_violation_count: 0,
+      duplicate_product_line_count: 0,
       missing_image_count: 0,
       invalid_price_count: 0,
       missing_or_open_failed_pdp_count: 0,
@@ -511,6 +566,7 @@ function summarizeResults(results = []) {
     passed: results.filter((row) => row.passed).length,
     failed: results.filter((row) => !row.passed).length,
     hard_constraint_violations: 0,
+    duplicate_product_line_count: 0,
     missing_image_count: 0,
     invalid_price_count: 0,
     missing_or_open_failed_pdp_count: 0,
@@ -524,6 +580,7 @@ function summarizeResults(results = []) {
   const latencies = [];
   for (const row of results) {
     summary.hard_constraint_violations += Number(row.metrics.hard_constraint_violation_count || 0);
+    summary.duplicate_product_line_count += Number(row.metrics.duplicate_product_line_count || 0);
     summary.missing_image_count += Number(row.metrics.missing_image_count || 0);
     summary.invalid_price_count += Number(row.metrics.invalid_price_count || 0);
     summary.missing_or_open_failed_pdp_count += Number(row.metrics.missing_or_open_failed_pdp_count || 0);
@@ -558,7 +615,7 @@ function renderMarkdownReport(report) {
     const violations = row.top6_hard_constraint_violations || [];
     if (violations.length) lines.push(`  - violations: ${violations.map((item) => item.type).join(', ')}`);
     const m = row.metrics || {};
-    lines.push(`  - returned=${m.returned_count} missing_image=${m.missing_image_count} invalid_price=${m.invalid_price_count} pdp=${m.missing_or_open_failed_pdp_count} polluted=${m.polluted_row_count} latency_ms=${m.latency_ms}`);
+    lines.push(`  - returned=${m.returned_count} duplicates=${m.duplicate_product_line_count || 0} missing_image=${m.missing_image_count} invalid_price=${m.invalid_price_count} pdp=${m.missing_or_open_failed_pdp_count} polluted=${m.polluted_row_count} latency_ms=${m.latency_ms}`);
   }
   return `${lines.join('\n')}\n`;
 }

@@ -11,7 +11,9 @@ const {
   buildSearchQualityTierCounts,
   buildBeautyExternalSeedCategoryTerms,
   buildCanonicalQueryTextForBeautyBrandRecall,
+  canonicalizeBeautyProductTitleForDedupe,
   compactBeautyMainlineProductForResponse,
+  dedupeBeautyProductsByDisplayKey,
   filterSearchServingEligibleProducts,
   getSearchQualityContractHardConstraintResult,
   inferBeautyMainlineIntent,
@@ -194,6 +196,56 @@ test('beauty brand browse scoring prioritizes core makeup over promo sets and of
 
   assert.ok(score(lipstick) > score(mysterySet) + 40);
   assert.ok(score(lipstick) > score(hair) + 30);
+});
+
+test('beauty brand browse display dedupe collapses shade variants by product line', () => {
+  assert.equal(
+    canonicalizeBeautyProductTitleForDedupe("We're Even Hydrating Longwear Concealer — 100C"),
+    'we re even hydrating longwear concealer',
+  );
+  assert.equal(
+    canonicalizeBeautyProductTitleForDedupe("Sun Stalk'r Instant Warmth Bronzer — Private Island"),
+    'sun stalk r instant warmth bronzer',
+  );
+
+  const products = [
+    canonicalFentyProduct('fenty_primer', 'Grip Trip Mattifying + Blurring Primer', {
+      category: 'Primer',
+      product_type: 'Primer',
+      category_path: ['beauty', 'makeup', 'face', 'primer'],
+      catalog_category_path: 'beauty/makeup/face/primer',
+    }),
+    canonicalFentyProduct('fenty_concealer_100c', "We're Even Hydrating Longwear Concealer — 100C", {
+      category: 'Concealer',
+      product_type: 'Concealer',
+      category_path: ['beauty', 'makeup', 'face', 'concealer'],
+      catalog_category_path: 'beauty/makeup/face/concealer',
+    }),
+    canonicalFentyProduct('fenty_concealer_225n', "We're Even Hydrating Longwear Concealer — 225N", {
+      category: 'Concealer',
+      product_type: 'Concealer',
+      category_path: ['beauty', 'makeup', 'face', 'concealer'],
+      catalog_category_path: 'beauty/makeup/face/concealer',
+    }),
+    canonicalFentyProduct('fenty_bronzer_private_island', "Sun Stalk'r Instant Warmth Bronzer — Private Island", {
+      category: 'Bronzer',
+      product_type: 'Bronzer',
+      category_path: ['beauty', 'makeup', 'face', 'bronzer'],
+      catalog_category_path: 'beauty/makeup/face/bronzer',
+    }),
+    canonicalFentyProduct('fenty_bronzer_mocha_mami', "Sun Stalk'r Instant Warmth Bronzer — Mocha Mami", {
+      category: 'Bronzer',
+      product_type: 'Bronzer',
+      category_path: ['beauty', 'makeup', 'face', 'bronzer'],
+      catalog_category_path: 'beauty/makeup/face/bronzer',
+    }),
+  ];
+
+  assert.deepEqual(dedupeBeautyProductsByDisplayKey(products).map((product) => product.product_id), [
+    'fenty_primer',
+    'fenty_concealer_100c',
+    'fenty_bronzer_private_island',
+  ]);
 });
 
 test('beauty brand plus category scoring rejects non-brand category matches', () => {

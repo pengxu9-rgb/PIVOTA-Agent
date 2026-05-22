@@ -16637,8 +16637,33 @@ function isBeautyProductContraindicatedForQuery(product, queryText = '', intent 
   return false;
 }
 
+function looksLikeBeautyVariantTitleSuffix(suffix = '', baseTitle = '') {
+  const normalizedSuffix = normalizeSearchTextForMatch(suffix);
+  const normalizedBase = normalizeSearchTextForMatch(baseTitle);
+  if (!normalizedSuffix || !normalizedBase) return false;
+  const suffixTokens = tokenizeSearchTextForMatch(normalizedSuffix).filter(Boolean);
+  if (suffixTokens.length === 0 || suffixTokens.length > 5) return false;
+  const baseHasBeautyProductTerm =
+    /\b(?:foundation|concealer|bronzer|blush|highlighter|lipstick|lip\s*color|lip\s*paint|lip\s*cream|lip\s*gloss|lip\s*balm|mascara|eyeliner|eyeshadow|brow|powder|primer|skin\s*tint|moisturi[sz]er|serum|cleanser|sunscreen|spf|fragrance|perfume|parfum|mist|shampoo|conditioner|cream|gel|oil|stick|pencil|liner)\b/.test(normalizedBase);
+  if (!baseHasBeautyProductTerm) return false;
+  if (/\b(?:foundation|concealer|bronzer|blush|highlighter|lipstick|mascara|eyeliner|eyeshadow|moisturi[sz]er|serum|cleanser|sunscreen|fragrance|perfume|parfum|bundle|set|kit|duo|trio)\b/.test(normalizedSuffix)) {
+    return false;
+  }
+  return true;
+}
+
+function stripBeautyVariantSuffixForDedupe(rawTitle = '') {
+  const title = String(rawTitle || '').trim();
+  if (!title) return '';
+  const separatorMatch = title.match(/^(.{8,}?)\s+(?:[-–—:|])\s+(.{1,80})$/u);
+  if (!separatorMatch) return title;
+  const base = String(separatorMatch[1] || '').trim();
+  const suffix = String(separatorMatch[2] || '').trim();
+  return looksLikeBeautyVariantTitleSuffix(suffix, base) ? base : title;
+}
+
 function canonicalizeBeautyProductTitleForDedupe(rawTitle = '') {
-  return normalizeSearchTextForMatch(rawTitle)
+  return normalizeSearchTextForMatch(stripBeautyVariantSuffixForDedupe(rawTitle))
     .replace(/\b(?:jumbo|supersize|super\s*size|value\s*size|value\s*pack|double\s*pack|duo|bundle|set|refill|mini|trial\s*size|travel\s*size|full\s*size)\b/g, ' ')
     .replace(/\b\d+(?:\.\d+)?\s*(?:ml|m l|oz|fl\s*oz|g|gram|grams)\b/g, ' ')
     .replace(/\b(?:pack\s*of\s*)?\d+\s*(?:pack|pc|pcs|piece|pieces|count|ct)\b/g, ' ')
@@ -16694,10 +16719,9 @@ function dedupeBeautyProductsByDisplayKey(products = []) {
       values
         .map((value) => String(value || '').trim())
         .find(Boolean) || '';
-    const title = normalizeSearchTextForMatch(
-      pick(product.title, product.name, product.product_name, product.display_name),
-    );
-    const canonicalTitle = canonicalizeBeautyProductTitleForDedupe(title);
+    const rawTitle = pick(product.title, product.name, product.product_name, product.display_name);
+    const title = normalizeSearchTextForMatch(rawTitle);
+    const canonicalTitle = canonicalizeBeautyProductTitleForDedupe(rawTitle);
     const brand = normalizeSearchTextForMatch(pick(product.brand, product.vendor));
     const url = normalizeSearchTextForMatch(
       pick(product.canonical_url, product.destination_url, product.external_url, product.url),
@@ -42558,6 +42582,8 @@ module.exports._debug = {
   buildSearchQualityTierCounts,
   projectSearchQualityContractForMetadata,
   buildCanonicalQueryTextForBeautyBrandRecall,
+  canonicalizeBeautyProductTitleForDedupe,
+  dedupeBeautyProductsByDisplayKey,
   ensureSearchProductPdpOpen,
   buildCanonicalChainMainlineProduct,
   mergeCanonicalChainProductsWithSeedProducts,
