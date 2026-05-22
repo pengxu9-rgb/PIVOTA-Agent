@@ -30,12 +30,29 @@ function normalizeHost(value) {
   }
 }
 
+// Pre-pass that preserves numeric variant tokens like "2.0", "3.0", "V2"
+// before the punctuation strip in tokenize() destroys them. Codex review of
+// PR #1445 round 1 flagged that "Cosmic EDP" vs "Cosmic EDP 2.0" tokenizes
+// identically once dots and short tokens are dropped.
+function extractVariantNumberTokens(text) {
+  const out = new Set();
+  const normalized = asString(text).toLowerCase();
+  const re = /\b(\d+(?:\.\d+)+|v\d+(?:\.\d+)*)\b/g;
+  let m;
+  while ((m = re.exec(normalized)) !== null) {
+    out.add(m[1]);
+  }
+  return out;
+}
+
 function tokenize(text) {
-  return asString(text)
+  const variantNums = extractVariantNumberTokens(text);
+  const baseTokens = asString(text)
     .toLowerCase()
     .replace(/[^a-z0-9% +]+/g, ' ')
     .split(/\s+/)
     .filter((t) => t.length >= 2);
+  return [...baseTokens, ...variantNums];
 }
 
 function tokenOverlapScore(a, b) {
@@ -59,10 +76,13 @@ const BUNDLE_CHILD_TOKENS = new Set([
 // Variant-modifier tokens that the matcher used to accept as noise. If they
 // appear in the matched title but NOT in the extracted title, the matcher
 // is silently swapping in a sample/refill/travel variant for the full SKU.
-// Codex's systemic finding #1.
+// Codex's systemic finding #1, expanded for the round-2 review (added
+// cleansing/cloth/cloths/pad/pads/disc/discs after the
+// "Glow Tonic Cleansing Cloths" miss).
 const VARIANT_NOISE_TOKENS = new Set([
   'sample', 'deluxe', 'mini', 'travel', 'refill', 'tester',
   'foam', 'rollerball', 'roller', 'spray', 'wipe', 'wipes',
+  'cleansing', 'cloth', 'cloths', 'pad', 'pads', 'disc', 'discs', 'cotton',
   'pen', 'stick', 'powder', 'oil', 'cream', 'gel', 'serum',
   'lotion', 'wash', 'body', 'face', 'hand', 'foot', 'lip', 'eye',
 ]);
@@ -74,6 +94,7 @@ const VARIANT_NOISE_TOKENS = new Set([
 const VARIANT_HARD_NOISE = new Set([
   'sample', 'deluxe', 'mini', 'travel', 'refill', 'tester',
   'rollerball', 'roller', 'wipe', 'wipes', 'pen',
+  'cloth', 'cloths', 'pad', 'pads', 'disc', 'discs', 'cotton', 'cleansing',
 ]);
 
 // Extract size tokens like "30ml", "1.0 oz", "50 ml", "100ml" from a string.
@@ -91,40 +112,77 @@ function extractSizeTokens(text) {
   return out;
 }
 
+// Generic-label threshold: extracted component titles this short (in tokens)
+// are too ambiguous to match without strong context evidence (parent-title
+// overlap, size_label, or component_role). Codex round-2 finding: "Cleanser"
+// got 1.0 overlap against any catalog product whose title contained the word.
+const GENERIC_LABEL_TOKEN_THRESHOLD = 2;
+
 /**
  * Score a candidate match against the extracted component title.
  *
- * Beyond raw token overlap, applies the 4 systemic guards codex flagged in
- * round 1/2 of the bundle backfill audit:
- *   1. Variant-noise penalty — sample/deluxe/mini/travel/refill/etc.
- *      appearing in matched title but absent from extracted title.
- *   2. Bundle-child disqualification — matched title carrying
- *      set/kit/trio/duo/collection/etc. when the extracted title doesn't.
- *   3. Size-aware preference — when extracted carries a size (30ml, 1.0 oz),
- *      prefer matched candidates that also list that size.
- *   4. Parent-context bonus — disambiguate generic component names by
- *      checking overlap with the parent-bundle title's distinguishing words.
+ * Round 2 of matcher hardening (after codex re-review):
+ *   1. Variant-noise: HARD disqualification when noise token appears in
+ *      candidate title and is NOT supported by the extracted title, size
+ *      label, component role, or parent bundle title.
+ *   2. Bundle-child: HARD disqualification when matched title is itself a
+ *      bundle/set/duo and the extracted title isn't.
+ *   3. Size-aware: bonus on size match, penalty on size mismatch.
+ *   4. Parent-context bonus: disambiguates generic labels via parent title.
+ *   5. Generic-label guard: very short extracted titles (e.g. "Cleanser")
+ *      require either a non-trivial parent-context overlap OR a matching
+ *      size, otherwise they are flagged ineligible.
  */
-function scoreCandidateMatch(candidate, { extractedTitle, parentTitle, parentHost, sizeLabel }) {
+function scoreCandidateMatch(candidate, {
+  extractedTitle,
+  parentTitle,
+  parentHost,
+  sizeLabel,
+  componentRole,
+} = {}) {
   const extractedTokens = new Set(tokenize(extractedTitle));
   const candidateTokens = new Set(tokenize(candidate.title));
-  const sizeTokens = extractSizeTokens(`${extractedTitle} ${sizeLabel || ''}`);
+  const sizeLabelText = asString(sizeLabel);
+  const roleText = asString(componentRole);
+  const parentText = asString(parentTitle);
+  const sizeTokens = extractSizeTokens(`${extractedTitle} ${sizeLabelText}`);
   const candidateSizeTokens = extractSizeTokens(candidate.title);
 
   let overlap = 0;
   for (const tok of extractedTokens) if (candidateTokens.has(tok)) overlap += 1;
-  const baseOverlap =
+  // Count "unexplained" candidate tokens (in candidate, not in extracted) and
+  // shave a small per-token penalty off the overlap ratio. Codex round-2
+  // finding: preserved numeric tokens like "2.0" need to actually shift the
+  // score — without this, "EDP" matches "EDP 2.0" at the same 1.0 ratio
+  // because overlap/min keeps normalizing by the smaller set.
+  let unexplained = 0;
+  for (const tok of candidateTokens) if (!extractedTokens.has(tok)) unexplained += 1;
+  const rawOverlap =
     extractedTokens.size === 0 || candidateTokens.size === 0
       ? 0
       : overlap / Math.min(extractedTokens.size, candidateTokens.size);
+  const baseOverlap = Math.max(0, rawOverlap - 0.05 * unexplained);
 
   const hostMatch =
     parentHost && normalizeHost(candidate.canonical_url || candidate.destination_url) === parentHost;
   const hostBonus = hostMatch ? 0.3 : 0;
 
-  // Bundle-child disqualification (guard #2): if any bundle token is in the
-  // candidate title but not in the extracted title, this candidate is itself
-  // a bundle/set/duo — almost never the right answer.
+  // A token in the candidate is "context-supported" if it appears in any of
+  // the signals the LLM was allowed to surface: extracted title, size label,
+  // component role, or the parent bundle title. Round-2 fix: codex flagged
+  // that hard-penalizing "travel" on a Travel Size variant blocked the
+  // correct match when the extracted title only said "Glow Tonic". We now
+  // exempt noise tokens whose support lives in adjacent fields.
+  const supportingTokens = new Set([
+    ...extractedTokens,
+    ...tokenize(sizeLabelText),
+    ...tokenize(roleText),
+    ...tokenize(parentText),
+  ]);
+
+  // Bundle-child disqualification (guard #2). Bundle-shape words are checked
+  // ONLY against the extracted title; parent context doesn't excuse them
+  // because the parent IS a bundle and we'd be matching a sibling bundle.
   let bundleChildHit = false;
   for (const tok of candidateTokens) {
     if (BUNDLE_CHILD_TOKENS.has(tok) && !extractedTokens.has(tok)) {
@@ -133,56 +191,93 @@ function scoreCandidateMatch(candidate, { extractedTitle, parentTitle, parentHos
     }
   }
 
-  // Variant-noise penalty (guard #1).
-  let hardNoiseHit = false;
-  for (const tok of candidateTokens) {
-    if (VARIANT_HARD_NOISE.has(tok) && !extractedTokens.has(tok)) {
-      hardNoiseHit = true;
-      break;
-    }
-  }
-
-  // Size-aware preference (guard #3). Reward matched candidate when its title
-  // contains the extracted size token; penalize when extracted has a size and
-  // the candidate has a different-sized variant token.
+  // Size-aware preference (guard #3) — computed BEFORE noise so the noise
+  // check can use the size-match signal to exempt variant words.
   let sizeBonus = 0;
+  let sizeMismatchHit = false;
   if (sizeTokens.size > 0) {
     let sizeAlignsWith = false;
     for (const sz of sizeTokens) if (candidateSizeTokens.has(sz)) sizeAlignsWith = true;
     if (sizeAlignsWith) {
       sizeBonus = 0.2;
     } else if (candidateSizeTokens.size > 0) {
-      // candidate names a DIFFERENT size — that's a wrong-format match.
+      // Candidate names a DIFFERENT size — wrong-format match.
       sizeBonus = -0.25;
+      sizeMismatchHit = true;
     }
   }
 
-  // Parent-context bonus (guard #4). Bundle title tokens that don't belong to
-  // the bundle-shaped set words act as disambiguating context (brand line,
-  // product family, scent name).
-  const parentTokens = tokenize(parentTitle)
+  // Variant-noise check (guard #1). Now context-aware AND size-aware: a
+  // candidate token like "travel" is OK if the extracted title, size_label,
+  // component_role, or parent_title also has it; OR if the candidate's size
+  // matches the extracted size (a "Travel Size 100ml" with extracted size
+  // "100ml" is a legitimate variant match — codex round-2 review #5).
+  const FORMAT_VARIANT_NOISE = new Set(['mini', 'travel']);
+  let hardNoiseHit = false;
+  for (const tok of candidateTokens) {
+    if (!VARIANT_HARD_NOISE.has(tok)) continue;
+    if (supportingTokens.has(tok)) continue;
+    // Format-variant tokens (mini/travel) are exempted when the candidate
+    // also names the matching size.
+    if (FORMAT_VARIANT_NOISE.has(tok) && sizeBonus > 0) continue;
+    hardNoiseHit = true;
+    break;
+  }
+
+  // Parent-context bonus (guard #4).
+  const parentTokens = tokenize(parentText)
     .filter((t) => !BUNDLE_CHILD_TOKENS.has(t) && t.length >= 3);
   let contextOverlap = 0;
   for (const tok of parentTokens) if (candidateTokens.has(tok)) contextOverlap += 1;
   const contextBonus = parentTokens.length > 0
     ? 0.15 * (contextOverlap / parentTokens.length)
     : 0;
+  const contextSupportRatio = parentTokens.length > 0
+    ? (contextOverlap / parentTokens.length)
+    : 0;
 
+  // Generic-label guard (guard #5, new in round 2). Short extracted titles
+  // are too ambiguous to match without strong context evidence. Threshold
+  // tightens with shorter extracts:
+  //   - 1 token (e.g. "Cleanser"): need contextOverlap ≥ 2 AND ≥0.5 ratio,
+  //     OR a positive size match. Brand-name overlap alone isn't enough —
+  //     the parent title also carries the brand and would otherwise lift
+  //     every candidate from that brand.
+  //   - 2 tokens (e.g. "Awaken Confidence"): need contextOverlap ≥ 1 AND
+  //     ≥0.25 ratio, OR a positive size match.
+  let genericLabelHit = false;
+  if (extractedTokens.size <= GENERIC_LABEL_TOKEN_THRESHOLD) {
+    const hasSizeSupport = sizeBonus > 0;
+    const minRatio = extractedTokens.size <= 1 ? 0.5 : 0.25;
+    const minOverlap = extractedTokens.size <= 1 ? 2 : 1;
+    const hasContextSupport = contextSupportRatio >= minRatio && contextOverlap >= minOverlap;
+    if (!hasSizeSupport && !hasContextSupport) {
+      genericLabelHit = true;
+    }
+  }
+
+  // Hard disqualifications (knock score below the 0.5 threshold so
+  // pickBestMatch rejects). Round-2 codex requested: noise + size_mismatch
+  // combined should be ineligible, not merely slightly lower-scored.
   const rawScore = baseOverlap + hostBonus + sizeBonus + contextBonus;
-  // Hard disqualifications knock the score below the acceptance threshold so
-  // pickBestMatch will reject them outright (unless every candidate is
-  // disqualified, in which case the extracted component goes unmatched —
-  // which is the right outcome).
-  const finalScore = (bundleChildHit ? rawScore - 1.0 : rawScore)
-                   - (hardNoiseHit ? 0.6 : 0);
+  let finalScore = rawScore;
+  if (bundleChildHit) finalScore -= 1.0;
+  if (hardNoiseHit) finalScore -= 1.0; // raised from -0.6; codex wants hard-fail
+  if (genericLabelHit) finalScore -= 1.0;
+  // Composite hard ineligibility: even a soft-noise candidate that ALSO has
+  // a size mismatch is wrong.
+  if (sizeMismatchHit && hardNoiseHit) finalScore -= 0.5;
 
   return {
     _title_overlap: baseOverlap,
     _host_match: hostMatch,
     _size_bonus: sizeBonus,
     _context_bonus: contextBonus,
+    _context_support_ratio: contextSupportRatio,
     _bundle_child_hit: bundleChildHit,
     _hard_noise_hit: hardNoiseHit,
+    _size_mismatch_hit: sizeMismatchHit,
+    _generic_label_hit: genericLabelHit,
     _score: finalScore,
   };
 }
@@ -272,7 +367,7 @@ async function loadBundleCandidates({ limit, market, ids }) {
   return res.rows || [];
 }
 
-async function searchCandidateMatches({ brand, title, parentTitle, parentHost, sizeLabel }) {
+async function searchCandidateMatches({ brand, title, parentTitle, parentHost, sizeLabel, componentRole }) {
   if (!brand && !title) return [];
   const brandNorm = asString(brand).toLowerCase();
   const titleTokens = tokenize(title).slice(0, 6);
@@ -310,6 +405,7 @@ async function searchCandidateMatches({ brand, title, parentTitle, parentHost, s
       parentTitle,
       parentHost,
       sizeLabel,
+      componentRole,
     }),
   }));
   scored.sort((a, b) => b._score - a._score);
@@ -375,6 +471,7 @@ async function processCandidate({ candidate, provider, options }) {
       parentTitle: candidate.title,
       parentHost,
       sizeLabel: c.size_label,
+      componentRole: c.component_role,
     });
     const best = pickBestMatch(matches, { excludeIds: usedIds });
     if (best) {
@@ -550,6 +647,7 @@ module.exports = {
   tokenize,
   tokenOverlapScore,
   extractSizeTokens,
+  extractVariantNumberTokens,
   scoreCandidateMatch,
   pickBestMatch,
   BUNDLE_CHILD_TOKENS,
