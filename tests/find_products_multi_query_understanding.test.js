@@ -171,4 +171,17 @@ describe('find_products_multi query understanding', () => {
     expect(contract.hard_constraints.strict_lipstick).toBe(true);
     expect(contract.hard_constraints.exclusions).toEqual(expect.arrayContaining(['lip_gloss_oil_balm_mask']));
   });
+
+  test('long brand product-title queries use exact product anchors instead of broad category paths', () => {
+    const contract = buildSearchQualityContract({
+      rawQuery: 'rare beauty positive light tinted moisturizer',
+      market: 'US',
+    });
+
+    expect(contract.query_class).toBe('exact_product');
+    expect(contract.target_domain).toBe('beauty');
+    expect(contract.hard_constraints.brand?.canonical).toBe('rare beauty');
+    expect(contract.hard_constraints.exact_product_anchor).toBe('positive light tinted moisturizer');
+    expect(contract.hard_constraints.category_path_prefix).toBeNull();
+  });
 });

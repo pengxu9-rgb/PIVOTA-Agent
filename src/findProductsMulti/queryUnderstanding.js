@@ -295,9 +295,9 @@ function stripBrandTokensFromNormalizedQuery(normalizedQuery, brandBrowse) {
 }
 
 function inferExactProductAnchor({ correctedQuery, categoryPathPrefix, brandBrowse }) {
+  if (!brandBrowse?.matched) return null;
   const remainder = stripBrandTokensFromNormalizedQuery(correctedQuery, brandBrowse);
   if (!remainder) return null;
-  if (categoryPathPrefix) return null;
   const tokens = remainder.split(/\s+/).filter((token) => token.length >= 3);
   if (tokens.length >= 4) return remainder;
   if (/\b(no\.?\s*\d+|spf\s*\d+|[a-z]+\s+\d{2,})\b/i.test(String(correctedQuery || ''))) return remainder;
@@ -322,7 +322,8 @@ function buildSearchQualityContract({
   });
   const effectiveQuery = understanding.effective_query || understanding.corrected_query || understanding.raw_query || '';
   const normalized = normalizeQueryTextForUnderstanding(effectiveQuery);
-  const categoryPathPrefix = understanding.category_path_prefix || resolveBeautyCategoryPathPrefixFromText(effectiveQuery) || null;
+  const inferredCategoryPathPrefix =
+    understanding.category_path_prefix || resolveBeautyCategoryPathPrefixFromText(effectiveQuery) || null;
   const beautyBrandBrowse = resolveBeautyBrandBrowseQuery(effectiveQuery);
   const brandCandidates = Array.isArray(understanding.brand_candidates) ? understanding.brand_candidates : [];
   const brand = beautyBrandBrowse.matched
@@ -340,13 +341,14 @@ function buildSearchQualityContract({
   const localDestinationSignals = extractLocalDestinationSignals(effectiveQuery);
   const exactProductAnchor = inferExactProductAnchor({
     correctedQuery: effectiveQuery,
-    categoryPathPrefix,
+    categoryPathPrefix: inferredCategoryPathPrefix,
     brandBrowse: beautyBrandBrowse,
   });
+  const categoryPathPrefix = exactProductAnchor ? null : inferredCategoryPathPrefix;
   const hasKnownBeautyBrand = Boolean(beautyBrandBrowse.matched);
   const hasStaticNonBeautyBrand = Boolean(brandCandidates.length && !hasKnownBeautyBrand);
   const targetDomain =
-    hasKnownBeautyBrand || categoryPathPrefix || concernSignals?.has_concern_signal || constraints.length || hasBeautySearchSignal(effectiveQuery)
+    hasKnownBeautyBrand || inferredCategoryPathPrefix || concernSignals?.has_concern_signal || constraints.length || hasBeautySearchSignal(effectiveQuery)
       ? 'beauty'
       : 'other';
 

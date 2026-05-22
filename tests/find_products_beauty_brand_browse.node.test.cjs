@@ -372,6 +372,50 @@ test('beauty search rejects non-beauty merchandise despite polluted beauty categ
   assert.equal(counts.polluted_or_unavailable_count, 1);
 });
 
+test('exact product contracts reject same-brand category matches that miss title anchor', () => {
+  const contract = buildSearchQualityContract({
+    rawQuery: 'rare beauty positive light tinted moisturizer',
+    market: 'US',
+  });
+  const tintedMoisturizer = canonicalFentyProduct(
+    'rare_positive_light_tinted_moisturizer',
+    'Positive Light Tinted Moisturizer Broad Spectrum SPF 20 Sunscreen',
+    {
+      brand: 'Rare Beauty',
+      merchant_name: 'Rare Beauty',
+      category: 'Sunscreen',
+      product_type: 'Sunscreen',
+      category_path: ['beauty', 'skincare', 'sun'],
+      catalog_category_path: 'beauty/skincare/sun',
+    },
+  );
+  const blush = canonicalFentyProduct('rare_blush_1', 'Stay Vulnerable Melting Blush', {
+    brand: 'Rare Beauty',
+    merchant_name: 'Rare Beauty',
+    category: 'Blush',
+    product_type: 'Blush',
+    category_path: ['beauty', 'makeup', 'face', 'blush'],
+    catalog_category_path: 'beauty/makeup/face/blush',
+  });
+
+  const moisturizerGate = getSearchQualityContractHardConstraintResult(
+    tintedMoisturizer,
+    contract,
+    'rare beauty positive light tinted moisturizer',
+  );
+  const blushGate = getSearchQualityContractHardConstraintResult(
+    blush,
+    contract,
+    'rare beauty positive light tinted moisturizer',
+  );
+
+  assert.equal(contract.query_class, 'exact_product');
+  assert.equal(contract.hard_constraints.category_path_prefix, null);
+  assert.equal(moisturizerGate.eligible, true);
+  assert.equal(blushGate.eligible, false);
+  assert.ok(blushGate.reasons.includes('exact_product_mismatch'));
+});
+
 test('search quality tier counts expose polluted candidate inventory', () => {
   const contract = buildSearchQualityContract({ rawQuery: 'rare beauty blush', market: 'US' });
   const healthy = canonicalFentyProduct('rare_blush_1', 'Rare Beauty Soft Pinch Liquid Blush', {

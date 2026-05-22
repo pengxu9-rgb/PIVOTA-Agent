@@ -14776,6 +14776,35 @@ function productMatchesSearchQualityBrand(product = {}, brand = null, candidateT
   return matches(canonical) || matches(alias);
 }
 
+const SEARCH_EXACT_PRODUCT_ANCHOR_STOP_WORDS = new Set([
+  'beauty',
+  'cosmetic',
+  'cosmetics',
+  'product',
+  'products',
+  'shop',
+  'buy',
+  'show',
+  'find',
+  'recommend',
+  'recommendation',
+  'recommendations',
+]);
+
+function productMatchesSearchQualityExactAnchor(product = {}, exactProductAnchor = '', candidateText = '') {
+  const anchor = normalizeSearchTextForMatch(exactProductAnchor);
+  if (!anchor) return true;
+  const tokens = tokenizeSearchTextForMatch(anchor)
+    .filter((token) => token.length >= 2)
+    .filter((token) => !SEARCH_EXACT_PRODUCT_ANCHOR_STOP_WORDS.has(token));
+  if (!tokens.length) return true;
+  const text = normalizeSearchTextForMatch(candidateText || buildFallbackCandidateText(product));
+  if (!text) return false;
+  const matched = tokens.filter((token) => text.includes(token));
+  if (tokens.length <= 4) return matched.length === tokens.length;
+  return matched.length >= 4 && matched.length / tokens.length >= 0.8;
+}
+
 function productLooksLikeFragranceMerchandise(product = {}) {
   const categoryPath = firstSearchProductCategoryPath(product).toLowerCase();
   if (categoryPath.startsWith('beauty/fragrance')) return true;
@@ -14808,6 +14837,12 @@ function getSearchQualityContractHardConstraintResult(product = {}, contract = n
 
   if (hasOfferProductTransactionHold(product)) reasons.push('source_unavailable_or_non_merchandise');
   if (productLooksLikeNonBeautyMerchandise(product)) reasons.push('non_beauty_merchandise');
+  if (
+    hard.exact_product_anchor &&
+    !productMatchesSearchQualityExactAnchor(product, hard.exact_product_anchor, candidateText)
+  ) {
+    reasons.push('exact_product_mismatch');
+  }
 
   if (
     ['brand_browse', 'brand_category', 'exact_product'].includes(queryClass) &&
@@ -14880,6 +14915,10 @@ function scoreBeautySearchQualityContract({ product, contract = null, queryText 
     score += 42;
   }
   if (productMatchesSearchQualityBrand(product, hard.brand, candidateText)) score += hard.brand ? 34 : 0;
+  if (hard.exact_product_anchor) {
+    if (productMatchesSearchQualityExactAnchor(product, hard.exact_product_anchor, candidateText)) score += 120;
+    else score -= 160;
+  }
   if (hard.category_path_prefix && beautyProductMatchesCategoryPathPrefix(product, hard.category_path_prefix)) {
     score += 72;
   } else if (hard.category_path_prefix && beautyProductMatchesCategoryPathQuery(product, queryText, hard.category_path_prefix)) {
