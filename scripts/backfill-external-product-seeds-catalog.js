@@ -1606,6 +1606,15 @@ function isStorefrontBoilerplateDescription(value) {
     normalized.includes('unmatched offering of shades and colors') &&
     normalized.includes('browse our foundation line') &&
     normalized.includes('lip colors')
+  ) || (
+    normalized.includes('about us our story') &&
+    normalized.includes('our standards') &&
+    normalized.includes('sigma beauty rewards') &&
+    normalized.includes('become a member')
+  ) || (
+    normalized.includes('sigma beauty pro') &&
+    normalized.includes('sigma beauty affiliates') &&
+    normalized.includes('sigma beauty rewards')
   );
 }
 
@@ -4685,6 +4694,19 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   const nextNetContent = extractedNetContent || (identityRepairBackfill ? '' : existingNetContent);
   const nextNetSize = extractedNetSize || (identityRepairBackfill ? '' : existingNetSize);
   const nextSizeDetailLabel = extractedSizeDetailLabel || (identityRepairBackfill ? '' : existingSizeDetailLabel);
+  const extractedCategory = normalizeNonEmptyString(
+    representativeProduct?.category ||
+      representativeProduct?.product_type ||
+      representativeProduct?.productType ||
+      representativeProduct?.type,
+  );
+  const existingCategory = normalizeNonEmptyString(seedData.category || snapshot.category);
+  const nextCategory = extractedCategory || (identityRepairBackfill ? '' : existingCategory);
+  const shopifyProductJsonMetadata =
+    representativeProduct?.shopify_product_json_metadata_v1 &&
+    typeof representativeProduct.shopify_product_json_metadata_v1 === 'object'
+      ? representativeProduct.shopify_product_json_metadata_v1
+      : null;
 
   const nextSnapshot = {
     ...snapshot,
@@ -4692,6 +4714,8 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     extracted_at: new Date().toISOString(),
     canonical_url: representativeProductUrl || normalizeUrlLike(snapshot.canonical_url) || normalizeUrlLike(targetUrl),
     title,
+    ...(nextCategory ? { category: nextCategory } : {}),
+    ...(shopifyProductJsonMetadata ? { shopify_product_json_metadata_v1: shopifyProductJsonMetadata } : {}),
     description: clearSyntheticLegacyDescription
       ? ''
       : manualDescription || liveExtractedDescription || surfaceableProductDescriptionRaw
@@ -4757,6 +4781,8 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   let nextSeedData = {
     ...seedData,
     title,
+    ...(nextCategory ? { category: nextCategory } : {}),
+    ...(shopifyProductJsonMetadata ? { shopify_product_json_metadata_v1: shopifyProductJsonMetadata } : {}),
     ...(priceAmount != null ? { price_amount: priceAmount } : {}),
     price_currency: currency,
     ...(availability ? { availability } : {}),
@@ -5776,6 +5802,214 @@ function mapShopifyProductsJsonProduct(product, targetUrl) {
   };
 }
 
+function normalizeShopifyProductJsonDirectUrl(targetUrl) {
+  const normalizedTargetUrl = normalizeUrlLike(targetUrl);
+  if (!normalizedTargetUrl || !looksLikeDirectProductTargetUrl(normalizedTargetUrl)) return '';
+  try {
+    const parsed = new URL(normalizedTargetUrl);
+    const pathname = parsed.pathname.replace(/\/+$/g, '');
+    if (!pathname) return '';
+    if (/\.js$/i.test(pathname)) return `${parsed.origin}${pathname}`;
+    return `${parsed.origin}${pathname}.js`;
+  } catch {
+    return '';
+  }
+}
+
+function buildShopifyHandleMatchKeys(handle, ...referenceValues) {
+  const normalized = normalizeProductHandleToken(handle);
+  if (!normalized) return new Set();
+  const duplicateStripped = stripShopifyDuplicateHandleSuffix(normalized, ...referenceValues);
+  return new Set(
+    uniqueStrings([
+      normalized,
+      stripShopifyMarketHandleSuffix(normalized),
+      duplicateStripped,
+      stripShopifyMarketHandleSuffix(duplicateStripped),
+    ]).map((value) => value.toLowerCase()),
+  );
+}
+
+function shopifyHandlesMatch(leftHandle, rightHandle, ...referenceValues) {
+  const left = buildShopifyHandleMatchKeys(leftHandle, ...referenceValues);
+  const right = buildShopifyHandleMatchKeys(rightHandle, ...referenceValues);
+  if (left.size === 0 || right.size === 0) return false;
+  for (const key of left) {
+    if (right.has(key)) return true;
+  }
+  return false;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function shouldHydrateDirectShopifyProductJsonMetadata(response, representativeProduct, targetUrl) {
+  if (!representativeProduct || typeof representativeProduct !== 'object') return false;
+  if (!looksLikeDirectProductTargetUrl(targetUrl)) return false;
+  const existingCategory = normalizeNonEmptyString(
+    representativeProduct?.category ||
+      representativeProduct?.product_type ||
+      representativeProduct?.productType ||
+      representativeProduct?.type,
+  );
+  if (existingCategory) return false;
+
+  const diagnostics = ensureJsonObject(response?.diagnostics);
+  const strategy = normalizeNonEmptyString(diagnostics.discovery_strategy).toLowerCase();
+  const trace = Array.isArray(diagnostics.http_trace) ? diagnostics.http_trace : [];
+  const traceSawShopifyJson = trace.some((entry) => /\.js(?:$|[?#])/i.test(normalizeNonEmptyString(entry?.url)));
+  return strategy === 'shopify_json' || traceSawShopifyJson;
+}
+
+function mapShopifyProductJsonMetadata(product, sourceUrl, targetUrl, row, representativeProduct, sourceKind) {
+  if (!product || typeof product !== 'object' || Array.isArray(product)) return null;
+
+  const targetHandle = extractShopifyHandleFromUrl(targetUrl);
+  const productHandle = normalizeNonEmptyString(product.handle);
+  if (
+    targetHandle &&
+    productHandle &&
+    !shopifyHandlesMatch(
+      targetHandle,
+      productHandle,
+      representativeProduct?.title,
+      row?.title,
+      product?.title,
+    )
+  ) {
+    return null;
+  }
+
+  const productType = normalizeNonEmptyString(product.product_type || product.type);
+  if (!productType) return null;
+
+  return {
+    product_type: productType,
+    vendor: normalizeNonEmptyString(product.vendor),
+    tags: Array.isArray(product.tags) ? product.tags.map((tag) => normalizeNonEmptyString(tag)).filter(Boolean) : [],
+    shopify_id: normalizeNonEmptyString(product.id),
+    source_kind: sourceKind,
+    source_url: sourceUrl,
+  };
+}
+
+async function fetchShopifyJsonWithRetry(url, options = {}) {
+  const attempts = Math.max(1, Number(process.env.EXTERNAL_SEED_BACKFILL_SHOPIFY_PRODUCT_JSON_ATTEMPTS || 3));
+  const retryDelayMs = Math.max(0, Number(process.env.EXTERNAL_SEED_BACKFILL_SHOPIFY_PRODUCT_JSON_RETRY_DELAY_MS || 750));
+  const retryableStatuses = new Set([408, 425, 429, 500, 502, 503, 504]);
+  let lastResponse = null;
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      lastResponse = await axios.get(url, {
+        ...options,
+        validateStatus: () => true,
+      });
+    } catch {
+      lastResponse = null;
+    }
+
+    const status = Number(lastResponse?.status || 0);
+    if (status >= 200 && status < 300) return lastResponse;
+    if (status && !retryableStatuses.has(status)) return lastResponse;
+    if (attempt < attempts - 1 && retryDelayMs > 0) {
+      await sleep(retryDelayMs * (attempt + 1));
+    }
+  }
+
+  return lastResponse;
+}
+
+async function fetchDirectShopifyProductJsonMetadata(targetUrl, row, representativeProduct) {
+  const productJsonUrl = normalizeShopifyProductJsonDirectUrl(targetUrl);
+  if (!productJsonUrl) return null;
+
+  const response = await fetchShopifyJsonWithRetry(productJsonUrl, {
+    timeout: Number(process.env.EXTERNAL_SEED_BACKFILL_SHOPIFY_PRODUCT_JSON_TIMEOUT_MS || 15000),
+    headers: {
+      Accept: 'application/json',
+      'User-Agent': 'Pivota external seed backfill/1.0',
+    },
+    maxContentLength: 1024 * 1024 * 2,
+  });
+
+  const status = Number(response?.status || 0);
+  if (!(status >= 200 && status < 300)) return null;
+  let product = response?.data;
+  if (typeof product === 'string') {
+    try {
+      product = JSON.parse(product);
+    } catch {
+      return null;
+    }
+  }
+  if (!product || typeof product !== 'object' || Array.isArray(product)) return null;
+
+  return mapShopifyProductJsonMetadata(product, productJsonUrl, targetUrl, row, representativeProduct, 'shopify_product_json_metadata');
+}
+
+async function fetchProductsJsonShopifyProductMetadata(targetUrl, row, representativeProduct) {
+  const productsJsonUrl = normalizeShopifyProductJsonUrl(targetUrl);
+  const targetHandle = extractShopifyHandleFromUrl(targetUrl);
+  if (!productsJsonUrl || !targetHandle) return null;
+
+  const response = await fetchShopifyJsonWithRetry(productsJsonUrl, {
+    timeout: Number(process.env.EXTERNAL_SEED_BACKFILL_SHOPIFY_PRODUCTS_JSON_TIMEOUT_MS || 20000),
+    headers: {
+      Accept: 'application/json',
+      'User-Agent': 'Pivota external seed backfill/1.0',
+    },
+    maxContentLength: 1024 * 1024 * 8,
+  });
+  const status = Number(response?.status || 0);
+  const rawProducts = Array.isArray(response?.data?.products) ? response.data.products : [];
+  if (!(status >= 200 && status < 300) || rawProducts.length === 0) return null;
+
+  const matched = rawProducts.find((product) =>
+    shopifyHandlesMatch(
+      targetHandle,
+      product?.handle,
+      representativeProduct?.title,
+      row?.title,
+      product?.title,
+    ),
+  );
+  return mapShopifyProductJsonMetadata(
+    matched,
+    productsJsonUrl,
+    targetUrl,
+    row,
+    representativeProduct,
+    'shopify_products_json_metadata',
+  );
+}
+
+async function maybeHydrateRepresentativeProductShopifyMetadata(row, response, representativeProduct, targetUrl) {
+  if (!shouldHydrateDirectShopifyProductJsonMetadata(response, representativeProduct, targetUrl)) {
+    return representativeProduct;
+  }
+  const metadata =
+    (await fetchDirectShopifyProductJsonMetadata(targetUrl, row, representativeProduct)) ||
+    (await fetchProductsJsonShopifyProductMetadata(targetUrl, row, representativeProduct));
+  if (!metadata) return representativeProduct;
+  return {
+    ...representativeProduct,
+    product_type: normalizeNonEmptyString(representativeProduct?.product_type) || metadata.product_type,
+    productType: normalizeNonEmptyString(representativeProduct?.productType) || metadata.product_type,
+    vendor: normalizeNonEmptyString(representativeProduct?.vendor) || metadata.vendor,
+    tags: Array.isArray(representativeProduct?.tags) && representativeProduct.tags.length > 0
+      ? representativeProduct.tags
+      : metadata.tags,
+    shopify_id: normalizeNonEmptyString(representativeProduct?.shopify_id) || metadata.shopify_id,
+    shopify_product_json_metadata_v1: {
+      source_kind: metadata.source_kind,
+      source_url: metadata.source_url,
+      fields: ['product_type'],
+    },
+  };
+}
+
 function shouldAttemptShopifyProductsJsonHandleFallback(response, targetUrl) {
   if (!looksLikeDirectProductTargetUrl(targetUrl)) return false;
   const diagnostics = ensureJsonObject(response?.diagnostics);
@@ -6244,6 +6478,7 @@ async function processRow(row, options) {
         },
       };
     }
+    representativeProduct = await maybeHydrateRepresentativeProductShopifyMetadata(row, response, representativeProduct, targetUrl);
     representativeProduct = await maybeHydrateRepresentativeProductSizeEvidence(row, representativeProduct, targetUrl);
     if (representativeProduct && Array.isArray(response?.products)) {
       const matchedIndex = response.products.findIndex((product) => product === chooseRepresentativeProduct(response, targetUrl, row));

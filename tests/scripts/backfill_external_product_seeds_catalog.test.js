@@ -3421,6 +3421,230 @@ Contains four types of peptides`,
     );
   });
 
+  test('suppresses Sigma footer boilerplate from Shopify JSON descriptions', () => {
+    const boilerplate =
+      '- About Us - Our Story - Our Standards - Our Patents - Learn More - Sigma Beauty PRO - Sigma Beauty Affiliates - Sigma Beauty Rewards SIGMA BEAUTY PRO BECOME A MEMBER SIGMA BEAUTY REWARDS BECOME A MEMBER';
+
+    expect(cleanPdpDescriptionCandidate(boilerplate)).toBe('');
+  });
+
+  test('persists Shopify product type as source-backed category for seed readiness', () => {
+    const row = {
+      id: 'eps_sigma_e30',
+      external_product_id: 'ext_sigma_e30',
+      title: 'E30 Pencil Brush',
+      canonical_url: 'https://sigmabeauty.com/products/e30-pencil-brush-black-chrome',
+      destination_url: 'https://sigmabeauty.com/products/e30-pencil-brush-black-chrome',
+      seed_data: {
+        snapshot: {
+          canonical_url: 'https://sigmabeauty.com/products/e30-pencil-brush-black-chrome',
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: 'E30 Pencil Brush',
+            url: 'https://sigmabeauty.com/products/e30-pencil-brush-black-chrome',
+            product_type: 'Eye Makeup Brush',
+            description_raw: 'Soften pencil liner or smudge it into a smokey eye with this SigmaTech fiber brush.',
+            field_quality_summary: {
+              description_raw: {
+                source_origin: 'shopify_products_json',
+                source_quality_status: 'medium',
+                source_kinds: ['shopify_products_json_body_html'],
+              },
+            },
+            variants: [
+              {
+                id: '43062642081945',
+                title: 'Default Title',
+                price: '22.00',
+                currency: 'USD',
+                stock: 'In Stock',
+                url: 'https://sigmabeauty.com/products/e30-pencil-brush-black-chrome?variant=43062642081945',
+              },
+            ],
+          },
+        ],
+        variants: [],
+        diagnostics: {},
+      },
+      'https://sigmabeauty.com/products/e30-pencil-brush-black-chrome',
+    );
+
+    expect(payload.nextRow.seed_data.category).toBe('Eye Makeup Brush');
+    expect(payload.nextRow.seed_data.snapshot.category).toBe('Eye Makeup Brush');
+    expect(payload.nextRow.seed_data.derived.recall.category).toBe('Makeup Brush');
+  });
+
+  test('hydrates missing Shopify product type from direct product JSON metadata', async () => {
+    const targetUrl = 'https://sigmabeauty.com/products/e30-pencil-brush-black-chrome';
+    const row = {
+      id: 'eps_sigma_e30',
+      external_product_id: 'ext_sigma_e30',
+      title: 'E30 Pencil Brush',
+      market: 'US',
+      canonical_url: targetUrl,
+      destination_url: targetUrl,
+      seed_data: {
+        snapshot: {
+          canonical_url: targetUrl,
+        },
+      },
+    };
+
+    jest
+      .spyOn(axios, 'post')
+      .mockResolvedValueOnce({
+        data: {
+          products: [
+            {
+              title: 'E30 Pencil Brush',
+              url: targetUrl,
+              description_raw: 'Soften pencil liner or smudge it into a smokey eye with this SigmaTech fiber brush.',
+              field_quality_summary: {
+                description_raw: {
+                  source_origin: 'shopify_json',
+                  source_quality_status: 'medium',
+                },
+              },
+              variants: [],
+            },
+          ],
+          variants: [],
+          diagnostics: {
+            discovery_strategy: 'shopify_json',
+            http_trace: [{ url: `${targetUrl}.js`, status: 200 }],
+          },
+        },
+      });
+    jest.spyOn(axios, 'get').mockResolvedValueOnce({
+      status: 200,
+      data: {
+        id: 77999900123,
+        title: 'E30 Pencil Brush',
+        handle: 'e30-pencil-brush-black-chrome',
+        vendor: 'Sigma Beauty',
+        product_type: 'Eye Makeup Brush',
+        tags: ['brush'],
+      },
+    });
+
+    const result = await processRow(row, {
+      dryRun: true,
+      baseUrl: 'https://catalog.test',
+      validateImageHealth: false,
+      expandVariants: false,
+    });
+
+    expect(axios.get).toHaveBeenCalledWith(
+      `${targetUrl}.js`,
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: 'application/json' }),
+      }),
+    );
+    expect(result.status).toBe('dry_run');
+    expect(result.payload.nextRow.seed_data.category).toBe('Eye Makeup Brush');
+    expect(result.payload.nextRow.seed_data.snapshot.category).toBe('Eye Makeup Brush');
+    expect(result.payload.nextRow.seed_data.snapshot.shopify_product_json_metadata_v1).toMatchObject({
+      source_kind: 'shopify_product_json_metadata',
+      source_url: `${targetUrl}.js`,
+      fields: ['product_type'],
+    });
+  });
+
+  test('hydrates missing Shopify product type from products.json when direct product JSON is transiently unavailable', async () => {
+    const previousAttempts = process.env.EXTERNAL_SEED_BACKFILL_SHOPIFY_PRODUCT_JSON_ATTEMPTS;
+    process.env.EXTERNAL_SEED_BACKFILL_SHOPIFY_PRODUCT_JSON_ATTEMPTS = '1';
+    const targetUrl = 'https://sigmabeauty.com/products/prime-control-brow-wax';
+    const row = {
+      id: 'eps_sigma_brow_wax',
+      external_product_id: 'ext_sigma_brow_wax',
+      title: 'Prime + Control Brow Wax',
+      market: 'US',
+      canonical_url: targetUrl,
+      destination_url: targetUrl,
+      seed_data: { snapshot: { canonical_url: targetUrl } },
+    };
+
+    try {
+      jest
+        .spyOn(axios, 'post')
+        .mockResolvedValueOnce({
+          data: {
+            products: [
+              {
+                title: 'Prime + Control Brow Wax',
+                url: targetUrl,
+                description_raw: 'A smooth, workable wax that helps prep and shape brows.',
+                field_quality_summary: {
+                  description_raw: {
+                    source_origin: 'shopify_json',
+                    source_quality_status: 'medium',
+                  },
+                },
+                variants: [],
+              },
+            ],
+            variants: [],
+            diagnostics: {
+              discovery_strategy: 'shopify_json',
+              http_trace: [{ url: `${targetUrl}.js`, status: 503 }],
+            },
+          },
+        });
+      jest
+        .spyOn(axios, 'get')
+        .mockResolvedValueOnce({ status: 503, data: '' })
+        .mockResolvedValueOnce({
+          status: 200,
+          data: {
+            products: [
+              {
+                id: 7642433421465,
+                title: 'Prime + Control Brow Wax',
+                handle: 'prime-control-brow-wax',
+                vendor: 'SigmaBeauty',
+                product_type: 'Brow Wax',
+                tags: ['sale'],
+              },
+            ],
+          },
+        });
+
+      const result = await processRow(row, {
+        dryRun: true,
+        baseUrl: 'https://catalog.test',
+        validateImageHealth: false,
+        expandVariants: false,
+      });
+
+      expect(axios.get).toHaveBeenNthCalledWith(1, `${targetUrl}.js`, expect.any(Object));
+      expect(axios.get).toHaveBeenNthCalledWith(
+        2,
+        'https://sigmabeauty.com/products.json?limit=250',
+        expect.any(Object),
+      );
+      expect(result.status).toBe('dry_run');
+      expect(result.payload.nextRow.seed_data.category).toBe('Brow Wax');
+      expect(result.payload.nextRow.seed_data.shopify_product_json_metadata_v1).toMatchObject({
+        source_kind: 'shopify_products_json_metadata',
+        source_url: 'https://sigmabeauty.com/products.json?limit=250',
+        fields: ['product_type'],
+      });
+    } finally {
+      if (previousAttempts === undefined) {
+        delete process.env.EXTERNAL_SEED_BACKFILL_SHOPIFY_PRODUCT_JSON_ATTEMPTS;
+      } else {
+        process.env.EXTERNAL_SEED_BACKFILL_SHOPIFY_PRODUCT_JSON_ATTEMPTS = previousAttempts;
+      }
+    }
+  });
+
   test('persists canonical pdp_* fields from catalog extraction into seed snapshot', () => {
     const row = {
       id: 'eps_boj_sunscreen',
