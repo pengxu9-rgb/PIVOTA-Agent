@@ -721,10 +721,11 @@ describe('PDP grouped offers', () => {
     const merged = app._debug.mergeRecommendationModuleWithEnvelope(
       {
         strategy: 'related_products',
-        items: [{ product_id: 'similar_1', title: 'Similar' }],
+        items: [{ product_id: 'seller_only_old', title: 'Old unfiltered item' }],
       },
       {
         status: 'success',
+        items: [{ product_id: 'similar_1', title: 'Filtered similar' }],
         metadata: {
           similar_status: 'ready',
           similar_confidence: 'medium',
@@ -737,6 +738,7 @@ describe('PDP grouped offers', () => {
     expect(merged).toEqual(
       expect.objectContaining({
         status: 'success',
+        items: [{ product_id: 'similar_1', title: 'Filtered similar' }],
         metadata: expect.objectContaining({
           similar_status: 'ready',
           similar_confidence: 'medium',
