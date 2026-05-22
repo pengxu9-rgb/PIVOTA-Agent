@@ -70,6 +70,8 @@ const {
   searchServices,
   normalizeServicesSearchParams,
 } = require('./services/servicesSearch');
+const bookingsApi = require('./services/bookings/api');
+const requireBookingFlagOn = bookingsApi.requireBookingFlagOn;
 const {
   buildPdpImageDedupeKey,
   normalizePdpImageUrl,
@@ -27976,6 +27978,13 @@ app.get('/api/services', async (req, res) => {
     return res.status(500).json({ error: 'INTERNAL_ERROR' });
   }
 });
+
+app.post('/api/services/bookings', requireBookingFlagOn, bookingsApi.createBooking);
+app.get('/api/services/bookings/:booking_id', requireBookingFlagOn, bookingsApi.getBooking);
+app.get('/api/services/bookings', requireBookingFlagOn, bookingsApi.listBookings);
+app.post('/api/services/bookings/:booking_id/cancel', requireBookingFlagOn, bookingsApi.cancelBooking);
+app.post('/api/services/bookings/:booking_id/provider-action', requireBookingFlagOn, bookingsApi.providerAction);
+app.post('/api/services/bookings/sweep-expired', requireBookingFlagOn, bookingsApi.sweepExpired);
 
 // Lightweight debug endpoint to inspect promotions configuration on the gateway.
 // Safe for now: does NOT return any secrets, only booleans and mode.
