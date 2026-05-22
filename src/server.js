@@ -9643,6 +9643,24 @@ function buildServiceVersionMetadata() {
   };
 }
 
+function completeServiceVersionMetadata(existing = null) {
+  const base = buildServiceVersionMetadata();
+  const current =
+    existing && typeof existing === 'object' && !Array.isArray(existing)
+      ? existing
+      : {};
+  return {
+    ...base,
+    ...current,
+    service: firstNonEmptyString(current.service, base.service) || null,
+    commit: firstNonEmptyString(current.commit, base.commit) || null,
+    build_id: firstNonEmptyString(current.build_id, current.buildId, base.build_id) || null,
+    branch: firstNonEmptyString(current.branch, base.branch) || null,
+    deployment_id: firstNonEmptyString(current.deployment_id, current.deploymentId, base.deployment_id) || null,
+    started_at: firstNonEmptyString(current.started_at, current.startedAt, base.started_at) || null,
+  };
+}
+
 function buildCacheStageDiagnosticBundle(cacheStage = null) {
   const stage =
     cacheStage && typeof cacheStage === 'object' && !Array.isArray(cacheStage)
@@ -31975,8 +31993,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               ...directResponse,
               metadata: {
                 ...(directResponse.metadata || {}),
-                service_version:
-                  directResponse.metadata?.service_version || buildServiceVersionMetadata(),
+                service_version: completeServiceVersionMetadata(
+                  directResponse.metadata?.service_version,
+                ),
                 route_health: {
                   ...((directResponse.metadata && directResponse.metadata.route_health) || {}),
                   primary_path_used: 'beauty_external_seed_mainline',
@@ -32011,8 +32030,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               ...directResponse,
               metadata: {
                 ...(directResponse.metadata || {}),
-                service_version:
-                  directResponse.metadata?.service_version || buildServiceVersionMetadata(),
+                service_version: completeServiceVersionMetadata(
+                  directResponse.metadata?.service_version,
+                ),
                 failure_class: 'beauty_mainline_empty',
                 fallback_attempted: false,
                 fallback_adopted: false,
@@ -32359,9 +32379,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         });
         bridgeResponse.metadata = {
           ...(bridgeResponse.metadata || {}),
-          service_version:
-            (bridgeResponse.metadata && bridgeResponse.metadata.service_version) ||
-            buildServiceVersionMetadata(),
+          service_version: completeServiceVersionMetadata(
+            bridgeResponse.metadata?.service_version,
+          ),
           ...(publicBrandScopeNames.length > 0
             ? {
                 public_search_brand_scope_applied: publicBrandScopeNames,
@@ -32414,9 +32434,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           ...emptyBridgeResponse,
           metadata: {
             ...(emptyBridgeResponse.metadata || {}),
-            service_version:
-              (emptyBridgeResponse.metadata && emptyBridgeResponse.metadata.service_version) ||
-              buildServiceVersionMetadata(),
+            service_version: completeServiceVersionMetadata(
+              emptyBridgeResponse.metadata?.service_version,
+            ),
             public_search_discovery_bridge: true,
             primary_lane: 'beauty_discovery_mainline',
             primary_retrieval_contract: 'agent_v1_search_beauty_mainline',
@@ -42134,6 +42154,7 @@ module.exports._debug = {
   normalizeProductImages,
   buildFindProductsMultiPayloadFromQuery,
   buildServiceVersionMetadata,
+  completeServiceVersionMetadata,
   buildCacheStageDiagnosticBundle,
   buildCacheStageSnapshot,
   buildOffersFromGroupMembers,
