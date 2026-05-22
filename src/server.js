@@ -4361,7 +4361,22 @@ async function fetchExternalSeedSimilarCardSourcesFromDb(productIds = []) {
       `
         SELECT
           external_product_id,
+          coalesce(seed_data->'snapshot'->>'brand', seed_data->>'brand', brand, '') AS brand,
+          coalesce(seed_data->'snapshot'->>'category', seed_data->>'category', category, '') AS category,
+          coalesce(seed_data->'snapshot'->>'product_type', seed_data->>'product_type', product_type, '') AS product_type,
           coalesce(seed_data->'snapshot'->>'title', seed_data->>'title', title, '') AS title,
+          coalesce(
+            seed_data->'image_asset_cache_v1'->'visible_image_urls'->>0,
+            seed_data->'snapshot'->'image_asset_cache_v1'->'visible_image_urls'->>0,
+            seed_data->'snapshot'->'image_urls'->>0,
+            seed_data->'snapshot'->'images'->0->>'url',
+            seed_data->'snapshot'->>'image_url',
+            seed_data->>'image_url',
+            image_url,
+            ''
+          ) AS image_url,
+          coalesce(price_amount::text, seed_data->'snapshot'->>'price', seed_data->>'price', '') AS price_amount,
+          coalesce(price_currency, seed_data->'snapshot'->>'currency', seed_data->>'currency', '') AS price_currency,
           coalesce(
             seed_data->'snapshot'->>'pdp_description_raw',
             seed_data->>'pdp_description_raw',
@@ -4394,15 +4409,30 @@ async function fetchExternalSeedSimilarCardSourcesFromDb(productIds = []) {
       const pdpDetailsSections = Array.isArray(row?.pdp_details_sections)
         ? row.pdp_details_sections
         : [];
+      const priceAmount = Number(row?.price_amount);
       out.set(externalProductId, {
         product_id: externalProductId,
+        brand: firstNonEmptyString(row?.brand),
+        category: firstNonEmptyString(row?.category),
+        product_type: firstNonEmptyString(row?.product_type),
         title: firstNonEmptyString(row?.title),
+        image_url: firstNonEmptyString(row?.image_url),
+        price: Number.isFinite(priceAmount) && priceAmount > 0
+          ? {
+              amount: priceAmount,
+              currency: firstNonEmptyString(row?.price_currency, 'USD'),
+            }
+          : null,
         description: firstNonEmptyString(row?.description),
         pdp_description_raw: firstNonEmptyString(row?.pdp_description_raw),
         pdp_details_sections: pdpDetailsSections,
         seed_data: {
           snapshot: {
+            brand: firstNonEmptyString(row?.brand),
+            category: firstNonEmptyString(row?.category),
+            product_type: firstNonEmptyString(row?.product_type),
             title: firstNonEmptyString(row?.title),
+            image_url: firstNonEmptyString(row?.image_url),
             description: firstNonEmptyString(row?.description),
             pdp_description_raw: firstNonEmptyString(row?.pdp_description_raw),
             pdp_details_sections: pdpDetailsSections,
@@ -22736,9 +22766,15 @@ async function enrichSimilarProductsForPdpCards({
         if (externalSeedId) {
           const officialSeedProduct = officialSeedCardSourcesById.get(externalSeedId);
           if (officialSeedProduct) {
-            const officialSeedEnriched = applyOfficialSeedSimilarCardEnrichment(item, officialSeedProduct);
+            const officialSeedEnriched = mergeSimilarCardEnrichment(
+              applyOfficialSeedSimilarCardEnrichment(item, officialSeedProduct),
+              officialSeedProduct,
+            );
             if (officialSeedEnriched !== item && hasSimilarCardPresentation(officialSeedEnriched)) {
               metadata.card_enrichment_official_seed_hit_count += 1;
+              return annotateSimilarCardStatus(officialSeedEnriched);
+            }
+            if (officialSeedEnriched !== item && hasSimilarCardImage(officialSeedEnriched)) {
               return annotateSimilarCardStatus(officialSeedEnriched);
             }
           }

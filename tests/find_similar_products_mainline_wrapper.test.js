@@ -552,6 +552,71 @@ describe('find_similar_products mainline wrapper', () => {
     ]);
   });
 
+  it('hydrates reviewed component-ref similar cards from official seed sources', async () => {
+    jest.resetModules();
+    process.env.DATABASE_URL = 'postgres://test';
+    const dbQueryMock = jest.fn().mockImplementation((sql) => {
+      const text = String(sql || '');
+      if (text.includes('FROM external_product_seeds')) {
+        return Promise.resolve({
+          rows: [
+            {
+              external_product_id: 'ext_component_1',
+              brand: 'KraveBeauty',
+              category: 'Serum',
+              product_type: 'Serum',
+              title: 'Great Barrier Relief',
+              image_url: 'https://cdn.example.test/gbr.jpg',
+              price_amount: '28.00',
+              price_currency: 'USD',
+              description:
+                'A barrier-supporting serum from the official product page for skin barrier recovery and protection.',
+              pdp_description_raw:
+                'A barrier-supporting serum from the official product page for skin barrier recovery and protection.',
+              pdp_details_sections: [],
+            },
+          ],
+        });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+    jest.doMock('../src/db', () => ({
+      query: dbQueryMock,
+    }));
+
+    const app = require('../src/server');
+    const items = await app._debug.enrichSimilarProductsForPdpCards({
+      items: [
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ext_component_1',
+          external_product_id: 'ext_component_1',
+          retrieval_source: 'reviewed_component_ref',
+          title: 'Great Barrier Relief',
+        },
+      ],
+      maxItems: 1,
+      budgetMs: 300,
+      productIntelBudgetMs: 1,
+    });
+
+    expect(items[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'ext_component_1',
+        image_url: 'https://cdn.example.test/gbr.jpg',
+        card_highlight_status: 'ready',
+        card_image_status: 'ready',
+      }),
+    );
+    expect(items[0].price).toEqual({ amount: 28, currency: 'USD' });
+    expect(app._debug.getSimilarCardEnrichmentMetadata(items)).toEqual(
+      expect.objectContaining({
+        card_enrichment_official_seed_attempted_count: 1,
+        card_enrichment_official_seed_hit_count: 1,
+      }),
+    );
+  });
+
   it('runtime-classifies official hair styling seeds and blocks non-formula fill', () => {
     const { pickLayeredRecommendations } = require('../src/services/RecommendationEngine');
 
