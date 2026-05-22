@@ -9,6 +9,9 @@ jest.mock('axios', () => ({
 
 const {
   CLASSIFICATIONS,
+  DEFAULT_CORE_PDP_TIMEOUT_MS,
+  DEFAULT_DETAILS_PDP_TIMEOUT_MS,
+  DEFAULT_SIMILAR_TIMEOUT_MS,
   classifyBeautyServingQualityRow,
   probeMerchantUrl,
 } = require('../../scripts/audit-external-seed-beauty-serving-quality.cjs');
@@ -93,6 +96,12 @@ describe('audit-external-seed-beauty-serving-quality', () => {
 
     expect(result.classification).toBe(CLASSIFICATIONS.PASS);
     expect(result.failure_reasons).toEqual([]);
+  });
+
+  test('uses production-safe PDP probe timeout defaults for beauty serving audits', () => {
+    expect(DEFAULT_CORE_PDP_TIMEOUT_MS).toBeGreaterThanOrEqual(45000);
+    expect(DEFAULT_DETAILS_PDP_TIMEOUT_MS).toBeGreaterThanOrEqual(60000);
+    expect(DEFAULT_SIMILAR_TIMEOUT_MS).toBeGreaterThanOrEqual(30000);
   });
 
   test('falls back to GET when merchant HEAD probe is blocked', async () => {

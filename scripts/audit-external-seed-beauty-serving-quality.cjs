@@ -16,6 +16,10 @@ const {
 const DEFAULT_CATALOG_BASE_URL =
   process.env.CATALOG_INTELLIGENCE_BASE_URL ||
   'https://pivota-catalog-intelligence-production.up.railway.app';
+const DEFAULT_CATALOG_TIMEOUT_MS = 15000;
+const DEFAULT_CORE_PDP_TIMEOUT_MS = 45000;
+const DEFAULT_DETAILS_PDP_TIMEOUT_MS = 60000;
+const DEFAULT_SIMILAR_TIMEOUT_MS = 30000;
 
 const CLASSIFICATIONS = Object.freeze({
   PASS: 'pass',
@@ -474,10 +478,10 @@ async function main() {
     catalogBaseUrl: argValue('catalog-base-url') || DEFAULT_CATALOG_BASE_URL,
     gatewayUrl: resolveGatewayUrl(argValue('gateway-url') || process.env.PIVOTA_GATEWAY_URL || ''),
     urlTimeoutMs: Number(argValue('url-timeout-ms') || 8000) || 8000,
-    catalogTimeoutMs: Number(argValue('catalog-timeout-ms') || 15000) || null,
-    pdpTimeoutMs: Number(argValue('pdp-timeout-ms') || 10000) || null,
-    detailsPdpTimeoutMs: Number(argValue('details-pdp-timeout-ms') || 25000) || null,
-    similarTimeoutMs: Number(argValue('similar-timeout-ms') || 12000) || null,
+    catalogTimeoutMs: Number(argValue('catalog-timeout-ms') || DEFAULT_CATALOG_TIMEOUT_MS) || null,
+    pdpTimeoutMs: Number(argValue('pdp-timeout-ms') || DEFAULT_CORE_PDP_TIMEOUT_MS) || null,
+    detailsPdpTimeoutMs: Number(argValue('details-pdp-timeout-ms') || DEFAULT_DETAILS_PDP_TIMEOUT_MS) || null,
+    similarTimeoutMs: Number(argValue('similar-timeout-ms') || DEFAULT_SIMILAR_TIMEOUT_MS) || null,
     write: hasFlag('write'),
     writeReason: asString(argValue('reason', 'beauty_serving_quality_pollution')),
     writeEvidence: asString(argValue('evidence', 'beauty_serving_quality_audit')),
@@ -501,6 +505,10 @@ if (require.main === module) {
 
 module.exports = {
   CLASSIFICATIONS,
+  DEFAULT_CATALOG_TIMEOUT_MS,
+  DEFAULT_CORE_PDP_TIMEOUT_MS,
+  DEFAULT_DETAILS_PDP_TIMEOUT_MS,
+  DEFAULT_SIMILAR_TIMEOUT_MS,
   classifyBeautyServingQualityRow,
   probeMerchantUrl,
   renderMarkdownReport,
