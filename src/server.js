@@ -4361,9 +4361,9 @@ async function fetchExternalSeedSimilarCardSourcesFromDb(productIds = []) {
       `
         SELECT
           external_product_id,
-          coalesce(seed_data->'snapshot'->>'brand', seed_data->>'brand', brand, '') AS brand,
-          coalesce(seed_data->'snapshot'->>'category', seed_data->>'category', category, '') AS category,
-          coalesce(seed_data->'snapshot'->>'product_type', seed_data->>'product_type', product_type, '') AS product_type,
+          coalesce(seed_data->'snapshot'->>'brand', seed_data->>'brand', '') AS brand,
+          coalesce(seed_data->'snapshot'->>'category', seed_data->>'category', '') AS category,
+          coalesce(seed_data->'snapshot'->>'product_type', seed_data->>'product_type', '') AS product_type,
           coalesce(seed_data->'snapshot'->>'title', seed_data->>'title', title, '') AS title,
           coalesce(
             seed_data->'image_asset_cache_v1'->'visible_image_urls'->>0,
