@@ -19,6 +19,7 @@ const {
   },
 } = require('../src/services/catalogServingIndex');
 const {
+  buildReadinessAudit,
   buildCheckpointedReadinessAudit,
   fetchSeedRows,
 } = require('./audit-external-seed-pdp-readiness');
@@ -729,7 +730,7 @@ function buildDomainRollup(inventoryRows, docsByDomain) {
     item.commerce_public_doc_groups = docsByDomain.get(item.domain) || 0;
     item.db_serving_ready_rate = item.seed_rows ? Number((item.db_serving_ready / item.seed_rows).toFixed(4)) : 0;
     item.public_index_ready_rate = item.db_serving_ready_rate;
-    item.top_blocker = topEntries(blockers, 1)[0]?.key || '';
+    item.top_blocker = topEntries(blockers, 1).find((entry) => entry.count > 0)?.key || 'ready_no_action';
   }
   return Array.from(domains.values()).sort((left, right) => right.seed_rows - left.seed_rows || left.domain.localeCompare(right.domain));
 }
@@ -821,7 +822,7 @@ function renderExecSummary({ summary, domainRollup, readinessSummary, reportDir,
 
 Generated: ${summary.generated_at}
 
-Scope: active external seeds, market=${options.market}, include_attached=true, limit=${options.limit}
+Scope: active external seeds, market=${options.market}${options.domain ? `, domain=${options.domain}` : ''}, include_attached=true, limit=${options.limit}
 
 Report directory: ${reportDir}
 
@@ -876,6 +877,7 @@ async function main() {
   const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
   const options = {
     market: asString(argValue('market', 'US')).toUpperCase() || 'US',
+    domain: asString(argValue('domain', '')),
     limit: Math.max(1, Math.min(Number(argValue('limit', '20000')) || 20000, 20000)),
     pageSize: Math.max(1, Math.min(Number(argValue('page-size', '500')) || 500, 1000)),
     sampleLimit: Math.max(1, Math.min(Number(argValue('sample-limit', '10')) || 10, 100)),
@@ -886,17 +888,18 @@ async function main() {
   const outDir = path.resolve(options.outDir);
   ensureDir(outDir);
 
-  logStage(`start market=${options.market} limit=${options.limit} out_dir=${outDir}`);
+  logStage(`start market=${options.market}${options.domain ? ` domain=${options.domain}` : ''} limit=${options.limit} out_dir=${outDir}`);
   await query(`SET statement_timeout = '90000ms'`, []);
 
   logStage('fetch market counts');
   const warnings = [];
   const marketCounts = await fetchMarketCounts();
   const checkpointDir = path.join(outDir, 'pdp_readiness_checkpoint');
-  logStage(`build/read checkpointed pdp readiness audit checkpoint_dir=${checkpointDir}`);
-  const readinessAudit = await buildCheckpointedReadinessAudit({
+  logStage(options.domain ? `build pdp readiness audit domain=${options.domain}` : `build/read checkpointed pdp readiness audit checkpoint_dir=${checkpointDir}`);
+  const readinessOptions = {
     market: options.market,
     includeAttached: true,
+    domain: options.domain || null,
     limit: options.limit,
     sampleLimit: options.sampleLimit,
     checkpointDir,
@@ -906,7 +909,10 @@ async function main() {
     continueOnError: true,
     pageSize: options.pageSize,
     format: 'json',
-  });
+  };
+  const readinessAudit = options.domain
+    ? await buildReadinessAudit(readinessOptions)
+    : await buildCheckpointedReadinessAudit(readinessOptions);
   writeJson(path.join(outDir, 'pdp_readiness_audit.json'), readinessAudit);
   logStage(`pdp readiness rows=${readinessAudit.rows?.length || 0}`);
 
@@ -914,6 +920,7 @@ async function main() {
   const seedRows = await fetchSeedRows({
     market: options.market,
     includeAttached: true,
+    domain: options.domain || null,
     limit: options.limit,
   });
   if ((readinessAudit.rows?.length || 0) !== seedRows.length) {

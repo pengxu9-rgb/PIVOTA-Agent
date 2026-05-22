@@ -7,6 +7,7 @@ const {
   bulkUpsertCatalogServingDocs,
   decodeCatalogServingCursor,
   encodeCatalogServingCursor,
+  fetchCatalogServingProductIntelSummaries,
   getCatalogServingIndexConfig,
   isCatalogServingIndexEnabled,
   searchCatalogServingIndex,
@@ -397,6 +398,43 @@ describe('catalog serving index', () => {
         }),
       }),
     );
+  });
+
+  test('fetchCatalogServingProductIntelSummaries batches beyond 5000 product ids without truncating tail ids', async () => {
+    const productIds = Array.from({ length: 5005 }, (_, index) => `ext_${String(index).padStart(4, '0')}`);
+    const capturedBatches = [];
+    const queryFn = jest.fn(async (_sql, params) => {
+      const keys = params[0];
+      capturedBatches.push(keys);
+      if (!keys.includes('product:ext_5004')) return { rows: [] };
+      return {
+        rows: [
+          {
+            kb_key: 'product:ext_5004',
+            analysis: {
+              product_intel_v1: {
+                ...buildReviewedProductIntelBundle(),
+                canonical_product_ref: {
+                  merchant_id: 'external_seed',
+                  platform: 'external_seed',
+                  product_id: 'ext_5004',
+                },
+              },
+            },
+            source: 'aurora_product_intel_kb',
+            source_meta: {},
+            last_success_at: '2026-05-22T00:00:00Z',
+          },
+        ],
+      };
+    });
+
+    const summaries = await fetchCatalogServingProductIntelSummaries(productIds, { queryFn });
+
+    expect(queryFn).toHaveBeenCalledTimes(6);
+    expect(capturedBatches.map((batch) => batch.length)).toEqual([1000, 1000, 1000, 1000, 1000, 5]);
+    expect(summaries.has('ext_5004')).toBe(true);
+    expect(summaries.get('ext_5004').summary).toBe('Reviewed vitamin C serum for dullness and uneven tone.');
   });
 
   test('buildCatalogServingBackfillDocs emits a public exact-item doc from live identity members only', () => {

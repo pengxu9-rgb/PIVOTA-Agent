@@ -264,11 +264,11 @@ async function buildChecksForRow(row, args) {
   // returns stale_404 (Tom Ford's CDN rotates SKU image URLs upstream
   // without notice), fall back to the canonical product page and pull
   // current image URLs from og:image / twitter:image / schema.org
-  // Product.image. Codex's image cache cycle had been re-running for
-  // weeks without recovering because the cache stage just quarantined
-  // dead URLs and never tried fresh ones.
+  // Product.image. Also run this recovery when a row has no stored image
+  // candidates at all; otherwise zero-image rows never get a first
+  // candidate to cache or surface.
   const anyCandidateOk = candidates.some((c) => checksByUrl[c.url] && checksByUrl[c.url].ok);
-  if (!anyCandidateOk && candidates.length > 0) {
+  if (!anyCandidateOk) {
     const canonicalUrl =
       normalizeUrlLike(row.canonical_url) || normalizeUrlLike(row.destination_url) || '';
     if (canonicalUrl) {
