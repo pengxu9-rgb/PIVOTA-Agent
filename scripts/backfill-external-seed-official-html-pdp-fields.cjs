@@ -2016,6 +2016,42 @@ function extractGuerlainIngredientSections(html) {
   return sections.filter((section) => section.heading && section.body.length >= 40).slice(0, 6);
 }
 
+function extractGuerlainIngredientModalUrl(html, baseUrl = '') {
+  const match = String(html || '').match(/\bdata-url-ingredient=["']([^"']+)["']/i);
+  if (!match) return '';
+  const rawUrl = decodeHtmlEntities(match[1]);
+  try {
+    return new URL(rawUrl, baseUrl || 'https://www.guerlain.com').toString();
+  } catch {
+    return '';
+  }
+}
+
+function looksLikeGuerlainOfficialInci(value, items = []) {
+  const text = normalizeText(value);
+  if (text.length < 60) return false;
+  if (items.length < 5) return false;
+  if (/\b(?:cart|checkout|shipping|customer service|newsletter|country selection|menu)\b/i.test(text.slice(0, 250))) {
+    return false;
+  }
+  return /\b(?:aqua|water|glycerin|alcohol|parfum|fragrance|tocopherol|mica|dimethicone|sodium|potassium|squalane|castor|wax|kaolin|limonene|linalool|citral|citronellol|ci\s*\d{4,6})\b/i.test(text);
+}
+
+function parseGuerlainIngredientModalHtml(html) {
+  const source = String(html || '');
+  const holderMatch = source.match(/<div\b[^>]*class=["'][^"']*\bingredientContentHolder\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/i);
+  const scope = holderMatch ? holderMatch[1] : source;
+  const items = Array.from(scope.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/gi))
+    .map((match) => cleanSectionText(match[1]).replace(/^[-•*\s]+/, '').trim())
+    .filter((item) => item.length >= 2 && !/^ingredients?\s*:$/i.test(item));
+  if (!items.length) return '';
+  const inci = items.join(', ');
+  if (looksLikeFullInci(inci) || looksLikeShortOfficialInci(inci) || looksLikeGuerlainOfficialInci(inci, items)) {
+    return inci;
+  }
+  return '';
+}
+
 function extractGuerlainHowToUse(html) {
   const source = String(html || '');
   const heading = source.match(/<h2\b[^>]*>\s*([\s\S]*?(?:APPLICATION|TECHNIQUE|HOW TO)[\s\S]*?)<\/h2>/i);
@@ -2061,6 +2097,8 @@ function extractGuerlainFields(html, options = {}) {
     .map((item) => normalizeText(item).replace(/\s{2,}/g, ' '))
     .filter((item) => /\b(?:honey|royal jelly|lily|wax|extract|oil|butter|acid|vitamin)\b/i.test(item));
   if (activeItems.length > 0) fields.pdp_active_ingredients_raw = Array.from(new Set(activeItems)).join(', ');
+  const modalIngredients = parseGuerlainIngredientModalHtml(options.ingredientModalHtml);
+  if (modalIngredients) fields.pdp_ingredients_raw = modalIngredients;
 
   const details = [];
   if (description.length >= 60) details.push({ heading: 'Overview', body: description });
@@ -2126,7 +2164,10 @@ async function extractOfficialHtmlFields(host, html, options = {}) {
   else if (host === 'tirtir.global') fields = await extractTirtirFields(html, options);
   else if (host === 'theordinary.com') fields = {};
   else if (host === 'fentybeauty.com') fields = extractFentyFields(html, options);
-  else if (host === 'guerlain.com') fields = extractGuerlainFields(html, options);
+  else if (host === 'guerlain.com') {
+    const ingredientModalHtml = await fetchGuerlainIngredientModalHtml(html, options);
+    fields = extractGuerlainFields(html, { ...options, ingredientModalHtml });
+  }
   else if (host === 'tomfordbeauty.com') fields = extractTomFordFields(html, options);
   else if (!options.reviewSummaryOnly || !REVIEW_SUMMARY_ONLY_GENERIC_HOSTS.has(host)) return {};
 
@@ -2510,21 +2551,60 @@ function buildSeedDataPatch(row, extracted, options = {}) {
   return { seedData, patchKeys };
 }
 
-async function fetchHtml(url) {
+function splitSetCookieHeader(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return [];
+  return raw.split(/,(?=\s*[^;,=\s]+=)/g).map((item) => item.trim()).filter(Boolean);
+}
+
+function getResponseSetCookies(headers) {
+  if (!headers) return [];
+  if (typeof headers.getSetCookie === 'function') return headers.getSetCookie();
+  return splitSetCookieHeader(headers.get('set-cookie'));
+}
+
+function cookieHeaderFromSetCookies(setCookies) {
+  return asArray(setCookies)
+    .map((value) => String(value || '').split(';')[0].trim())
+    .filter(Boolean)
+    .join('; ');
+}
+
+async function fetchHtml(url, options = {}) {
   const response = await fetch(url, {
     redirect: 'follow',
     signal: AbortSignal.timeout(Number(process.env.OFFICIAL_HTML_PDP_TIMEOUT_MS || 20000)),
     headers: {
       'user-agent': 'Mozilla/5.0 Pivota official PDP field audit',
       accept: 'text/html,application/xhtml+xml',
+      ...ensureObject(options.headers),
     },
   });
   const html = await response.text();
+  const setCookies = getResponseSetCookies(response.headers);
   return {
     status: response.status,
     final_url: response.url,
     html,
+    set_cookie_headers: setCookies,
+    cookie_header: cookieHeaderFromSetCookies(setCookies),
   };
+}
+
+async function fetchGuerlainIngredientModalHtml(html, options = {}) {
+  const pageUrl = normalizeText(options.productUrl || options.pageUrl || options.url);
+  const modalUrl = extractGuerlainIngredientModalUrl(html, pageUrl);
+  if (!modalUrl) return '';
+  const cookieHeader = normalizeText(options.cookieHeader);
+  const fetched = await fetchHtml(modalUrl, {
+    headers: {
+      ...(cookieHeader ? { cookie: cookieHeader } : {}),
+      ...(pageUrl ? { referer: pageUrl } : {}),
+      'x-requested-with': 'XMLHttpRequest',
+    },
+  });
+  if (fetched.status < 200 || fetched.status >= 300) return '';
+  return fetched.html;
 }
 
 async function fetchOfficialShopifyVariants(url, row) {
@@ -2676,7 +2756,12 @@ async function main() {
       const fetched = await fetchHtml(url);
       result.http_status = fetched.status;
       result.final_url = fetched.final_url;
-      const extracted = await extractOfficialHtmlFields(host, fetched.html, { productTitle: row.title, reviewSummaryOnly });
+      const extracted = await extractOfficialHtmlFields(host, fetched.html, {
+        productTitle: row.title,
+        reviewSummaryOnly,
+        productUrl: fetched.final_url || url,
+        cookieHeader: fetched.cookie_header,
+      });
       const officialVariants = await fetchOfficialShopifyVariants(fetched.final_url || url, row);
       if (officialVariants.length > 0) extracted.variants = officialVariants;
       const { seedData, patchKeys } = buildSeedDataPatch(row, extracted, {
@@ -2777,6 +2862,8 @@ module.exports = {
     extractFentyFields,
     extractFentyFullIngredients,
     extractGuerlainFields,
+    extractGuerlainIngredientModalUrl,
+    parseGuerlainIngredientModalHtml,
     extractGuerlainVariantsFromJsonLd,
     extractTomFordFields,
     extractTomFordAccordionText,

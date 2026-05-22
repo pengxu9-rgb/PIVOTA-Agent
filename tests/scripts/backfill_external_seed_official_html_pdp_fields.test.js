@@ -12,6 +12,8 @@ const {
     extractFentyFields,
     extractFentyFullIngredients,
     extractGuerlainFields,
+    extractGuerlainIngredientModalUrl,
+    parseGuerlainIngredientModalHtml,
     extractTomFordFields,
     extractOfficialShopifyVariants,
     fetchStampedReviewSummary,
@@ -923,6 +925,57 @@ describe('backfill-external-seed-official-html-pdp-fields TIRTIR sheet matching'
       ]),
     );
     expect(fields.pdp_ingredients_raw).toBeUndefined();
+  });
+
+  test('extracts Guerlain official ingredient modal URL and full INCI', () => {
+    const productHtml = `
+      <button
+        data-url-ingredient="/on/demandware.store/Sites-Guerlain_US-Site/en_US/Product-IngredientModal?pid=G043986">
+        Show all ingredients
+      </button>
+    `;
+    const modalHtml = `
+      <div class="ingredientContentHolder">
+        <p><b>#19933 INGREDIENTS :</b></p>
+        <ul>
+          <li> &bull;  RICINUS COMMUNIS (CASTOR) SEED OIL</li>
+          <li> &bull;  SQUALANE</li>
+          <li> &bull;  HYDROGENATED CASTOR OIL</li>
+          <li> &bull;  CERA CARNAUBA (COPERNICIA CERIFERA (CARNAUBA) WAX)</li>
+          <li> &bull;  KAOLIN</li>
+          <li> &bull;  SYNTHETIC FLUORPHLOGOPITE</li>
+          <li> &bull;  ALUMINUM HYDROXIDE</li>
+          <li> &bull;  TOCOPHEROL</li>
+          <li> &bull;  AQUA (WATER)</li>
+          <li> &bull;  [+/- CI 15850 (RED 6, RED 7)</li>
+          <li> &bull;  CI 45410 (RED 28 LAKE)</li>
+          <li> &bull;  CI 77492, CI 77499 (IRON OXIDES)]</li>
+        </ul>
+      </div>
+    `;
+
+    expect(
+      extractGuerlainIngredientModalUrl(
+        productHtml,
+        'https://www.guerlain.com/us/en-us/p/contour-g-lip-pencil-P043986.html',
+      ),
+    ).toBe('https://www.guerlain.com/on/demandware.store/Sites-Guerlain_US-Site/en_US/Product-IngredientModal?pid=G043986');
+    expect(parseGuerlainIngredientModalHtml(modalHtml)).toContain('RICINUS COMMUNIS');
+
+    const fields = extractGuerlainFields(
+      `
+        <script type="application/ld+json">
+        {"@type":"Product","name":"CONTOUR G LIP PENCIL","description":"A precise lip pencil for shaping and defining the lip contour with comfortable wear.","sku":"G043986","category":"Lip Pencil","offers":{"priceCurrency":"USD","price":37}}
+        </script>
+      `,
+      {
+        productTitle: 'CONTOUR G LIP PENCIL',
+        ingredientModalHtml: modalHtml,
+      },
+    );
+
+    expect(fields.pdp_ingredients_raw).toContain('SQUALANE');
+    expect(fields.pdp_ingredients_raw).toContain('CI 77492');
   });
 
   test('extracts Guerlain singleton customizable lipstick format from official product JSON-LD', () => {
