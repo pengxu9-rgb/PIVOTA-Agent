@@ -2370,6 +2370,109 @@ function fillMissingString(target, source, keys) {
   return next;
 }
 
+function readPdpFieldQualityRow(source, fieldKey) {
+  const summary = asPlainObject(source?.pdp_field_quality_summary) || {};
+  return asPlainObject(summary[fieldKey]) || null;
+}
+
+function normalizePdpQualityStatus(value) {
+  return asString(value).toLowerCase().replace(/[\s-]+/g, '_');
+}
+
+function rankPdpQualityStatus(value) {
+  const status = normalizePdpQualityStatus(value);
+  if (!status) return 0;
+  if (/blocked|quarantined|unsafe/.test(status)) return -2;
+  if (/source_unavailable|non_merch|not_applicable/.test(status)) return -1;
+  if (/low|missing|unknown/.test(status)) return 1;
+  if (/force_filled_pending_source/.test(status)) return 1.5;
+  if (/force_filled_reviewed_pattern/.test(status)) return 2.5;
+  if (/partial/.test(status)) return 3;
+  if (/medium|ready|captured|source_backed/.test(status)) return 4;
+  if (/high|authoritative|approved|reviewed/.test(status)) return 5;
+  return 2;
+}
+
+function isSourceBackedPdpQuality(row) {
+  if (!row) return false;
+  const status = normalizePdpQualityStatus(row.source_quality_status || row.sourceQualityStatus);
+  const origin = normalizePdpQualityStatus(row.source_origin || row.sourceOrigin);
+  if (/force_fill|pivota_force_fill|unknown/.test(origin)) return false;
+  return rankPdpQualityStatus(status) >= 4;
+}
+
+function pickBestPdpFieldQualityRow(sources, fieldKey) {
+  let best = null;
+  let bestRank = -Infinity;
+  for (const source of Array.isArray(sources) ? sources : []) {
+    const row = readPdpFieldQualityRow(source, fieldKey);
+    if (!row) continue;
+    const rank = rankPdpQualityStatus(row.source_quality_status || row.sourceQualityStatus);
+    if (rank <= bestRank) continue;
+    best = row;
+    bestRank = rank;
+  }
+  return best ? { row: { ...best }, rank: bestRank } : null;
+}
+
+function mergeBetterPdpFieldQuality(next, sources, fieldKey) {
+  const currentSummary = asPlainObject(next?.pdp_field_quality_summary) || {};
+  const currentRow = readPdpFieldQualityRow(next, fieldKey);
+  const currentRank = rankPdpQualityStatus(currentRow?.source_quality_status || currentRow?.sourceQualityStatus);
+  const best = pickBestPdpFieldQualityRow(sources, fieldKey);
+  if (!best || best.rank <= currentRank) return next;
+  return {
+    ...next,
+    pdp_field_quality_summary: {
+      ...currentSummary,
+      [fieldKey]: best.row,
+    },
+  };
+}
+
+function pickBestSourceBackedString(sources, fieldKey, valueKeys) {
+  let best = null;
+  let bestRank = -Infinity;
+  for (const source of Array.isArray(sources) ? sources : []) {
+    const src = asPlainObject(source) || {};
+    const value = firstNonEmptyString(...valueKeys.map((key) => src[key]));
+    if (!value) continue;
+    const qualityRow = readPdpFieldQualityRow(src, fieldKey);
+    if (!isSourceBackedPdpQuality(qualityRow)) continue;
+    const rank = rankPdpQualityStatus(qualityRow.source_quality_status || qualityRow.sourceQualityStatus);
+    if (rank <= bestRank) continue;
+    best = { value, qualityRow: { ...qualityRow }, rank };
+    bestRank = rank;
+  }
+  return best;
+}
+
+function replaceLowerQualityPdpString(next, sources, fieldKey, valueKeys) {
+  const currentValue = firstNonEmptyString(...valueKeys.map((key) => next?.[key]));
+  const currentRow = readPdpFieldQualityRow(next, fieldKey);
+  const currentStatus = normalizePdpQualityStatus(currentRow?.source_quality_status || currentRow?.sourceQualityStatus);
+  const currentRank = rankPdpQualityStatus(currentStatus);
+  const hasKnownWeakStatus =
+    Boolean(currentStatus) &&
+    (/low|missing|unknown|force_filled/.test(currentStatus) || currentRank < 3);
+  const shouldReplaceCurrent =
+    !currentValue ||
+    hasKnownWeakStatus;
+  if (!shouldReplaceCurrent) return next;
+
+  const best = pickBestSourceBackedString(sources, fieldKey, valueKeys);
+  if (!best || best.rank <= currentRank) return next;
+  const currentSummary = asPlainObject(next?.pdp_field_quality_summary) || {};
+  return {
+    ...next,
+    [valueKeys[0]]: best.value,
+    pdp_field_quality_summary: {
+      ...currentSummary,
+      [fieldKey]: best.qualityRow,
+    },
+  };
+}
+
 function mergeMissingPdpContentFromPayload(product, payload) {
   const payloadObject = asPlainObject(payload) || {};
   const payloadSeedData = asPlainObject(payloadObject.seed_data) || {};
@@ -2528,8 +2631,17 @@ function mergeMissingPdpContentFromPayload(product, payload) {
     ]
       .map((value) => asArray(value))
       .find((items) => items.length > 0);
-    if (nextSections?.length > 0) next = { ...next, pdp_details_sections: nextSections };
+    if (nextSections?.length > 0) {
+      next = { ...next, pdp_details_sections: nextSections };
+      next = mergeBetterPdpFieldQuality(next, contentSources, 'details_sections');
+    }
   }
+
+  next = replaceLowerQualityPdpString(next, contentSources, 'how_to_use_raw', [
+    'pdp_how_to_use_raw',
+    'how_to_use',
+    'howToUse',
+  ]);
 
   if (!Array.isArray(next.bundle_component_refs) || next.bundle_component_refs.length === 0) {
     const nextComponentRefs = [

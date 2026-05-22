@@ -600,6 +600,97 @@ describe('pdpIdentityGraph', () => {
     expect(composed.product.pdp_content_source).toBe('canonical_inherited');
   });
 
+  test('composeSyntheticCanonicalProduct preserves sibling field quality when importing PDP details', () => {
+    const { composeSyntheticCanonicalProduct } = require('../../src/services/pdpIdentityGraph');
+
+    const officialBrand = {
+      merchant_id: 'external_seed',
+      product_id: 'ext_rare_mist_official',
+      source_kind: 'external_seed',
+      source_tier: 'brand',
+      source_payload: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_rare_mist_official',
+        title: 'Find Comfort Body & Hair Fragrance Mist',
+        brand: 'Rare Beauty',
+        description: 'A super fine fragrance mist for body and hair.',
+        pdp_how_to_use_raw: 'Apply a small amount after cleansing and toning, before moisturizer.',
+        pdp_field_quality_summary: {
+          details_sections: {
+            source_origin: 'unknown',
+            source_quality_status: 'low',
+          },
+          how_to_use_raw: {
+            source_origin: 'pivota_force_fill',
+            source_quality_status: 'force_filled_reviewed_pattern',
+          },
+        },
+      },
+    };
+    const retailerListing = {
+      merchant_id: 'external_seed',
+      product_id: 'ulta:rare_mist',
+      source_kind: 'external_seed',
+      source_tier: 'merchant',
+      source_payload: {
+        merchant_id: 'external_seed',
+        product_id: 'ulta:rare_mist',
+        title: 'Find Comfort Body & Hair Fragrance Mist',
+        brand: 'Rare Beauty',
+        pdp_how_to_use_raw: 'Spritz onto body or hair morning, midday, or anytime you need a pick-me-up.',
+        pdp_details_sections: [
+          {
+            heading: 'Benefits',
+            body: 'Lightweight and non-sticky, it absorbs quickly to hydrate and refresh.',
+            source_kind: 'heading_sibling',
+          },
+          {
+            heading: 'Research Results',
+            body: "100% said it doesn't feel sticky or leave a residue.",
+            source_kind: 'heading_sibling',
+          },
+        ],
+        pdp_field_quality_summary: {
+          details_sections: {
+            source_origin: 'retail_pdp',
+            source_quality_status: 'medium',
+          },
+          how_to_use_raw: {
+            source_origin: 'retail_pdp',
+            source_quality_status: 'medium',
+          },
+        },
+      },
+    };
+
+    const composed = composeSyntheticCanonicalProduct({
+      requestedListing: retailerListing,
+      exactListings: [officialBrand, retailerListing],
+      lineListings: [officialBrand, retailerListing],
+    });
+
+    expect(composed.canonical_product_ref).toEqual({
+      merchant_id: 'external_seed',
+      product_id: 'ext_rare_mist_official',
+    });
+    expect(composed.selected_commerce_ref).toEqual({
+      merchant_id: 'external_seed',
+      product_id: 'ulta:rare_mist',
+    });
+    expect(composed.product.pdp_details_sections).toHaveLength(2);
+    expect(composed.product.pdp_field_quality_summary.details_sections).toMatchObject({
+      source_origin: 'retail_pdp',
+      source_quality_status: 'medium',
+    });
+    expect(composed.product.pdp_how_to_use_raw).toBe(
+      'Spritz onto body or hair morning, midday, or anytime you need a pick-me-up.',
+    );
+    expect(composed.product.pdp_field_quality_summary.how_to_use_raw).toMatchObject({
+      source_origin: 'retail_pdp',
+      source_quality_status: 'medium',
+    });
+  });
+
   test('composeSyntheticCanonicalProduct does not inherit sibling content for strict unsafe external seed rows', () => {
     const { composeSyntheticCanonicalProduct } = require('../../src/services/pdpIdentityGraph');
 
