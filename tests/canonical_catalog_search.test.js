@@ -104,7 +104,7 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
     expect(sql).toMatch(/AND p\.merchant_id = \$5/);
   });
 
-  test('adds category WHERE + score when categoryPathPrefix provided', async () => {
+  test('adds category exact-leaf + descendant WHERE and score when categoryPathPrefix provided', async () => {
     const query = makeMockQuery([]);
     await fetchCanonicalChainRows({
       query: 'lipstick',
@@ -112,9 +112,10 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
       deps: { query },
     });
     const { sql, params } = query.calls[0];
-    expect(params).toHaveLength(5);
-    expect(params[4]).toBe('beauty/makeup/lip/%');
-    expect(sql).toMatch(/p\.category_path LIKE \$5/);
+    expect(params).toHaveLength(6);
+    expect(params[4]).toBe('beauty/makeup/lip');
+    expect(params[5]).toBe('beauty/makeup/lip/%');
+    expect(sql).toMatch(/p\.category_path = \$5 OR p\.category_path LIKE \$6/);
     expect(sql).toMatch(/THEN 90 ELSE 0 END/);
   });
 
@@ -127,11 +128,12 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
       deps: { query },
     });
     const { sql, params } = query.calls[0];
-    expect(params).toHaveLength(6);
+    expect(params).toHaveLength(7);
     expect(params[4]).toBe('merch_abc');
-    expect(params[5]).toBe('beauty/makeup/lip/%');
+    expect(params[5]).toBe('beauty/makeup/lip');
+    expect(params[6]).toBe('beauty/makeup/lip/%');
     expect(sql).toMatch(/AND p\.merchant_id = \$5/);
-    expect(sql).toMatch(/p\.category_path LIKE \$6/);
+    expect(sql).toMatch(/p\.category_path = \$6 OR p\.category_path LIKE \$7/);
   });
 
   test('vertical search adds visible_option_labels + ingredient_ids OR clauses', async () => {
@@ -266,14 +268,15 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
     });
     const { sql, params } = query.calls[0];
     // Order: $1 query, $2 query_like, $3 candidate_limit, $4 row_limit,
-    //        $5 merchant_id, $6 category_path_prefix, $7 market
+    //        $5 merchant_id, $6 category_path_exact, $7 category_path_prefix, $8 market
     expect(params[4]).toBe('shop_42');
-    expect(params[5]).toBe('beauty/makeup/lip/%');
-    expect(params[6]).toBe('US');
+    expect(params[5]).toBe('beauty/makeup/lip');
+    expect(params[6]).toBe('beauty/makeup/lip/%');
+    expect(params[7]).toBe('US');
     // SQL references all three in their respective binds
     expect(sql).toMatch(/AND p\.merchant_id = \$5/);
-    expect(sql).toMatch(/p\.category_path LIKE \$6/);
-    expect(sql).toMatch(/eps\.market\s*=\s*\$7/);
+    expect(sql).toMatch(/p\.category_path = \$6 OR p\.category_path LIKE \$7/);
+    expect(sql).toMatch(/eps\.market\s*=\s*\$8/);
   });
 
   test('brandFilter scopes category canonical recall to the requested brand', async () => {
@@ -287,13 +290,14 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
     });
     const { sql, params } = query.calls[0];
 
-    expect(params[4]).toBe('beauty/makeup/lip/%');
-    expect(params[5]).toBe('US');
+    expect(params[4]).toBe('beauty/makeup/lip');
+    expect(params[5]).toBe('beauty/makeup/lip/%');
+    expect(params[6]).toBe('US');
     expect(params).toContain('%fenty beauty%');
     expect(params).toContain('%fentybeauty%');
     expect(params).toContain('%fenty%');
-    expect(sql).toMatch(/p\.category_path LIKE \$5/);
-    expect(sql).toMatch(/eps\.market\s*=\s*\$6/);
+    expect(sql).toMatch(/p\.category_path = \$5 OR p\.category_path LIKE \$6/);
+    expect(sql).toMatch(/eps\.market\s*=\s*\$7/);
     expect(sql).toMatch(/AND \(\(\s*lower\(concat_ws\(' ',\s*p\.brand,/);
     expect(sql).toMatch(/FROM external_product_seeds eps_brand/);
     expect(sql).toMatch(/eps_brand\.external_product_id = p\.source_product_id/);

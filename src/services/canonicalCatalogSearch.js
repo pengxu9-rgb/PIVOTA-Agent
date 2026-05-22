@@ -183,7 +183,7 @@ async function fetchCanonicalChainRows(args = {}) {
 
   // Build positional params alongside the SQL fragments. Order:
   //   $1 query_exact, $2 query_like, $3 candidate_limit, $4 row_limit,
-  //   then optional: merchant_id, category_path_prefix.
+  //   then optional: merchant_id, category_path_exact/category_path_prefix.
   const params = [lowered, `%${lowered}%`, candidateLimit, rowLimit];
   let merchantClause = '';
   if (merchantId) {
@@ -192,11 +192,15 @@ async function fetchCanonicalChainRows(args = {}) {
   }
 
   let categoryBind = '';
+  let categoryExactBind = '';
   let categoryScore = '';
   if (categoryPathPrefix) {
-    params.push(`${String(categoryPathPrefix)}%`);
+    const normalizedCategory = String(categoryPathPrefix).trim().replace(/\/+$/, '');
+    params.push(normalizedCategory);
+    categoryExactBind = `$${params.length}`;
+    params.push(`${normalizedCategory}/%`);
     categoryBind = `$${params.length}`;
-    categoryScore = `+ CASE WHEN p.category_path IS NOT NULL AND p.category_path LIKE ${categoryBind} THEN 90 ELSE 0 END`;
+    categoryScore = `+ CASE WHEN p.category_path IS NOT NULL AND (p.category_path = ${categoryExactBind} OR p.category_path LIKE ${categoryBind}) THEN 90 ELSE 0 END`;
   }
 
   // Market-aware recall. When the caller passes the user's market (e.g.
@@ -339,7 +343,7 @@ async function fetchCanonicalChainRows(args = {}) {
         ${verticalWhere}
   `;
   const whereClause = categoryBind
-    ? `(p.category_path IS NOT NULL AND p.category_path LIKE ${categoryBind} AND $2::text IS NOT NULL)`
+    ? `(p.category_path IS NOT NULL AND (p.category_path = ${categoryExactBind} OR p.category_path LIKE ${categoryBind}) AND $2::text IS NOT NULL)`
     : `(${textWhereClause})`;
   const externalSeedUnavailableWhere = `
         AND NOT (
