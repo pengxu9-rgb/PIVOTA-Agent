@@ -15188,10 +15188,9 @@ async function fetchCanonicalChainRecallForFindProductsMulti({ search = {} } = {
   const canonicalLimit = searchQualityContractApplied
     ? Math.max(18, Math.min(48, safeLimit * 4))
     : Math.max(12, Math.min(32, safeLimit * 2));
-  const canonicalCategoryPathPrefix =
-    searchQualityContract?.hard_constraints?.category_path_prefix ||
-    resolveCanonicalCategoryPathPrefixForQuery(queryText) ||
-    null;
+  const canonicalCategoryPathPrefix = searchQualityContractApplied
+    ? (searchQualityContract?.hard_constraints?.category_path_prefix || null)
+    : (resolveCanonicalCategoryPathPrefixForQuery(queryText) || null);
   const canonicalBrandFilter = buildCanonicalBrandFilterForBeautyRecall(
     searchQualityContractApplied ? searchQualityContract : null,
     beautyBrandBrowse.matched ? beautyBrandBrowse : null,
@@ -17810,10 +17809,9 @@ async function searchBeautyExternalSeedProductsMainline({
   const perQueryLimit = searchQualityContractApplied
     ? Math.max(safeLimit * 2, Math.min(48, safeLimit * 4))
     : Math.max(safeLimit, Math.min(24, safeLimit * 2));
-  const canonicalCategoryPathPrefix =
-    searchQualityContract?.hard_constraints?.category_path_prefix ||
-    resolveBeautyCategoryPathPrefixForQuery(queryText) ||
-    null;
+  const canonicalCategoryPathPrefix = searchQualityContractApplied
+    ? (searchQualityContract?.hard_constraints?.category_path_prefix || null)
+    : (resolveBeautyCategoryPathPrefixForQuery(queryText) || null);
   const canonicalBrandFilter = buildCanonicalBrandFilterForBeautyRecall(
     searchQualityContractApplied ? effectiveSearchQualityContract : null,
     beautyIntent.brandBrowse,
