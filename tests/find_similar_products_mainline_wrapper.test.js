@@ -552,6 +552,78 @@ describe('find_similar_products mainline wrapper', () => {
     ]);
   });
 
+  it('scopes bundle PDP similar results to reviewed component refs', () => {
+    const app = require('../src/server');
+
+    const out = app._debug.scopeBundleSimilarToReviewedComponents({
+      baseProduct: {
+        title: 'Barrier Care Kit',
+        product_kind: { family: 'bundle' },
+      },
+      componentCandidates: [
+        {
+          product_id: 'ext_component_1',
+          retrieval_source: 'reviewed_component_ref',
+        },
+      ],
+      products: [
+        {
+          product_id: 'sig_component_1',
+          source_product_id: 'ext_component_1',
+          retrieval_source: 'reviewed_component_ref',
+          title: 'Great Barrier Relief',
+        },
+        {
+          product_id: 'sig_unrelated_gift_set',
+          source_product_id: 'ext_unrelated_gift_set',
+          title: 'Cosmic Kylie Jenner 3-Piece Gift Set',
+          reason: 'L3E:external:external_leaf_category',
+        },
+      ],
+    });
+
+    expect(out).toEqual({
+      products: [
+        expect.objectContaining({
+          product_id: 'sig_component_1',
+          source_product_id: 'ext_component_1',
+        }),
+      ],
+      applied: true,
+      dropped_count: 1,
+    });
+  });
+
+  it('does not component-scope non-bundle PDP similar results', () => {
+    const app = require('../src/server');
+
+    const out = app._debug.scopeBundleSimilarToReviewedComponents({
+      baseProduct: {
+        title: 'Great Barrier Relief',
+        product_type: 'Serum',
+      },
+      componentCandidates: [
+        {
+          product_id: 'ext_component_1',
+          retrieval_source: 'reviewed_component_ref',
+        },
+      ],
+      products: [
+        { product_id: 'sig_component_1', source_product_id: 'ext_component_1' },
+        { product_id: 'sig_same_category', source_product_id: 'ext_same_category' },
+      ],
+    });
+
+    expect(out).toEqual({
+      products: [
+        { product_id: 'sig_component_1', source_product_id: 'ext_component_1' },
+        { product_id: 'sig_same_category', source_product_id: 'ext_same_category' },
+      ],
+      applied: false,
+      dropped_count: 0,
+    });
+  });
+
   it('hydrates reviewed component-ref similar cards from official seed sources', async () => {
     jest.resetModules();
     process.env.DATABASE_URL = 'postgres://test';
