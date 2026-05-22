@@ -97,11 +97,15 @@ describe('external seed product kind classification', () => {
         product_type: 'Eyeliner',
         seed_data: {
           product_kind: 'bundle',
+          category: 'Gift Sets',
           product_type: 'Eyeliner',
+          source_page_type: 'collection',
           category_path: 'beauty/makeup/eye/eyeliner',
           snapshot: {
             product_kind: 'bundle',
+            category: 'Gift Sets',
             product_type: 'Eyeliner',
+            source_page_type: 'collection',
           },
         },
       }),

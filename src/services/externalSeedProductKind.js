@@ -96,6 +96,26 @@ function collectExternalSeedProductKindContentText(input = {}) {
     .join(' ');
 }
 
+function collectExternalSeedProductKindPrimaryContentText(input = {}) {
+  const seedData = asPlainObject(input.seed_data);
+  const snapshot = asPlainObject(seedData.snapshot);
+  return [
+    input.title,
+    input.name,
+    input.display_name,
+    input.canonical_url,
+    input.destination_url,
+    input.url,
+    seedData.title,
+    seedData.name,
+    snapshot.title,
+    snapshot.name,
+  ]
+    .map(asString)
+    .filter(Boolean)
+    .join(' ');
+}
+
 function normalizeExplicitProductFamily(value) {
   const normalized = asString(value).toLowerCase().replace(/[\s-]+/g, '_');
   if (!normalized) return '';
@@ -175,6 +195,7 @@ function hasToolCategoryPath(input = {}) {
 function classifyExternalSeedProductKind(input = {}) {
   const text = collectExternalSeedProductKindText(input);
   const contentText = collectExternalSeedProductKindContentText(input);
+  const primaryContentText = collectExternalSeedProductKindPrimaryContentText(input);
   const reasons = [];
 
   if (NON_MERCH_RE.test(text)) {
@@ -196,6 +217,9 @@ function classifyExternalSeedProductKind(input = {}) {
   const strongBundleContentSignal = STRONG_BUNDLE_RE.test(contentText);
   const collectionBundleContentSignal =
     COLLECTION_BUNDLE_RE.test(contentText) && !COLLECTION_MEMBER_RE.test(contentText);
+  const primaryBundleContentSignal =
+    STRONG_BUNDLE_RE.test(primaryContentText) ||
+    (COLLECTION_BUNDLE_RE.test(primaryContentText) && !COLLECTION_MEMBER_RE.test(primaryContentText));
   const formulaCategoryPathSignal = hasFormulaCategoryPath(input);
   if (
     explicitFamily?.family === 'single_formula' &&
@@ -213,8 +237,9 @@ function classifyExternalSeedProductKind(input = {}) {
     explicitFamily?.family === 'set_or_collection' &&
     formulaCategoryPathSignal &&
     FORMULA_PRODUCT_RE.test(text) &&
-    !strongBundleContentSignal &&
-    !collectionBundleContentSignal
+    !primaryBundleContentSignal &&
+    (!strongBundleContentSignal || FORMULA_PRODUCT_RE.test(primaryContentText)) &&
+    (!collectionBundleContentSignal || FORMULA_PRODUCT_RE.test(primaryContentText))
   ) {
     reasons.push('stale_bundle_kind_overridden_by_formula_category');
     return { family: 'single_formula', reasons };
