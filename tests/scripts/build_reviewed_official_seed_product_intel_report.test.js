@@ -186,6 +186,150 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     expect(facialBundle.shopping_card.highlight).toBe('Facial treatment detail');
   });
 
+  test('classifies Kylie lip, cleanser, palette, mist, and set formats without generic fallback', () => {
+    expect(inferKind('Foaming Face Wash', '', '', 'Foaming face wash with glycerin.')).toBe('cleanser');
+    expect(inferKind('Supple Kiss Lip Glaze', '', '', 'Glazing lip color with emollient shine.')).toBe('lip');
+    expect(inferKind('Tinted Butter Balm', '', '', 'Tinted balm stick with a buttery glide.')).toBe('lip');
+    expect(inferKind('The Classic Matte Palette', '', '', 'Pressed matte powder shades.')).toBe('eye_makeup');
+    expect(inferKind('Sweet Eclair Hair & Body Mist', '', '', 'Hair and body mist with sweet scent notes.')).toBe(
+      'body_mist',
+    );
+    expect(inferKind('Lip Oil Desserts PR Box', '', '', 'Lip oil collection.')).toBe('lip_set');
+    expect(inferKind('Mini High Gloss Duo', '', '', 'Two gloss products.')).toBe('lip_set');
+    expect(inferKind('Cosmic Kylie Jenner 3-Piece Gift Set', '', '', 'Eau de parfum gift set.')).toBe(
+      'fragrance_set',
+    );
+    expect(inferKind('Cosmic Kylie Jenner 50ml & Body Lotion Gift Set', '', '', 'Eau de parfum and body lotion.')).toBe(
+      'fragrance_set',
+    );
+    expect(inferKind("Kylie’s Maison Margiela Show Look", '', '', 'Makeup look with lip and complexion items.')).toBe(
+      'makeup_set',
+    );
+  });
+
+  test('uses compact Kylie highlights that avoid beauty-product and source-backed fallbacks', () => {
+    const lipBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_lip_glaze',
+        title: 'Supple Kiss Lip Glaze',
+        canonical_url: 'https://kyliecosmetics.com/products/supple-kiss-lip-glaze',
+        seed_data: {
+          description: 'A glossy lip glaze with emollient shine.',
+          key_ingredients: ['Jojoba Oil'],
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_lip_glaze',
+        sellable_item_group_id: 'sig_lip_glaze',
+      },
+      generatedAt: '2026-05-22T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+    const mistBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_mist',
+        title: 'Sweet Eclair Hair & Body Mist',
+        canonical_url: 'https://kyliecosmetics.com/products/sweet-eclair-hair-body-mist',
+        seed_data: {
+          description: 'A hair and body mist with sweet scent notes.',
+          key_ingredients: ['Fragrance'],
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_mist',
+        sellable_item_group_id: 'sig_mist',
+      },
+      generatedAt: '2026-05-22T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+    const setBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_set',
+        title: 'Lip Oil Desserts PR Box',
+        canonical_url: 'https://kyliecosmetics.com/products/lip-oil-desserts-pr-box',
+        seed_data: {
+          description: 'A lip oil collection in a PR box format.',
+          key_ingredients: ['Coconut Oil'],
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_set',
+        sellable_item_group_id: 'sig_set',
+      },
+      generatedAt: '2026-05-22T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+    const fragranceSetBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_fragrance_set',
+        title: 'Cosmic Kylie Jenner 50ml & Body Lotion Gift Set',
+        canonical_url: 'https://kyliecosmetics.com/products/cosmic-kylie-gift-set',
+        seed_data: {
+          description: 'An eau de parfum and body lotion gift set.',
+          key_ingredients: ['Amber Accord'],
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_fragrance_set',
+        sellable_item_group_id: 'sig_fragrance_set',
+      },
+      generatedAt: '2026-05-22T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+    const moisturizerBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_moisturizer',
+        title: 'Face Moisturizer',
+        canonical_url: 'https://kyliecosmetics.com/products/face-moisturizer',
+        seed_data: {
+          description: 'A moisturizer with ingredients that support gentle exfoliation.',
+          key_ingredients: ['Glycerin'],
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_moisturizer',
+        sellable_item_group_id: 'sig_moisturizer',
+      },
+      generatedAt: '2026-05-22T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+    const lipButterBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_lip_butter',
+        title: 'Lip Butter',
+        canonical_url: 'https://kyliecosmetics.com/products/lip-butter',
+        seed_data: {
+          description: 'A lip butter inspired by our best-selling lip liner format.',
+          key_ingredients: ['Shea Butter'],
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_lip_butter',
+        sellable_item_group_id: 'sig_lip_butter',
+      },
+      generatedAt: '2026-05-22T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+
+    expect(lipBundle.shopping_card.subtitle).toBe('Lip Product');
+    expect(lipBundle.shopping_card.highlight).toBe('Shine lip formula detail');
+    expect(mistBundle.shopping_card.subtitle).toBe('Body Mist');
+    expect(mistBundle.shopping_card.highlight).toBe('Hair-and-body mist detail');
+    expect(setBundle.shopping_card.subtitle).toBe('Lip Set');
+    expect(setBundle.shopping_card.highlight).toBe('Lip-care routine set');
+    expect(fragranceSetBundle.shopping_card.subtitle).toBe('Fragrance Set');
+    expect(fragranceSetBundle.shopping_card.highlight).toBe('Fragrance gift set');
+    expect(moisturizerBundle.shopping_card.highlight).toBe('Moisturizer formula detail');
+    expect(lipButterBundle.shopping_card.highlight).toBe('Creamy lip formula detail');
+    expect(lipButterBundle.shopping_card.intro).not.toMatch(/best-selling/i);
+  });
+
   test('does not fall back to a Tom Ford brand when seed brand metadata is missing', () => {
     const bundle = buildBundle({
       seed: {
