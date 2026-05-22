@@ -3,6 +3,7 @@ const {
   classifyImageFetchResult,
   collectExternalSeedImageCandidates,
   isSafeOriginalImageUrl,
+  selectImageCandidatesForFetch,
   shouldCacheOriginalImageUrl,
 } = require('../../src/services/externalSeedImageCache');
 
@@ -51,6 +52,24 @@ describe('externalSeedImageCache', () => {
         bytes: 4096,
       }),
     ).toEqual(expect.objectContaining({ ok: true, status: 'direct_fetch_ok' }));
+  });
+
+  test('rejects low-resolution thumbnails from visible image health', () => {
+    expect(
+      classifyImageFetchResult({
+        url: 'https://example.com/thumb.jpg',
+        fetch_method: 'direct',
+        http_status: 200,
+        content_type: 'image/jpeg',
+        bytes: 5000,
+        width: 150,
+        height: 150,
+      }),
+    ).toEqual(expect.objectContaining({
+      ok: false,
+      status: 'too_small_or_placeholder',
+      reason_codes: ['too_small_or_placeholder'],
+    }));
   });
 
   test('keeps safe original images and caches high-risk merchant images before surfacing', () => {
@@ -140,6 +159,99 @@ describe('externalSeedImageCache', () => {
     expect(plan.visible_image_urls).toEqual([]);
     expect(plan.next_seed_data.snapshot.image_urls).toEqual([]);
     expect(plan.quarantine_assets[0].reason_codes).toContain('cache_required_missing_cached_url');
+  });
+
+  test('dedupes visible gallery by content hash and caps extra surfaceable images', () => {
+    const urls = [
+      'https://cdn.shopify.com/s/files/1/test-1.jpg',
+      'https://cdn.shopify.com/s/files/1/test-1-copy.jpg',
+      'https://cdn.shopify.com/s/files/1/test-2.jpg',
+      'https://cdn.shopify.com/s/files/1/test-3.jpg',
+    ];
+    const plan = buildImageAssetBackfillPlanForRow(
+      {
+        id: 'seed_1',
+        external_product_id: 'ext_1',
+        image_url: urls[0],
+        seed_data: {
+          snapshot: {
+            image_urls: urls,
+          },
+        },
+      },
+      {
+        [urls[0]]: { ok: true, status: 'direct_fetch_ok', content_type: 'image/jpeg', bytes: 1000, sha256: 'same', width: 1200, height: 1200 },
+        [urls[1]]: { ok: true, status: 'direct_fetch_ok', content_type: 'image/jpeg', bytes: 1000, sha256: 'same', width: 1200, height: 1200 },
+        [urls[2]]: { ok: true, status: 'direct_fetch_ok', content_type: 'image/jpeg', bytes: 1000, sha256: 'second', width: 1200, height: 1200 },
+        [urls[3]]: { ok: true, status: 'direct_fetch_ok', content_type: 'image/jpeg', bytes: 1000, sha256: 'third', width: 1200, height: 1200 },
+      },
+      { maxVisibleImages: 2 },
+    );
+
+    expect(plan.visible_image_urls).toHaveLength(2);
+    expect(plan.visible_image_urls).toContain(urls[0]);
+    expect(plan.quarantine_assets.map((item) => item.reason_codes)).toEqual(
+      expect.arrayContaining([
+        expect.arrayContaining(['duplicate_image_asset']),
+        expect.arrayContaining(['visible_gallery_cap_exceeded']),
+      ]),
+    );
+  });
+
+  test('keeps swatch-only images out of visible gallery', () => {
+    const swatch = 'https://cdn.shopify.com/s/files/1/swatch.jpg';
+    const product = 'https://cdn.shopify.com/s/files/1/product.jpg';
+    const plan = buildImageAssetBackfillPlanForRow(
+      {
+        id: 'seed_1',
+        external_product_id: 'ext_1',
+        seed_data: {
+          snapshot: {
+            image_urls: [product],
+            variants: [{ swatch_image_url: swatch }],
+          },
+        },
+      },
+      {
+        [product]: { ok: true, status: 'direct_fetch_ok', content_type: 'image/jpeg', bytes: 1000, sha256: 'product', width: 1200, height: 1200 },
+        [swatch]: { ok: true, status: 'direct_fetch_ok', content_type: 'image/jpeg', bytes: 1000, sha256: 'swatch', width: 80, height: 80 },
+      },
+    );
+
+    expect(plan.visible_image_urls).toEqual([product]);
+    expect(plan.quarantine_assets).toEqual([
+      expect.objectContaining({
+        original_url: swatch,
+        reason_codes: expect.arrayContaining(['variant_swatch_not_gallery_image']),
+      }),
+    ]);
+  });
+
+  test('prefilters fetch candidates to high-quality gallery/product images', () => {
+    const selected = selectImageCandidatesForFetch(
+      {
+        image_url: 'https://example.com/root_3000x3000.jpg',
+        seed_data: {
+          snapshot: {
+            image_urls: [
+              'https://example.com/small.jpg?sw=150&sh=150',
+              'https://example.com/large.jpg?sw=655&sh=655',
+            ],
+            variants: [
+              { swatch_image_url: 'https://example.com/swatch.jpg' },
+              { image_url: 'https://example.com/variant_hi-res.jpg' },
+            ],
+          },
+        },
+      },
+      { maxFetchCandidates: 3 },
+    );
+
+    expect(selected.map((item) => item.url)).toEqual([
+      'https://example.com/root_3000x3000.jpg',
+      'https://example.com/large.jpg?sw=655&sh=655',
+      'https://example.com/variant_hi-res.jpg',
+    ]);
   });
 
   test('collects image candidates from root, snapshot, variants, and media shapes', () => {

@@ -6,6 +6,7 @@ const { sha256Buffer } = require('./catalogImageCacheStorage');
 
 const IMAGE_ASSET_CACHE_CONTRACT_VERSION = 'external_seed.image_asset_cache.v1';
 const DEFAULT_MAX_BYTES = 12 * 1024 * 1024;
+const DEFAULT_MAX_VISIBLE_IMAGE_URLS = 12;
 
 const SAFE_ORIGINAL_IMAGE_HOSTS = [
   'cdn.shopify.com',
@@ -210,6 +211,17 @@ function classifyImageFetchResult(result) {
   }
   const bytes = Number(result?.bytes || 0);
   if (bytes > 0 && bytes < 768) {
+    return {
+      ...result,
+      url,
+      ok: false,
+      status: 'too_small_or_placeholder',
+      reason_codes: ['too_small_or_placeholder'],
+    };
+  }
+  const width = Number(result?.width || 0);
+  const height = Number(result?.height || 0);
+  if ((width > 0 || height > 0) && (width < 300 || height < 300)) {
     return {
       ...result,
       url,
@@ -471,13 +483,84 @@ function summarizeAssetCheckForContract(candidate, check) {
   };
 }
 
+function candidateFieldPathPriority(candidate) {
+  const paths = Array.isArray(candidate?.field_paths) ? candidate.field_paths : [];
+  const joined = paths.join(' ').toLowerCase();
+  if (paths.some((path) => path === 'row.image_url')) return 1000;
+  if (paths.some((path) => path === 'seed_data.image_url' || path === 'snapshot.image_url')) return 950;
+  if (joined.includes('image_urls') || joined.includes('images')) return 800;
+  if (joined.includes('gallery') || joined.includes('media')) return 700;
+  if (joined.includes('line_preview_images')) return 650;
+  if (joined.includes('variants') && joined.includes('image_url')) return 500;
+  if (joined.includes('thumbnail')) return 250;
+  return 100;
+}
+
+function isSwatchOrLabelOnlyCandidate(candidate) {
+  const paths = Array.isArray(candidate?.field_paths) ? candidate.field_paths : [];
+  if (!paths.length) return false;
+  return paths.every((path) => {
+    const normalized = String(path || '').toLowerCase();
+    return (
+      normalized.includes('swatch_image') ||
+      normalized.includes('label_image') ||
+      normalized.includes('thumbnail')
+    );
+  });
+}
+
+function imageQualityPriority(check) {
+  const width = Number(check?.width || 0);
+  const height = Number(check?.height || 0);
+  const bytes = Number(check?.bytes || 0);
+  const area = width > 0 && height > 0 ? width * height : 0;
+  return Math.min(120, Math.floor(area / 50000)) + Math.min(40, Math.floor(bytes / 50000));
+}
+
+function urlShapePriority(value) {
+  const url = normalizeUrlLike(value).toLowerCase();
+  if (!url) return 0;
+  let score = 0;
+  if (url.includes('hi-res') || url.includes('3000x3000') || url.includes('2000x2000')) score += 120;
+  if (/[?&](sw|sh|w|width|height)=([6-9]\d{2}|[1-9]\d{3,})/.test(url)) score += 80;
+  if (url.includes('/small/') || url.includes('thumbnail') || url.includes('sw=150') || url.includes('sh=150')) score -= 500;
+  return score;
+}
+
+function visibleImageSortScore(item) {
+  return candidateFieldPathPriority(item.candidate) + imageQualityPriority(item.check);
+}
+
+function selectImageCandidatesForFetch(row, options = {}) {
+  const maxCandidates = Math.max(
+    1,
+    Number(
+      options.maxFetchCandidates
+        || process.env.CATALOG_IMAGE_CACHE_MAX_FETCH_CANDIDATES
+        || Math.max(DEFAULT_MAX_VISIBLE_IMAGE_URLS * 2, 24),
+    ) || Math.max(DEFAULT_MAX_VISIBLE_IMAGE_URLS * 2, 24),
+  );
+  return collectExternalSeedImageCandidates(row)
+    .filter((candidate) => !isSwatchOrLabelOnlyCandidate(candidate))
+    .sort((a, b) => {
+      const scoreA = candidateFieldPathPriority(a) + urlShapePriority(a.url);
+      const scoreB = candidateFieldPathPriority(b) + urlShapePriority(b.url);
+      return scoreB - scoreA;
+    })
+    .slice(0, maxCandidates);
+}
+
 function buildImageAssetBackfillPlanForRow(row, checksByUrl, options = {}) {
   const seedData = ensureJsonObject(row?.seed_data);
   const snapshot = ensureJsonObject(seedData.snapshot);
   const quarantine = ensureJsonObject(seedData.snapshot_quarantine);
   const candidates = collectExternalSeedImageCandidates(row);
-  const visible = [];
-  const assets = [];
+  const maxVisibleImages = Math.max(
+    1,
+    Number(options.maxVisibleImages || process.env.CATALOG_IMAGE_CACHE_MAX_VISIBLE_IMAGES || DEFAULT_MAX_VISIBLE_IMAGE_URLS)
+      || DEFAULT_MAX_VISIBLE_IMAGE_URLS,
+  );
+  const surfaceable = [];
   const quarantineAssets = [];
 
   for (const candidate of candidates) {
@@ -488,13 +571,26 @@ function buildImageAssetBackfillPlanForRow(row, checksByUrl, options = {}) {
     const assetSummary = summarizeAssetCheckForContract(candidate, check);
 
     if (cachedUrl) {
-      visible.push(cachedUrl);
-      assets.push({ ...assetSummary, cached_url: cachedUrl, visible_url: cachedUrl });
+      if (isSwatchOrLabelOnlyCandidate(candidate)) {
+        quarantineAssets.push({
+          ...assetSummary,
+          cached_url: cachedUrl,
+          reason_codes: Array.from(new Set([...assetSummary.reason_codes, 'variant_swatch_not_gallery_image'])),
+        });
+      } else {
+        surfaceable.push({ candidate, check, asset: { ...assetSummary, cached_url: cachedUrl }, visible_url: cachedUrl });
+      }
       continue;
     }
     if (canUseOriginal) {
-      visible.push(candidate.url);
-      assets.push({ ...assetSummary, visible_url: candidate.url });
+      if (isSwatchOrLabelOnlyCandidate(candidate)) {
+        quarantineAssets.push({
+          ...assetSummary,
+          reason_codes: Array.from(new Set([...assetSummary.reason_codes, 'variant_swatch_not_gallery_image'])),
+        });
+      } else {
+        surfaceable.push({ candidate, check, asset: assetSummary, visible_url: candidate.url });
+      }
       continue;
     }
 
@@ -507,6 +603,37 @@ function buildImageAssetBackfillPlanForRow(row, checksByUrl, options = {}) {
         ? Array.from(new Set([...reasonCodes, 'cache_required_missing_cached_url']))
         : reasonCodes,
     });
+  }
+
+  surfaceable.sort((a, b) => visibleImageSortScore(b) - visibleImageSortScore(a));
+  const assets = [];
+  const visible = [];
+  const seenVisibleUrls = new Set();
+  const seenContentKeys = new Set();
+  for (const item of surfaceable) {
+    const visibleUrl = normalizeUrlLike(item.visible_url);
+    if (!visibleUrl) continue;
+    const contentKey = item.check?.sha256 ? `sha256:${String(item.check.sha256).toLowerCase()}` : `url:${visibleUrl}`;
+    if (seenVisibleUrls.has(visibleUrl) || seenContentKeys.has(contentKey)) {
+      quarantineAssets.push({
+        ...item.asset,
+        visible_url: visibleUrl,
+        reason_codes: Array.from(new Set([...(item.asset.reason_codes || []), 'duplicate_image_asset'])),
+      });
+      continue;
+    }
+    if (visible.length >= maxVisibleImages) {
+      quarantineAssets.push({
+        ...item.asset,
+        visible_url: visibleUrl,
+        reason_codes: Array.from(new Set([...(item.asset.reason_codes || []), 'visible_gallery_cap_exceeded'])),
+      });
+      continue;
+    }
+    seenVisibleUrls.add(visibleUrl);
+    seenContentKeys.add(contentKey);
+    visible.push(visibleUrl);
+    assets.push({ ...item.asset, visible_url: visibleUrl });
   }
 
   const visibleImageUrls = uniqueStrings(visible);
@@ -577,6 +704,7 @@ module.exports = {
   fetchImageForCache,
   isSafeOriginalImageUrl,
   recoverImageUrlsFromCanonicalPage,
+  selectImageCandidatesForFetch,
   shouldCacheOriginalImageUrl,
   sourceHostFromUrl,
 };
