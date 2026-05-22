@@ -9,6 +9,7 @@ const {
   collectExternalSeedImageCandidates,
   fetchImageForCache,
   recoverImageUrlsFromCanonicalPage,
+  selectImageCandidatesForFetch,
   shouldCacheOriginalImageUrl,
   sourceHostFromUrl,
 } = require('../src/services/externalSeedImageCache');
@@ -68,6 +69,8 @@ function parseArgs(argv = process.argv) {
     offset: Math.max(0, Number(offsetArg || 0) || 0),
     fetchMode,
     forceCache: hasFlag('force-cache', argv),
+    maxVisibleImages: Math.max(1, Number(argValue('max-visible-images', argv) || process.env.CATALOG_IMAGE_CACHE_MAX_VISIBLE_IMAGES || 12) || 12),
+    maxFetchCandidates: Math.max(1, Number(argValue('max-fetch-candidates', argv) || process.env.CATALOG_IMAGE_CACHE_MAX_FETCH_CANDIDATES || 24) || 24),
     out: argValue('out', argv) || '',
     timeoutMs: Math.max(1000, Number(argValue('timeout-ms', argv) || process.env.CATALOG_IMAGE_CACHE_FETCH_TIMEOUT_MS || 8000) || 8000),
   };
@@ -254,7 +257,7 @@ async function fetchAndMaybeCacheCandidate(candidateUrl, row, args) {
 
 
 async function buildChecksForRow(row, args) {
-  const candidates = collectExternalSeedImageCandidates(row);
+  const candidates = selectImageCandidatesForFetch(row, { maxFetchCandidates: args.maxFetchCandidates });
   const checksByUrl = {};
   for (const candidate of candidates) {
     checksByUrl[candidate.url] = await fetchAndMaybeCacheCandidate(candidate.url, row, args);
@@ -333,7 +336,10 @@ async function run(args = parseArgs()) {
   const plans = [];
   for (const row of rows) {
     const checksByUrl = await buildChecksForRow(row, args);
-    const plan = buildImageAssetBackfillPlanForRow(row, checksByUrl, { forceCache: args.forceCache });
+    const plan = buildImageAssetBackfillPlanForRow(row, checksByUrl, {
+      forceCache: args.forceCache,
+      maxVisibleImages: args.maxVisibleImages,
+    });
     if (args.apply) {
       await applyPlan(row, plan, checksByUrl);
     }
@@ -363,6 +369,8 @@ async function run(args = parseArgs()) {
       limit: args.limit,
       offset: args.offset,
       fetch_mode: args.fetchMode,
+      max_visible_images: args.maxVisibleImages,
+      max_fetch_candidates: args.maxFetchCandidates,
     },
     summary: summarize(plans),
     plans,
