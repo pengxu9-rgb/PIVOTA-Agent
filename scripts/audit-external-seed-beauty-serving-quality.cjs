@@ -165,16 +165,25 @@ async function probeMerchantUrl(url, { timeoutMs = 8000 } = {}) {
   const target = asString(url);
   if (!target) return { checked: false, ok: false, reason: 'missing_url' };
   try {
-    const response = await axios.head(target, {
+    let method = 'HEAD';
+    let response = await axios.head(target, {
       timeout: timeoutMs,
       maxRedirects: 5,
       validateStatus: () => true,
     });
+    if ([403, 405].includes(Number(response.status))) {
+      method = 'GET';
+      response = await axios.get(target, {
+        timeout: timeoutMs,
+        maxRedirects: 5,
+        validateStatus: () => true,
+      });
+    }
     return {
       checked: true,
       ok: response.status >= 200 && response.status < 400,
       status: response.status,
-      method: 'HEAD',
+      method,
     };
   } catch (error) {
     try {
@@ -240,6 +249,13 @@ function classifyBeautyServingQualityRow({
     classification = CLASSIFICATIONS.NON_MERCHANDISE;
   } else if (pdpReasons.some((reason) => /cache|stale|mismatch/.test(String(reason)))) {
     classification = CLASSIFICATIONS.CACHE_ISSUE;
+  } else if (
+    pdpReasons.includes('extractor_failure') &&
+    failureReasons.some((reason) =>
+      /missing_image|missing_price|invalid_zero_or_negative_price|generic_external_category|content_/.test(reason),
+    )
+  ) {
+    classification = CLASSIFICATIONS.REVIEW_REQUIRED;
   } else if (pdpReasons.some((reason) => /shape|module|schema|missing_product_intel|pdp/.test(String(reason)))) {
     classification = CLASSIFICATIONS.PDP_SHAPING_ISSUE;
   } else if (

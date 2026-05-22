@@ -10,9 +10,16 @@ jest.mock('axios', () => ({
 const {
   CLASSIFICATIONS,
   classifyBeautyServingQualityRow,
+  probeMerchantUrl,
 } = require('../../scripts/audit-external-seed-beauty-serving-quality.cjs');
+const axios = require('axios');
 
 describe('audit-external-seed-beauty-serving-quality', () => {
+  beforeEach(() => {
+    axios.head.mockReset();
+    axios.get.mockReset();
+  });
+
   test('classifies source-unavailable markers as terminal source unavailable', () => {
     const result = classifyBeautyServingQualityRow({
       row: {
@@ -86,5 +93,39 @@ describe('audit-external-seed-beauty-serving-quality', () => {
 
     expect(result.classification).toBe(CLASSIFICATIONS.PASS);
     expect(result.failure_reasons).toEqual([]);
+  });
+
+  test('falls back to GET when merchant HEAD probe is blocked', async () => {
+    axios.head.mockResolvedValue({ status: 403 });
+    axios.get.mockResolvedValue({ status: 200 });
+
+    const result = await probeMerchantUrl('https://www.charlottetilbury.com/us/product/example');
+
+    expect(result).toEqual({
+      checked: true,
+      ok: true,
+      status: 200,
+      method: 'GET',
+    });
+    expect(axios.get).toHaveBeenCalledTimes(1);
+  });
+
+  test('classifies extractor-failed incomplete rows as review required, not backfill-ready', () => {
+    const result = classifyBeautyServingQualityRow({
+      row: {
+        id: 'eps_5',
+        external_product_id: 'ext_5',
+        title: 'Charlotte Tilbury Mascara',
+        price_amount: 0,
+        seed_data: { snapshot: {} },
+      },
+      pdpQuality: {
+        failure_reasons: ['extractor_failure', 'product_intel_module_empty_or_blocked'],
+      },
+      merchantUrlHealth: { checked: true, ok: true, status: 200 },
+    });
+
+    expect(result.classification).toBe(CLASSIFICATIONS.REVIEW_REQUIRED);
+    expect(result.auto_fixable).toBe(false);
   });
 });

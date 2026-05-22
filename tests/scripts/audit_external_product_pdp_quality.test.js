@@ -3,6 +3,7 @@ jest.mock('../../src/db', () => ({
   closePool: jest.fn(),
 }));
 jest.mock('axios', () => ({
+  post: jest.fn(),
   head: jest.fn(),
   get: jest.fn(),
 }));
@@ -27,6 +28,7 @@ const {
   resolveExpectedLivePdpPrice,
   probeImageHealth,
   writeOutput,
+  invokeGateway,
 } = require('../../scripts/audit-external-product-pdp-quality');
 const {
   buildIdentityGate,
@@ -41,6 +43,7 @@ describe('audit-external-product-pdp-quality helpers', () => {
   beforeEach(() => {
     query.mockReset();
     query.mockResolvedValue({ rows: [] });
+    axios.post.mockReset();
     axios.head.mockReset();
     axios.get.mockReset();
   });
@@ -185,6 +188,32 @@ describe('audit-external-product-pdp-quality helpers', () => {
         details: {
           operation: 'find_similar_products',
           probe: 'similar_slow',
+        },
+      },
+    });
+  });
+
+  test('wraps non-JSON gateway responses as probe failures', async () => {
+    axios.post.mockResolvedValue({
+      status: 404,
+      headers: { 'content-type': 'text/html; charset=utf-8' },
+      data: '<!DOCTYPE html><html><body>Not found</body></html>',
+    });
+
+    const response = await invokeGateway(
+      'https://agent.pivota.cc/agent/shop/v1/invoke',
+      'get_pdp_v2',
+      { product_id: 'ext_123' },
+    );
+
+    expect(response).toMatchObject({
+      status: 'error',
+      error: {
+        code: 'PROBE_HTTP_404',
+        details: {
+          operation: 'get_pdp_v2',
+          http_status: 404,
+          content_type: 'text/html; charset=utf-8',
         },
       },
     });
