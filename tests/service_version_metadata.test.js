@@ -86,4 +86,54 @@ describe('service version metadata', () => {
     expect(metadata.branch).toBe('release');
     expect(metadata.build_id).toBe('abcdef123456');
   });
+
+  test('backfills service version on pivot beauty contract responses', () => {
+    const app = require('../src/server');
+
+    const response = app._debug.applyPivotBeautyContractToInvokeSearchResponse({
+      operation: 'find_products_multi',
+      req: {
+        body: {
+          operation: 'find_products_multi',
+          payload: {
+            search: {
+              query: 'vitamin c serum under €30',
+            },
+          },
+          metadata: {
+            source: 'search',
+          },
+        },
+      },
+      body: {
+        status: 'success',
+        success: true,
+        products: [{ title: 'Vitamin-C Tonic Original Size' }],
+        total: 1,
+        page_size: 1,
+        metadata: {
+          query_source: 'agent_products_beauty_external_seed_mainline',
+          service_version: {},
+          route_health: {
+            primary_path_used: 'beauty_external_seed_mainline',
+          },
+          search_decision: {
+            final_decision: 'products_returned',
+          },
+        },
+      },
+      gatewayRequestId: 'req_test',
+    });
+
+    expect(response.metadata.service_version).toEqual(
+      expect.objectContaining({
+        service: 'pivota-agent-gateway-test',
+        commit: 'abcdef123456',
+        build_id: 'abcdef123456',
+        branch: 'main',
+        deployment_id: 'dep_test',
+      }),
+    );
+    expect(response.metadata.search_decision.decision_locked).toBe(true);
+  });
 });

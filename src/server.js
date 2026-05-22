@@ -11328,6 +11328,7 @@ function applyPivotBeautyContractToInvokeSearchResponse({
     },
     metadata: {
       ...existingMeta,
+      service_version: completeServiceVersionMetadata(existingMeta.service_version),
       pivot_contract_version: PIVOT_BEAUTY_CONTRACT_VERSION,
       route_authority: routeAuthority,
       status: contractStatus,
@@ -42167,6 +42168,7 @@ module.exports._debug = {
   resolvePdpSimilarWithBudget,
   mergeRecommendationModuleWithEnvelope,
   sanitizePdpSimilarResponseModules,
+  applyPivotBeautyContractToInvokeSearchResponse,
   mergeInvokeGatewayAuditMetadata,
   normalizeGovernanceShadowBlockContract,
   uiChatBuildLoopBreakRetryArgs,
