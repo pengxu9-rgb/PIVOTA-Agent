@@ -1217,6 +1217,59 @@ describe('external seed product detail hydration', () => {
     ).toBe(false);
   });
 
+  test('merges rich selected external seed alias PDP content without replacing canonical identity', () => {
+    const { debug } = loadServerWithDb();
+    const canonicalProduct = {
+      merchant_id: 'external_seed',
+      product_id: 'ext_bb310b68bf948987b9f658c2',
+      id: 'ext_bb310b68bf948987b9f658c2',
+      title: 'Find Comfort Body & Hair Fragrance Mist',
+      selected_commerce_ref: {
+        merchant_id: 'external_seed',
+        product_id: 'ulta:57b8f92ce86ee6b0',
+      },
+      canonical_content_ref: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_bb310b68bf948987b9f658c2',
+      },
+      pdp_field_quality_summary: {
+        details_sections: {
+          source_origin: 'unknown',
+          source_quality_status: 'low',
+        },
+      },
+    };
+    const selectedAliasProduct = {
+      merchant_id: 'external_seed',
+      product_id: 'ulta:57b8f92ce86ee6b0',
+      title: 'Find Comfort Body & Hair Fragrance Mist',
+      pdp_how_to_use_raw: 'Spritz onto body or hair any time you want a fresh scent.',
+      pdp_details_sections: [
+        {
+          heading: 'Benefits',
+          body: 'Lightweight and non-sticky with a warm, comforting scent.',
+        },
+      ],
+      seed_data: {
+        pdp_details_sections: [
+          {
+            heading: 'Benefits',
+            body: 'Lightweight and non-sticky with a warm, comforting scent.',
+          },
+        ],
+      },
+    };
+
+    const merged = debug.mergeExternalSeedAliasPdpContent(canonicalProduct, selectedAliasProduct);
+
+    expect(merged.product_id).toBe('ext_bb310b68bf948987b9f658c2');
+    expect(merged.id).toBe('ext_bb310b68bf948987b9f658c2');
+    expect(merged.selected_commerce_ref).toEqual(canonicalProduct.selected_commerce_ref);
+    expect(merged.canonical_content_ref).toEqual(canonicalProduct.canonical_content_ref);
+    expect(merged.pdp_how_to_use_raw).toBe('Spritz onto body or hair any time you want a fresh scent.');
+    expect(merged.pdp_details_sections).toEqual(selectedAliasProduct.pdp_details_sections);
+  });
+
   test('promotes reviewed external seed snapshot variants when synthetic product has none', () => {
     const { debug } = loadServerWithDb();
     const richProduct = {

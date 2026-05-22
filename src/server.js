@@ -5117,6 +5117,42 @@ function mergeIdentitySyntheticWithRichExternalSeedProduct(syntheticProduct, ric
   };
 }
 
+function mergeExternalSeedAliasPdpContent(product, aliasProduct) {
+  if (!isPlainObject(product) || !hasExternalSeedRichPdpContent(aliasProduct)) return product;
+  const identityFields = {};
+  for (const key of [
+    'merchant_id',
+    'product_id',
+    'id',
+    'platform',
+    'platform_product_id',
+    'source_product_id',
+    'product_key',
+    'product_ref',
+    'canonical_product_ref',
+    'canonical_content_ref',
+    'selected_commerce_ref',
+    'pdp_content_source',
+    'product_line_id',
+    'sellable_item_group_id',
+    'product_group_id',
+    'review_family_id',
+    'identity_confidence',
+    'match_basis',
+    'canonical_scope',
+    'content_review_state',
+    'pivota_signature_id',
+    'signature_id',
+    'pivota_canonical_url',
+  ]) {
+    if (product[key] != null) identityFields[key] = product[key];
+  }
+  return {
+    ...mergeIdentitySyntheticWithRichExternalSeedProduct(product, aliasProduct),
+    ...identityFields,
+  };
+}
+
 async function fetchExternalSeedRouteStatusFromDb(args) {
   if (!process.env.DATABASE_URL) return null;
   const productId = String(args?.productId || '').trim();
@@ -33511,6 +33547,20 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	              canonicalProduct,
 	            )
 	          : identityGraphLive.synthetic_product;
+          const requestedExternalSeedAliasDiffersFromCanonical =
+            entryProductIsExternalSeed &&
+            String(entryProductId || productId || '').trim() &&
+            String(canonicalProductRef?.product_id || '').trim() &&
+            String(entryProductId || productId || '').trim() !== String(canonicalProductRef?.product_id || '').trim();
+          if (
+            requestedExternalSeedAliasDiffersFromCanonical &&
+            hasExternalSeedRichPdpContent(precheckedMerchantProduct)
+          ) {
+            canonicalProductForPdp = mergeExternalSeedAliasPdpContent(
+              canonicalProductForPdp,
+              precheckedMerchantProduct,
+            );
+          }
 	        if (identityGraphLive.canonical_product_ref) {
 	          canonicalProductRef = {
               ...canonicalProductRef,
@@ -41955,6 +42005,7 @@ module.exports._debug = {
   hasExternalSeedRichPdpContent,
   shouldHydratePdpIdentityLineMemberPayloads,
   mergeIdentitySyntheticWithRichExternalSeedProduct,
+  mergeExternalSeedAliasPdpContent,
   stripResponseOwnedPdpModulesFromCanonicalPayload,
   resolveOfferSellerDisplayName,
   applyFindProductsMultiSourceContract,
