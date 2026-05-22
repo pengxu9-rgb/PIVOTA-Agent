@@ -4348,20 +4348,38 @@ async function fetchExternalSeedProductDetailFromDb(args) {
 
 async function fetchExternalSeedSimilarCardSourcesFromDb(productIds = []) {
   if (!process.env.DATABASE_URL) return new Map();
-  const ids = Array.from(
+  const requestedIds = Array.from(
     new Set(
       (Array.isArray(productIds) ? productIds : [])
         .map((value) => String(value || '').trim())
-        .filter((value) => isExternalSeedProductId(value)),
+        .filter((value) => isExternalSeedProductId(value) || isPivotaSignatureProductId(value)),
     ),
   ).slice(0, 24);
-  if (!ids.length) return new Map();
+  const directExternalProductIds = requestedIds.filter((id) => !isPivotaSignatureProductId(id));
+  const signatureProductIds = requestedIds.filter((id) => isPivotaSignatureProductId(id));
+  if (!directExternalProductIds.length && !signatureProductIds.length) return new Map();
 
   try {
     const res = await query(
       `
+        WITH requested_signature_products AS (
+          SELECT unnest($2::text[]) AS pivota_signature_id
+        ),
+        signature_external_sources AS (
+          SELECT DISTINCT ON (cp.pivota_signature_id)
+            cp.pivota_signature_id,
+            cp.source_product_id AS external_product_id
+          FROM catalog_products cp
+          JOIN requested_signature_products rsp
+            ON rsp.pivota_signature_id = cp.pivota_signature_id
+          WHERE cp.merchant_id = 'external_seed'
+            AND cp.source_product_id IS NOT NULL
+            AND cp.source_product_id <> ''
+          ORDER BY cp.pivota_signature_id, cp.updated_at DESC NULLS LAST
+        )
         SELECT
-          external_product_id,
+          eps.external_product_id,
+          ses.pivota_signature_id AS matched_signature_product_id,
           coalesce(seed_data->'snapshot'->>'brand', seed_data->>'brand', '') AS brand,
           coalesce(seed_data->'snapshot'->>'category', seed_data->>'category', '') AS category,
           coalesce(seed_data->'snapshot'->>'product_type', seed_data->>'product_type', '') AS product_type,
@@ -4397,11 +4415,16 @@ async function fetchExternalSeedSimilarCardSourcesFromDb(productIds = []) {
               THEN seed_data->'pdp_details_sections'
             ELSE '[]'::jsonb
           END AS pdp_details_sections
-        FROM external_product_seeds
-        WHERE status = 'active'
-          AND external_product_id = ANY($1::text[])
+        FROM external_product_seeds eps
+        LEFT JOIN signature_external_sources ses
+          ON ses.external_product_id = eps.external_product_id
+        WHERE eps.status = 'active'
+          AND (
+            eps.external_product_id = ANY($1::text[])
+            OR ses.external_product_id IS NOT NULL
+          )
       `,
-      [ids],
+      [directExternalProductIds, signatureProductIds],
     );
     const out = new Map();
     for (const row of res?.rows || []) {
@@ -4411,7 +4434,7 @@ async function fetchExternalSeedSimilarCardSourcesFromDb(productIds = []) {
         ? row.pdp_details_sections
         : [];
       const priceAmount = Number(row?.price_amount);
-      out.set(externalProductId, {
+      const hydratedSource = {
         product_id: externalProductId,
         brand: firstNonEmptyString(row?.brand),
         category: firstNonEmptyString(row?.category),
@@ -4439,7 +4462,10 @@ async function fetchExternalSeedSimilarCardSourcesFromDb(productIds = []) {
             pdp_details_sections: pdpDetailsSections,
           },
         },
-      });
+      };
+      out.set(externalProductId, hydratedSource);
+      const matchedSignatureProductId = firstNonEmptyString(row?.matched_signature_product_id);
+      if (matchedSignatureProductId) out.set(matchedSignatureProductId, hydratedSource);
     }
     return out;
   } catch (err) {
@@ -4451,7 +4477,7 @@ async function fetchExternalSeedSimilarCardSourcesFromDb(productIds = []) {
       return new Map();
     }
     logger.warn(
-      { err: err?.message || String(err), product_count: ids.length },
+      { err: err?.message || String(err), product_count: requestedIds.length },
       'Failed to hydrate external seed similar card sources from DB',
     );
     return new Map();
@@ -23001,7 +23027,7 @@ function collectExternalSeedIdCandidatesForVisibleCatalogHydration(product = {})
         product.platformProductId,
       ]
         .map((value) => firstNonEmptyString(value))
-        .filter((value) => isExternalSeedProductId(value)),
+        .filter((value) => isExternalSeedProductId(value) || isPivotaSignatureProductId(value)),
     ),
   );
 }

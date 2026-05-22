@@ -708,6 +708,84 @@ describe('find_similar_products mainline wrapper', () => {
     })).toBe(false);
   });
 
+  it('hydrates official seed card sources for visible sig similar cards', async () => {
+    jest.resetModules();
+    process.env.DATABASE_URL = 'postgres://test';
+    const dbQueryMock = jest.fn().mockImplementation((sql, params) => {
+      const text = String(sql || '');
+      if (text.includes('FROM external_product_seeds')) {
+        expect(params[1]).toEqual(['sig_0e3023c5e122acc95e8f86931ed1ca65']);
+        return Promise.resolve({
+          rows: [
+            {
+              external_product_id: 'ext_fenty_mista',
+              matched_signature_product_id: 'sig_0e3023c5e122acc95e8f86931ed1ca65',
+              brand: 'Fenty Beauty',
+              category: 'Fragrance',
+              product_type: 'Fragrance',
+              title: 'The Mista Hair + Body Fragrance Mist',
+              image_url: 'https://cdn.example.test/fenty-mista.jpg',
+              price_amount: '30.00',
+              price_currency: 'USD',
+              description: 'Hair and body mist.',
+              pdp_description_raw: 'Hair and body mist.',
+              pdp_details_sections: [],
+            },
+          ],
+        });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+    jest.doMock('../src/db', () => ({
+      query: dbQueryMock,
+    }));
+
+    const app = require('../src/server');
+    const items = await app._debug.enrichSimilarProductsForPdpCards({
+      items: [
+        {
+          merchant_id: 'external_seed',
+          product_id: 'sig_0e3023c5e122acc95e8f86931ed1ca65',
+          title: 'The Mista Hair + Body Fragrance Mist',
+          image_url: 'https://cdn.example.test/fenty-mista.jpg',
+          evidence_profile: 'seller_only',
+          shopping_card: {
+            evidence_profile: 'seller_only',
+            highlight: 'Fenty fragrance',
+          },
+          search_card: {
+            evidence_profile: 'seller_only',
+            highlight_candidate: 'Fenty fragrance',
+          },
+        },
+      ],
+      maxItems: 1,
+      budgetMs: 300,
+      productIntelBudgetMs: 1,
+    });
+
+    expect(items[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'sig_0e3023c5e122acc95e8f86931ed1ca65',
+        card_highlight: 'Hair and body mist',
+        evidence_profile: 'official_pdp_seed',
+        card_highlight_status: 'ready',
+      }),
+    );
+    expect(items[0].shopping_card).toEqual(
+      expect.objectContaining({
+        highlight: 'Hair and body mist',
+        evidence_profile: 'official_pdp_seed',
+      }),
+    );
+    expect(app._debug.getSimilarCardEnrichmentMetadata(items)).toEqual(
+      expect.objectContaining({
+        card_enrichment_official_seed_attempted_count: 1,
+        card_enrichment_official_seed_hit_count: 1,
+      }),
+    );
+  });
+
   it('does not overwrite trusted component-ref highlights while hydrating missing images', async () => {
     jest.resetModules();
     process.env.DATABASE_URL = 'postgres://test';
