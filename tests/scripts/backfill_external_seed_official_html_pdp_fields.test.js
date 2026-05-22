@@ -950,6 +950,83 @@ describe('backfill-external-seed-official-html-pdp-fields TIRTIR sheet matching'
     expect(patch.seedData.pdp_field_quality_summary.ingredients_raw.source_quality_status).toBe('high');
   });
 
+  test('missing-fields-only seed patch replaces non-displayable default variant placeholders', () => {
+    const row = {
+      seed_data: {
+        variants: [
+          {
+            variant_id: 'legacy-default',
+            title: 'Default Title',
+            options: [{ name: 'Title', value: 'Default Title' }],
+          },
+        ],
+        snapshot: {},
+      },
+    };
+
+    const patch = buildSeedDataPatch(
+      row,
+      {
+        variants: [
+          {
+            variant_id: 'official-size',
+            title: 'Default Title',
+            options: [{ name: 'Size', value: '60ml' }],
+            option_name: 'Size',
+            option_value: '60ml',
+          },
+        ],
+      },
+      { missingFieldsOnly: true },
+    );
+
+    expect(patch.patchKeys).toContain('variants');
+    expect(patch.seedData.variants).toEqual([
+      expect.objectContaining({
+        variant_id: 'official-size',
+        option_name: 'Size',
+        option_value: '60ml',
+      }),
+    ]);
+  });
+
+  test('missing-fields-only seed patch preserves existing displayable variants', () => {
+    const row = {
+      seed_data: {
+        variants: [
+          {
+            variant_id: 'existing-berry',
+            title: 'Berry',
+            options: [{ name: 'Shade', value: 'Berry' }],
+          },
+        ],
+        snapshot: {},
+      },
+    };
+
+    const patch = buildSeedDataPatch(
+      row,
+      {
+        variants: [
+          {
+            variant_id: 'incoming-size',
+            title: 'Default Title',
+            options: [{ name: 'Size', value: '10g' }],
+          },
+        ],
+      },
+      { missingFieldsOnly: true },
+    );
+
+    expect(patch.patchKeys).not.toContain('variants');
+    expect(patch.seedData.variants).toEqual([
+      expect.objectContaining({
+        variant_id: 'existing-berry',
+        options: [{ name: 'Shade', value: 'Berry' }],
+      }),
+    ]);
+  });
+
   test('JSONB writer strips null-byte escapes from historical payloads', () => {
     const text = stringifyPostgresJsonb({
       root: 'before\u0000after',

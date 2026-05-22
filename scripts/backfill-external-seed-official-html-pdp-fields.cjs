@@ -185,6 +185,16 @@ function isDisplayableShopifyVariantOption(option) {
   return true;
 }
 
+function hasDisplayableVariantSet(value) {
+  return asArray(value).some((variant) => {
+    const options = asArray(variant?.options);
+    if (options.some(isDisplayableShopifyVariantOption)) return true;
+    const optionName = normalizeText(variant?.option_name || variant?.name);
+    const optionValue = normalizeText(variant?.option_value || variant?.value || variant?.public_title || variant?.title);
+    return isDisplayableShopifyVariantOption({ name: optionName || 'Option', value: optionValue });
+  });
+}
+
 function normalizeSpecLabel(value) {
   return normalizeText(value)
     .replace(/\b(\d+(?:\.\d+)?)\s*(ml|mL|ML)\b/g, '$1ml')
@@ -2161,7 +2171,7 @@ function buildSeedDataPatch(row, extracted, options = {}) {
       return asArray(seedData.pdp_details_sections || snapshot.pdp_details_sections).length > 0;
     }
     if (fieldKey === 'variants') {
-      return asArray(seedData.variants || snapshot.variants).length > 0;
+      return hasDisplayableVariantSet(seedData.variants || snapshot.variants);
     }
     return false;
   };
