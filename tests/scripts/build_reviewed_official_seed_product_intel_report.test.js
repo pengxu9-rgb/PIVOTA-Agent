@@ -33,6 +33,13 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
       'eye_care_set',
     );
     expect(inferKind('Vitamin-C LipPatch (Set of 3)', '', '', 'Hydrogel lip patches.')).toBe('lip_set');
+    expect(inferKind('Choose Your +Hydra LipTreat Trio', '', '', 'Lip treatment trio.')).toBe('lip_set');
+    expect(inferKind('Blur, Colour & Set', '', '', 'Complexion base, colour, and setting products.')).toBe(
+      'makeup_set',
+    );
+    expect(inferKind('Pixi + Maryam Maquillage GRWM Routine', '', '', 'Foundation and eye makeup routine.')).toBe(
+      'makeup_set',
+    );
   });
 
   test('classifies Pixi spot and treatment formats without generic Beauty Product fallback', () => {
@@ -57,6 +64,126 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     expect(inferKind('Candy Cane Whipped Body Cream', '', '', 'Whipped body cream with cocoa powder.')).toBe(
       'skincare',
     );
+  });
+
+  test('classifies Pixi complexion, lip, and treatment formats without generic fallback', () => {
+    expect(
+      inferKind(
+        'Flawless & Poreless',
+        '',
+        '',
+        'Miracle-in-a-tube primer that visibly blurs pores and controls shine.',
+      ),
+    ).toBe('primer');
+    expect(
+      inferKind(
+        'H2O SkinVeil',
+        '',
+        '',
+        'Weightless, hydrating loose water-powder that blurs complexion while setting makeup.',
+      ),
+    ).toBe('face_powder');
+    expect(inferKind('Botanical Collagen LipGloss', '', '', 'Lip treatment formulated to volumize lips.')).toBe(
+      'lip',
+    );
+    expect(
+      inferKind(
+        'Milky Remedy Mask',
+        '',
+        '',
+        'A soothing jelly mask enriched with Coconut, Oat Extract, Chamomile and Sea Buckthorn.',
+      ),
+    ).toBe('skincare');
+    expect(
+      inferKind(
+        'In-Shower Steam Facial',
+        '',
+        '',
+        'A self-heating gel-to-oil facial treatment for use in the shower.',
+      ),
+    ).toBe('skincare');
+  });
+
+  test('uses compact Pixi highlights that are more specific than source identity fallbacks', () => {
+    const primerBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_primer',
+        title: 'Flawless & Poreless',
+        canonical_url: 'https://pixibeauty.com/products/flawless-poreless',
+        seed_data: {
+          description: 'Miracle-in-a-tube primer that visibly blurs pores and controls shine.',
+          key_ingredients: ['Soybean Extract', 'Salicylic Acid'],
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_primer',
+        sellable_item_group_id: 'sig_primer',
+      },
+      generatedAt: '2026-05-22T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+    const maskBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_mask',
+        title: 'Milky Remedy Mask',
+        canonical_url: 'https://pixibeauty.com/products/milky-remedy-mask',
+        seed_data: {
+          description: 'A soothing jelly mask enriched with Coconut, Oat Extract, Chamomile and Sea Buckthorn.',
+          key_ingredients: ['Coconut', 'Oat Extract'],
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_mask',
+        sellable_item_group_id: 'sig_mask',
+      },
+      generatedAt: '2026-05-22T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+    const peelBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_peel',
+        title: 'Glycolic Body Peel',
+        canonical_url: 'https://pixibeauty.com/products/glycolic-body-peel',
+        seed_data: {
+          description: 'Skin is left feeling smooth, hydrated and prepped for body moisturizer or oil.',
+          key_ingredients: ['Glycolic Acid'],
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_peel',
+        sellable_item_group_id: 'sig_peel',
+      },
+      generatedAt: '2026-05-22T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+    const facialBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_facial',
+        title: 'In-Shower Steam Facial',
+        canonical_url: 'https://pixibeauty.com/products/in-shower-steam-facial',
+        seed_data: {
+          description: 'A self-heating gel-to-oil treatment for use in the shower.',
+          key_ingredients: ['Glycerin'],
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_facial',
+        sellable_item_group_id: 'sig_facial',
+      },
+      generatedAt: '2026-05-22T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+
+    expect(primerBundle.shopping_card.subtitle).toBe('Primer');
+    expect(primerBundle.shopping_card.highlight).toBe('Pore-blurring primer detail');
+    expect(maskBundle.shopping_card.subtitle).toBe('Skincare');
+    expect(maskBundle.shopping_card.highlight).toBe('Mask format detail');
+    expect(peelBundle.shopping_card.highlight).toBe('Exfoliating treatment detail');
+    expect(facialBundle.shopping_card.highlight).toBe('Facial treatment detail');
   });
 
   test('does not fall back to a Tom Ford brand when seed brand metadata is missing', () => {
