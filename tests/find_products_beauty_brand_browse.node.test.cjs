@@ -10,6 +10,7 @@ const {
   attachCanonicalChainRecallTelemetry,
   buildSearchQualityTierCounts,
   buildBeautyExternalSeedCategoryTerms,
+  buildCanonicalQueryTextForBeautyBrandRecall,
   compactBeautyMainlineProductForResponse,
   filterSearchServingEligibleProducts,
   getSearchQualityContractHardConstraintResult,
@@ -54,6 +55,28 @@ test('known beauty brand aliases use the brand_browse beauty contract', () => {
   const zara = resolveBeautyBrandBrowseQuery('zara');
   assert.equal(zara.matched, false);
   assert.equal(inferBeautyMainlineIntent('zara').beautyLike, false);
+});
+
+test('brand modifier canonical recall strips only the known brand', () => {
+  const ordinaryBrowse = resolveBeautyBrandBrowseQuery('the ordinary collection');
+  assert.equal(ordinaryBrowse.matched, true);
+  assert.equal(ordinaryBrowse.brand_only, false);
+
+  assert.equal(
+    buildCanonicalQueryTextForBeautyBrandRecall('the ordinary collection', ordinaryBrowse, ''),
+    'collection',
+  );
+  assert.equal(
+    buildCanonicalQueryTextForBeautyBrandRecall('the ordinary multi peptide collection', ordinaryBrowse, ''),
+    'multi peptide collection',
+  );
+
+  const fentyBrandOnly = resolveBeautyBrandBrowseQuery('fenty');
+  assert.equal(buildCanonicalQueryTextForBeautyBrandRecall('fenty', fentyBrandOnly, ''), 'fenty');
+  assert.equal(
+    buildCanonicalQueryTextForBeautyBrandRecall('fenty lipstick', resolveBeautyBrandBrowseQuery('fenty lipstick'), 'beauty/makeup/lip/'),
+    'fenty lipstick',
+  );
 });
 
 test('serving eligibility rejects degraded external seed cards', () => {

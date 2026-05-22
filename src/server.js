@@ -14627,6 +14627,34 @@ function buildCanonicalBrandFilterForBeautyRecall(contract = null, brandBrowse =
   return out.length > 0 ? out : null;
 }
 
+function buildCanonicalQueryTextForBeautyBrandRecall(queryText = '', brandBrowse = null, categoryPathPrefix = '') {
+  const original = String(queryText || '').trim();
+  if (!original) return '';
+  if (!brandBrowse || brandBrowse.contract !== 'brand_browse' || brandBrowse.brand_only !== false) return original;
+  if (String(categoryPathPrefix || '').trim()) return original;
+
+  const normalizedOriginal = normalizeSearchTextForMatch(original);
+  if (!normalizedOriginal) return original;
+  const removalParts = [
+    brandBrowse.brand,
+    brandBrowse.alias,
+    String(brandBrowse.brand || '').replace(/\bbeauty\b/gi, ' '),
+  ]
+    .map((value) => normalizeSearchTextForMatch(value))
+    .filter(Boolean)
+    .sort((left, right) => right.length - left.length);
+  let remainder = ` ${normalizedOriginal} `;
+  for (const part of removalParts) {
+    const escaped = part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+    remainder = remainder.replace(new RegExp(`\\s${escaped}\\s`, 'g'), ' ');
+  }
+  remainder = remainder
+    .replace(/\b(beauty|cosmetics?|products?|product|shop|buy|show|find|recommend|recommendations?|best)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return remainder || original;
+}
+
 function normalizeSearchQualityBrandNeedle(value) {
   return normalizeSearchTextForMatch(value).replace(/\bbeauty\b/g, ' ').replace(/\s+/g, ' ').trim();
 }
@@ -15015,6 +15043,11 @@ async function fetchCanonicalChainRecallForFindProductsMulti({ search = {} } = {
     searchQualityContractApplied ? searchQualityContract : null,
     beautyBrandBrowse.matched ? beautyBrandBrowse : null,
   );
+  const canonicalQueryText = buildCanonicalQueryTextForBeautyBrandRecall(
+    queryText,
+    beautyBrandBrowse.matched ? beautyBrandBrowse : null,
+    canonicalCategoryPathPrefix,
+  );
   // Market-aware recall: pass the user's market into canonicalCatalogSearch
   // so non-matching Path B rows are filtered. Falls back to env / 'US' to
   // preserve existing behaviour for callers that don't pass market.
@@ -15025,7 +15058,7 @@ async function fetchCanonicalChainRecallForFindProductsMulti({ search = {} } = {
   const startedAt = Date.now();
   try {
     const rows = await fetchCanonicalChainRows({
-      query: queryText,
+      query: canonicalQueryText,
       categoryPathPrefix: canonicalCategoryPathPrefix,
       verticalSearch:
         Boolean(canonicalCategoryPathPrefix && String(canonicalCategoryPathPrefix).startsWith('beauty/')) &&
@@ -15060,6 +15093,7 @@ async function fetchCanonicalChainRecallForFindProductsMulti({ search = {} } = {
         canonical_product_count: products.length,
         canonical_category_path_prefix: canonicalCategoryPathPrefix,
         canonical_brand_filter_applied: Boolean(canonicalBrandFilter),
+        ...(canonicalQueryText !== queryText ? { canonical_recall_query_text: canonicalQueryText } : {}),
         canonical_duration_ms: Math.max(0, Date.now() - startedAt),
         query_text: queryText,
         requested_limit: safeLimit,
@@ -15084,6 +15118,7 @@ async function fetchCanonicalChainRecallForFindProductsMulti({ search = {} } = {
         canonical_product_count: 0,
         canonical_category_path_prefix: canonicalCategoryPathPrefix,
         canonical_brand_filter_applied: Boolean(canonicalBrandFilter),
+        ...(canonicalQueryText !== queryText ? { canonical_recall_query_text: canonicalQueryText } : {}),
         canonical_duration_ms: Math.max(0, Date.now() - startedAt),
         canonical_error: String(err?.code || err?.message || err || 'canonical_query_failed').slice(0, 160),
         query_text: queryText,
@@ -17606,12 +17641,17 @@ async function searchBeautyExternalSeedProductsMainline({
     searchQualityContractApplied ? effectiveSearchQualityContract : null,
     beautyIntent.brandBrowse,
   );
+  const canonicalQueryText = buildCanonicalQueryTextForBeautyBrandRecall(
+    queryText,
+    beautyIntent.brandBrowse,
+    canonicalCategoryPathPrefix,
+  );
   const canonicalLimit = searchQualityContractApplied
     ? Math.max(18, Math.min(48, safeLimit * 4))
     : Math.max(6, Math.min(12, Math.ceil(safeLimit / 2)));
   const canonicalStartedAt = Date.now();
   const canonicalRowsPromise = fetchCanonicalChainRows({
-    query: queryText,
+    query: canonicalQueryText,
     categoryPathPrefix: canonicalCategoryPathPrefix,
     verticalSearch: hasBeautyIngredientIntentSignal(queryText),
     limit: canonicalLimit,
@@ -17662,6 +17702,7 @@ async function searchBeautyExternalSeedProductsMainline({
     canonical_product_count: canonicalProducts.length,
     canonical_category_path_prefix: canonicalCategoryPathPrefix,
     canonical_brand_filter_applied: Boolean(canonicalBrandFilter),
+    ...(canonicalQueryText !== queryText ? { canonical_recall_query_text: canonicalQueryText } : {}),
     canonical_duration_ms: Math.max(0, Number(canonicalResult?.duration_ms || 0) || 0),
     query_text: queryText,
     requested_limit: safeLimit,
@@ -42356,6 +42397,7 @@ module.exports._debug = {
   getSearchQualityContractHardConstraintResult,
   buildSearchQualityTierCounts,
   projectSearchQualityContractForMetadata,
+  buildCanonicalQueryTextForBeautyBrandRecall,
   ensureSearchProductPdpOpen,
   buildCanonicalChainMainlineProduct,
   mergeCanonicalChainProductsWithSeedProducts,
