@@ -22766,8 +22766,12 @@ async function enrichSimilarProductsForPdpCards({
         if (externalSeedId) {
           const officialSeedProduct = officialSeedCardSourcesById.get(externalSeedId);
           if (officialSeedProduct) {
+            const alreadyHasTrustedPresentation =
+              hasSimilarCardPresentation(item) && !isSellerOnlySimilarCardEvidence(item);
             const officialSeedEnriched = mergeSimilarCardEnrichment(
-              applyOfficialSeedSimilarCardEnrichment(item, officialSeedProduct),
+              alreadyHasTrustedPresentation
+                ? item
+                : applyOfficialSeedSimilarCardEnrichment(item, officialSeedProduct),
               officialSeedProduct,
             );
             if (officialSeedEnriched !== item && hasSimilarCardPresentation(officialSeedEnriched)) {

@@ -636,6 +636,59 @@ describe('find_similar_products mainline wrapper', () => {
     })).toBe(false);
   });
 
+  it('does not overwrite trusted component-ref highlights while hydrating missing images', async () => {
+    jest.resetModules();
+    process.env.DATABASE_URL = 'postgres://test';
+    jest.doMock('../src/db', () => ({
+      query: jest.fn().mockImplementation((sql) => {
+        if (String(sql || '').includes('FROM external_product_seeds')) {
+          return Promise.resolve({
+            rows: [
+              {
+                external_product_id: 'ext_component_1',
+                title: 'Great Barrier Relief',
+                image_url: 'https://cdn.example.test/gbr.jpg',
+                price_amount: '28.00',
+                price_currency: 'USD',
+                description: 'Shop Now Great Body Relief Pair',
+                pdp_description_raw: 'Shop Now Great Body Relief Pair',
+                pdp_details_sections: [],
+              },
+            ],
+          });
+        }
+        return Promise.resolve({ rows: [] });
+      }),
+    }));
+
+    const app = require('../src/server');
+    const items = await app._debug.enrichSimilarProductsForPdpCards({
+      items: [
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ext_component_1',
+          external_product_id: 'ext_component_1',
+          retrieval_source: 'reviewed_component_ref',
+          title: 'Great Barrier Relief',
+          card_highlight: 'tamanu barrier serum',
+          card_highlight_status: 'ready',
+        },
+      ],
+      maxItems: 1,
+      budgetMs: 300,
+      productIntelBudgetMs: 1,
+    });
+
+    expect(items[0]).toEqual(
+      expect.objectContaining({
+        image_url: 'https://cdn.example.test/gbr.jpg',
+        card_highlight: 'tamanu barrier serum',
+        card_highlight_status: 'ready',
+        card_image_status: 'ready',
+      }),
+    );
+  });
+
   it('runtime-classifies official hair styling seeds and blocks non-formula fill', () => {
     const { pickLayeredRecommendations } = require('../src/services/RecommendationEngine');
 
