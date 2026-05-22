@@ -96,6 +96,38 @@ describe('eval-find-products-search-quality', () => {
     );
   });
 
+  test('flags non-beauty merchandise with polluted beauty categories', () => {
+    const result = evaluateSearchResponse(
+      {
+        id: 'brand_cat_rare_blush',
+        query: 'rare beauty blush',
+        expected_contract: { query_class: 'brand_category', target_domain: 'beauty' },
+        allowed_brands: ['rare beauty'],
+        allowed_category_prefixes: ['beauty/makeup/face/blush'],
+        min_result_count: 1,
+      },
+      {
+        products: [
+          product({
+            product_id: 'ext_dog_toy',
+            title: 'Soft Pooch Blush Dog Toy - Faith',
+            brand: 'Rare Beauty',
+            category: 'Blush',
+            product_type: 'Blush',
+            catalog_category_path: 'beauty/makeup/face/blush',
+            destination_url: 'https://www.rarebeauty.com/products/soft-pooch-blush-dog-toy-faith',
+          }),
+        ],
+        metadata: {
+          search_quality_contract: { query_class: 'brand_category', target_domain: 'beauty' },
+        },
+      },
+    );
+
+    expect(result.passed).toBe(false);
+    expect(result.metrics.polluted_row_count).toBe(1);
+  });
+
   test('flags hard constraint and quality violations in top products', () => {
     const result = evaluateSearchResponse(
       {

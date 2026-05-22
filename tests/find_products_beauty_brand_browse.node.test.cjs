@@ -333,6 +333,45 @@ test('search quality contract enforces brand and strict lipstick before ranking'
   assert.ok(scored.rejection_reasons.includes('strict_lipstick_mismatch'));
 });
 
+test('beauty search rejects non-beauty merchandise despite polluted beauty category paths', () => {
+  const contract = buildSearchQualityContract({ rawQuery: 'rare beauty blush', market: 'US' });
+  const dogToy = canonicalFentyProduct('rare_soft_pooch', 'Soft Pooch Blush Dog Toy - Faith', {
+    brand: 'Rare Beauty',
+    merchant_name: 'Rare Beauty',
+    source_product_id: 'ext_soft_pooch_dog_toy',
+    category: 'Blush',
+    product_type: 'Blush',
+    category_path: ['beauty', 'makeup', 'face', 'blush'],
+    catalog_category_path: 'beauty/makeup/face/blush',
+    destination_url: 'https://www.rarebeauty.com/products/soft-pooch-blush-dog-toy-faith',
+  });
+  const healthy = canonicalFentyProduct('rare_blush_1', 'Rare Beauty Soft Pinch Liquid Blush', {
+    brand: 'Rare Beauty',
+    merchant_name: 'Rare Beauty',
+    category: 'Blush',
+    product_type: 'Blush',
+    category_path: ['beauty', 'makeup', 'face', 'blush'],
+    catalog_category_path: 'beauty/makeup/face/blush',
+  });
+
+  const hardGate = getSearchQualityContractHardConstraintResult(dogToy, contract, 'rare beauty blush');
+  assert.equal(hardGate.eligible, false);
+  assert.ok(hardGate.reasons.includes('non_beauty_merchandise'));
+
+  const servingGate = filterSearchServingEligibleProducts([dogToy, healthy], {
+    queryText: 'rare beauty blush',
+    requireBeauty: true,
+  });
+  assert.deepEqual(servingGate.products.map((product) => product.product_id), ['rare_blush_1']);
+  assert.equal(servingGate.rejected_count, 1);
+  assert.ok(servingGate.rejected[0].reasons.includes('non_beauty_merchandise'));
+
+  const counts = buildSearchQualityTierCounts([healthy, dogToy], contract, 'rare beauty blush');
+  assert.equal(counts.hard_constraint_reject_count, 1);
+  assert.equal(counts.serving_eligible_count, 1);
+  assert.equal(counts.polluted_or_unavailable_count, 1);
+});
+
 test('search quality tier counts expose polluted candidate inventory', () => {
   const contract = buildSearchQualityContract({ rawQuery: 'rare beauty blush', market: 'US' });
   const healthy = canonicalFentyProduct('rare_blush_1', 'Rare Beauty Soft Pinch Liquid Blush', {

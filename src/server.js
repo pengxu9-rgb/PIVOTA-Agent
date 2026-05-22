@@ -14610,6 +14610,9 @@ function getSearchProductServingEligibility(product = {}, options = {}) {
     profile === 'beauty_formula' ||
     hasBeautyCatalogProductSignal(buildFallbackCandidateText(product));
   if (options.requireBeauty === true && !beautyCategory) reasons.push('non_beauty_product');
+  if (options.requireBeauty === true && productLooksLikeNonBeautyMerchandise(product)) {
+    reasons.push('non_beauty_merchandise');
+  }
   if (!beautyCategory && SEARCH_CARD_GENERIC_CATEGORY_LABELS.has(category)) {
     reasons.push('generic_category');
   }
@@ -14782,6 +14785,20 @@ function productLooksLikeFragranceMerchandise(product = {}) {
   return /\b(perfume|parfum|eau\s+de|cologne|body\s*mist|fragrance)\b/i.test(text);
 }
 
+function productLooksLikeNonBeautyMerchandise(product = {}) {
+  const text = buildBeautyProductPrimarySurfaceText(product);
+  if (!text) return false;
+  if (/\b(?:shipping|delivery|route|package|order)\s+protection\b/i.test(text)) return true;
+  if (/\b(?:e[-\s]?gift\s*card|digital\s+gift\s*card|gift\s*card)\b/i.test(text)) return true;
+  if (
+    /\b(?:dog|cat|puppy|kitten|pet|pooch)\b(?:\s+\w+){0,5}\s+\b(?:toy|toys|collar|leash|bowl|bandana|bed)\b/i.test(text) ||
+    /\b(?:toy|toys|collar|leash|bowl|bandana|bed)\b(?:\s+\w+){0,5}\s+\b(?:dog|cat|puppy|kitten|pet|pooch)\b/i.test(text)
+  ) {
+    return true;
+  }
+  return /\b(?:tote\s*bag|canvas\s*bag|phone\s*case|key\s*chain|keychain|stickers?|enamel\s*pins?|hoodie|sweatshirt|t[-\s]?shirt|tee\s*shirt|baseball\s*cap|water\s*bottle|mug)\b/i.test(text);
+}
+
 function getSearchQualityContractHardConstraintResult(product = {}, contract = null, queryText = '') {
   if (!isBeautySearchQualityContractApplied(contract)) return { eligible: true, reasons: [] };
   const reasons = [];
@@ -14790,6 +14807,7 @@ function getSearchQualityContractHardConstraintResult(product = {}, contract = n
   const queryClass = String(contract.query_class || '').trim().toLowerCase();
 
   if (hasOfferProductTransactionHold(product)) reasons.push('source_unavailable_or_non_merchandise');
+  if (productLooksLikeNonBeautyMerchandise(product)) reasons.push('non_beauty_merchandise');
 
   if (
     ['brand_browse', 'brand_category', 'exact_product'].includes(queryClass) &&
@@ -14891,6 +14909,7 @@ function scoreBeautySearchQualityContract({ product, contract = null, queryText 
   if (qualityReasons.has('unresolved_pdp_ref')) score -= 60;
   if (qualityReasons.has('generic_category')) score -= 36;
   if (qualityReasons.has('source_unavailable_or_non_merchandise')) score -= 120;
+  if (qualityReasons.has('non_beauty_merchandise')) score -= 120;
 
   if (/\b(set|bundle|kit|duo|trio|routine|regimen|gift|collector|case|minis?|mystery\s*box)\b/i.test(primaryText)) {
     score -= 22;
@@ -14933,7 +14952,9 @@ function buildSearchQualityTierCounts(products = [], contract = null, queryText 
     if (reasons.has('unresolved_pdp_ref')) counts.missing_or_unresolved_pdp_count += 1;
     if (
       reasons.has('generic_category') ||
+      reasons.has('non_beauty_merchandise') ||
       reasons.has('source_unavailable_or_non_merchandise') ||
+      hardGate.reasons.includes('non_beauty_merchandise') ||
       hardGate.reasons.includes('source_unavailable_or_non_merchandise')
     ) {
       counts.polluted_or_unavailable_count += 1;

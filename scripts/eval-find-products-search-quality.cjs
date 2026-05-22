@@ -331,6 +331,10 @@ function isPollutedProduct(product = {}) {
       product.source_unavailable_v1 ||
       product.transaction_readiness_blocker_v1 ||
       ['external', 'unknown', 'uncategorized', 'misc'].includes(category) ||
+      /\b(?:e\s?gift\s*card|digital\s+gift\s*card|gift\s*card)\b/.test(text) ||
+      /\b(?:dog|cat|puppy|kitten|pet|pooch)\b(?:\s+\w+){0,5}\s+\b(?:toy|toys|collar|leash|bowl|bandana|bed)\b/.test(text) ||
+      /\b(?:toy|toys|collar|leash|bowl|bandana|bed)\b(?:\s+\w+){0,5}\s+\b(?:dog|cat|puppy|kitten|pet|pooch)\b/.test(text) ||
+      /\b(?:tote\s*bag|canvas\s*bag|phone\s*case|key\s*chain|keychain|stickers?|enamel\s*pins?|hoodie|sweatshirt|t\s?shirt|tee\s*shirt|baseball\s*cap|water\s*bottle|mug)\b/.test(text) ||
       /\b(shipping|delivery|route|package)\s+protection\b|\border\s+protection\b|\bprivacy\s+policy\b|\breturns?\s+policy\b/.test(text)
   );
 }
