@@ -476,6 +476,17 @@ describe('find_similar_products mainline wrapper', () => {
         title: 'Mirrored External Product',
       },
       {
+        product_id: 'sig_seller_only',
+        external_product_id: 'ext_seller_only',
+        pivota_signature_id: 'sig_seller_only',
+        merchant_id: 'external_seed',
+        title: 'Seller Only External Product',
+        shopping_card: {
+          evidence_profile: 'seller_only',
+          highlight: 'Generic seller copy',
+        },
+      },
+      {
         product_id: 'internal_1',
         merchant_id: 'merchant_1',
         title: 'Internal Product',

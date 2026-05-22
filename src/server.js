@@ -23182,6 +23182,7 @@ async function hydrateVisibleSimilarProductSigIdsFromCatalog(products) {
 function filterPublicVisibleSimilarProducts(products) {
   return (Array.isArray(products) ? products : []).filter((product) => {
     if (!product || typeof product !== 'object' || Array.isArray(product)) return false;
+    if (isSellerOnlySimilarCardEvidence(product)) return false;
     const externalSeedIds = collectExternalSeedIdCandidatesForVisibleCatalogHydration(product);
     if (!externalSeedIds.length) return true;
     const visibleSigId = resolveVisibleSimilarProductSigId(product);
