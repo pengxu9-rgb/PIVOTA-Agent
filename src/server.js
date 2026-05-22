@@ -5060,18 +5060,36 @@ function shouldHydratePdpIdentityLineMemberPayloads({
   canonicalProductRef = null,
   requestedMerchantId = '',
 } = {}) {
-  const requestedExternalSeedEntryProductId = String(entryProductId || productId || '').trim();
-  const canonicalExternalSeedProductId = String(canonicalProductRef?.product_id || '').trim();
-  const requestedExternalSeedEntryDiffersFromCanonical =
-    entryProductIsExternalSeed &&
-    Boolean(requestedExternalSeedEntryProductId) &&
-    Boolean(canonicalExternalSeedProductId) &&
-    requestedExternalSeedEntryProductId !== canonicalExternalSeedProductId;
-  if (requestedExternalSeedEntryDiffersFromCanonical) return true;
+  if (
+    isRequestedExternalSeedAliasDifferentFromCanonical({
+      entryProductIsExternalSeed,
+      entryProductId,
+      productId,
+      canonicalProductRef,
+    })
+  ) {
+    return true;
+  }
   return !(
     canonicalProductRef?.merchant_id === EXTERNAL_SEED_MERCHANT_ID &&
     isExternalSeedProductId(canonicalProductRef?.product_id) &&
     (!requestedMerchantId || requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID)
+  );
+}
+
+function isRequestedExternalSeedAliasDifferentFromCanonical({
+  entryProductIsExternalSeed = false,
+  entryProductId = '',
+  productId = '',
+  canonicalProductRef = null,
+} = {}) {
+  const requestedExternalSeedEntryProductId = String(entryProductId || productId || '').trim();
+  const canonicalExternalSeedProductId = String(canonicalProductRef?.product_id || '').trim();
+  return Boolean(
+    entryProductIsExternalSeed &&
+      requestedExternalSeedEntryProductId &&
+      canonicalExternalSeedProductId &&
+      requestedExternalSeedEntryProductId !== canonicalExternalSeedProductId,
   );
 }
 
@@ -33547,20 +33565,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	              canonicalProduct,
 	            )
 	          : identityGraphLive.synthetic_product;
-          const requestedExternalSeedAliasDiffersFromCanonical =
-            entryProductIsExternalSeed &&
-            String(entryProductId || productId || '').trim() &&
-            String(canonicalProductRef?.product_id || '').trim() &&
-            String(entryProductId || productId || '').trim() !== String(canonicalProductRef?.product_id || '').trim();
-          if (
-            requestedExternalSeedAliasDiffersFromCanonical &&
-            hasExternalSeedRichPdpContent(precheckedMerchantProduct)
-          ) {
-            canonicalProductForPdp = mergeExternalSeedAliasPdpContent(
-              canonicalProductForPdp,
-              precheckedMerchantProduct,
-            );
-          }
 	        if (identityGraphLive.canonical_product_ref) {
 	          canonicalProductRef = {
               ...canonicalProductRef,
@@ -33587,6 +33591,22 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           identityGraphLive = null;
           identityGraphPublishedIntel = null;
 	      }
+        const requestedExternalSeedAliasDiffersFromCanonical =
+          isRequestedExternalSeedAliasDifferentFromCanonical({
+            entryProductIsExternalSeed,
+            entryProductId,
+            productId,
+            canonicalProductRef,
+          });
+        if (
+          requestedExternalSeedAliasDiffersFromCanonical &&
+          hasExternalSeedRichPdpContent(precheckedMerchantProduct)
+        ) {
+          canonicalProductForPdp = mergeExternalSeedAliasPdpContent(
+            canonicalProductForPdp,
+            precheckedMerchantProduct,
+          );
+        }
         if (requestedPivotaSignatureId) {
           canonicalProductForPdp = applyRequestedPivotaSignatureToPdpProduct(
             canonicalProductForPdp,
@@ -42004,6 +42024,7 @@ module.exports._debug = {
   fetchExternalSeedProductDetailFromDb,
   hasExternalSeedRichPdpContent,
   shouldHydratePdpIdentityLineMemberPayloads,
+  isRequestedExternalSeedAliasDifferentFromCanonical,
   mergeIdentitySyntheticWithRichExternalSeedProduct,
   mergeExternalSeedAliasPdpContent,
   stripResponseOwnedPdpModulesFromCanonicalPayload,

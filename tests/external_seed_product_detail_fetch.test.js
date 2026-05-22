@@ -1191,6 +1191,18 @@ describe('external seed product detail hydration', () => {
     const { debug } = loadServerWithDb();
 
     expect(
+      debug.isRequestedExternalSeedAliasDifferentFromCanonical({
+        entryProductIsExternalSeed: true,
+        entryProductId: 'ulta:57b8f92ce86ee6b0',
+        productId: 'ulta:57b8f92ce86ee6b0',
+        canonicalProductRef: {
+          merchant_id: 'external_seed',
+          product_id: 'ext_bb310b68bf948987b9f658c2',
+        },
+      }),
+    ).toBe(true);
+
+    expect(
       debug.shouldHydratePdpIdentityLineMemberPayloads({
         entryProductIsExternalSeed: true,
         entryProductId: 'ulta:57b8f92ce86ee6b0',
@@ -1219,6 +1231,7 @@ describe('external seed product detail hydration', () => {
 
   test('merges rich selected external seed alias PDP content without replacing canonical identity', () => {
     const { debug } = loadServerWithDb();
+    const { buildPdpPayload } = require('../src/pdpBuilder');
     const canonicalProduct = {
       merchant_id: 'external_seed',
       product_id: 'ext_bb310b68bf948987b9f658c2',
@@ -1243,18 +1256,52 @@ describe('external seed product detail hydration', () => {
       merchant_id: 'external_seed',
       product_id: 'ulta:57b8f92ce86ee6b0',
       title: 'Find Comfort Body & Hair Fragrance Mist',
+      brand: 'Rare Beauty',
+      category: 'Fragrance',
+      pdp_description_raw:
+        'A super fine, cloud-like mist with warm and cozy notes of soft cashmere and jasmine petals.',
       pdp_how_to_use_raw: 'Spritz onto body or hair any time you want a fresh scent.',
       pdp_details_sections: [
+        {
+          heading: 'Details',
+          body: 'A super fine, cloud-like mist with warm and cozy notes.',
+        },
         {
           heading: 'Benefits',
           body: 'Lightweight and non-sticky with a warm, comforting scent.',
         },
+        {
+          heading: 'Research Results',
+          body: '100% said it feels fresh on skin and hair.',
+        },
       ],
+      pdp_field_quality_summary: {
+        description_raw: {
+          source_quality_status: 'high',
+          source_origin: 'shopify_json',
+        },
+        details_sections: {
+          source_quality_status: 'medium',
+          source_origin: 'retail_pdp',
+        },
+        how_to_use_raw: {
+          source_quality_status: 'medium',
+          source_origin: 'retail_pdp',
+        },
+      },
       seed_data: {
         pdp_details_sections: [
           {
+            heading: 'Details',
+            body: 'A super fine, cloud-like mist with warm and cozy notes.',
+          },
+          {
             heading: 'Benefits',
             body: 'Lightweight and non-sticky with a warm, comforting scent.',
+          },
+          {
+            heading: 'Research Results',
+            body: '100% said it feels fresh on skin and hair.',
           },
         ],
       },
@@ -1268,6 +1315,14 @@ describe('external seed product detail hydration', () => {
     expect(merged.canonical_content_ref).toEqual(canonicalProduct.canonical_content_ref);
     expect(merged.pdp_how_to_use_raw).toBe('Spritz onto body or hair any time you want a fresh scent.');
     expect(merged.pdp_details_sections).toEqual(selectedAliasProduct.pdp_details_sections);
+
+    const pdpPayload = buildPdpPayload({ product: merged });
+    const factsModule = pdpPayload.modules.find((module) => module.type === 'product_facts');
+    const supplementalModule = pdpPayload.modules.find((module) => module.type === 'supplemental_details');
+    expect(factsModule?.data?.sections?.map((section) => section.heading)).toContain('Benefits');
+    expect(supplementalModule?.data?.sections?.map((section) => section.heading)).toEqual(
+      expect.arrayContaining(['Benefits', 'Research Results']),
+    );
   });
 
   test('promotes reviewed external seed snapshot variants when synthetic product has none', () => {
