@@ -157,6 +157,7 @@ const {
 } = require('./findProductsMulti/policy');
 const {
   extractHumanApparelCategories,
+  extractIntentRuleBased,
 } = require('./findProductsMulti/intent');
 const {
   expandQueryWithZhAlias,
@@ -14599,6 +14600,26 @@ function buildSearchQualityTierCounts(products = [], contract = null, queryText 
   return counts;
 }
 
+function relaxSearchQualityContractForMultiFamilyBeautyIntent(contract = null, beautyIntent = null) {
+  if (!isBeautySearchQualityContractApplied(contract)) return contract;
+  const families = Array.isArray(beautyIntent?.families)
+    ? beautyIntent.families.map((value) => String(value || '').trim()).filter(Boolean)
+    : [];
+  if (families.length <= 1) return contract;
+  const hard = contract.hard_constraints && typeof contract.hard_constraints === 'object'
+    ? contract.hard_constraints
+    : {};
+  if (!hard.category_path_prefix) return contract;
+  return {
+    ...contract,
+    hard_constraints: {
+      ...hard,
+      category_path_prefix: null,
+    },
+    category_path_prefix_relaxed_for_multi_family: true,
+  };
+}
+
 function summarizeSearchQualityFailureReasons({ scoredRejected = [], servingRejected = [] } = {}) {
   const counts = {};
   const add = (reason) => {
@@ -17320,6 +17341,15 @@ async function searchBeautyExternalSeedProductsMainline({
     (searchQualityContractApplied && searchQualityContract?.effective_query) ||
     rawQueryText;
   const beautyIntent = inferBeautyMainlineIntent(queryText);
+  const effectiveSearchQualityContract = relaxSearchQualityContractForMultiFamilyBeautyIntent(
+    searchQualityContract,
+    beautyIntent,
+  );
+  const searchQualityContractRelaxedForMultiFamily = Boolean(
+    effectiveSearchQualityContract &&
+      searchQualityContract &&
+      effectiveSearchQualityContract !== searchQualityContract,
+  );
   if (
     (!beautyIntent.beautyLike && !searchQualityContractApplied) ||
     !String(queryText || '').trim()
@@ -17416,7 +17446,7 @@ async function searchBeautyExternalSeedProductsMainline({
         intent: beautyIntent,
         normalizedQuery: beautyIntent.normalized,
         queryTokens: Array.from(new Set(tokenizeSearchTextForMatch(beautyIntent.normalized))),
-        searchQualityContract: searchQualityEnforced ? searchQualityContract : null,
+        searchQualityContract: searchQualityEnforced ? effectiveSearchQualityContract : null,
       }).relevant !== true,
     );
   const broadenedRows = shouldBroaden
@@ -17438,7 +17468,7 @@ async function searchBeautyExternalSeedProductsMainline({
   canonicalTelemetry.canonical_dedupe_count = mergedCanonical.canonical_dedupe_count;
   const searchQualityTierCounts = buildSearchQualityTierCounts(
     recallProducts,
-    searchQualityContractApplied ? searchQualityContract : null,
+    searchQualityContractApplied ? effectiveSearchQualityContract : null,
     queryText,
   );
   const scoreRejected = [];
@@ -17450,7 +17480,7 @@ async function searchBeautyExternalSeedProductsMainline({
         intent: beautyIntent,
         normalizedQuery,
         queryTokens,
-        searchQualityContract: searchQualityEnforced ? searchQualityContract : null,
+        searchQualityContract: searchQualityEnforced ? effectiveSearchQualityContract : null,
       });
       if (base.relevant !== true) {
         scoreRejected.push({
@@ -17495,7 +17525,7 @@ async function searchBeautyExternalSeedProductsMainline({
           : row.product;
         const compactProduct = compactBeautyMainlineProductForResponse(productForResponse, beautyIntent, queryText);
         return searchQualityContractApplied
-          ? applySearchQualityContractResponseHints(compactProduct, searchQualityContract, queryText)
+          ? applySearchQualityContractResponseHints(compactProduct, effectiveSearchQualityContract, queryText)
           : compactProduct;
       }),
     ),
@@ -17519,7 +17549,16 @@ async function searchBeautyExternalSeedProductsMainline({
         rejected_count: 0,
         input_count: displayRankedProducts.length,
       };
-  const rankedProducts = servingEligibilityGate.products;
+  const budgetConstraint = resolveBeautyMainlineBudgetConstraint({
+    search,
+    intent,
+    queryText,
+  });
+  const budgetFilter = budgetConstraint
+    ? filterFindProductsMultiDirectProductsByBudget(budgetConstraint, servingEligibilityGate.products)
+    : null;
+  const rankedProducts = budgetFilter ? budgetFilter.products : servingEligibilityGate.products;
+  const budgetFxMetadata = budgetFilter?.resolution?.metadata || null;
   const searchQualityFailureReasons = summarizeSearchQualityFailureReasons({
     scoredRejected: scoreRejected,
     servingRejected: servingEligibilityGate.rejected,
@@ -17559,8 +17598,15 @@ async function searchBeautyExternalSeedProductsMainline({
       search_quality_contract: projectSearchQualityContractForMetadata(searchQualityContract),
       search_quality_contract_applied: searchQualityContractApplied,
       search_quality_contract_mode: SEARCH_QUALITY_CONTRACT_V1_MODE,
+      ...(searchQualityContractRelaxedForMultiFamily
+        ? { search_quality_contract_relaxed_for_multi_family: true }
+        : {}),
       search_quality_failure_reasons: searchQualityFailureReasons,
       search_quality_tier_counts: searchQualityTierCounts,
+      beauty_mainline_budget_filter_applied: Boolean(budgetFilter),
+      beauty_mainline_budget_filtered_out_count: budgetFilter?.filteredOut || 0,
+      beauty_mainline_budget_currency_filtered_out_count: budgetFilter?.currencyFilteredOut || 0,
+      ...(budgetFxMetadata || {}),
       ...canonicalTelemetry,
       canonical_returned_count: pagedCanonicalCount,
       creator_external_seed_tool_scope: broadenedRows ? 'all_tools' : (creatorScoped ? 'creator_preferred' : 'all_tools'),
@@ -17641,6 +17687,14 @@ async function searchBeautyExternalSeedProductsMainline({
           canonical_chain: canonicalTelemetry,
           search_quality_contract_applied: searchQualityContractApplied,
           search_quality_contract_mode: SEARCH_QUALITY_CONTRACT_V1_MODE,
+          ...(searchQualityContractRelaxedForMultiFamily
+            ? { search_quality_contract_relaxed_for_multi_family: true }
+            : {}),
+          budget_filter: {
+            applied: Boolean(budgetFilter),
+            filtered_out_count: budgetFilter?.filteredOut || 0,
+            currency_filtered_out_count: budgetFilter?.currencyFilteredOut || 0,
+          },
           search_card_quality_gate: {
             applied: searchQualityServingGateRequired || brandBrowseGateRequired,
             input_count: servingEligibilityGate.input_count,
@@ -26820,6 +26874,39 @@ function filterFindProductsMultiDirectProductsByBudget(priceConstraint, products
   };
 }
 
+function resolveBeautyMainlineBudgetConstraint({ search = {}, intent = null, queryText = '' } = {}) {
+  const explicitMin = parseQueryNumber(search.price_min ?? search.min_price);
+  const explicitMax = parseQueryNumber(search.price_max ?? search.max_price);
+  const explicitCurrency = getProductPriceCurrency({
+    currency: firstNonEmptyString(
+      search.currency,
+      search.price_currency,
+      search.priceCurrency,
+      search.currency_code,
+    ),
+  }, '');
+  if (explicitMin != null || explicitMax != null) {
+    return {
+      currency: explicitCurrency || null,
+      min: explicitMin,
+      max: explicitMax,
+    };
+  }
+
+  const intentPrice = intent?.hard_constraints?.price || null;
+  if (intentPrice && (intentPrice.min != null || intentPrice.max != null)) {
+    return intentPrice;
+  }
+
+  const parsedPrice =
+    extractIntentRuleBased(String(queryText || '').trim(), [], [])?.hard_constraints?.price || null;
+  if (parsedPrice && (parsedPrice.min != null || parsedPrice.max != null)) {
+    return parsedPrice;
+  }
+
+  return null;
+}
+
 const AURORA_CHATBOX_ORIGINS = new Set([
   'https://pivota-aurora-chatbox.vercel.app',
 ]);
@@ -31194,11 +31281,46 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     if (!body || typeof body !== 'object' || Array.isArray(body)) return body;
     if (body.beauty_expert_v1 && typeof body.beauty_expert_v1 === 'object') return body;
     const querySource = String(body.metadata?.query_source || body.meta?.query_source || '').trim().toLowerCase();
+    const responseAlreadyBeautyMainline =
+      /beauty_external_seed_mainline|beauty_discovery_mainline/.test(querySource);
     if (
       PIVOT_BEAUTY_CONTRACT_V1_ENABLED &&
-      /beauty_external_seed_mainline|beauty_discovery_mainline/.test(querySource)
+      responseAlreadyBeautyMainline
     ) {
-      return body;
+      const requestBody = req?.body && typeof req.body === 'object' && !Array.isArray(req.body)
+        ? req.body
+        : {};
+      const requestMetadata = requestBody.metadata && typeof requestBody.metadata === 'object' && !Array.isArray(requestBody.metadata)
+        ? requestBody.metadata
+        : {};
+      const requestPayload = requestBody.payload && typeof requestBody.payload === 'object' && !Array.isArray(requestBody.payload)
+        ? requestBody.payload
+        : {};
+      const requestContext = requestBody.context && typeof requestBody.context === 'object' && !Array.isArray(requestBody.context)
+        ? requestBody.context
+        : {};
+      const payloadContext = requestPayload.context && typeof requestPayload.context === 'object' && !Array.isArray(requestPayload.context)
+        ? requestPayload.context
+        : {};
+      const hasExplicitBeautyRequest = [requestContext, payloadContext].some((contextValue) => {
+        const normalizedNeed =
+          contextValue?.normalized_need &&
+          typeof contextValue.normalized_need === 'object' &&
+          !Array.isArray(contextValue.normalized_need)
+            ? contextValue.normalized_need
+            : {};
+        const beautyRequest =
+          normalizedNeed.beauty_request &&
+          typeof normalizedNeed.beauty_request === 'object' &&
+          !Array.isArray(normalizedNeed.beauty_request)
+            ? normalizedNeed.beauty_request
+            : {};
+        return Object.keys(beautyRequest).length > 0;
+      });
+      const allowOrchestrationDelegate =
+        requestMetadata.allow_orchestration_delegate === true ||
+        String(requestMetadata.allow_orchestration_delegate || '').trim().toLowerCase() === 'true';
+      if (!allowOrchestrationDelegate && !hasExplicitBeautyRequest) return body;
     }
     try {
       const { attachBeautyExpertV1ToResponse } = require('./modules/orchestration/aurora_beauty/beautyExpertV1');
@@ -31972,7 +32094,27 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
   // Discovery / chitchat routing: when the user hasn't expressed a shopping goal yet,
   // do NOT query the catalog. Return a guided, creator-styled prompt instead.
-  if (operation === 'find_products_multi' && effectiveIntent?.scenario?.name === 'discovery') {
+  const findProductsMultiProductOnly =
+    operation === 'find_products_multi' &&
+    parseQueryBoolean(
+      (effectivePayload?.search && typeof effectivePayload.search === 'object'
+        ? effectivePayload.search.product_only ?? effectivePayload.search.productOnly
+        : undefined) ??
+        (effectivePayload && typeof effectivePayload === 'object'
+          ? effectivePayload.product_only ?? effectivePayload.productOnly
+          : undefined) ??
+        (req?.body?.payload?.search && typeof req.body.payload.search === 'object'
+          ? req.body.payload.search.product_only ?? req.body.payload.search.productOnly
+          : undefined) ??
+        (req?.body?.payload && typeof req.body.payload === 'object'
+          ? req.body.payload.product_only ?? req.body.payload.productOnly
+          : undefined),
+    ) === true;
+  if (
+    operation === 'find_products_multi' &&
+    !findProductsMultiProductOnly &&
+    effectiveIntent?.scenario?.name === 'discovery'
+  ) {
     const base = {
       status: 'success',
       success: true,
@@ -31989,13 +32131,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       },
     };
 
-    const withPolicy = applyFindProductsMultiPolicy({
+    const withPolicyRaw = applyFindProductsMultiPolicy({
       response: base,
       intent: effectiveIntent,
       requestPayload: effectivePayload,
       metadata: policyMetadata,
       rawUserQuery,
     });
+    const withPolicy =
+      withPolicyRaw && typeof withPolicyRaw === 'object' && !Array.isArray(withPolicyRaw)
+        ? withPolicyRaw
+        : base;
 
     const promotions = await getActivePromotions(now, creatorId);
     const enriched = applyDealsToResponse(withPolicy, promotions, now, creatorId);
@@ -32019,17 +32165,20 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       invokeSearchRail,
     });
     if (
-      publicBrandScopeNames.length > 0 ||
-      shouldBridgePublicBeautySearchToDiscovery({
-        operation,
-        metadata,
-        search: publicBeautySearch,
-        queryText: publicBeautyQueryText,
-        queryClass: traceQueryClass,
-        intent: effectiveIntent,
-        invokeSearchRail,
-        strictDecision: publicBeautyStrictDecision,
-      })
+      !findProductsMultiProductOnly &&
+      (
+        publicBrandScopeNames.length > 0 ||
+        shouldBridgePublicBeautySearchToDiscovery({
+          operation,
+          metadata,
+          search: publicBeautySearch,
+          queryText: publicBeautyQueryText,
+          queryClass: traceQueryClass,
+          intent: effectiveIntent,
+          invokeSearchRail,
+          strictDecision: publicBeautyStrictDecision,
+        })
+      )
     ) {
       const bridgeStartedAtMs = Date.now();
       const { discoveryPayload, page, limit, offset } =
@@ -36198,6 +36347,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       }
 
       const creatorBeautyMainlineDirectEligible =
+        !findProductsMultiProductOnly &&
         (!strictCommerceFindProductsMulti || routeSearchQualityContractApplied) &&
         queryText.length > 0 &&
         process.env.DATABASE_URL &&
