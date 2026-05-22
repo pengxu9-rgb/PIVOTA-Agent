@@ -1039,6 +1039,21 @@ describe('backfill-external-seed-official-html-pdp-fields TIRTIR sheet matching'
     );
   });
 
+  test('accepts Tom Ford makeup INCI without skincare or fragrance tokens', () => {
+    const inci =
+      'Hydrogenated Polyisobutene, Trimethylsiloxysilicate, Isododecane, Synthetic Wax, Polybutene, Mica, Synthetic Fluorphlogopite, Lauroyl Lysine, Disteardimonium Hectorite, Propylene Carbonate, Ethylene/propylene Copolymer, Copernicia Cerifera (carnauba) Wax, Pentaerythrityl Tetra-di-t-butyl Hydroxyhydrocinnamate, [+/- Titanium Dioxide (ci 77891), Iron Oxides (ci 77491), Iron Oxides (ci 77492), Blue 1 Lake (ci 42090), Yellow 5 Lake (ci 19140)]';
+    const html = `
+      <script type="application/ld+json">
+      {"@context":"http://schema.org/","@type":"Product","name":"Gel Eyeliner","description":"A creamy gel-pencil liner for smoky eye definition."}
+      </script>
+      <accordion-custom><details><summary><div><h2>INGREDIENTS AND SAFETY</h2></div></summary>
+        <div class="details-content"><span>Ingredients: ${inci}</span></div>
+      </details></accordion-custom>
+    `;
+
+    expect(extractTomFordFields(html, { productTitle: 'Gel Eyeliner' }).pdp_ingredients_raw).toBe(inci);
+  });
+
   test('extracts Fenty shade INCI across stylized punctuation and reordered label words', () => {
     const roseAmberInci =
       'DIMETHICONE, SILICA, TRIMETHYLSILOXYSILICATE, POLYISOBUTENE, SYNTHETIC FLUORPHLOGOPITE, POLYETHYLENE, OZOKERITE, ACRYLATES/STEARYL ACRYLATE/DIMETHICONE METHACRYLATE COPOLYMER, TOCOPHEROL, IRON OXIDES (CI 77491, CI 77492, CI 77499), RED 7 LAKE (CI 15850).';

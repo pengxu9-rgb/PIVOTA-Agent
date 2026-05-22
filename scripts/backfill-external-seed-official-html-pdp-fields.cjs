@@ -340,7 +340,7 @@ function looksLikeFullInci(value) {
   const commaCount = (text.match(/,/g) || []).length;
   if (commaCount < 8) return false;
   if (/\b(?:cart|checkout|shipping|customer service|menu|ambassador)\b/i.test(text.slice(0, 250))) return false;
-  return /\b(?:water|aqua|glycerin|butylene glycol|niacinamide|extract|acid|sodium|potassium|glycol|fragrance|tocopherol)\b/i.test(text);
+  return /\b(?:water|aqua|glycerin|butylene glycol|niacinamide|extract|acid|sodium|potassium|glycol|fragrance|tocopherol|mica|isododecane|polybutene|trimethylsiloxysilicate|titanium dioxide|iron oxides|ci\s*\d{4,6})\b/i.test(text);
 }
 
 function looksLikeShortOfficialInci(value) {
