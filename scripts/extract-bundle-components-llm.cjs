@@ -47,6 +47,146 @@ function tokenOverlapScore(a, b) {
   return overlap / Math.min(ta.size, tb.size);
 }
 
+// Tokens that indicate a child-bundle / set / collection. If they appear in
+// the matched candidate's title but NOT in the LLM-extracted component title,
+// the match is almost certainly wrong (one of codex's systemic findings:
+// bundles getting resolved to sibling bundle PDPs instead of the single SKU).
+const BUNDLE_CHILD_TOKENS = new Set([
+  'set', 'bundle', 'kit', 'trio', 'duo', 'collection', 'pack',
+  'box', 'mystery', 'gift', 'edition', 'value',
+]);
+
+// Variant-modifier tokens that the matcher used to accept as noise. If they
+// appear in the matched title but NOT in the extracted title, the matcher
+// is silently swapping in a sample/refill/travel variant for the full SKU.
+// Codex's systemic finding #1.
+const VARIANT_NOISE_TOKENS = new Set([
+  'sample', 'deluxe', 'mini', 'travel', 'refill', 'tester',
+  'foam', 'rollerball', 'roller', 'spray', 'wipe', 'wipes',
+  'pen', 'stick', 'powder', 'oil', 'cream', 'gel', 'serum',
+  'lotion', 'wash', 'body', 'face', 'hand', 'foot', 'lip', 'eye',
+]);
+// Keep a "very-distinct" subset that should never silently appear in matched
+// titles without explicit consent from the extracted title. The broader
+// VARIANT_NOISE_TOKENS above is too aggressive to outright disqualify on
+// (many legitimate product titles contain "serum", "cream", etc.), so we
+// only treat the highly-disambiguating ones as hard penalties.
+const VARIANT_HARD_NOISE = new Set([
+  'sample', 'deluxe', 'mini', 'travel', 'refill', 'tester',
+  'rollerball', 'roller', 'wipe', 'wipes', 'pen',
+]);
+
+// Extract size tokens like "30ml", "1.0 oz", "50 ml", "100ml" from a string.
+// Returns lowercase normalized tokens like "30ml", "1oz", "50ml".
+function extractSizeTokens(text) {
+  const out = new Set();
+  const normalized = asString(text).toLowerCase();
+  const re = /(\d+(?:\.\d+)?)\s*(ml|oz|fl\s*oz|g|kg|lb|lbs|piece|pieces|pcs)\b/g;
+  let m;
+  while ((m = re.exec(normalized)) !== null) {
+    const num = m[1].replace(/\.0+$/, '');
+    const unit = m[2].replace(/\s+/g, '');
+    out.add(`${num}${unit}`);
+  }
+  return out;
+}
+
+/**
+ * Score a candidate match against the extracted component title.
+ *
+ * Beyond raw token overlap, applies the 4 systemic guards codex flagged in
+ * round 1/2 of the bundle backfill audit:
+ *   1. Variant-noise penalty — sample/deluxe/mini/travel/refill/etc.
+ *      appearing in matched title but absent from extracted title.
+ *   2. Bundle-child disqualification — matched title carrying
+ *      set/kit/trio/duo/collection/etc. when the extracted title doesn't.
+ *   3. Size-aware preference — when extracted carries a size (30ml, 1.0 oz),
+ *      prefer matched candidates that also list that size.
+ *   4. Parent-context bonus — disambiguate generic component names by
+ *      checking overlap with the parent-bundle title's distinguishing words.
+ */
+function scoreCandidateMatch(candidate, { extractedTitle, parentTitle, parentHost, sizeLabel }) {
+  const extractedTokens = new Set(tokenize(extractedTitle));
+  const candidateTokens = new Set(tokenize(candidate.title));
+  const sizeTokens = extractSizeTokens(`${extractedTitle} ${sizeLabel || ''}`);
+  const candidateSizeTokens = extractSizeTokens(candidate.title);
+
+  let overlap = 0;
+  for (const tok of extractedTokens) if (candidateTokens.has(tok)) overlap += 1;
+  const baseOverlap =
+    extractedTokens.size === 0 || candidateTokens.size === 0
+      ? 0
+      : overlap / Math.min(extractedTokens.size, candidateTokens.size);
+
+  const hostMatch =
+    parentHost && normalizeHost(candidate.canonical_url || candidate.destination_url) === parentHost;
+  const hostBonus = hostMatch ? 0.3 : 0;
+
+  // Bundle-child disqualification (guard #2): if any bundle token is in the
+  // candidate title but not in the extracted title, this candidate is itself
+  // a bundle/set/duo — almost never the right answer.
+  let bundleChildHit = false;
+  for (const tok of candidateTokens) {
+    if (BUNDLE_CHILD_TOKENS.has(tok) && !extractedTokens.has(tok)) {
+      bundleChildHit = true;
+      break;
+    }
+  }
+
+  // Variant-noise penalty (guard #1).
+  let hardNoiseHit = false;
+  for (const tok of candidateTokens) {
+    if (VARIANT_HARD_NOISE.has(tok) && !extractedTokens.has(tok)) {
+      hardNoiseHit = true;
+      break;
+    }
+  }
+
+  // Size-aware preference (guard #3). Reward matched candidate when its title
+  // contains the extracted size token; penalize when extracted has a size and
+  // the candidate has a different-sized variant token.
+  let sizeBonus = 0;
+  if (sizeTokens.size > 0) {
+    let sizeAlignsWith = false;
+    for (const sz of sizeTokens) if (candidateSizeTokens.has(sz)) sizeAlignsWith = true;
+    if (sizeAlignsWith) {
+      sizeBonus = 0.2;
+    } else if (candidateSizeTokens.size > 0) {
+      // candidate names a DIFFERENT size — that's a wrong-format match.
+      sizeBonus = -0.25;
+    }
+  }
+
+  // Parent-context bonus (guard #4). Bundle title tokens that don't belong to
+  // the bundle-shaped set words act as disambiguating context (brand line,
+  // product family, scent name).
+  const parentTokens = tokenize(parentTitle)
+    .filter((t) => !BUNDLE_CHILD_TOKENS.has(t) && t.length >= 3);
+  let contextOverlap = 0;
+  for (const tok of parentTokens) if (candidateTokens.has(tok)) contextOverlap += 1;
+  const contextBonus = parentTokens.length > 0
+    ? 0.15 * (contextOverlap / parentTokens.length)
+    : 0;
+
+  const rawScore = baseOverlap + hostBonus + sizeBonus + contextBonus;
+  // Hard disqualifications knock the score below the acceptance threshold so
+  // pickBestMatch will reject them outright (unless every candidate is
+  // disqualified, in which case the extracted component goes unmatched —
+  // which is the right outcome).
+  const finalScore = (bundleChildHit ? rawScore - 1.0 : rawScore)
+                   - (hardNoiseHit ? 0.6 : 0);
+
+  return {
+    _title_overlap: baseOverlap,
+    _host_match: hostMatch,
+    _size_bonus: sizeBonus,
+    _context_bonus: contextBonus,
+    _bundle_child_hit: bundleChildHit,
+    _hard_noise_hit: hardNoiseHit,
+    _score: finalScore,
+  };
+}
+
 const ComponentSchema = z.object({
   title: z.string().min(2).max(200),
   size_label: z.string().max(60).optional().default(''),
@@ -132,7 +272,7 @@ async function loadBundleCandidates({ limit, market, ids }) {
   return res.rows || [];
 }
 
-async function searchCandidateMatches({ brand, title, parentHost }) {
+async function searchCandidateMatches({ brand, title, parentTitle, parentHost, sizeLabel }) {
   if (!brand && !title) return [];
   const brandNorm = asString(brand).toLowerCase();
   const titleTokens = tokenize(title).slice(0, 6);
@@ -163,25 +303,33 @@ async function searchCandidateMatches({ brand, title, parentHost }) {
     `,
     params,
   );
-  const scored = (res.rows || []).map((row) => {
-    const titleOverlap = tokenOverlapScore(title, row.title);
-    const hostMatch = parentHost && normalizeHost(row.canonical_url || row.destination_url) === parentHost ? 1 : 0;
-    return {
-      ...row,
-      _title_overlap: titleOverlap,
-      _host_match: hostMatch,
-      _score: titleOverlap + hostMatch * 0.3,
-    };
-  });
+  const scored = (res.rows || []).map((row) => ({
+    ...row,
+    ...scoreCandidateMatch(row, {
+      extractedTitle: title,
+      parentTitle,
+      parentHost,
+      sizeLabel,
+    }),
+  }));
   scored.sort((a, b) => b._score - a._score);
   return scored;
 }
 
-function pickBestMatch(matches) {
+function pickBestMatch(matches, { excludeIds = new Set() } = {}) {
   if (!matches.length) return null;
-  const best = matches[0];
-  if (best._title_overlap < 0.4) return null;
-  return best;
+  // Take the highest-scoring candidate that:
+  //   - isn't already used elsewhere in this bundle (dedup against parent +
+  //     already-matched siblings prevents the self-loops codex saw),
+  //   - clears the 0.5 score threshold (raised from 0.4; the new score is a
+  //     compound of overlap + host + size + context with penalties applied).
+  for (const m of matches) {
+    if (excludeIds.has(m.external_product_id)) continue;
+    if (m._score < 0.5) return null; // scored list is descending; nothing better below
+    if (m._title_overlap < 0.4) continue; // raw overlap still must be respectable
+    return m;
+  }
+  return null;
 }
 
 async function processCandidate({ candidate, provider, options }) {
@@ -214,14 +362,23 @@ async function processCandidate({ candidate, provider, options }) {
 
   const matchedRefs = [];
   const unmatched = [];
+  // Dedup set seeded with the parent bundle so a component can never resolve
+  // back to its own parent (one of codex's round-2 systemic findings). As we
+  // accept matches, their IDs join the set so the next sibling component
+  // can't pick the same SKU twice.
+  const usedIds = new Set();
+  if (candidate.external_product_id) usedIds.add(candidate.external_product_id);
   for (const c of components) {
     const matches = await searchCandidateMatches({
       brand: candidate.brand,
       title: c.title,
+      parentTitle: candidate.title,
       parentHost,
+      sizeLabel: c.size_label,
     });
-    const best = pickBestMatch(matches);
+    const best = pickBestMatch(matches, { excludeIds: usedIds });
     if (best) {
+      usedIds.add(best.external_product_id);
       matchedRefs.push({
         external_product_id: best.external_product_id,
         title: c.title,
@@ -232,7 +389,10 @@ async function processCandidate({ candidate, provider, options }) {
         _extracted_title: c.title,
         _matched_title: best.title,
         _title_overlap: Number(best._title_overlap.toFixed(3)),
+        _score: Number(best._score.toFixed(3)),
         _host_match: Boolean(best._host_match),
+        _size_bonus: Number(best._size_bonus.toFixed(3)),
+        _context_bonus: Number(best._context_bonus.toFixed(3)),
       });
     } else {
       unmatched.push({
@@ -241,6 +401,9 @@ async function processCandidate({ candidate, provider, options }) {
           external_product_id: m.external_product_id,
           title: m.title,
           overlap: Number(m._title_overlap.toFixed(3)),
+          score: Number(m._score.toFixed(3)),
+          bundle_child_hit: m._bundle_child_hit,
+          hard_noise_hit: m._hard_noise_hit,
         })),
       });
     }
@@ -370,13 +533,25 @@ async function main() {
   process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
 }
 
-main()
-  .catch((err) => {
-    process.stderr.write(
-      `${JSON.stringify({ ok: false, error: err?.message || String(err), stack: err?.stack }, null, 2)}\n`,
-    );
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    await closePool().catch(() => {});
-  });
+if (require.main === module) {
+  main()
+    .catch((err) => {
+      process.stderr.write(
+        `${JSON.stringify({ ok: false, error: err?.message || String(err), stack: err?.stack }, null, 2)}\n`,
+      );
+      process.exitCode = 1;
+    })
+    .finally(async () => {
+      await closePool().catch(() => {});
+    });
+}
+
+module.exports = {
+  tokenize,
+  tokenOverlapScore,
+  extractSizeTokens,
+  scoreCandidateMatch,
+  pickBestMatch,
+  BUNDLE_CHILD_TOKENS,
+  VARIANT_HARD_NOISE,
+};
