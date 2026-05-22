@@ -793,6 +793,49 @@ describe('PDP grouped offers', () => {
     );
   });
 
+  test('sanitizes the serialized PDP similar module before response', () => {
+    const app = require('../src/server');
+
+    const modules = app._debug.sanitizePdpSimilarResponseModules([
+      {
+        type: 'similar',
+        data: {
+          status: 'success',
+          items: [
+            {
+              product_id: 'sig_late_seller_only',
+              title: 'Late Seller Only Card',
+              image_url: 'https://example.test/late-seller.jpg',
+              shopping_card: { evidence_profile: 'seller_only', highlight: 'Seller-only copy' },
+              search_card: { evidence_profile: 'seller_only', highlight_candidate: 'Seller-only copy' },
+            },
+            {
+              product_id: 'sig_late_reviewed',
+              title: 'Late Reviewed Card',
+              image_url: 'https://example.test/late-reviewed.jpg',
+              evidence_profile: 'official_pdp_seed_title',
+              shopping_card: { evidence_profile: 'official_pdp_seed_title', highlight: 'Reviewed card' },
+            },
+          ],
+          metadata: {
+            similar_status: 'ready',
+          },
+        },
+      },
+    ]);
+
+    expect(modules[0].data.items).toEqual([
+      expect.objectContaining({
+        product_id: 'sig_late_reviewed',
+      }),
+    ]);
+    expect(modules[0].data.metadata).toEqual(
+      expect.objectContaining({
+        final_public_similar_filtered_count: 1,
+      }),
+    );
+  });
+
   test('builds distinct offer ids for multiple external-seed offers in the same group', async () => {
     const app = require('../src/server');
 

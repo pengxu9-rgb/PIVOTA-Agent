@@ -29564,6 +29564,36 @@ function mergeRecommendationModuleWithEnvelope(moduleData, envelope) {
   };
 }
 
+function sanitizePdpSimilarResponseModules(modules) {
+  if (!Array.isArray(modules)) return modules;
+  return modules.map((module) => {
+    if (module?.type !== 'similar' || !module.data || typeof module.data !== 'object') return module;
+    const rawItems = Array.isArray(module.data.items) ? module.data.items : null;
+    if (!rawItems) return module;
+    const publicItems = filterPublicVisibleSimilarProducts(rawItems);
+    const filteredCount = Math.max(0, rawItems.length - publicItems.length);
+    if (filteredCount <= 0) return module;
+    const currentMetadata =
+      module.data.metadata && typeof module.data.metadata === 'object'
+        ? module.data.metadata
+        : {};
+    const previousFilteredCount = Number(currentMetadata.final_public_similar_filtered_count || 0) || 0;
+    return {
+      ...module,
+      data: {
+        ...module.data,
+        items: publicItems,
+        ...(publicItems.length === 0 ? { status: 'empty' } : {}),
+        metadata: {
+          ...currentMetadata,
+          ...(publicItems.length === 0 ? { similar_status: 'empty' } : {}),
+          final_public_similar_filtered_count: previousFilteredCount + filteredCount,
+        },
+      },
+    };
+  });
+}
+
 async function resolveProductIntelInvokeContext({
   payload,
   checkoutToken,
@@ -34703,7 +34733,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       }
 
 	      const buildId = SERVICE_GIT_SHA ? SERVICE_GIT_SHA.slice(0, 12) : null;
-	      const capabilities = {
+      const capabilities = {
         client:
           payload?.capabilities?.client ||
           payload?.capabilities?.client_name ||
@@ -34714,6 +34744,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           payload?.capabilities?.clientVersion ||
           null,
       };
+      const responseModules = sanitizePdpSimilarResponseModules(modules);
 
 	      const responsePayload = {
 	        status: 'success',
@@ -34721,7 +34752,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        request_id: gatewayRequestId,
         build_id: buildId,
         generated_at: new Date().toISOString(),
-        subject: productGroupId
+	        subject: productGroupId
           ? { type: 'product_group', id: productGroupId, canonical_product_ref: canonicalProductRef }
           : {
               type: 'product',
@@ -34729,7 +34760,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               canonical_product_ref: canonicalProductRef,
             },
 	        capabilities,
-	        modules,
+	        modules: responseModules,
 	        warnings: debug ? [] : [],
 	        missing,
 	          metadata: {
@@ -42084,6 +42115,7 @@ module.exports._debug = {
   hasSimilarCardImage,
   resolvePdpSimilarWithBudget,
   mergeRecommendationModuleWithEnvelope,
+  sanitizePdpSimilarResponseModules,
   mergeInvokeGatewayAuditMetadata,
   normalizeGovernanceShadowBlockContract,
   uiChatBuildLoopBreakRetryArgs,
