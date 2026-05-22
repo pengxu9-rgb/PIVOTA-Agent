@@ -2932,6 +2932,61 @@ Contains four types of peptides`,
     );
   });
 
+  test('drops generic extractor bundle components and does not preserve stale components', () => {
+    const row = {
+      id: 'eps_theordinary_face_body',
+      title: 'The Face & Body Set',
+      canonical_url: 'https://theordinary.com/en-us/the-face-and-body-gift-set-100729.html',
+      destination_url: 'https://theordinary.com/en-us/the-face-and-body-gift-set-100729.html',
+      image_url: '',
+      price_amount: 0,
+      price_currency: 'USD',
+      availability: '',
+      seed_data: {
+        product_kind: 'bundle',
+        bundle_components: [
+          { name: 'Face', source_kind: 'legacy' },
+          { name: 'Body', source_kind: 'legacy' },
+        ],
+        snapshot: {
+          product_kind: 'bundle',
+          bundle_components: [
+            { name: 'Face', source_kind: 'legacy' },
+            { name: 'Body', source_kind: 'legacy' },
+          ],
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: row.title,
+            url: row.canonical_url,
+            description_raw:
+              'The Face & Body Set includes a collection of targeted formulations to apply ingredient-led skincare.',
+            product_kind: 'bundle',
+            bundle_components: [
+              { name: 'Face', source_kind: 'bundle_component_title_candidate', raw_text: 'The Face' },
+              { name: 'Body', source_kind: 'bundle_component_title_candidate', raw_text: 'Body' },
+            ],
+            variants: [{ id: 'v1', sku: 'TO-FACE-BODY', price: '19.00', currency: 'USD', stock: 'Out of Stock' }],
+          },
+        ],
+        variants: [],
+        diagnostics: { failure_category: null },
+      },
+      row.canonical_url,
+    );
+
+    expect(payload.nextRow.seed_data.product_kind).toBe('bundle');
+    expect(payload.nextRow.seed_data.bundle_components).toBeUndefined();
+    expect(payload.nextRow.seed_data.snapshot.product_kind).toBe('bundle');
+    expect(payload.nextRow.seed_data.snapshot.bundle_components).toBeUndefined();
+  });
+
   test('drops extractor bundle kind when copy has no source-backed set evidence', () => {
     const row = {
       id: 'eps_kylie_highlighter',

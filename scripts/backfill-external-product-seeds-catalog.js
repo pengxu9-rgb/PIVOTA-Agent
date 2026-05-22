@@ -1921,6 +1921,39 @@ function cleanBundleComponentName(value) {
   return next.replace(/^[\s.,:;-]+/, '').replace(/\s+/g, ' ').trim();
 }
 
+const GENERIC_BUNDLE_COMPONENT_NAME_KEYS = new Set([
+  'face',
+  'body',
+  'skin',
+  'hair',
+  'eye',
+  'eyes',
+  'lash',
+  'lashes',
+  'brow',
+  'brows',
+  'lip',
+  'lips',
+  'face and body',
+  'lash and brow',
+  'eye lash and brow',
+]);
+
+function normalizeBundleComponentNameKey(value) {
+  return normalizeNonEmptyString(value)
+    .toLowerCase()
+    .replace(/^the\s+/i, '')
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9+%]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+function isGenericBundleComponentName(value) {
+  const key = normalizeBundleComponentNameKey(value);
+  return !key || GENERIC_BUNDLE_COMPONENT_NAME_KEYS.has(key);
+}
+
 function normalizeBundleComponents(value, maxItems = 24) {
   const items = Array.isArray(value) ? value : [];
   const out = [];
@@ -1930,7 +1963,7 @@ function normalizeBundleComponents(value, maxItems = 24) {
     const quantity = normalizeNonEmptyString(item?.quantity);
     const sourceKind = normalizeNonEmptyString(item?.source_kind || item?.sourceKind) || 'catalog_intelligence_bundle_component';
     const rawText = normalizeNonEmptyString(item?.raw_text || item?.rawText);
-    if (!name) continue;
+    if (!name || isGenericBundleComponentName(name)) continue;
     const key = name.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
@@ -4136,10 +4169,13 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   const hasApprovedSnapshotContract =
     existingSnapshotContract.authoritative === true &&
     existingSnapshotContract.legacy_fields_quarantined === true;
-  const extractedBundleComponents = normalizeBundleComponents(
-    representativeProduct?.bundle_components ||
-      representativeProduct?.bundleComponents,
-  );
+  const rawExtractedBundleComponents = Array.isArray(representativeProduct?.bundle_components)
+    ? representativeProduct.bundle_components
+    : Array.isArray(representativeProduct?.bundleComponents)
+      ? representativeProduct.bundleComponents
+      : null;
+  const extractorProvidedBundleComponents = Array.isArray(rawExtractedBundleComponents);
+  const extractedBundleComponents = normalizeBundleComponents(rawExtractedBundleComponents);
   const existingBundleComponents = normalizeBundleComponents(
     Array.isArray(seedData.bundle_components) && seedData.bundle_components.length > 0
       ? seedData.bundle_components
@@ -4147,7 +4183,11 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   );
   const nextBundleComponents =
     nextProductKind === 'bundle'
-      ? (extractedBundleComponents.length > 0 ? extractedBundleComponents : existingBundleComponents)
+      ? (extractedBundleComponents.length > 0
+        ? extractedBundleComponents
+        : extractorProvidedBundleComponents
+          ? []
+          : existingBundleComponents)
       : [];
   const existingPdpDescriptionRaw = cleanPdpDescriptionCandidate(
     identityRepairBackfill ||
@@ -4780,7 +4820,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     delete nextSeedData.pdp_how_to_use_raw;
     if (nextSeedData.snapshot && typeof nextSeedData.snapshot === 'object') delete nextSeedData.snapshot.pdp_how_to_use_raw;
   }
-  if (nextProductKind !== 'bundle') {
+  if (nextProductKind !== 'bundle' || nextBundleComponents.length === 0) {
     delete nextSeedData.bundle_components;
     if (nextSeedData.snapshot && typeof nextSeedData.snapshot === 'object') delete nextSeedData.snapshot.bundle_components;
   }
