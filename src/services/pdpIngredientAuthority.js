@@ -1,4 +1,10 @@
-const { classifyExternalSeedProductKind } = require('./externalSeedProductKind');
+const {
+  COLLECTION_BUNDLE_RE,
+  COLLECTION_MEMBER_RE,
+  FORMULA_PRODUCT_RE,
+  STRONG_BUNDLE_RE,
+  classifyExternalSeedProductKind,
+} = require('./externalSeedProductKind');
 
 function asString(value) {
   if (typeof value === 'string') return value.trim();
@@ -818,10 +824,129 @@ function isExternalSeedProduct(product) {
   );
 }
 
-function buildExternalSeedProductFamilySuppression(product, generatedAt) {
+const FORMULA_CATEGORY_PATH_RE =
+  /^beauty\/(?:skincare|skin-care|makeup\/(?:face|lip|eye|cheek|complexion|base)|fragrance|hair|haircare|body)(?:\/|$)/i;
+
+function normalizeCategoryPathText(value) {
+  if (Array.isArray(value)) {
+    return value.map(asString).filter(Boolean).join('/');
+  }
+  return asString(value);
+}
+
+function productHasFormulaCategorySignal(product, inputs = readIngredientInputs(product)) {
+  const seedData = inputs.seedData || {};
+  const snapshot = inputs.snapshot || {};
+  const pathCandidates = [
+    product?.catalog_category_path,
+    product?.category_path,
+    product?.categoryPath,
+    seedData.catalog_category_path,
+    seedData.category_path,
+    seedData.categoryPath,
+    snapshot.catalog_category_path,
+    snapshot.category_path,
+    snapshot.categoryPath,
+  ];
+  const hasFormulaPath = pathCandidates
+    .map(normalizeCategoryPathText)
+    .some((value) =>
+      FORMULA_CATEGORY_PATH_RE.test(
+        value
+          .toLowerCase()
+          .replace(/\\+/g, '/')
+          .replace(/[_\s-]+/g, '-')
+          .replace(/-?\/-?/g, '/')
+          .replace(/^\/+|\/+$/g, ''),
+      ),
+    );
+  const formulaText = [
+    product?.title,
+    product?.name,
+    product?.display_name,
+    product?.category,
+    product?.product_type,
+    product?.productType,
+    seedData.title,
+    seedData.name,
+    seedData.category,
+    seedData.product_type,
+    seedData.productType,
+    snapshot.title,
+    snapshot.name,
+    snapshot.category,
+    snapshot.product_type,
+    snapshot.productType,
+  ]
+    .map(asString)
+    .filter(Boolean)
+    .join(' ');
+  return hasFormulaPath && FORMULA_PRODUCT_RE.test(formulaText);
+}
+
+function productHasPrimaryBundleSignal(product, inputs = readIngredientInputs(product)) {
+  const seedData = inputs.seedData || {};
+  const snapshot = inputs.snapshot || {};
+  const primaryText = [
+    product?.title,
+    product?.name,
+    product?.display_name,
+    product?.canonical_url,
+    product?.destination_url,
+    product?.url,
+    seedData.title,
+    seedData.name,
+    snapshot.title,
+    snapshot.name,
+  ]
+    .map(asString)
+    .filter(Boolean)
+    .join(' ');
+  return (
+    STRONG_BUNDLE_RE.test(primaryText) ||
+    (COLLECTION_BUNDLE_RE.test(primaryText) && !COLLECTION_MEMBER_RE.test(primaryText))
+  );
+}
+
+function hasAuthoritativeFormulaIngredientEvidence(product, inputs = readIngredientInputs(product)) {
+  const existingAuthority = asPlainObject(inputs.authoritative);
+  if (existingAuthority) {
+    const authorityItems = normalizeIngredientItems(existingAuthority.items, { max: 180 });
+    const rawText = asString(existingAuthority.raw_text || existingAuthority.rawText);
+    if (authorityItems.length >= 3 || rawText.length >= 80) return true;
+  }
+  const structured = readStructuredArrayAuthority(product, inputs);
+  if (Array.isArray(structured?.items) && structured.items.length >= 3) return true;
+  for (const value of [
+    product?.pdp_ingredients_raw,
+    product?.raw_ingredient_text_clean,
+    product?.ingredients_raw,
+    product?.ingredientsRaw,
+    inputs.seedData?.pdp_ingredients_raw,
+    inputs.seedData?.raw_ingredient_text_clean,
+    inputs.snapshot?.pdp_ingredients_raw,
+    inputs.snapshot?.raw_ingredient_text_clean,
+  ]) {
+    const text = asString(value);
+    if (text.length >= 80 && text.includes(',')) return true;
+  }
+  return false;
+}
+
+function shouldBypassExternalSeedSetSuppressionForFormula(product, productKind, inputs) {
+  return (
+    productKind?.family === 'set_or_collection' &&
+    productHasFormulaCategorySignal(product, inputs) &&
+    !productHasPrimaryBundleSignal(product, inputs) &&
+    hasAuthoritativeFormulaIngredientEvidence(product, inputs)
+  );
+}
+
+function buildExternalSeedProductFamilySuppression(product, generatedAt, inputs = readIngredientInputs(product)) {
   if (!isExternalSeedProduct(product)) return null;
   const productKind = classifyExternalSeedProductKind(product);
   if (!['set_or_collection', 'non_merch', 'accessory'].includes(productKind.family)) return null;
+  if (shouldBypassExternalSeedSetSuppressionForFormula(product, productKind, inputs)) return null;
   return buildAuthorityRecord({
     items: [],
     activeItems: [],
@@ -1193,7 +1318,7 @@ function readSourceActiveArrayCandidates(product, inputs) {
 function buildAuthoritativeIngredientView(product, options = {}) {
   const inputs = readIngredientInputs(product);
   const generatedAt = options.generatedAt || new Date().toISOString();
-  const productFamilySuppression = buildExternalSeedProductFamilySuppression(product, generatedAt);
+  const productFamilySuppression = buildExternalSeedProductFamilySuppression(product, generatedAt, inputs);
   if (productFamilySuppression) return productFamilySuppression;
   const reviewedPartialQuality = readReviewedPartialIngredientQuality(product);
 

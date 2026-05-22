@@ -213,6 +213,57 @@ describe('pdpIngredientAuthority', () => {
     expect(modules.authority.suppressed_reason).toBe('product_family_set_or_collection');
   });
 
+  test('does not let stale bundle metadata suppress authoritative formula INCI', () => {
+    const modules = buildStructuredPdpIngredientModules({
+      merchant_id: 'external_seed',
+      source: 'external_seed',
+      title: 'Gel Eyeliner',
+      product_kind: 'bundle',
+      category_path: ['beauty', 'makeup', 'eye', 'eyeliner'],
+      catalog_category_path: 'beauty/makeup/eye/eyeliner',
+      category: 'Eyeliner',
+      product_type: 'Eyeliner',
+      ingredient_intel: {
+        authoritative: {
+          raw_text:
+            'Trimethylsiloxysilicate, Isododecane, Polyethylene, Silica, Synthetic Wax, Disteardimonium Hectorite, Phenoxyethanol, Propylene Carbonate',
+          items: [
+            'Trimethylsiloxysilicate',
+            'Isododecane',
+            'Polyethylene',
+            'Silica',
+            'Synthetic Wax',
+            'Disteardimonium Hectorite',
+            'Phenoxyethanol',
+            'Propylene Carbonate',
+          ],
+          source_origin: 'official_html',
+          purity_status: 'authoritative',
+        },
+      },
+      seed_data: {
+        product_kind: 'bundle',
+        category: 'Gift Sets',
+        product_type: 'Eyeliner',
+        source_page_type: 'collection',
+        snapshot: {
+          product_kind: 'bundle',
+          category: 'Gift Sets',
+          product_type: 'Eyeliner',
+        },
+      },
+    });
+
+    expect(modules.authority.suppressed_reason).toBeUndefined();
+    expect(modules.ingredientsInciData).toEqual(
+      expect.objectContaining({
+        source_origin: 'official_html',
+        source_quality_status: 'authoritative',
+        items: expect.arrayContaining(['Trimethylsiloxysilicate', 'Isododecane']),
+      }),
+    );
+  });
+
   test('prefers existing authoritative ingredient block when already clean', () => {
     const authority = buildAuthoritativeIngredientView({
       ingredient_intel: {
