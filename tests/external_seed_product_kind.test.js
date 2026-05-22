@@ -117,6 +117,45 @@ describe('external seed product kind classification', () => {
     );
   });
 
+  test('overrides stale accessory product kind for formula makeup PDPs', () => {
+    expect(
+      classifyExternalSeedProductKind({
+        title: 'TERRACOTTA LIGHT THE SUN-KISSED NATURAL HEALTHY GLOW POWDER',
+        product_type: 'Face Powder',
+        canonical_url: 'https://www.guerlain.com/us/en-us/p/terracotta-light-the-sun-kissed-natural-healthy-glow-powder',
+        seed_data: {
+          product_family: 'accessory',
+          product_type: 'Face Powder',
+          snapshot: {
+            product_family: 'accessory',
+            product_type: 'Face Powder',
+          },
+        },
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        family: 'single_formula',
+        reasons: expect.arrayContaining(['stale_accessory_kind_overridden_by_formula_signal']),
+      }),
+    );
+
+    expect(
+      classifyExternalSeedProductKind({
+        title: 'Foundation Brush 02',
+        product_type: 'Brush',
+        seed_data: {
+          product_family: 'accessory',
+          product_type: 'Brush',
+        },
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        family: 'accessory',
+        reasons: expect.arrayContaining(['explicit_product_family_signal']),
+      }),
+    );
+  });
+
   test('lets strong collection titles override stale single-formula seed kind', () => {
     expect(
       classifyExternalSeedProductKind({

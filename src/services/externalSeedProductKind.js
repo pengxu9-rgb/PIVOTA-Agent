@@ -244,6 +244,19 @@ function classifyExternalSeedProductKind(input = {}) {
     reasons.push('stale_bundle_kind_overridden_by_formula_category');
     return { family: 'single_formula', reasons };
   }
+  if (
+    explicitFamily?.family === 'accessory' &&
+    !hasToolCategoryPath(input) &&
+    (formulaCategoryPathSignal || FORMULA_PRODUCT_RE.test(contentText)) &&
+    !ACCESSORY_RE.test(primaryContentText)
+  ) {
+    reasons.push(
+      formulaCategoryPathSignal
+        ? 'stale_accessory_kind_overridden_by_formula_category'
+        : 'stale_accessory_kind_overridden_by_formula_signal',
+    );
+    return { family: 'single_formula', reasons };
+  }
   if (explicitFamily) {
     return { family: explicitFamily.family, reasons: [explicitFamily.reason] };
   }
