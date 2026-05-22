@@ -156,11 +156,13 @@ function inferKind(title, category, categoryPath, description = '') {
   if (/\b(?:blush)\b/.test(haystack)) return 'blush';
   if (/\b(?:bronzer|bronze)\b/.test(haystack)) return 'bronzer';
   if (/\b(?:highlighting|highlighter|illuminate)\b/.test(haystack)) return 'highlighter';
-  if (/\b(?:powder)\b/.test(haystack)) return 'face_powder';
   if (/\b(?:body oil)\b/.test(haystack)) return 'body_oil';
   if (/\b(?:spot sticker|spot stickers|zit|blemish spot|blemish sticker|blemish stickers)\b/.test(haystack)) return 'blemish_patch';
+  if (/\b(?:foaming gel cleanser|gel cleanser|face wipes|facial wipes|body wash|hand & body wash|hand and body wash|goat milk soap|bar soap|soap)\b/.test(haystack)) return 'cleanser';
+  if (/\b(?:hand cream|body cream|whipped body cream|body lotion|goat milk lotion|hand salve|cuticle serum|facial oil|face oil)\b/.test(haystack)) return 'skincare';
   if (/\b(?:sheet mask|face mask|lip patch|lippatch|body polish|retinol oil|concentrate)\b/.test(haystack)) return 'skincare';
   if (/\b(?:cleansing|cleanser)\b/.test(haystack)) return 'cleanser';
+  if (/\b(?:powder)\b/.test(titleCategoryText)) return 'face_powder';
   if (/\b(?:treatment lotion|treatment emulsion|emulsion|lotion|serum|toner|tonic|to-go|pads|cloths)\b/.test(haystack)) return 'skincare';
   if (/\b(?:moisturizer|cream|mist|serum|cleanser|skincare|radiance|clarity|glow tonic)\b/.test(haystack)) return 'skincare';
   return 'beauty_product';

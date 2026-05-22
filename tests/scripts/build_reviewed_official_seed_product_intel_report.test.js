@@ -42,6 +42,23 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     expect(inferKind('Overnight Retinol Oil', '', '', 'Retinol oil for smoother-looking skin.')).toBe('skincare');
   });
 
+  test('keeps Beekman cleansers, soaps, and body care out of powder/generic buckets', () => {
+    expect(
+      inferKind(
+        'Mini Oil Eliminating Foaming Gel Cleanser',
+        '',
+        '',
+        'Controls sebum with kaolin powder listed in formula detail.',
+      ),
+    ).toBe('cleanser');
+    expect(inferKind('Lilac Dream Hand & Body Wash', '', '', 'Goat milk body wash.')).toBe('cleanser');
+    expect(inferKind('Vanilla Absolute Goat Milk Soap', '', '', 'Goat milk bar soap.')).toBe('cleanser');
+    expect(inferKind('Honeyed Grapefruit Hand Salve', '', '', 'Goat milk salve for dry hands.')).toBe('skincare');
+    expect(inferKind('Candy Cane Whipped Body Cream', '', '', 'Whipped body cream with cocoa powder.')).toBe(
+      'skincare',
+    );
+  });
+
   test('does not fall back to a Tom Ford brand when seed brand metadata is missing', () => {
     const bundle = buildBundle({
       seed: {
