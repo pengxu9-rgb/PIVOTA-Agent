@@ -136,7 +136,19 @@ describe('product_intel pilot compare selection', () => {
         expectedKind: 'setting_spray',
         expectedHeadline: /Setting spray/i,
         expectedSubtitle: 'Setting Spray',
-        rejected: /prep or toner/i,
+        rejected: /prep or toner|hydrating toner|post-cleanse skin prep/i,
+      },
+      {
+        title: 'Makeup Fixing Mist',
+        category: 'beauty/skincare/treat/toner',
+        description:
+          '• Prolongs makeup wear and keeps it from moving, melting, and settling into fine lines or pores. • Extends and refreshes makeup, hydrates and balances. • Sets makeup adds a soft-focus finish.',
+        tags: ['beauty', 'skincare', 'treat', 'toner'],
+        expectedKind: 'setting_spray',
+        expectedHeadline: /Setting spray/i,
+        expectedSubtitle: 'Setting Spray',
+        expectedHighlight: /Makeup setting step/,
+        rejected: /hydrating toner|post-cleanse skin prep/i,
       },
       {
         title: 'LiquidGlow Blush',
@@ -175,12 +187,13 @@ describe('product_intel pilot compare selection', () => {
         title: 'AntioxifEYE Eye Mask Goggles (Set of 3)',
         category: 'Treatment',
         description:
-          'Hydrogel Eye Mask Goggles in a wide-area goggle shape for the delicate eye area.',
+          'Hydrogel Eye Mask Goggles in a wide-area goggle shape for the delicate eye area. Fragrance-free box contains 3 single-use hydrogel Eye Mask Goggles.',
         tags: ['Treatment', 'Ceramide NP'],
         expectedKind: 'eye_patch',
         expectedHeadline: /Eye patches/i,
         expectedSubtitle: 'Eye Patches',
-        rejected: /makeup set|treatment mask/i,
+        expectedHighlight: /Targeted under-eye masking/,
+        rejected: /makeup set|treatment mask|fragrance profile|scent-note/i,
       },
       {
         title: 'Glow Tonic Travel Size',
@@ -381,6 +394,17 @@ describe('product_intel pilot compare selection', () => {
         rejected: /Body treatment mist|breakout-prone/i,
       },
       {
+        title: 'Caramel Cloud Hair & Body Mist',
+        category: 'Haircare',
+        description:
+          'A warm ambery gourmand hair & body mist with almond, caramel, brown sugar, musk, and vanilla scent notes.',
+        tags: ['Haircare', 'Fragrance'],
+        expectedKind: 'fragrance',
+        expectedHeadline: /Fragrance mist/i,
+        expectedSubtitle: 'Fragrance Mist',
+        rejected: /Body treatment mist|body-care application/i,
+      },
+      {
         title: 'The Imposter Invisi-Boost Volumizing Dry Shampoo Powder',
         category: 'Powder',
         description:
@@ -523,6 +547,17 @@ describe('product_intel pilot compare selection', () => {
         expectedSubtitle: 'Routine Set',
         rejected: /prep or toner step/i,
       },
+      {
+        title: 'Rêve de Miel® Essential Set',
+        category: 'beauty/sets/gift-set',
+        description:
+          'A skin-care gift set with lip balm, hand and nail cream, cleansing and make-up removing gel, and face balm for moisturized skin.',
+        tags: ['beauty', 'sets', 'gift-set'],
+        expectedKind: 'routine_bundle',
+        expectedHeadline: /Routine set/i,
+        expectedSubtitle: 'Routine Set',
+        rejected: /Makeup set|shade range|makeup steps/i,
+      },
     ];
 
     for (const [index, item] of cases.entries()) {
@@ -574,6 +609,9 @@ describe('product_intel pilot compare selection', () => {
       if (item.expectedPairing) {
         expect(toText(selectedCore.routine_fit?.pairing_notes)).toMatch(item.expectedPairing);
         expect(toText(selectedCore.routine_fit?.pairing_notes)).not.toMatch(item.rejected);
+      }
+      if (item.expectedHighlight) {
+        expect(toText(selectedCore.why_it_stands_out?.map((entry) => entry.headline))).toMatch(item.expectedHighlight);
       }
       expect(card.intro || '').not.toMatch(/^[•*\-]\s*/);
     }
@@ -934,6 +972,40 @@ describe('product_intel pilot compare selection', () => {
     ]);
     expect(shimmerSkinstickRewrite.product_intel_core.watchouts[0].label).not.toMatch(/color-correction/i);
 
+    const colorCorrectingSkinstickCase = {
+      case_id: 'live_ext_fenty_color_correcting_skinstick',
+      canonical_product_ref: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_fenty_color_correcting_skinstick',
+      },
+      product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_fenty_color_correcting_skinstick',
+        title: 'Bright Fix Instant Brightening + Color-Correcting Skinstick - Rose Quartz',
+        category: 'external',
+        description:
+          'A longwear, light-as-air color-correcting skinstick designed to brighten and neutralize dark undereye circles and discoloration on the skin.',
+        ingredients_inci: ['Mica', 'Glycerin', 'Propanediol'],
+      },
+    };
+    const colorCorrectingBaseline = buildProductIntelDraftBundle({
+      product: colorCorrectingSkinstickCase.product,
+      canonicalProductRef: colorCorrectingSkinstickCase.canonical_product_ref,
+    });
+    const colorCorrectingSelected = buildSelectedBundle(
+      colorCorrectingSkinstickCase,
+      colorCorrectingBaseline,
+      null,
+      null,
+      'gemini-test',
+    );
+    expect(inferProductKindFromContext(colorCorrectingSkinstickCase.product)).toBe('complexion_makeup');
+    expect(colorCorrectingSelected.bundle.product_intel_core.what_it_is.headline).toBe(
+      'Color-correcting skinstick',
+    );
+    expect(colorCorrectingSelected.bundle.product_intel_core.what_it_is.headline).not.toBe('Product');
+    expect(colorCorrectingSelected.bundle.shopping_card.subtitle).toBe('Color-Correcting Skinstick');
+
     const powderCaseRow = {
       case_id: 'live_ext_fenty_setting_powder_selected',
       canonical_product_ref: {
@@ -1094,6 +1166,17 @@ describe('product_intel pilot compare selection', () => {
         expectedBestFor: /Eye looks/,
         expectedBody: /eyeshadow palette|eye looks/i,
         forbiddenBody: /complexion product|coverage/i,
+      },
+      {
+        title: "Shadowstix Longwear Eyeshadow Stick — Brownie Badd'r",
+        category: 'beauty/makeup/eye/eyeshadow',
+        description: 'A longwear eyeshadow stick for swipe-on lid color, blending, and eye-look placement.',
+        expectedSubtitle: 'Eyeshadow Stick',
+        expectedHeadline: 'Eyeshadow stick',
+        expectedBestFor: /Swipe-on eye color/,
+        expectedBody: /eyeshadow stick|targeted lid color/i,
+        expectedHighlight: /Swipe-on lid color/,
+        forbiddenBody: /^A color makeup product/i,
       },
       {
         title: 'Cosmic Kylie Jenner 2.0 Eau de Parfum',

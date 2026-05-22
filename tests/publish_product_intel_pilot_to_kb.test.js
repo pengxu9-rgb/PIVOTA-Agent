@@ -216,6 +216,44 @@ describe('publish_product_intel_pilot_to_kb', () => {
     expect(result.preparedEntries[0].source_meta.quality_improvement.previous_bundle_hash).toBeTruthy();
     expect(result.preparedEntries[0].source_meta.quality_improvement.existing_quality_lane).toBe('keep');
   });
+
+  test('write preparation allows explicit owner-delegated assistant replacement review', () => {
+    const row = {
+      ...reviewedPublishRow(),
+      quality_improvement_review: {
+        decision: 'approved_replacement',
+        reviewer_kind: 'assistant',
+        owner_delegated: true,
+        reason: 'Owner delegated assistant review confirms this replacement fixes generic copy without field loss.',
+      },
+    };
+    const entries = buildKbEntriesForRow(row);
+    const existingByKey = new Map([
+      [
+        'product:pilot_fenty_instant_reset',
+        {
+          kb_key: 'product:pilot_fenty_instant_reset',
+          analysis: {
+            product_intel_v1: reviewedBundle({
+              quality_state: 'verified',
+              evidence_profile: 'community_supported',
+            }),
+          },
+          source: 'aurora_product_intel_kb',
+          source_meta: {},
+        },
+      ],
+    ]);
+
+    const result = prepareEntriesForWrite(entries, [row], existingByKey);
+
+    expect(result.blockedEntries).toEqual([]);
+    expect(result.preparedEntries).toHaveLength(1);
+    expect(
+      result.preparedEntries[0].analysis.product_intel_v1.provenance.quality_improvement
+        .replacement_decision,
+    ).toBe('explicit_owner_delegated_assistant_replacement_review');
+  });
 });
 
 function reviewedBundle(overrides = {}) {

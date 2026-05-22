@@ -221,6 +221,34 @@ describe('pivota insights agent context and replacement guard', () => {
     );
   });
 
+  test('allows explicit owner-delegated assistant replacement without human-labeling it', () => {
+    const existingBundle = reviewedBundle({ quality_state: 'verified' });
+    const existingEntry = kbRow('ext_quality_case', existingBundle);
+    const candidateEntry = kbRow('ext_quality_case', reviewedBundle({ quality_state: 'reviewed' }));
+
+    const assessment = assessPivotaInsightReplacement({
+      existingEntry,
+      candidateEntry,
+      sourceRow: {
+        quality_improvement_review: {
+          decision: 'approved_replacement',
+          reviewer_kind: 'assistant',
+          owner_delegated: true,
+          reason: 'Owner delegated assistant review confirms the replacement fixes generic copy without field loss.',
+        },
+      },
+    });
+
+    expect(assessment.allowed).toBe(true);
+    expect(assessment.replacement_review).toEqual(
+      expect.objectContaining({
+        approval_kind: 'owner_delegated_assistant',
+        reviewer_kind: 'assistant',
+        owner_delegated: true,
+      }),
+    );
+  });
+
   test('blocks candidate bundles that are not publish-quality-ready', () => {
     const assessment = assessPivotaInsightReplacement({
       candidateEntry: kbRow('ext_quality_case', reviewedBundle({ highlight: '' })),

@@ -354,11 +354,31 @@ function readReplacementApproval(sourceRow, candidateBundle) {
   const decision = lowerText(review.decision || review.review_decision || review.status);
   const reviewerKind = lowerText(review.reviewer_kind || review.reviewerKind);
   const reason = asString(review.reason || review.rationale || review.notes);
+  const ownerDelegated = Boolean(
+    review.owner_delegated ||
+      review.ownerDelegated ||
+      review.owner_delegated_to_assistant_reviewer ||
+      review.owner_delegated_review ||
+      /owner[-_\s]?delegated/i.test(asString(review.approval_basis || review.approvalBasis)),
+  );
+  const approvedHuman =
+    decision === 'approved_replacement' && reviewerKind === 'human' && Boolean(reason);
+  const approvedOwnerDelegatedAssistant =
+    decision === 'approved_replacement' &&
+    reviewerKind === 'assistant' &&
+    ownerDelegated &&
+    Boolean(reason);
   return {
-    approved: decision === 'approved_replacement' && reviewerKind === 'human' && Boolean(reason),
+    approved: approvedHuman || approvedOwnerDelegatedAssistant,
     decision,
     reviewer_kind: reviewerKind,
     reason,
+    owner_delegated: ownerDelegated,
+    approval_kind: approvedHuman
+      ? 'human'
+      : approvedOwnerDelegatedAssistant
+        ? 'owner_delegated_assistant'
+        : '',
   };
 }
 
@@ -468,7 +488,11 @@ function assessPivotaInsightReplacement({ existingEntry = null, candidateEntry =
 
   return {
     allowed: true,
-    reason: replacementApproval.approved ? 'explicit_human_replacement_review' : 'candidate_not_lower_quality',
+    reason: replacementApproval.approved
+      ? replacementApproval.approval_kind === 'owner_delegated_assistant'
+        ? 'explicit_owner_delegated_assistant_replacement_review'
+        : 'explicit_human_replacement_review'
+      : 'candidate_not_lower_quality',
     existing,
     candidate,
     previous_bundle_hash: existingHash,
