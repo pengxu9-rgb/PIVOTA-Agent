@@ -64,8 +64,16 @@ function firstSentence(value, maxLength = 220) {
 
 function sanitizePublicSourceText(value) {
   return text(value)
+    .replace(/[$€£¥]\s*\d+(?:\.\d{2})?\s*(?:value)?\b/gi, '')
+    .replace(/\b\d+(?:\.\d{2})?\s*(?:usd|eur|gbp|jpy|cny|rmb|value)\b/gi, '')
+    .replace(/\bnot eligible for discounts?\.?/gi, '')
+    .replace(/\b(?:ulta beauty|sephora|target|walmart|amazon)\s+exclusive\b/gi, '')
+    .replace(/\b(?:an?|the)?\s*exclusive bundle available only at\s+[a-z0-9 .&'-]+\.?/gi, 'bundle')
+    .replace(/\bavailable only at\s+[a-z0-9 .&'-]+\.?/gi, '')
+    .replace(/\b(?:must-have|pro-favorite|ultimate|powerful)\b/gi, '')
     .replace(/\b(?:best[-\s]?selling|bestselling|viral|cult[-\s]?favorite|award[-\s]?winning)\b/gi, '')
     .replace(/\b(?:everyone loves|widely loved)\b/gi, '')
+    .replace(/\.{2,}|…/g, '.')
     .replace(/\s+([,.;:!?])/g, '$1')
     .replace(/\s{2,}/g, ' ')
     .trim();
@@ -121,7 +129,7 @@ function inferSetKind(titleCategoryText, descriptionText) {
   if (/\b(?:eau de parfum|parfum|fragrance|pen spray|body mist|hair\s*&\s*body mist|hair and body mist)\b/.test(joined)) return 'fragrance_set';
   if (/\b(?:lip patch|lippatch|lip treat|liptreat|lip butter|lip combo|lip oil|lip glaze|high gloss|lip kit|lip set|lip duo|lip trio|lip favourites|lip favorites)\b/.test(titleCategoryText)) return 'lip_set';
   if (/\b(?:eye patch|eye patches|eye kit|eye set|eye trio|detoxifeye|fortifeye|dream-yeye|antioxifeye|beautifeye)\b/.test(titleCategoryText)) return 'eye_care_set';
-  if (/\b(?:look|makeup|lash|mascara|brow|blush|bronze|bronzer|bronzing|complexion|colour|color|base|liquidglow|superglow|blur\s*(?:,|&|and)?\s*(?:colour|color)?\s*&?\s*set|foundation|concealer|palette|eye shadow|eyeshadow)\b/.test(titleCategoryText)) {
+  if (/\b(?:look|makeup|lash|mascara|brow|blush|bronze|bronzer|bronzing|complexion|colour|color|base|liquidglow|superglow|blur\s*(?:,|&|and)?\s*(?:colour|color)?\s*&?\s*set|foundation|conceal|correct|concealer|palette|eye|eye shadow|eyeshadow)\b/.test(titleCategoryText)) {
     return 'makeup_set';
   }
   if (/\b(?:skin|skincare|cleanse|cleanser|cleansing|tonic|toner|serum|mask|peel|clarity|glow)\b/.test(titleCategoryText)) {
@@ -132,7 +140,7 @@ function inferSetKind(titleCategoryText, descriptionText) {
   }
   if (/\b(?:eye patch|eye patches|eye kit|eye set|eye trio)\b/.test(joined)) return 'eye_care_set';
   if (/\b(?:lip treat|liptreat|lip butter|lip combo|lip oil|lip glaze|high gloss|lip kit|lip set|lip duo|lip trio|lip favourites|lip favorites)\b/.test(joined)) return 'lip_set';
-  if (/\b(?:look|makeup|lash|mascara|brow|blush|bronzer|bronzing|foundation|concealer|palette|eye shadow|eyeshadow)\b/.test(joined)) {
+  if (/\b(?:look|makeup|lash|mascara|brow|blush|bronzer|bronzing|foundation|conceal|correct|concealer|palette|eye|eye shadow|eyeshadow)\b/.test(joined)) {
     return 'makeup_set';
   }
   return 'beauty_set';
@@ -143,6 +151,7 @@ function inferKind(title, category, categoryPath, description = '') {
   const descriptionText = `${description}`.toLowerCase();
   const haystack = `${titleCategoryText} ${descriptionText}`;
   if (/\b(?:grwm routine|look)\b/.test(titleCategoryText)) return 'makeup_set';
+  if (/\b(?:brush cleanser|brush cleaning|brush cleaner|sigmagic)\b/.test(haystack)) return 'brush_care';
   if (/\b(?:set|kit|duo|trio|quad|sampler|bundle|vault|box|favourites|favorites|collection|best of|holiday edition|choose your shades)\b/.test(titleCategoryText)) {
     return inferSetKind(titleCategoryText, descriptionText);
   }
@@ -156,7 +165,7 @@ function inferKind(title, category, categoryPath, description = '') {
   if (/\b(?:foundation|skin tint|skintint|skin-tint)\b/.test(haystack)) return 'foundation';
   if (/\bconcealer\b/.test(haystack)) return 'concealer';
   if (/\b(?:primer|poreless)\b/.test(haystack)) return 'primer';
-  if (/\b(?:lipstick|lip color|lip balm|lip butter|butter balm|balm stick|lip oil|lip gloss|lipgloss|lip glaze|lip treatment|lip liner|lip pencil|lip luxe|lip patch|lippatch|gloss|pout|kiss)\b/.test(haystack)) return 'lip';
+  if (/\b(?:lipstick|lip color|lip balm|lip butter|butter balm|balm stick|lip oil|lip gloss|lipgloss|lip glaze|lip treatment|lip mask|lip liner|lip pencil|lip luxe|lip patch|lippatch|gloss|pout|kiss)\b/.test(haystack)) return 'lip';
   if (/\b(?:candle)\b/.test(haystack)) return 'home_fragrance';
   if (/\b(?:hair\s*&\s*body mist|hair and body mist|body mist)\b/.test(titleCategoryText)) return 'body_mist';
   if (/\b(?:eau de parfum|parfum|eau de toilette|body spray|fragrance|cologne)\b/.test(titleCategoryText)) return 'fragrance';
@@ -202,6 +211,7 @@ function kindLabel(kind, category) {
     blemish_patch: 'blemish patch',
     cleanser: 'cleanser',
     brush: 'beauty brush',
+    brush_care: 'brush-care product',
     skincare: 'skincare product',
     home_fragrance: 'home fragrance',
     beauty_set: 'beauty set',
@@ -236,6 +246,7 @@ function displayCategoryForKind(kind, category) {
     blemish_patch: 'Blemish Patch',
     cleanser: 'Cleanser',
     brush: 'Beauty Brush',
+    brush_care: 'Brush Care',
     skincare: 'Skincare',
     home_fragrance: 'Home Fragrance',
     beauty_set: 'Beauty Set',
@@ -268,6 +279,7 @@ function routineStep(kind) {
     blemish_patch: 'spot_care',
     cleanser: 'cleanse',
     brush: 'tool',
+    brush_care: 'tool_care',
     skincare: 'skin_care',
     home_fragrance: 'home_fragrance',
     beauty_set: 'set',
@@ -395,6 +407,7 @@ function buildHighlightPhrase(kind, category, description, title = '') {
   if (kind === 'blemish_patch') return 'Spot-care format detail';
   if (kind === 'cleanser') return /glycolic|retinol|mud|jasmine/.test(signalText) ? 'Active cleanser detail' : 'Cleanser formula detail';
   if (kind === 'brush') return 'Brush format detail';
+  if (kind === 'brush_care') return 'Brush-care cleaning detail';
   if (kind === 'skincare') {
     if (/moisturizer|moisturiser|body lotion|lotion/.test(titleText)) return 'Moisturizer formula detail';
     if (/peel|polish|exfoliat|resurfac/.test(signalText)) return 'Exfoliating treatment detail';
@@ -421,6 +434,7 @@ function buildHighlightPhrase(kind, category, description, title = '') {
   }
   if (kind === 'makeup_set') {
     if (/complexion|base|foundation|conceal|blur|bronze/.test(signalText)) return 'Complexion routine set';
+    if (/eye|eyeshadow|palette|lash|mascara/.test(signalText)) return 'Eye-makeup routine set';
     return 'Makeup routine set';
   }
   if (kind === 'eye_care_set') return 'Eye-care routine set';
@@ -534,12 +548,12 @@ function buildBundle({ seed, inventoryRow, generatedAt, batchName, reviewer }) {
         },
         {
           type: 'evidence_gap',
-          label: 'No independent review or community evidence was approved for this row; do not describe it as popular or community-backed.',
+          label: 'No independent review or community evidence was approved for this row; keep public copy source-bound.',
           severity: 'medium',
         },
         {
           type: 'scope_guardrail',
-          label: 'Use the commerce mainline for price and availability; keep this insight focused on source-backed product identity.',
+          label: 'Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.',
           severity: 'medium',
         },
       ],
@@ -617,7 +631,7 @@ function buildBundle({ seed, inventoryRow, generatedAt, batchName, reviewer }) {
       official_source_url: sourceUrl,
       official_source_ingredient_count: ingredient.ingredient_count,
       rewrite_reason:
-        'Owner-delegated assistant review: official PDP seed rewrite; no price, availability, community, medical, or unsupported safety claims added.',
+        'Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added.',
     },
     shopping_card: {
       contract_version: 'pivota.shopping_card.v1',
@@ -657,7 +671,7 @@ function buildReportRows({ seeds, inventoryById, generatedAt, batchName, reviewe
         owner_instruction: 'User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.',
         guardrails: [
           'Do not overwrite good content with lower-quality content.',
-          'No price or availability claims in Pivota Insights.',
+          'No commerce-state claims in Pivota Insights.',
           'Use official source facts only; keep evidence confidence explicit.',
         ],
       },
