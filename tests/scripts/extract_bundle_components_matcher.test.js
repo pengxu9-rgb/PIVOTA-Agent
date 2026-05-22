@@ -37,6 +37,15 @@ describe('extract-bundle-components-llm matcher hardening — end-to-end pickBes
       expect(a.has('2.0')).toBe(false);
       expect(b.has('2.0')).toBe(true);
     });
+
+    test('tokenize() dedupes v2-style tokens (codex round-2 finding)', () => {
+      // "Skincare V2" used to produce ['skincare', 'v2', 'v2'] — base regex
+      // emitted v2 and extractVariantNumberTokens added it again. The
+      // LIKE-pattern builder would then construct `%v2%v2%` and under-recall.
+      const tokens = tokenize('Skincare V2');
+      const v2Count = tokens.filter((t) => t === 'v2').length;
+      expect(v2Count).toBe(1);
+    });
   });
 
   describe('codex example: Essential Tonic Trio → Glow Tonic', () => {
@@ -164,6 +173,28 @@ describe('extract-bundle-components-llm matcher hardening — end-to-end pickBes
       });
       const total = scored.find((s) => s.external_product_id === 'ext_total');
       expect(total._generic_label_hit).toBe(true);
+      const best = pickBestMatch(scored);
+      expect(best).toBeNull();
+    });
+
+    test('brand-only parent_title context does NOT satisfy the generic guard (codex round-2 blocker)', () => {
+      // "The Ordinary Set" provides only brand context; "Cleanser" against
+      // any Ordinary cleanser would otherwise hit support_ratio=1.0 because
+      // ['the','ordinary'] both appear in every candidate. The guard must
+      // demand a non-brand distinguishing word.
+      const ordinaryCandidates = [
+        mockCandidate('The Ordinary Squalane Cleanser',
+          { id: 'ext_squalane', brand: 'The Ordinary' }),
+        mockCandidate('The Ordinary Glucoside Foaming Cleanser',
+          { id: 'ext_glucoside', brand: 'The Ordinary' }),
+      ];
+      const scored = scoreAll(ordinaryCandidates, {
+        extractedTitle: 'Cleanser',
+        parentTitle: 'The Ordinary Set',
+        parentHost: '',
+      });
+      const squalane = scored.find((s) => s.external_product_id === 'ext_squalane');
+      expect(squalane._generic_label_hit).toBe(true);
       const best = pickBestMatch(scored);
       expect(best).toBeNull();
     });

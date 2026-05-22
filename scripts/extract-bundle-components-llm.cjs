@@ -52,7 +52,9 @@ function tokenize(text) {
     .replace(/[^a-z0-9% +]+/g, ' ')
     .split(/\s+/)
     .filter((t) => t.length >= 2);
-  return [...baseTokens, ...variantNums];
+  // Dedupe so the LIKE-pattern builder in searchCandidateMatches doesn't
+  // produce `%v2%v2%` for "Skincare V2" and under-recall versioned titles.
+  return Array.from(new Set([...baseTokens, ...variantNums]));
 }
 
 function tokenOverlapScore(a, b) {
@@ -224,9 +226,18 @@ function scoreCandidateMatch(candidate, {
     break;
   }
 
-  // Parent-context bonus (guard #4).
+  // Parent-context bonus (guard #4). Codex round-2 blocking finding: brand
+  // tokens (e.g. "The Ordinary" on every Ordinary product) would otherwise
+  // satisfy the generic-label guard on brand alone. Exclude the candidate's
+  // own brand from the parent-context token set so the guard demands a
+  // distinguishing word — product family, scent, formulation — to pass.
+  const candidateBrandTokens = new Set(tokenize(asString(candidate.brand)));
   const parentTokens = tokenize(parentText)
-    .filter((t) => !BUNDLE_CHILD_TOKENS.has(t) && t.length >= 3);
+    .filter((t) =>
+      !BUNDLE_CHILD_TOKENS.has(t)
+      && t.length >= 3
+      && !candidateBrandTokens.has(t),
+    );
   let contextOverlap = 0;
   for (const tok of parentTokens) if (candidateTokens.has(tok)) contextOverlap += 1;
   const contextBonus = parentTokens.length > 0
