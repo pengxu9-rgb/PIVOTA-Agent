@@ -67,6 +67,11 @@ function buildManualOpsNotifier() {
   };
 }
 
+// Module-level guard so the "stub-detected, falling back to manual-ops"
+// warning is emitted at most once per process — getNotifier() is called
+// per booking sweep and the warning would otherwise spam logs.
+let _stubFallbackWarned = false;
+
 function getNotifier() {
   const provider = cleanEnv(process.env.SERVICES_BOOKING_KAKAO_PROVIDER).toLowerCase();
   const providerConfig = PROVIDERS[provider];
@@ -76,10 +81,33 @@ function getNotifier() {
   }
 
   const adapter = require(providerConfig.modulePath);
-  if (typeof adapter.buildNotifier === 'function') {
-    return adapter.buildNotifier({ apiKey: getProviderApiKey(providerConfig), channel: providerConfig.channel });
+  const candidate = typeof adapter.buildNotifier === 'function'
+    ? adapter.buildNotifier({ apiKey: getProviderApiKey(providerConfig), channel: providerConfig.channel })
+    : adapter;
+
+  // Stub guard: if SERVICES_BOOKING_KAKAO_PROVIDER and the API key are both
+  // set but the selected adapter is still a stub (isStub: true), don't route
+  // real bookings through it — the stub throws NotifierPermanentError and
+  // would mark every pending booking permanently failed. Fall back to
+  // manual_ops so ops staff can handle delivery while the real adapter ships.
+  if (candidate && candidate.isStub === true) {
+    if (!_stubFallbackWarned) {
+      logger.warn(
+        { configured_provider: provider, channel: providerConfig.channel },
+        'SERVICES_BOOKING_KAKAO_PROVIDER selects an unimplemented stub adapter; '
+          + 'falling back to manual_ops. Implement the real adapter or unset the env var.',
+      );
+      _stubFallbackWarned = true;
+    }
+    return buildManualOpsNotifier();
   }
-  return adapter;
+
+  return candidate;
+}
+
+// Test-only — lets the test suite reset the stub-fallback warning latch.
+function _resetStubFallbackWarning() {
+  _stubFallbackWarned = false;
 }
 
 module.exports = {
@@ -87,4 +115,5 @@ module.exports = {
   NotifierTransientError,
   buildManualOpsNotifier,
   getNotifier,
+  __test: { _resetStubFallbackWarning },
 };

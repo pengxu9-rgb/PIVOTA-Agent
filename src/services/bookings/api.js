@@ -94,7 +94,13 @@ function wrap(handler) {
       if (err?.statusCode && err?.code) {
         return sendError(res, err);
       }
-      logger.warn({ err: err?.message || String(err), stack: err?.stack }, 'Services booking API failed');
+      // Catch-all for unexpected errors. Omit err.message because PG errors
+      // can echo conflicting field values (e.g. contact_email) — those would
+      // leak into logs. Stack traces don't include variable values.
+      logger.warn(
+        { error_name: err?.name, error_code: err?.code, stack: err?.stack },
+        'Services booking API failed',
+      );
       return sendError(res, new BookingValidationError('INTERNAL_ERROR', 'Internal error', 500));
     }
   };

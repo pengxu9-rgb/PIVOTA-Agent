@@ -305,25 +305,49 @@ describe('services booking notifications', () => {
     ]);
   });
 
-  test('adapter selection defaults to manual and aligo stub fails permanently without crashing worker', async () => {
+  test('adapter selection defaults to manual when no provider env is set', async () => {
     expect(getNotifier().channel).toBe('manual_ops');
+  });
 
+  test('selecting an unimplemented stub adapter falls back to manual_ops (deployment foot-gun guard)', async () => {
+    // Both envs configured for aligo, but the adapter is still a stub
+    // (`isStub: true`). The dispatcher must NOT route bookings through it —
+    // doing so would mark every pending booking permanently failed.
     process.env.SERVICES_BOOKING_KAKAO_PROVIDER = 'aligo';
     process.env.SERVICES_BOOKING_KAKAO_API_KEY = 'test-key';
-    expect(getNotifier().channel).toBe('kakao_alimtalk_aligo');
 
+    // Reset the one-time warning latch so we can verify it fires.
+    const { __test } = require('../../src/services/bookings/notifier');
+    __test._resetStubFallbackWarning();
+    const logger = require('../../src/logger');
+    logger.warn.mockClear();
+
+    // getNotifier() should detect isStub:true and route to manual_ops.
+    expect(getNotifier().channel).toBe('manual_ops');
+    // One-time warning emitted.
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ configured_provider: 'aligo' }),
+      expect.stringContaining('falling back to manual_ops'),
+    );
+
+    // A subsequent call must NOT re-warn (latch).
+    logger.warn.mockClear();
+    expect(getNotifier().channel).toBe('manual_ops');
+    expect(logger.warn).not.toHaveBeenCalled();
+
+    // End-to-end: a booking processed under this config should succeed via
+    // manual-ops fallback, NOT get marked permanently failed.
     const harness = installWorkerDb([bookingRow()]);
     await expect(runNotifyOnce()).resolves.toEqual({
       notified: 0,
-      failed: 1,
+      failed: 0,
       retried: 0,
-      fallback_queued: 0,
+      fallback_queued: 1,
     });
     expect(harness.providerNotifiedUpdates).toEqual([BOOKING_ID]);
     expect(harness.inserted[0]).toMatchObject({
-      channel: 'kakao_alimtalk_aligo',
-      status: 'failed',
-      last_error: 'UNCONFIGURED',
+      channel: 'manual_ops',
+      status: 'manual_pending',
     });
   });
 });

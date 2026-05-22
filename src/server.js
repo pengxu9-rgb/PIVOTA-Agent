@@ -27983,7 +27983,10 @@ app.get('/api/services', async (req, res) => {
     if (err?.code === 'SERVICES_SEARCH_VALIDATION' || err?.statusCode === 400) {
       return res.status(400).json({ error: err.message });
     }
-    logger.warn({ err: err?.message || String(err), query: req.query }, 'Failed to validate services search');
+    logger.warn(
+      { error_name: err?.name, error_code: err?.code, query_keys: Object.keys(req.query || {}) },
+      'Failed to validate services search',
+    );
     return res.status(500).json({ error: 'INTERNAL_ERROR' });
   }
 
@@ -28015,7 +28018,10 @@ app.get('/api/services', async (req, res) => {
     if (err?.code === 'SERVICES_SEARCH_VALIDATION' || err?.statusCode === 400) {
       return res.status(400).json({ error: err.message });
     }
-    logger.warn({ err: err?.message || String(err), query: req.query }, 'Failed to search services');
+    logger.warn(
+      { error_name: err?.name, error_code: err?.code, query_keys: Object.keys(req.query || {}) },
+      'Failed to search services',
+    );
     return res.status(500).json({ error: 'INTERNAL_ERROR' });
   }
 });
