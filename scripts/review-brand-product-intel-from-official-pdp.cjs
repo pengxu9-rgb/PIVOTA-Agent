@@ -496,16 +496,17 @@ function firstUsefulDetail(details) {
 function buildWhatItIs(facts, role) {
   const description = firstUsefulSentence(facts.description, 240);
   const detail = firstUsefulDetail(facts.details);
-  const pieces = [`${facts.title} is ${articleFor(role.label)} ${role.label.toLowerCase()} from ${facts.brand}`];
-  if (description) pieces.push(`the official PDP describes it as ${description.replace(/\.$/, '')}`);
-  if (!description && detail) pieces.push(`official details identify it as ${compactText(detail, 160)}`);
+  const intro = `${facts.title} is ${articleFor(role.label)} ${role.label.toLowerCase()} from ${facts.brand}`;
+  const pieces = [intro];
+  if (description) pieces.push(description.replace(/\.$/, ''));
+  if (!description && detail) pieces.push(compactText(detail, 160).replace(/\.$/, ''));
   if (!description && !detail && facts.variants.labels.length) {
-    pieces.push(`official variant data clarifies ${facts.variants.labels.slice(0, 3).join(', ')}`);
+    pieces.push(`available variants clarify ${facts.variants.labels.slice(0, 3).join(', ')}`);
   }
   if (!description && !detail && facts.rawIngredients.length) {
-    pieces.push('the official source also exposes an ingredient list for formula review');
+    pieces.push('an ingredient list is available for formula review');
   }
-  return sentence(pieces.join('; '));
+  return pieces.map((item) => sentence(item)).join(' ');
 }
 
 function buildWhyItStandsOut(facts, role, anchors) {
@@ -514,29 +515,31 @@ function buildWhyItStandsOut(facts, role, anchors) {
   if (anchorText) {
     why.push({
       headline: role.step === 'fragrance' || role.step === 'body fragrance' || role.step === 'home fragrance'
-        ? 'Source-backed scent profile'
-        : 'Source-backed product cues',
-      body: sentence(`Official PDP fields surface ${anchorText}, giving shoppers concrete cues to compare within ${facts.brand}`),
+        ? 'Scent profile cues'
+        : 'Concrete product cues',
+      body: sentence(`Cues such as ${anchorText} give shoppers specific comparison points within ${facts.brand}, instead of relying on generic category copy`),
       evidence_strength: 'official_pdp_reviewed',
     });
   }
   if (facts.rawIngredients.length && role.step !== 'home fragrance') {
     why.push({
       headline: 'Ingredient list is available',
-      body: sentence(`The official source exposes a full ingredient list, so formula-sensitive shoppers can inspect the INCI instead of relying on generic claims`),
+      body: sentence(`Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing`),
       evidence_strength: 'official_pdp_reviewed',
     });
   } else if (facts.activeIngredients.length) {
+    const activeList = facts.activeIngredients.slice(0, 3).join(', ');
+    const activeVerb = facts.activeIngredients.length === 1 ? 'is' : 'are';
     why.push({
       headline: 'Key ingredients are identified',
-      body: sentence(`Official PDP fields identify ${facts.activeIngredients.slice(0, 3).join(', ')}, which is enough for a cautious high-level formula read`),
+      body: sentence(`${activeList} ${activeVerb} identified, enough for a cautious high-level formula read without inventing unsupported actives`),
       evidence_strength: 'official_pdp_reviewed',
     });
   }
   if (facts.variants.count > 0 && facts.variants.labels.length) {
     why.push({
-      headline: 'Variant choice is explicit',
-      body: sentence(`Stored variant data exposes ${facts.variants.labels.slice(0, 4).join(', ')}, reducing ambiguity around shade, size, or format`),
+      headline: 'Shade and size are explicit',
+      body: sentence(`Variant labels such as ${facts.variants.labels.slice(0, 4).join(', ')} are visible, reducing ambiguity around shade, size, or format before a shopper clicks through`),
       evidence_strength: 'official_pdp_reviewed',
     });
   }
