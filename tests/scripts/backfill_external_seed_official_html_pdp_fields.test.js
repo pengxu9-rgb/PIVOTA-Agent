@@ -8,6 +8,7 @@ const {
     extractTirtirFaqHowToUse,
     extractSkin1004Fields,
     extractMedicubeFields,
+    extractLaneigeFields,
     extractFentyFields,
     extractFentyFullIngredients,
     extractOfficialShopifyVariants,
@@ -436,6 +437,78 @@ describe('backfill-external-seed-official-html-pdp-fields TIRTIR sheet matching'
       ]),
     );
     expect(fields.pdp_active_ingredients_raw).toContain('Azelaic Acid');
+  });
+
+  test('extracts LANEIGE official fields from current product HTML without related-product ingredient drift', () => {
+    const product = {
+      id: 7231516639284,
+      title: 'Bouncy & Firm Sleeping Mask',
+      handle: 'bouncy-firm-sleeping-mask',
+      description:
+        '<p>A visibly firming Korean sleeping mask with Peony &amp; Collagen Complex that delivers overnight and long-term benefits for smoother-looking skin.</p>',
+      tags: [
+        'key_ingredient::Green Tea Probiotic lysate',
+        'key_ingredient::Hyaluronic Acids',
+        'key_ingredient::Peony & Collagen Complex + Peptides',
+        'skin_type::All',
+        'without_ingredient::Parabens',
+      ],
+      price: 3600,
+      variants: [
+        {
+          id: 42052021452852,
+          title: 'Default Title',
+          option1: 'Default Title',
+          sku: '270283998',
+          available: true,
+          price: 3600,
+        },
+      ],
+      options: ['Title'],
+      images: ['//us.laneige.com/cdn/shop/files/bouncy-mask.jpg?v=1'],
+    };
+    const html = `
+      <script>window.theme = {}; window.theme.current_object = ${JSON.stringify(product)};</script>
+      <span class="product__volume">(2.0 fl. oz./60 mL)</span>
+      <script>
+        theme.products.update({
+          id: 7231516639284,
+          title: "Bouncy \\u0026 Firm Sleeping Mask",
+          handle: "bouncy-firm-sleeping-mask",
+          benefits: "Get bouncy-looking skin while you sleep. Peony \\u0026 Collagen Complex and peptides support visibly plump, hydrated-looking skin over time.",
+          ingredients: "WATER, BUTYLENE GLYCOL, CYCLOPENTASILOXANE, GLYCERIN, CYCLOHEXASILOXANE, TREHALOSE, SODIUM HYALURONATE, BETA-GLUCAN, ASCORBYL GLUCOSIDE, MAGNESIUM SULFATE, ZINC SULFATE, MANGANESE SULFATE, CALCIUM CHLORIDE, POTASSIUM ALGINATE, POLYSORBATE 20, DIMETHICONE, PROPANEDIOL, ETHYLHEXYLGLYCERIN, CARBOMER, DISODIUM EDTA, PHENOXYETHANOL, FRAGRANCE."
+        });
+        theme.products.list["related-eye-mask"] = {
+          handle: "related-eye-mask",
+          ingredients: "UNRELATED RELATED PRODUCT INGREDIENTS, SHOULD NOT BE USED, CAFFEINE, NIACINAMIDE, WATER, GLYCERIN, BUTYLENE GLYCOL, PANTHENOL, XANTHAN GUM, TOCOPHEROL, FRAGRANCE."
+        };
+      </script>
+      <div class="accordion"><button id="accordion-heading-how_to_use"><span class="accordion__title">How to use</span></button>
+        <div class="accordion__content" id="accordion-panel-how_to_use">After face cream, apply evenly across face. Leave treatment on overnight and rinse off in the morning.</div>
+      </div>
+    `;
+
+    const fields = extractLaneigeFields(html, { productTitle: 'LANEIGE US Bouncy & Firm Sleeping Mask' });
+
+    expect(fields.pdp_description_raw).toContain('visibly firming Korean sleeping mask');
+    expect(fields.pdp_ingredients_raw).toContain('SODIUM HYALURONATE');
+    expect(fields.pdp_ingredients_raw).not.toContain('UNRELATED RELATED PRODUCT');
+    expect(fields.pdp_how_to_use_raw).toContain('Leave treatment on overnight');
+    expect(fields.pdp_active_ingredients_raw).toContain('Peony & Collagen Complex + Peptides');
+    expect(fields.variants).toHaveLength(1);
+    expect(fields.variants[0]).toEqual(
+      expect.objectContaining({
+        option_name: 'Size',
+        option_value: '60ml',
+        source_origin: 'official_laneige_theme_product_singleton_spec',
+      }),
+    );
+    expect(fields.pdp_details_sections).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ heading: 'Benefits', body: expect.stringContaining('bouncy-looking skin') }),
+        expect.objectContaining({ heading: 'Formulated Without', body: 'Parabens' }),
+      ]),
+    );
   });
 
   test('extracts Medicube overview, study, full ingredients, and how-to toggle blocks', () => {

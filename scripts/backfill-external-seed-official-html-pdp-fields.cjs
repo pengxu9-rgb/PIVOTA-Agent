@@ -9,7 +9,7 @@ const { query, closePool } = require('../src/db');
 const CONTRACT_VERSION = 'external_seed.official_html_pdp_fields.v1';
 const PDP_CONTENT_ASSET_VERSION = 'pivota.pdp_content_asset.v1';
 const SNAPSHOT_CONTRACT_VERSION = 'external_seed.snapshot_contract.v1';
-const SHOPIFY_PRODUCT_JSON_VARIANT_HOSTS = new Set(['medicube.us', 'skin1004.com', 'tirtir.global']);
+const SHOPIFY_PRODUCT_JSON_VARIANT_HOSTS = new Set(['medicube.us', 'skin1004.com', 'tirtir.global', 'us.laneige.com']);
 const REVIEW_SUMMARY_ONLY_OKENDO_HOSTS = new Set(['beautyofjoseon.com', 'kravebeauty.com']);
 const REVIEW_SUMMARY_ONLY_GENERIC_HOSTS = new Set([...REVIEW_SUMMARY_ONLY_OKENDO_HOSTS, 'roundlab.com']);
 
@@ -460,6 +460,225 @@ function extractShopifyProductDescriptionHtml(html) {
     }
   }
   return '';
+}
+
+function normalizeProtocolRelativeUrl(value, base = 'https://us.laneige.com') {
+  const text = normalizeText(value);
+  if (!text) return '';
+  if (/^\/\//.test(text)) return `https:${text}`;
+  if (/^\//.test(text)) return `${base.replace(/\/+$/, '')}${text}`;
+  if (/^https?:\/\//i.test(text)) return text;
+  return '';
+}
+
+function normalizeLaneigeTitleTokens(value) {
+  return normalizeTitleTokens(value).filter((token) => !['laneige', 'apus', 'us'].includes(token));
+}
+
+function scoreLaneigeProductTitleMatch(sourceTitle, productTitle) {
+  const sourceTokens = normalizeLaneigeTitleTokens(sourceTitle);
+  const productTokens = new Set(normalizeLaneigeTitleTokens(productTitle));
+  if (!sourceTokens.length || !productTokens.size) return 0;
+  const shared = sourceTokens.filter((token) => productTokens.has(token)).length;
+  return shared / Math.max(1, sourceTokens.length);
+}
+
+function parseDecodedJsonObject(value) {
+  const decoded = decodeHtmlEntities(value);
+  if (!decoded) return null;
+  try {
+    return JSON.parse(decoded);
+  } catch {
+    return null;
+  }
+}
+
+function extractLaneigeCurrentProduct(html, options = {}) {
+  const source = String(html || '');
+  const productTitle = normalizeText(options.productTitle);
+  const candidates = [
+    extractBalancedJsonObject(source, 'window.theme.current_object'),
+    extractBalancedJsonObject(source, 'window.SwymProductInfo.product'),
+  ].filter(Boolean);
+
+  for (const match of source.matchAll(/\bproduct='([^']{500,})'/gi)) {
+    const parsed = parseDecodedJsonObject(match[1]);
+    if (parsed) candidates.push(parsed);
+  }
+
+  const usable = candidates.filter((candidate) => normalizeText(candidate?.title) && normalizeText(candidate?.handle));
+  if (!productTitle) return usable[0] || null;
+  return (
+    usable.find((candidate) => scoreLaneigeProductTitleMatch(productTitle, candidate.title) >= 0.7) ||
+    usable.find((candidate) => scoreProductTitleMatch(productTitle, candidate.title) >= 0.75) ||
+    null
+  );
+}
+
+function decodeLaneigeJsString(value) {
+  return decodeJsonStringFragment(value)
+    .replace(/\\\//g, '/')
+    .replace(/\\u0026/gi, '&')
+    .trim();
+}
+
+function cleanLaneigeDetailText(value) {
+  return cleanSectionText(value)
+    .replace(/\bShop All [A-Za-z ]+\b[\s\S]*$/i, '')
+    .replace(/\bTerms and conditions\b[\s\S]*$/i, '')
+    .trim();
+}
+
+function extractLaneigeThemeProductField(html, handle, fieldName) {
+  const source = String(html || '');
+  const safeHandle = escapeRegExp(normalizeText(handle));
+  if (!safeHandle) return '';
+  const handleRe = new RegExp(`\\bhandle\\s*:\\s*["']${safeHandle}["']`, 'gi');
+  for (const match of source.matchAll(handleRe)) {
+    const slice = source.slice(match.index, match.index + 12000);
+    const fieldRe = new RegExp(`\\b${escapeRegExp(fieldName)}\\s*:\\s*"((?:\\\\.|[^"\\\\])*)"`, 'i');
+    const fieldMatch = fieldRe.exec(slice);
+    const decoded = fieldMatch ? cleanLaneigeDetailText(decodeLaneigeJsString(fieldMatch[1])) : '';
+    if (decoded) return decoded;
+  }
+  return '';
+}
+
+function extractLaneigeAccordionBlock(html, panelId) {
+  const source = String(html || '');
+  const id = escapeRegExp(panelId);
+  const startMatch = new RegExp(`id=["']accordion-panel-${id}["'][\\s\\S]{0,500}?>`, 'i').exec(source);
+  if (!startMatch) return '';
+  const start = startMatch.index + startMatch[0].length;
+  const rest = source.slice(start);
+  const end = rest.search(/<\/div>\s*<\/div>\s*(?:<div\b[^>]*class=["'][^"']*\baccordion\b|<script\b|$)/i);
+  const raw = end >= 0 ? rest.slice(0, end) : rest.slice(0, 3000);
+  return cleanLaneigeDetailText(raw);
+}
+
+function extractLaneigeKeyIngredientsFromTags(tags) {
+  return Array.from(
+    new Set(
+      asArray(tags)
+        .map((tag) => normalizeText(tag))
+        .map((tag) => {
+          const match = tag.match(/^key_ingredient::(.+)$/i);
+          return match ? normalizeText(match[1]) : '';
+        })
+        .filter(Boolean),
+    ),
+  );
+}
+
+function extractLaneigeListFromTags(tags, prefix) {
+  const pattern = new RegExp(`^${escapeRegExp(prefix)}::(.+)$`, 'i');
+  return Array.from(
+    new Set(
+      asArray(tags)
+        .map((tag) => normalizeText(tag))
+        .map((tag) => {
+          const match = tag.match(pattern);
+          return match ? normalizeText(match[1]) : '';
+        })
+        .filter(Boolean),
+    ),
+  );
+}
+
+function extractLaneigeSizeSpec(html) {
+  const volumeMatch = String(html || '').match(/<span\b[^>]*class=["'][^"']*\bproduct__volume\b[^"']*["'][^>]*>([\s\S]*?)<\/span>/i);
+  const text = volumeMatch ? cleanSectionText(volumeMatch[1]) : '';
+  if (!text) return '';
+  const metric = text.match(/\b\d+(?:\.\d+)?\s*(?:ml|mL|ML|g|G)\b/);
+  if (metric) return normalizeSpecLabel(metric[0]);
+  return extractSpecLabelFromText(text);
+}
+
+function buildLaneigeVariants(product, html) {
+  const rawVariants = asArray(product?.variants);
+  if (!rawVariants.length) return [];
+  const productOptions = asArray(product.options).map((option) => (typeof option === 'string' ? { name: option } : option));
+  const imageUrls = asArray(product.images).map((image) => normalizeProtocolRelativeUrl(image)).filter(Boolean);
+  const sizeSpec = extractLaneigeSizeSpec(html);
+
+  const variants = rawVariants
+    .map((variant) => {
+      if (!variant || typeof variant !== 'object') return null;
+      const variantId = normalizeText(variant.id || variant.variant_id);
+      if (!variantId) return null;
+      let optionEntries = [variant.option1, variant.option2, variant.option3]
+        .map((value, index) => ({
+          name: normalizeText(productOptions[index]?.name || `Option ${index + 1}`),
+          value: normalizeText(value),
+        }))
+        .filter(isDisplayableShopifyVariantOption);
+      let sourceOrigin = 'official_laneige_theme_product';
+      if (!optionEntries.length && rawVariants.length === 1 && sizeSpec) {
+        optionEntries = [{ name: 'Size', value: sizeSpec }];
+        sourceOrigin = 'official_laneige_theme_product_singleton_spec';
+      }
+      if (!optionEntries.length) return null;
+      const price = normalizeShopifyProductJsonPrice(variant.price || product.price);
+      const imageUrl = normalizeProtocolRelativeUrl(
+        variant.featured_image?.src || variant.featured_image?.url || variant.image || imageUrls[0],
+      );
+      const productUrl = `https://us.laneige.com/products/${normalizeText(product.handle)}`;
+      return {
+        id: variantId,
+        variant_id: variantId,
+        sku: normalizeText(variant.sku) || variantId,
+        title: normalizeText(variant.title) || optionEntries.map((entry) => entry.value).join(' / '),
+        options: optionEntries,
+        option_name: optionEntries.length === 1 ? optionEntries[0].name : undefined,
+        option_value: optionEntries.length === 1 ? optionEntries[0].value : undefined,
+        ...(price != null ? { price, price_amount: price, currency: 'USD' } : {}),
+        ...(typeof variant.available === 'boolean' ? { available: variant.available, in_stock: variant.available } : {}),
+        ...(imageUrl ? { image_url: imageUrl, image_urls: [imageUrl], images: [imageUrl] } : {}),
+        ...(productUrl ? { product_url: productUrl, deep_link: `${productUrl}?variant=${variantId}` } : {}),
+        source_origin: sourceOrigin,
+        source_quality_status: 'high',
+      };
+    })
+    .filter(Boolean);
+
+  if (rawVariants.length === 1) return variants.length === 1 ? variants : [];
+  return variants.length > 1 ? variants : [];
+}
+
+function extractLaneigeFields(html, options = {}) {
+  const fields = {};
+  const product = extractLaneigeCurrentProduct(html, options);
+  if (!product) return fields;
+
+  const description = cleanLaneigeDetailText(product.description || product.content || extractLaneigeAccordionBlock(html, 'summary'));
+  const benefits =
+    extractLaneigeThemeProductField(html, product.handle, 'benefits') ||
+    extractLaneigeAccordionBlock(html, 'benefits');
+  const ingredients =
+    extractLaneigeThemeProductField(html, product.handle, 'ingredients') ||
+    extractLaneigeAccordionBlock(html, 'ingredients');
+  const howTo = normalizeHowToUseCandidate(extractLaneigeAccordionBlock(html, 'how_to_use'));
+  const keyIngredients = extractLaneigeKeyIngredientsFromTags(product.tags);
+  const skinTypes = extractLaneigeListFromTags(product.tags, 'skin_type');
+  const formulatedWithout = extractLaneigeListFromTags(product.tags, 'without_ingredient');
+  const variants = buildLaneigeVariants(product, html);
+
+  if (description.length >= 60) fields.pdp_description_raw = description;
+  if (looksLikeFullInci(ingredients) || looksLikeShortOfficialInci(ingredients)) fields.pdp_ingredients_raw = ingredients;
+  if (keyIngredients.length) fields.pdp_active_ingredients_raw = keyIngredients.join(', ');
+  if (looksLikeHowToUse(howTo)) fields.pdp_how_to_use_raw = howTo;
+  if (variants.length) fields.variants = variants;
+
+  const details = [];
+  if (description.length >= 60) details.push({ heading: 'Summary', body: description });
+  if (benefits.length >= 60) details.push({ heading: 'Benefits', body: truncateOfficialDetailText(benefits) || benefits });
+  if (keyIngredients.length) details.push({ heading: 'Key Ingredients', body: keyIngredients.join(', ') });
+  if (skinTypes.length) details.push({ heading: 'Skin Type', body: skinTypes.join(', ') });
+  if (formulatedWithout.length) details.push({ heading: 'Formulated Without', body: formulatedWithout.join(', ') });
+  if (looksLikeHowToUse(howTo)) details.push({ heading: 'How To Use', body: howTo });
+  if (details.length) fields.pdp_details_sections = details.slice(0, 8);
+
+  return fields;
 }
 
 function extractStrongLabeledParagraphSections(htmlFragment, allowedHeadings = []) {
@@ -1670,6 +1889,7 @@ async function extractOfficialHtmlFields(host, html, options = {}) {
   else if (host === 'cosrx.com') fields = extractCosrxFields(html);
   else if (host === 'torriden.us') fields = extractTorridenFields(html);
   else if (host === 'haruharuwonder.com') fields = extractHaruharuFields(html);
+  else if (host === 'us.laneige.com') fields = extractLaneigeFields(html, options);
   else if (host === 'tirtir.global') fields = await extractTirtirFields(html, options);
   else if (host === 'theordinary.com') fields = {};
   else if (host === 'fentybeauty.com') fields = extractFentyFields(html, options);
@@ -2318,6 +2538,7 @@ module.exports = {
     extractTirtirFaqHowToUse,
     extractSkin1004Fields,
     extractMedicubeFields,
+    extractLaneigeFields,
     extractFentyFields,
     extractFentyFullIngredients,
     extractOfficialShopifyVariants,
