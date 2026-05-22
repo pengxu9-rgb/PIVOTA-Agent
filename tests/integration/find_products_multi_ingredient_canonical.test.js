@@ -48,6 +48,69 @@ function canonicalSerumRows(count = 12) {
   }));
 }
 
+function canonicalMixedNiacinamideRows() {
+  return [
+    {
+      merchant_id: 'external_seed',
+      product_key: 'prod::external_seed::external_seed::ext_foundation_niacinamide',
+      platform: 'external_seed',
+      source_product_id: 'ext_foundation_niacinamide',
+      pivota_signature_id: 'sig_foundation_niacinamide',
+      pivota_canonical_url: 'https://agent.pivota.cc/products/sig_foundation_niacinamide',
+      product_title: 'Architecture Radiance Hydrating Foundation Broad Spectrum SPF 50+',
+      product_description: 'Foundation with niacinamide for a radiant finish.',
+      brand: 'Test Beauty',
+      product_type: 'Foundation',
+      category: 'Foundation',
+      category_path: 'beauty/makeup/face/foundation',
+      canonical_url: 'https://brand.example/products/radiance-foundation',
+      product_image_url: 'https://cdn.example.com/foundation.jpg',
+      catalog_track: 'external_referral',
+      truth_tier: 'observed',
+      readiness_tier: 'referral_only',
+      pdp_scope: 'unverified',
+      product_payload: {
+        seed_data: {
+          price_amount: '24.00',
+          price_currency: 'USD',
+          availability: 'in stock',
+          active_ingredients: ['niacinamide'],
+        },
+      },
+      rank_score: 999,
+    },
+    {
+      merchant_id: 'external_seed',
+      product_key: 'prod::external_seed::external_seed::ext_niacinamide_serum',
+      platform: 'external_seed',
+      source_product_id: 'ext_niacinamide_serum',
+      pivota_signature_id: 'sig_niacinamide_serum',
+      pivota_canonical_url: 'https://agent.pivota.cc/products/sig_niacinamide_serum',
+      product_title: 'Niacinamide 10% Brightening Serum',
+      product_description: 'Lightweight niacinamide serum for uneven tone.',
+      brand: 'Test Beauty',
+      product_type: 'Serum',
+      category: 'Serum',
+      category_path: 'beauty/skincare/treat/serum',
+      canonical_url: 'https://brand.example/products/niacinamide-serum',
+      product_image_url: 'https://cdn.example.com/niacinamide-serum.jpg',
+      catalog_track: 'external_referral',
+      truth_tier: 'observed',
+      readiness_tier: 'referral_only',
+      pdp_scope: 'unverified',
+      product_payload: {
+        seed_data: {
+          price_amount: '16.00',
+          price_currency: 'USD',
+          availability: 'in stock',
+          active_ingredients: ['niacinamide'],
+        },
+      },
+      rank_score: 100,
+    },
+  ];
+}
+
 describe('find_products_multi ingredient_recall_direct canonical extension', () => {
   let prevEnv;
 
@@ -155,5 +218,40 @@ describe('find_products_multi ingredient_recall_direct canonical extension', () 
     // If the SQL didn't run at all (path didn't fire on this query), we
     // still pass — test-environment routing isn't load-bearing for this
     // assertion. The first test pins the wiring; this one pins the args.
+  });
+
+  test('ingredient direct canonical merge respects explicit skincare form intent', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('FROM catalog_products p')) return { rows: canonicalMixedNiacinamideRows() };
+        if (text.includes('FROM external_product_seeds')) return { rows: [] };
+        return { rows: [] };
+      },
+    }));
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: { query: 'niacinamide serum', page: 1, limit: 10, market: 'US' },
+        },
+        metadata: { source: 'shopping_agent', market: 'US' },
+      });
+
+    expect(resp.status).toBe(200);
+    const titles = resp.body.products.map((product) => product.title);
+    expect(titles).toContain('Niacinamide 10% Brightening Serum');
+    expect(titles).not.toContain('Architecture Radiance Hydrating Foundation Broad Spectrum SPF 50+');
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_ingredient_recall_direct',
+        ingredient_direct_category_filter_applied: true,
+        ingredient_direct_category_filtered_out_count: 1,
+        ingredient_direct_category_intents: ['serum'],
+      }),
+    );
   });
 });

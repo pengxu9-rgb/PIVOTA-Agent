@@ -2046,6 +2046,69 @@ function productMatchesStrictIngredientPrefetch(product, { ingredientIntents = [
   return true;
 }
 
+function productMatchesStrictSkincareCategoryIntent(product = {}, categoryIntent = '') {
+  if (!product || typeof product !== 'object' || Array.isArray(product)) return false;
+  const intent = normalizeSearchTextForMatch(categoryIntent);
+  if (!intent) return true;
+  const visibleText = normalizeSearchTextForMatch(
+    [
+      product.title,
+      product.name,
+      product.product_name,
+      product.display_name,
+      product.product_type,
+      product.category,
+      product.catalog_category_path,
+      Array.isArray(product.category_path) ? product.category_path.join(' ') : product.category_path,
+      product.description,
+      product.canonical_url,
+      product.destination_url,
+      product.url,
+      product.merchant_canonical_url,
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+  if (!visibleText) return false;
+  if (intent === 'serum') {
+    return /\b(serum|essence|ampoule|concentrate|booster|treatment)\b|精华|精華|美容液/i.test(visibleText);
+  }
+  if (intent === 'moisturizer') {
+    return /\b(moisturi[sz]er|cream|gel\s*cream|barrier\s*cream|repair\s*cream|lotion|balm)\b|面霜|乳液|保湿|保濕/i.test(visibleText);
+  }
+  if (intent === 'cleanser') {
+    return /\b(cleanser|cleansing|face\s*wash|facial\s*wash|wash\s*gel|cleansing\s*(?:foam|gel|milk|oil|balm))\b|洁面|潔面|洗顔/i.test(visibleText);
+  }
+  if (intent === 'toner') {
+    return /\b(toner|tonic|lotion|essence\s*water|skin\s*booster)\b|爽肤水|化妆水|化粧水/i.test(visibleText);
+  }
+  return visibleText.includes(intent);
+}
+
+function filterStrictIngredientProductsByCategoryIntents(products = [], categoryIntents = []) {
+  const list = Array.isArray(products) ? products.filter(Boolean) : [];
+  const intents = Array.isArray(categoryIntents)
+    ? categoryIntents.map((value) => normalizeSearchTextForMatch(value)).filter(Boolean)
+    : [];
+  if (list.length === 0 || intents.length === 0) {
+    return {
+      products: list,
+      applied: false,
+      filtered_out_count: 0,
+      category_intents: intents,
+    };
+  }
+  const filtered = list.filter((product) =>
+    intents.every((intent) => productMatchesStrictSkincareCategoryIntent(product, intent)),
+  );
+  return {
+    products: filtered,
+    applied: true,
+    filtered_out_count: Math.max(0, list.length - filtered.length),
+    category_intents: intents,
+  };
+}
+
 async function prefetchStrictIngredientExternalSeedCandidates({
   search = {},
   strictInvokeDecision = null,
@@ -36088,6 +36151,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         const mergedIngredientRecallProducts = Array.isArray(mergedIngredientRecall?.products)
           ? mergedIngredientRecall.products
           : [];
+        const strictIngredientCategoryIntents =
+          extractStrictFindProductsMultiSkincareCategoryIntents(rawUserQuery || queryText);
+        const strictIngredientCategoryFilter = filterStrictIngredientProductsByCategoryIntents(
+          mergedIngredientRecallProducts,
+          strictIngredientCategoryIntents,
+        );
         const canonicalIngredientTelemetry = {
           canonical_path_executed: true,
           canonical_raw_count: Array.isArray(canonicalIngredientResult?.rows) ? canonicalIngredientResult.rows.length : 0,
@@ -36101,7 +36170,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         // are subject to the same hard constraints as seed rows.
         const directBudgetFilter = filterFindProductsMultiDirectProductsByBudget(
           effectiveIntent?.hard_constraints?.price || null,
-          mergedIngredientRecallProducts,
+          strictIngredientCategoryFilter.products,
         );
         const safetyFilter = filterBeautyMainlineProductsByQuery(
           directBudgetFilter.products,
@@ -36126,6 +36195,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           service_version: buildServiceVersionMetadata(),
           ingredient_direct_prefetch_ms: strictIngredientPrefetchMs,
           ingredient_direct_prefetch_count: Array.isArray(directProducts) ? directProducts.length : 0,
+          ingredient_direct_category_filter_applied: strictIngredientCategoryFilter.applied,
+          ingredient_direct_category_filtered_out_count:
+            strictIngredientCategoryFilter.filtered_out_count,
+          ...(strictIngredientCategoryFilter.category_intents.length > 0
+            ? { ingredient_direct_category_intents: strictIngredientCategoryFilter.category_intents }
+            : {}),
           ingredient_direct_budget_filter_applied: Boolean(directBudgetFxMetadata),
           ingredient_direct_budget_filtered_out_count: directBudgetFilter.filteredOut,
           ingredient_direct_budget_currency_filtered_out_count: directBudgetFilter.currencyFilteredOut || 0,
@@ -36137,6 +36212,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             fallback_reason: null,
             final_returned_count: pagedDirectProducts.length,
             ...canonicalIngredientTelemetry,
+            ingredient_direct_category_filter_applied: strictIngredientCategoryFilter.applied,
+            ingredient_direct_category_filtered_out_count:
+              strictIngredientCategoryFilter.filtered_out_count,
           },
           ...(safetyFilter.applied
             ? {
