@@ -28021,11 +28021,16 @@ app.get('/api/services', async (req, res) => {
 });
 
 app.post('/api/services/bookings', requireBookingFlagOn, bookingsApi.createBooking);
-app.get('/api/services/bookings/:booking_id', requireBookingFlagOn, bookingsApi.getBooking);
 app.get('/api/services/bookings', requireBookingFlagOn, bookingsApi.listBookings);
+// Specific paths (sweep-expired, notify-run, notifications/*) must be registered
+// BEFORE the parameterized /:booking_id GET so they aren't shadowed.
+app.post('/api/services/bookings/sweep-expired', requireBookingFlagOn, bookingsApi.sweepExpired);
+app.post('/api/services/bookings/notify-run', requireBookingFlagOn, bookingsApi.runNotifications);
+app.get('/api/services/bookings/notifications', requireBookingFlagOn, bookingsApi.listNotifications);
+app.post('/api/services/bookings/notifications/:outbox_id/ack', requireBookingFlagOn, bookingsApi.ackNotification);
+app.get('/api/services/bookings/:booking_id', requireBookingFlagOn, bookingsApi.getBooking);
 app.post('/api/services/bookings/:booking_id/cancel', requireBookingFlagOn, bookingsApi.cancelBooking);
 app.post('/api/services/bookings/:booking_id/provider-action', requireBookingFlagOn, bookingsApi.providerAction);
-app.post('/api/services/bookings/sweep-expired', requireBookingFlagOn, bookingsApi.sweepExpired);
 
 // Lightweight debug endpoint to inspect promotions configuration on the gateway.
 // Safe for now: does NOT return any secrets, only booleans and mode.

@@ -1,12 +1,43 @@
 const { randomUUID } = require('crypto');
 const logger = require('../../logger');
+const { query } = require('../../db');
 const repository = require('./repository');
 const { STATUSES, BookingTransitionError, requireTransition } = require('./state');
+const { runNotifyOnce } = require('./notifyWorker');
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
 const DEFAULT_SLA_HOURS = 24;
+const DEFAULT_NOTIFY_LIMIT = 25;
+const MAX_NOTIFY_LIMIT = 100;
+const DEFAULT_NOTIFY_LIST_LIMIT = 50;
+const MAX_NOTIFY_LIST_LIMIT = 200;
+const NOTIFICATION_OUTBOX_COLUMNS = `
+  outbox_id,
+  booking_id,
+  provider_id,
+  channel,
+  payload,
+  status,
+  attempt_count,
+  last_attempted_at,
+  last_error,
+  sent_at,
+  ops_acknowledged_at,
+  ops_acknowledged_by,
+  metadata,
+  created_at,
+  updated_at
+`;
+const NOTIFICATION_STATUSES = new Set([
+  'pending',
+  'retry',
+  'manual_pending',
+  'sent',
+  'failed',
+  'ops_acknowledged',
+]);
 
 class BookingValidationError extends Error {
   constructor(code, message, statusCode = 400, details = {}) {
@@ -362,6 +393,109 @@ const sweepExpired = wrap(async (req, res) => {
   return res.json({ swept });
 });
 
+// --- notification outbox (Step 8b: Kakao Bizmessage worker + manual-ops fallback) ---
+
+function normalizeNotificationStatus(value) {
+  if (value === undefined || value === null || value === '') return null;
+  if (Array.isArray(value)) {
+    throw new BookingValidationError('BAD_STATUS', 'status must be provided at most once');
+  }
+  const normalized = cleanString(value);
+  if (!NOTIFICATION_STATUSES.has(normalized)) {
+    throw new BookingValidationError('BAD_STATUS', 'status is not supported');
+  }
+  return normalized;
+}
+
+function normalizeAcknowledgedBy(value) {
+  const normalized = cleanString(value);
+  if (!normalized || normalized.length > 120) {
+    throw new BookingValidationError(
+      'BAD_ACKNOWLEDGED_BY',
+      'acknowledged_by is required and must be 120 characters or fewer',
+    );
+  }
+  return normalized;
+}
+
+async function findNotification(outboxId) {
+  const result = await query(
+    `SELECT ${NOTIFICATION_OUTBOX_COLUMNS}
+       FROM service_booking_notifications_outbox
+      WHERE outbox_id = $1
+      LIMIT 1`,
+    [outboxId],
+  );
+  return result.rows?.[0] || null;
+}
+
+const runNotifications = wrap(async (req, res) => {
+  requireAdminToken(req);
+  const limit = normalizeInteger(bodyObject(req).limit, 'BAD_LIMIT', 'limit', {
+    defaultValue: DEFAULT_NOTIFY_LIMIT,
+    min: 1,
+    max: MAX_NOTIFY_LIMIT,
+  });
+  const result = await runNotifyOnce({ limit });
+  return res.json(result);
+});
+
+const ackNotification = wrap(async (req, res) => {
+  requireAdminToken(req);
+  const outboxId = normalizeUuid(req.params.outbox_id, 'BAD_OUTBOX_ID', 'outbox_id');
+  const acknowledgedBy = normalizeAcknowledgedBy(bodyObject(req).acknowledged_by);
+  const existing = await findNotification(outboxId);
+  if (!existing) {
+    throw new BookingValidationError('NOTIFICATION_NOT_FOUND', 'Notification was not found', 404);
+  }
+  if (existing.ops_acknowledged_at || existing.status === 'ops_acknowledged') {
+    return res.json(existing);
+  }
+  const result = await query(
+    `UPDATE service_booking_notifications_outbox
+        SET status = 'ops_acknowledged',
+            ops_acknowledged_at = now(),
+            ops_acknowledged_by = $2,
+            updated_at = now()
+      WHERE outbox_id = $1
+      RETURNING ${NOTIFICATION_OUTBOX_COLUMNS}`,
+    [outboxId, acknowledgedBy],
+  );
+  return res.json(result.rows?.[0] || existing);
+});
+
+const listNotifications = wrap(async (req, res) => {
+  requireAdminToken(req);
+  const status = normalizeNotificationStatus(req.query?.status);
+  const limit = normalizeInteger(req.query?.limit, 'BAD_PAGINATION', 'limit', {
+    defaultValue: DEFAULT_NOTIFY_LIST_LIMIT,
+    min: 1,
+    max: MAX_NOTIFY_LIST_LIMIT,
+  });
+  const offset = normalizeInteger(req.query?.offset, 'BAD_PAGINATION', 'offset', {
+    defaultValue: 0,
+    min: 0,
+    max: Number.MAX_SAFE_INTEGER,
+  });
+  const result = await query(
+    `SELECT ${NOTIFICATION_OUTBOX_COLUMNS}
+       FROM service_booking_notifications_outbox
+      WHERE ($1::text IS NULL OR status = $1)
+      ORDER BY created_at DESC, outbox_id DESC
+      LIMIT $2
+      OFFSET $3`,
+    [status, limit, offset],
+  );
+  return res.json({
+    notifications: result.rows || [],
+    pagination: {
+      limit,
+      offset,
+      has_more: (result.rows || []).length === limit,
+    },
+  });
+});
+
 module.exports = {
   BookingValidationError,
   BookingTransitionError,
@@ -372,6 +506,9 @@ module.exports = {
   cancelBooking,
   providerAction,
   sweepExpired,
+  runNotifications,
+  ackNotification,
+  listNotifications,
   __test: {
     hasAdminToken,
     sanitizePublicBooking,
