@@ -5053,6 +5053,28 @@ function hasExternalSeedRichPdpContent(product) {
   return hasVariantSignal || hasIngredientSignal || hasHowToSignal || hasDetailsSignal;
 }
 
+function shouldHydratePdpIdentityLineMemberPayloads({
+  entryProductIsExternalSeed = false,
+  entryProductId = '',
+  productId = '',
+  canonicalProductRef = null,
+  requestedMerchantId = '',
+} = {}) {
+  const requestedExternalSeedEntryProductId = String(entryProductId || productId || '').trim();
+  const canonicalExternalSeedProductId = String(canonicalProductRef?.product_id || '').trim();
+  const requestedExternalSeedEntryDiffersFromCanonical =
+    entryProductIsExternalSeed &&
+    Boolean(requestedExternalSeedEntryProductId) &&
+    Boolean(canonicalExternalSeedProductId) &&
+    requestedExternalSeedEntryProductId !== canonicalExternalSeedProductId;
+  if (requestedExternalSeedEntryDiffersFromCanonical) return true;
+  return !(
+    canonicalProductRef?.merchant_id === EXTERNAL_SEED_MERCHANT_ID &&
+    isExternalSeedProductId(canonicalProductRef?.product_id) &&
+    (!requestedMerchantId || requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID)
+  );
+}
+
 function readExternalSeedRichVariants(product) {
   if (!isPlainObject(product)) return [];
   const seedData = isPlainObject(product.seed_data) ? product.seed_data : {};
@@ -33413,11 +33435,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	          productGroupAliasId && canonicalProductRef?.product_id
 	            ? canonicalProductRef.product_id
 	            : entryProductId || productId || canonicalProductRef?.product_id;
-	        const shouldHydrateIdentityLineMemberPayloads = !(
-	          canonicalProductRef?.merchant_id === EXTERNAL_SEED_MERCHANT_ID &&
-	          isExternalSeedProductId(canonicalProductRef?.product_id) &&
-	          (!requestedMerchantId || requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID)
-	        );
+	        const shouldHydrateIdentityLineMemberPayloads = shouldHydratePdpIdentityLineMemberPayloads({
+          entryProductIsExternalSeed,
+          entryProductId,
+          productId,
+          canonicalProductRef,
+          requestedMerchantId,
+        });
         const shouldSkipDirectExternalSeedIdentityGraph =
           entryProductIsExternalSeed &&
           canonicalProductRef?.merchant_id === EXTERNAL_SEED_MERCHANT_ID &&
@@ -41929,6 +41953,7 @@ module.exports._debug = {
   fetchProductDetailForOffers,
   fetchExternalSeedProductDetailFromDb,
   hasExternalSeedRichPdpContent,
+  shouldHydratePdpIdentityLineMemberPayloads,
   mergeIdentitySyntheticWithRichExternalSeedProduct,
   stripResponseOwnedPdpModulesFromCanonicalPayload,
   resolveOfferSellerDisplayName,

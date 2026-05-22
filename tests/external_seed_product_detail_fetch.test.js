@@ -1187,6 +1187,36 @@ describe('external seed product detail hydration', () => {
     );
   });
 
+  test('hydrates identity line member payloads when an external seed alias resolves to a different canonical row', () => {
+    const { debug } = loadServerWithDb();
+
+    expect(
+      debug.shouldHydratePdpIdentityLineMemberPayloads({
+        entryProductIsExternalSeed: true,
+        entryProductId: 'ulta:57b8f92ce86ee6b0',
+        productId: 'ulta:57b8f92ce86ee6b0',
+        canonicalProductRef: {
+          merchant_id: 'external_seed',
+          product_id: 'ext_bb310b68bf948987b9f658c2',
+        },
+        requestedMerchantId: 'external_seed',
+      }),
+    ).toBe(true);
+
+    expect(
+      debug.shouldHydratePdpIdentityLineMemberPayloads({
+        entryProductIsExternalSeed: true,
+        entryProductId: 'ext_bb310b68bf948987b9f658c2',
+        productId: 'ext_bb310b68bf948987b9f658c2',
+        canonicalProductRef: {
+          merchant_id: 'external_seed',
+          product_id: 'ext_bb310b68bf948987b9f658c2',
+        },
+        requestedMerchantId: 'external_seed',
+      }),
+    ).toBe(false);
+  });
+
   test('promotes reviewed external seed snapshot variants when synthetic product has none', () => {
     const { debug } = loadServerWithDb();
     const richProduct = {
