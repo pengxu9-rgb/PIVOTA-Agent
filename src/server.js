@@ -5112,7 +5112,7 @@ function applyCatalogIdentityToPdpProduct(product, identity = {}) {
   };
 }
 
-function collectCatalogPdpContentSourceProductIds(product = {}, productRef = {}) {
+function collectCatalogPdpContentSourceProductIds(product = {}, productRef = {}, extraCandidates = []) {
   const refs = [
     productRef,
     product?.canonical_content_ref,
@@ -5121,10 +5121,21 @@ function collectCatalogPdpContentSourceProductIds(product = {}, productRef = {})
     product?.selectedCommerceRef,
     product?.canonical_product_ref,
     product?.canonicalProductRef,
+    product?.content_base_ref,
+    product?.contentBaseRef,
+    product?.canonical_payload_product_ref,
+    product?.canonicalPayloadProductRef,
     product?.pdp_open?.product_ref,
+    product?.pdp_open?.get_pdp_v2_payload?.product_ref,
   ].filter(isPlainObject);
+  for (const candidate of Array.isArray(extraCandidates) ? extraCandidates : [extraCandidates]) {
+    if (isPlainObject(candidate)) refs.push(candidate);
+  }
   const values = [
     ...refs.flatMap((ref) => [ref.product_id, ref.productId, ref.source_product_id, ref.sourceProductId]),
+    ...(Array.isArray(extraCandidates) ? extraCandidates : [extraCandidates])
+      .filter((value) => typeof value === 'string')
+      .map((value) => value.trim()),
     product?.source_product_id,
     product?.sourceProductId,
     product?.platform_product_id,
@@ -5141,7 +5152,7 @@ function collectCatalogPdpContentSourceProductIds(product = {}, productRef = {})
         .map((value) => String(value || '').trim())
         .filter((value) => value && !isPivotaSignatureProductId(value)),
     ),
-  ).slice(0, 8);
+  ).slice(0, 20);
 }
 
 function hasExternalSeedRichPdpContent(product) {
@@ -34126,6 +34137,21 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           const catalogPdpContentSourceProductIds = collectCatalogPdpContentSourceProductIds(
             canonicalProductForPdp,
             canonicalProductRef,
+            [
+              entryProductRef,
+              precheckedMerchantProduct,
+              canonicalProduct,
+              identityGraphLive?.canonical_product_ref,
+              identityGraphLive?.synthetic_product?.canonical_content_ref,
+              identityGraphLive?.synthetic_product?.selected_commerce_ref,
+              identityGraphLive?.synthetic_product?.canonical_product_ref,
+              identityGraphLive?.synthetic_product?.content_base_ref,
+              identityGraphLive?.synthetic_product?.canonical_payload_product_ref,
+              identityGraphLive?.content_base_ref,
+              catalogIdentity,
+              entryProductId,
+              productId,
+            ],
           );
           if (catalogPdpContentSourceProductIds.length > 0) {
             canonicalProductForPdp = await enrichProductWithCatalogPdpContentFields(
@@ -42462,6 +42488,7 @@ module.exports._debug = {
   buildFindProductsMultiDiscoveryBridgeResponse,
   fetchProductDetailForOffers,
   fetchExternalSeedProductDetailFromDb,
+  collectCatalogPdpContentSourceProductIds,
   hasExternalSeedRichPdpContent,
   shouldHydratePdpIdentityLineMemberPayloads,
   isRequestedExternalSeedAliasDifferentFromCanonical,

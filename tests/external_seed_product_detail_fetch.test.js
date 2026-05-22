@@ -30,6 +30,46 @@ describe('external seed product detail hydration', () => {
     process.env = ORIGINAL_ENV;
   });
 
+  test('catalog PDP content hydration ref collection includes identity/content refs and skips public sig ids', () => {
+    const { debug } = loadServerWithDb();
+    const refs = debug.collectCatalogPdpContentSourceProductIds(
+      {
+        product_id: 'sig_abc123',
+        source_product_id: 'ext_payload_product',
+        canonical_content_ref: { product_id: 'ext_content_base' },
+        selected_commerce_ref: { product_id: 'ext_commerce_row' },
+        canonical_payload_product_ref: { product_id: 'ext_payload_ref' },
+        pdp_open: {
+          get_pdp_v2_payload: {
+            product_ref: { product_id: 'ext_pdp_open_ref' },
+          },
+        },
+      },
+      { product_id: 'ext_entry_ref' },
+      [
+        { product_id: 'ext_identity_canonical' },
+        { source_product_id: 'ext_catalog_identity' },
+        'sig_def456',
+        'ext_string_ref',
+      ],
+    );
+
+    expect(refs).toEqual(
+      expect.arrayContaining([
+        'ext_entry_ref',
+        'ext_content_base',
+        'ext_commerce_row',
+        'ext_payload_ref',
+        'ext_pdp_open_ref',
+        'ext_identity_canonical',
+        'ext_catalog_identity',
+        'ext_payload_product',
+        'ext_string_ref',
+      ]),
+    );
+    expect(refs).not.toEqual(expect.arrayContaining(['sig_abc123', 'sig_def456']));
+  });
+
   test('fetchProductDetailForOffers returns enriched external seed detail for external_seed merchant', async () => {
     const { db, debug } = loadServerWithDb();
 
