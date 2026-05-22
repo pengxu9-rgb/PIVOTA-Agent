@@ -146,6 +146,7 @@
     "external-seeds:audit:pdp-coverage-gaps": "node scripts/audit-external-seed-pdp-coverage-gaps.js",
     "external-seeds:audit:pdp-underfill-catalog": "node scripts/audit-external-seed-pdp-underfill-against-catalog.js",
     "external-seeds:audit:pdp-quality": "node scripts/audit-external-product-pdp-quality.js",
+    "external-seeds:apply:category-patch": "node scripts/apply-reviewed-external-seed-category-patch.cjs",
     "pdp-identity:audit:source-payload-drift": "node scripts/audit-pdp-identity-source-payload-drift.cjs",
     "external-seeds:audit:pdp-readiness": "node scripts/audit-external-seed-pdp-readiness.js",
     "commerce-index:audit:kb-readiness": "node scripts/audit-kb-commerce-index-readiness.cjs",

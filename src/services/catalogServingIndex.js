@@ -59,6 +59,15 @@ function uniqStrings(values = [], limit = 64) {
   return out;
 }
 
+function chunkArray(values = [], size = 1000) {
+  const chunkSize = Math.max(1, Math.trunc(Number(size) || 1000));
+  const chunks = [];
+  for (let index = 0; index < values.length; index += chunkSize) {
+    chunks.push(values.slice(index, index + chunkSize));
+  }
+  return chunks;
+}
+
 function encodeBase64UrlJson(payload) {
   return Buffer.from(JSON.stringify(payload), 'utf8')
     .toString('base64')
@@ -248,30 +257,33 @@ function buildCatalogServingPivotaInsightFromKbRow(row = {}) {
 }
 
 async function fetchCatalogServingProductIntelSummaries(productIds = [], { queryFn = defaultQuery } = {}) {
-  const ids = uniqStrings(productIds, 5000);
+  const ids = uniqStrings(productIds, Number.MAX_SAFE_INTEGER);
   const out = new Map();
   if (!ids.length || typeof queryFn !== 'function') return out;
 
   try {
-    const result = await queryFn(
-      `
-        SELECT
-          kb_key,
-          analysis,
-          source,
-          source_meta,
-          last_error,
-          last_success_at,
-          updated_at
-        FROM aurora_product_intel_kb
-        WHERE kb_key = ANY($1::text[])
-      `,
-      [ids.map((id) => `product:${id}`)],
-    );
-    for (const row of result?.rows || []) {
-      const insight = buildCatalogServingPivotaInsightFromKbRow(row);
-      if (!insight?.product_id || !insight.summary) continue;
-      out.set(insight.product_id, insight);
+    for (const batch of chunkArray(ids, 1000)) {
+      // eslint-disable-next-line no-await-in-loop
+      const result = await queryFn(
+        `
+          SELECT
+            kb_key,
+            analysis,
+            source,
+            source_meta,
+            last_error,
+            last_success_at,
+            updated_at
+          FROM aurora_product_intel_kb
+          WHERE kb_key = ANY($1::text[])
+        `,
+        [batch.map((id) => `product:${id}`)],
+      );
+      for (const row of result?.rows || []) {
+        const insight = buildCatalogServingPivotaInsightFromKbRow(row);
+        if (!insight?.product_id || !insight.summary) continue;
+        out.set(insight.product_id, insight);
+      }
     }
   } catch (error) {
     if (!looksLikeMissingRelation(error)) throw error;
@@ -302,7 +314,7 @@ async function hydrateCatalogServingSourceRowsWithProductIntel(
     asArray(sourceRows).map((row) =>
       asString(row?.product_id || row?.product?.product_id || row?.product?.id),
     ),
-    5000,
+    Number.MAX_SAFE_INTEGER,
   );
   if (!productIds.length) return sourceRows;
 
@@ -1285,6 +1297,7 @@ module.exports = {
     buildCatalogServingBackfillEntries,
     buildCatalogServingGroupInput,
     buildCatalogServingPivotaInsightFromKbRow,
+    chunkArray,
     compareCatalogServingLocalSortTuples,
     filterLocalCatalogServingDocs,
     getCatalogServingLocalSortTuple,

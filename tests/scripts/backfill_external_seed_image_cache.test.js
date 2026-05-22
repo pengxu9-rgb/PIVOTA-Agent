@@ -3,11 +3,40 @@ jest.mock('../../src/db', () => ({
   closePool: jest.fn(async () => {}),
 }));
 
+const imageCacheService = {
+  buildImageAssetBackfillPlanForRow: jest.fn(),
+  collectExternalSeedImageCandidates: jest.fn(() => []),
+  fetchImageForCache: jest.fn(async (url) => ({
+    url,
+    ok: true,
+    status: 'direct_fetch_ok',
+    reason_codes: [],
+  })),
+  recoverImageUrlsFromCanonicalPage: jest.fn(async () => []),
+  shouldCacheOriginalImageUrl: jest.fn(() => false),
+  sourceHostFromUrl: jest.fn((url) => new URL(url).hostname),
+};
+
+jest.mock('../../src/services/externalSeedImageCache', () => imageCacheService);
+
 const {
-  _internals: { parseArgs, summarize },
+  _internals: { buildChecksForRow, parseArgs, summarize },
 } = require('../../scripts/backfill-external-seed-image-cache.cjs');
 
 describe('backfill-external-seed-image-cache', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    imageCacheService.collectExternalSeedImageCandidates.mockReturnValue([]);
+    imageCacheService.recoverImageUrlsFromCanonicalPage.mockResolvedValue([]);
+    imageCacheService.fetchImageForCache.mockImplementation(async (url) => ({
+      url,
+      ok: true,
+      status: 'direct_fetch_ok',
+      reason_codes: [],
+    }));
+    imageCacheService.shouldCacheOriginalImageUrl.mockReturnValue(false);
+  });
+
   test('defaults to dry-run and parses high-risk host filters', () => {
     const args = parseArgs([
       'node',
@@ -56,5 +85,38 @@ describe('backfill-external-seed-image-cache', () => {
     expect(summary.status_counts.cached).toBe(1);
     expect(summary.status_counts.stale_404).toBe(1);
     expect(summary.host_counts['www.guerlain.com']).toBe(1);
+  });
+
+  test('recovers image candidates from canonical PDP when row has zero stored images', async () => {
+    imageCacheService.recoverImageUrlsFromCanonicalPage.mockResolvedValue([
+      'https://cdn.shopify.com/recovered-product.jpg',
+    ]);
+    const row = {
+      canonical_url: 'https://www.tomfordbeauty.com/products/test-product',
+      seed_data: {},
+    };
+
+    const checksByUrl = await buildChecksForRow(row, {
+      fetchMode: 'direct',
+      timeoutMs: 8000,
+      forceCache: false,
+      apply: false,
+    });
+
+    expect(imageCacheService.recoverImageUrlsFromCanonicalPage).toHaveBeenCalledWith(
+      'https://www.tomfordbeauty.com/products/test-product',
+      { timeoutMs: 8000 },
+    );
+    expect(imageCacheService.fetchImageForCache).toHaveBeenCalledWith(
+      'https://cdn.shopify.com/recovered-product.jpg',
+      expect.objectContaining({ sourceUrl: 'https://www.tomfordbeauty.com/products/test-product' }),
+    );
+    expect(checksByUrl['https://cdn.shopify.com/recovered-product.jpg']).toEqual(
+      expect.objectContaining({
+        ok: true,
+        recovered_from: 'canonical_page_og_image',
+      }),
+    );
+    expect(row.seed_data.image_urls).toEqual(['https://cdn.shopify.com/recovered-product.jpg']);
   });
 });
