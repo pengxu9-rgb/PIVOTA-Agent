@@ -22349,7 +22349,7 @@ function shouldHydrateSimilarCardFromOfficialSeed(item = {}) {
   if (!item || typeof item !== 'object') return false;
   const externalSeedIds = collectExternalSeedIdCandidatesForVisibleCatalogHydration(item);
   if (!externalSeedIds.length) return false;
-  return isSellerOnlySimilarCardEvidence(item) || !hasSimilarCardPresentation(item);
+  return isSellerOnlySimilarCardEvidence(item) || !hasSimilarCardPresentation(item) || !hasSimilarCardImage(item);
 }
 
 function mergeSimilarCardEnrichment(candidate = {}, detail = {}) {

@@ -617,6 +617,25 @@ describe('find_similar_products mainline wrapper', () => {
     );
   });
 
+  it('hydrates official seed card sources when an external candidate has highlight but no image', () => {
+    const app = require('../src/server');
+
+    expect(app._debug.shouldHydrateSimilarCardFromOfficialSeed({
+      merchant_id: 'external_seed',
+      product_id: 'ext_component_with_highlight',
+      card_highlight: 'tamanu barrier serum',
+      card_highlight_status: 'ready',
+    })).toBe(true);
+
+    expect(app._debug.shouldHydrateSimilarCardFromOfficialSeed({
+      merchant_id: 'external_seed',
+      product_id: 'ext_component_ready',
+      image_url: 'https://cdn.example.test/component.jpg',
+      card_highlight: 'tamanu barrier serum',
+      card_highlight_status: 'ready',
+    })).toBe(false);
+  });
+
   it('runtime-classifies official hair styling seeds and blocks non-formula fill', () => {
     const { pickLayeredRecommendations } = require('../src/services/RecommendationEngine');
 
