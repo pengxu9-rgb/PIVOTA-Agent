@@ -18,6 +18,7 @@ const TRUSTED_CHANNEL_HOSTS = new Set([
   'oliveyoung.com',
   'ulta.com',
   'sephora.com',
+  'boots.com',
   'iherb.com',
   'peachandlily.com',
 ]);
@@ -114,10 +115,11 @@ function normalizeTitleTokens(value) {
     new Set(
       normalizeText(value)
         .toLowerCase()
+        .replace(/\bcustomisable\b/g, 'customizable')
         .replace(/&/g, ' and ')
         .replace(/[^a-z0-9]+/g, ' ')
         .split(/\s+/)
-        .filter((token) => token.length >= 2 && !['the', 'and', 'with', 'for', 'skin1004'].includes(token)),
+        .filter((token) => token.length >= 2 && !['the', 'and', 'with', 'for', 'skin1004', 'guerlain', 'refill'].includes(token)),
     ),
   );
 }
@@ -171,6 +173,11 @@ function readCandidateMappings() {
       target_id: item.target_id || item.external_product_id,
       source_url: item.source_url || item.candidate_url,
       source_external_product_id: item.source_external_product_id || item.candidate_id || null,
+      source_title: item.source_title || '',
+      pdp_ingredients_raw: item.pdp_ingredients_raw || '',
+      pdp_active_ingredients_raw: item.pdp_active_ingredients_raw || '',
+      pdp_how_to_use_raw: item.pdp_how_to_use_raw || '',
+      pdp_details_sections: asArray(item.pdp_details_sections),
     })).filter((item) => item.target_id && item.source_url);
   }
   if (candidateBoard) {
@@ -222,6 +229,54 @@ function extractSokoGlamFields(html) {
     pdp_active_ingredients_raw: active.length >= 10 ? active : '',
     pdp_ingredients_raw: looksLikeFullInci(ingredients) ? ingredients : '',
     review_summary: reviewSummary,
+  };
+}
+
+function extractBootsSectionText(text, heading, nextHeadings = []) {
+  const escapedHeading = heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escapedNext = nextHeadings.map((item) => item.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  const pattern = escapedNext
+    ? new RegExp(`(?:^|\\n)#{0,6}\\s*${escapedHeading}\\s*\\n+([\\s\\S]*?)(?=\\n#{1,6}\\s*(?:${escapedNext})\\b|\\n######\\s*Delivery options\\b|\\nClick & Collect\\b|$)`, 'i')
+    : new RegExp(`(?:^|\\n)#{0,6}\\s*${escapedHeading}\\s*\\n+([\\s\\S]*?)(?=\\n######\\s*Delivery options\\b|\\nClick & Collect\\b|$)`, 'i');
+  const match = text.match(pattern);
+  return match ? normalizeText(match[1]) : '';
+}
+
+function normalizeBootsIngredients(value) {
+  return cleanSectionText(value)
+    .replace(/^INGREDIENTS\s*:\s*/i, '')
+    .replace(/\s*•\s*/g, ', ')
+    .replace(/\s*\.\.\.read more[\s\S]*$/i, '')
+    .replace(/,\s*,+/g, ',')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+function extractBootsFields(html) {
+  const raw = String(html || '');
+  const text = stripHtml(raw);
+  const title = cleanSectionText(
+    extractFirst(/<h1[^>]*>([\s\S]*?)<\/h1>/i, raw) ||
+      extractFirst(/(?:^|\n)#\s*([^\n]+)/, text),
+  );
+  const details = cleanSectionText(
+    extractBootsSectionText(text, 'Product details', ['How to use', 'Important info', 'Active ingredients', 'Ingredients']),
+  );
+  const howTo = cleanSectionText(
+    extractBootsSectionText(text, 'How to use', ['Important info', 'Active ingredients', 'Ingredients']),
+  );
+  const active = cleanSectionText(
+    extractBootsSectionText(text, 'Active ingredients', ['Ingredients']),
+  );
+  const ingredients = normalizeBootsIngredients(
+    extractBootsSectionText(text, 'Ingredients', ['Delivery options', 'shopping with us', 'customer services']),
+  );
+  return {
+    source_title: title,
+    pdp_details_sections: details.length >= 80 ? [{ heading: 'Details', body: details }] : [],
+    pdp_how_to_use_raw: looksLikeHowToUse(howTo) ? howTo : '',
+    pdp_active_ingredients_raw: active.length >= 20 ? active : '',
+    pdp_ingredients_raw: looksLikeFullInci(ingredients) ? ingredients : '',
   };
 }
 
@@ -299,7 +354,32 @@ function parseOkendoReviewSummary(html) {
 
 function extractChannelFields(host, html) {
   if (host === 'sokoglam.com') return extractSokoGlamFields(html);
+  if (host === 'boots.com') return extractBootsFields(html);
   return {};
+}
+
+function hasManualSourceFields(mapping) {
+  return Boolean(
+    normalizeText(mapping.pdp_ingredients_raw) ||
+    normalizeText(mapping.pdp_active_ingredients_raw) ||
+    normalizeText(mapping.pdp_how_to_use_raw) ||
+    asArray(mapping.pdp_details_sections).length,
+  );
+}
+
+function manualSourceFieldsFromMapping(mapping) {
+  return {
+    source_title: normalizeText(mapping.source_title),
+    pdp_ingredients_raw: looksLikeFullInci(mapping.pdp_ingredients_raw) ? normalizeText(mapping.pdp_ingredients_raw) : '',
+    pdp_active_ingredients_raw: normalizeText(mapping.pdp_active_ingredients_raw),
+    pdp_how_to_use_raw: looksLikeHowToUse(mapping.pdp_how_to_use_raw) ? normalizeText(mapping.pdp_how_to_use_raw) : '',
+    pdp_details_sections: asArray(mapping.pdp_details_sections)
+      .map((section) => ({
+        heading: normalizeText(section?.heading || section?.title),
+        body: normalizeText(section?.body || section?.content || section?.text),
+      }))
+      .filter((section) => section.heading && section.body.length >= 40),
+  };
 }
 
 function readExistingQuality(seedData, snapshot, summaryKey, assetKey = summaryKey) {
@@ -645,15 +725,22 @@ async function main() {
       continue;
     }
     try {
-      const fetched = await fetchHtml(sourceUrl);
-      result.http_status = fetched.status;
-      result.final_url = fetched.final_url;
-      if (fetched.status < 200 || fetched.status >= 300) {
-        result.reason = 'source_http_not_ok';
-        results.push(result);
-        continue;
+      let extracted = null;
+      if (hasManualSourceFields(mapping)) {
+        extracted = manualSourceFieldsFromMapping(mapping);
+        result.http_status = 'manual_source_review';
+        result.final_url = sourceUrl;
+      } else {
+        const fetched = await fetchHtml(sourceUrl);
+        result.http_status = fetched.status;
+        result.final_url = fetched.final_url;
+        if (fetched.status < 200 || fetched.status >= 300) {
+          result.reason = 'source_http_not_ok';
+          results.push(result);
+          continue;
+        }
+        extracted = extractChannelFields(sourceHost, fetched.html);
       }
-      const extracted = extractChannelFields(sourceHost, fetched.html);
       const titleScore = scoreProductTitleMatch(extracted.source_title, row.title);
       result.source_title = extracted.source_title;
       result.title_match_score = Number(titleScore.toFixed(3));
