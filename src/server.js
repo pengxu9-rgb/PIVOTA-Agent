@@ -29543,14 +29543,23 @@ function mergeRecommendationModuleWithEnvelope(moduleData, envelope) {
   if (!moduleData || typeof moduleData !== 'object') return null;
   const envelopeMetadata = envelope?.metadata && typeof envelope.metadata === 'object' ? envelope.metadata : {};
   const moduleMetadata = moduleData.metadata && typeof moduleData.metadata === 'object' ? moduleData.metadata : {};
-  const envelopeItems = Array.isArray(envelope?.items) ? envelope.items : null;
+  const rawItems = Array.isArray(envelope?.items)
+    ? envelope.items
+    : Array.isArray(moduleData.items)
+      ? moduleData.items
+      : null;
+  const publicItems = rawItems ? filterPublicVisibleSimilarProducts(rawItems) : null;
+  const finalFilteredCount = rawItems && publicItems
+    ? Math.max(0, rawItems.length - publicItems.length)
+    : 0;
   return {
     ...moduleData,
     ...(envelope?.status ? { status: envelope.status } : {}),
-    ...(envelopeItems ? { items: envelopeItems } : {}),
+    ...(publicItems ? { items: publicItems } : {}),
     metadata: {
       ...envelopeMetadata,
       ...moduleMetadata,
+      ...(finalFilteredCount > 0 ? { final_public_similar_filtered_count: finalFilteredCount } : {}),
     },
   };
 }
