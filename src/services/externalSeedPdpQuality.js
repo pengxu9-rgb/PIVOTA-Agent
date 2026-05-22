@@ -672,6 +672,18 @@ function extractCanonicalData(liveResponse = {}) {
 }
 
 function buildIdentityGate({ livePayload = {}, liveResponse = {}, productFamily = '', terminalHold = false } = {}) {
+  const probeError = extractProbeError(liveResponse);
+  if (probeError) {
+    return {
+      status: 'skipped',
+      product_group_id: null,
+      product_line_id: null,
+      sellable_item_group_id: null,
+      skipped_reason: 'live_pdp_probe_failed',
+      probe_error: probeError,
+      failure_reasons: [],
+    };
+  }
   const canonicalData = extractCanonicalData(liveResponse);
   const product = ensureJsonObject(livePayload?.product);
   const productGroupId = normalizeNonEmptyString(
@@ -732,6 +744,17 @@ function buildIdentityGate({ livePayload = {}, liveResponse = {}, productFamily 
 }
 
 function buildProductIntelGate({ livePayload = {}, liveResponse = {}, productFamily = '', terminalHold = false } = {}) {
+  const probeError = extractProbeError(liveResponse);
+  if (probeError) {
+    return {
+      status: 'skipped',
+      has_product_intel: false,
+      product_intel_status: null,
+      skipped_reason: 'live_pdp_probe_failed',
+      probe_error: probeError,
+      failure_reasons: [],
+    };
+  }
   const modules = collectModules(liveResponse, livePayload);
   const productIntelModule = modules.find((module) => module?.type === 'product_intel') || null;
   const topLevelIntel = ensureJsonObject(liveResponse?.product_intel || livePayload?.product_intel);
@@ -750,6 +773,20 @@ function buildProductIntelGate({ livePayload = {}, liveResponse = {}, productFam
     productIntelStatus === 'generating' ||
     normalizeNonEmptyString(productIntelModule?.reason).toLowerCase() === 'missing_blocked';
   const failureReasons = blocked ? ['product_intel_module_empty_or_blocked'] : [];
+  const normalizedProductFamily = normalizeProductFamily(productFamily);
+  if (
+    failureReasons.length &&
+    ['set_or_collection', 'accessory', 'sample'].includes(normalizedProductFamily)
+  ) {
+    return {
+      status: 'exempt',
+      has_product_intel: hasProductIntelData,
+      product_intel_status: productIntelStatus || null,
+      exempt: true,
+      skipped_reason: `product_intel_optional_${normalizedProductFamily}`,
+      failure_reasons: [],
+    };
+  }
   if (
     failureReasons.length &&
     shouldExemptTerminalHoldAuxiliaryGate({ productFamily, terminalHold })

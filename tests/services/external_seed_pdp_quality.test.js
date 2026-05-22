@@ -377,6 +377,45 @@ describe('externalSeedPdpQuality', () => {
     expect(gate.failure_reasons).toEqual(['product_intel_module_empty_or_blocked']);
   });
 
+  test('skips auxiliary identity and product intel gates when the PDP probe failed', () => {
+    const probeError = { code: 'PROBE_HTTP_404', message: 'Gateway probe returned HTTP 404' };
+    const identityGate = buildIdentityGate({
+      liveResponse: {
+        status: 'error',
+        error: probeError,
+      },
+    });
+    const productIntelGate = buildProductIntelGate({
+      liveResponse: {
+        status: 'error',
+        error: probeError,
+      },
+    });
+
+    expect(identityGate.status).toBe('skipped');
+    expect(identityGate.failure_reasons).toEqual([]);
+    expect(identityGate.skipped_reason).toBe('live_pdp_probe_failed');
+    expect(productIntelGate.status).toBe('skipped');
+    expect(productIntelGate.failure_reasons).toEqual([]);
+    expect(productIntelGate.skipped_reason).toBe('live_pdp_probe_failed');
+  });
+
+  test('exempts set and accessory PDPs from product intel auxiliary gate', () => {
+    for (const productFamily of ['set_or_collection', 'accessory', 'sample']) {
+      const gate = buildProductIntelGate({
+        productFamily,
+        liveResponse: {
+          modules: [{ type: 'product_intel', data: null, reason: 'missing_blocked' }],
+          metadata: { product_intel_status: 'missing_blocked' },
+        },
+      });
+
+      expect(gate.status).toBe('exempt');
+      expect(gate.failure_reasons).toEqual([]);
+      expect(gate.skipped_reason).toBe(`product_intel_optional_${productFamily}`);
+    }
+  });
+
   test('exempts reviewed terminal-held non-merch rows from auxiliary identity and product intel gates', () => {
     const productIntelGate = buildProductIntelGate({
       productFamily: 'non_merch',

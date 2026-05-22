@@ -476,6 +476,33 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function buildHttpProbeFailureResponse(response, { operation = '' } = {}) {
+  const status = Number(response?.status || 0) || null;
+  const contentType = normalizeNonEmptyString(response?.headers?.['content-type']);
+  const rawData = response?.data;
+  const preview =
+    typeof rawData === 'string'
+      ? rawData.slice(0, 240)
+      : rawData == null
+        ? ''
+        : JSON.stringify(rawData).slice(0, 240);
+  return {
+    status: 'error',
+    error: {
+      code: status ? `PROBE_HTTP_${status}` : 'PROBE_NON_JSON_RESPONSE',
+      message: status
+        ? `Gateway probe returned HTTP ${status}`
+        : 'Gateway probe returned a non-JSON response',
+      details: {
+        operation,
+        http_status: status,
+        content_type: contentType || null,
+        response_preview: preview || null,
+      },
+    },
+  };
+}
+
 async function invokeGateway(gatewayUrl, operation, payload, options = {}) {
   const resolvedGatewayUrl = resolveGatewayUrl(gatewayUrl);
   const requestBody = isAuthoritativeInvokeUrl(resolvedGatewayUrl)
@@ -495,7 +522,14 @@ async function invokeGateway(gatewayUrl, operation, payload, options = {}) {
       validateStatus: () => true,
     },
   );
-  return response.data || {};
+  const data = response.data;
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return buildHttpProbeFailureResponse(response, { operation });
+  }
+  if (Number(response.status || 0) >= 400 && !data.error) {
+    return buildHttpProbeFailureResponse(response, { operation });
+  }
+  return data;
 }
 
 async function invokeGatewayProbe(gatewayUrl, operation, payload, options = {}) {
