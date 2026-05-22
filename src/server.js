@@ -64,6 +64,9 @@ const {
   enrichProductWithCatalogFashionFields,
 } = require('./services/catalogFashionFields');
 const {
+  enrichProductWithCatalogPdpContentFields,
+} = require('./services/catalogPdpContentFields');
+const {
   enrichProductWithRelatedServices,
 } = require('./services/catalogRelatedServicesNearby');
 const {
@@ -5107,6 +5110,38 @@ function applyCatalogIdentityToPdpProduct(product, identity = {}) {
     pivota_canonical_url:
       product.pivota_canonical_url || `https://agent.pivota.cc/products/${sigId}`,
   };
+}
+
+function collectCatalogPdpContentSourceProductIds(product = {}, productRef = {}) {
+  const refs = [
+    productRef,
+    product?.canonical_content_ref,
+    product?.canonicalContentRef,
+    product?.selected_commerce_ref,
+    product?.selectedCommerceRef,
+    product?.canonical_product_ref,
+    product?.canonicalProductRef,
+    product?.pdp_open?.product_ref,
+  ].filter(isPlainObject);
+  const values = [
+    ...refs.flatMap((ref) => [ref.product_id, ref.productId, ref.source_product_id, ref.sourceProductId]),
+    product?.source_product_id,
+    product?.sourceProductId,
+    product?.platform_product_id,
+    product?.platformProductId,
+    product?.external_seed_id,
+    product?.externalSeedId,
+    product?.product_id,
+    product?.productId,
+    product?.id,
+  ];
+  return Array.from(
+    new Set(
+      values
+        .map((value) => String(value || '').trim())
+        .filter((value) => value && !isPivotaSignatureProductId(value)),
+    ),
+  ).slice(0, 8);
 }
 
 function hasExternalSeedRichPdpContent(product) {
@@ -34081,6 +34116,39 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	          review_summary: reviewSummaryResult.value,
 	        };
 	      }
+
+      if (
+        canonicalProductRef?.merchant_id === EXTERNAL_SEED_MERCHANT_ID ||
+        canonicalProductForPdp?.merchant_id === EXTERNAL_SEED_MERCHANT_ID
+      ) {
+        const catalogPdpContentHydrationStartedAt = Date.now();
+        try {
+          const catalogPdpContentSourceProductIds = collectCatalogPdpContentSourceProductIds(
+            canonicalProductForPdp,
+            canonicalProductRef,
+          );
+          if (catalogPdpContentSourceProductIds.length > 0) {
+            canonicalProductForPdp = await enrichProductWithCatalogPdpContentFields(
+              canonicalProductForPdp,
+              {
+                merchantId: EXTERNAL_SEED_MERCHANT_ID,
+                sourceProductIds: catalogPdpContentSourceProductIds,
+                bypassCache,
+              },
+            );
+          }
+        } catch (err) {
+          logger.warn(
+            {
+              err: err?.message || String(err),
+              product_id: canonicalProductRef?.product_id || null,
+            },
+            'enrichProductWithCatalogPdpContentFields failed; PDP renders without catalog payload merge',
+          );
+        } finally {
+          markPdpV2Phase('catalog_pdp_content_hydration', catalogPdpContentHydrationStartedAt);
+        }
+      }
 
       const pdpSchemaProfile = resolvePdpSchemaProfile(canonicalProductForPdp);
       const allowsBeautyFormulaModules = isBeautyFormulaPdpProfile(pdpSchemaProfile);
