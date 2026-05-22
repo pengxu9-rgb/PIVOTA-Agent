@@ -1,0 +1,188 @@
+const {
+  buildInsightBundle,
+  buildPlan,
+  inferRole,
+  isWeakExistingInsight,
+  readSeedFacts,
+} = require('../../scripts/review-brand-product-intel-from-official-pdp.cjs');
+
+function row(overrides = {}) {
+  return {
+    external_product_id: 'ext_tf_lip',
+    title: 'Lip Color Lipstick',
+    brand: 'TOM FORD BEAUTY',
+    canonical_url: 'https://www.tomfordbeauty.com/product/lip-color',
+    seed_data: {
+      brand: 'TOM FORD BEAUTY',
+      pdp_description_raw: 'A rich lip color with a satin finish and multidimensional shade payoff.',
+      pdp_ingredients_raw: 'Ingredients: Ricinus Communis (Castor) Seed Oil; Synthetic Wax; Silica.',
+      pdp_how_to_use_raw: 'Apply directly to lips from the bullet or with a lip brush.',
+      variants: [
+        {
+          title: '100 Equus',
+          options: [{ name: 'Shade', value: '100 Equus' }, { name: 'Size', value: '0.1 oz' }],
+        },
+      ],
+    },
+    product_key: 'pk_tf_lip',
+    pivota_signature_id: 'sig_tf_lip',
+    ...overrides,
+  };
+}
+
+function kbEntry(bundle) {
+  return {
+    kb_key: 'product:ext_tf_lip',
+    analysis: { product_intel_v1: bundle },
+    source: 'aurora_product_intel_kb',
+    source_meta: { quality_state: bundle.quality_state || 'reviewed' },
+  };
+}
+
+function weakBundle() {
+  return {
+    quality_state: 'reviewed',
+    evidence_profile: 'seller_plus_formula',
+    product_intel_core: {
+      quality_state: 'reviewed',
+      what_it_is: {
+        headline: 'Lipstick identity',
+        body: 'A Tom Ford Beauty lipstick listed on the official source page as Lip Color Lipstick.',
+      },
+      why_it_stands_out: [
+        { headline: 'Official product detail', body: 'Official product detail.' },
+        { headline: 'Formula context captured', body: 'Formula context captured.' },
+      ],
+      best_for: [{ label: 'Lipstick', tag: 'lipstick' }],
+    },
+    shopping_card: { title: 'Lip Color Lipstick', subtitle: 'Lipstick', highlight: 'Lipstick identity' },
+    search_card: { title_candidate: 'Lip Color Lipstick', compact_candidate: 'Lipstick', highlight_candidate: 'Lipstick identity' },
+  };
+}
+
+function strongBundle() {
+  return {
+    quality_state: 'reviewed',
+    evidence_profile: 'official_pdp_reviewed_formula',
+    product_intel_core: {
+      quality_state: 'reviewed',
+      what_it_is: {
+        headline: 'Lip color',
+        body: 'A satin-finish lipstick with official shade data and a disclosed ingredient list.',
+      },
+      why_it_stands_out: [
+        {
+          headline: 'Shade and format are clear',
+          body: 'The PDP exposes a named shade and size so shoppers can compare the SKU without a generic selector.',
+        },
+        {
+          headline: 'Ingredient list is available',
+          body: 'The official source exposes a full ingredient list for formula-sensitive review.',
+        },
+      ],
+      best_for: [{ label: 'Color payoff', tag: 'color_payoff' }],
+    },
+    shopping_card: { title: 'Lip Color Lipstick', subtitle: 'Lip color', highlight: 'Satin finish' },
+    search_card: { title_candidate: 'Lip Color Lipstick', compact_candidate: 'Lip color', highlight_candidate: 'Satin finish' },
+  };
+}
+
+describe('official PDP manual insight review', () => {
+  test('extracts Tom Ford official facts without fallback content', () => {
+    const facts = readSeedFacts(row());
+
+    expect(facts.brand).toBe('Tom Ford Beauty');
+    expect(facts.rawIngredients).toContain('Ingredients: Ricinus Communis (Castor) Seed Oil');
+    expect(facts.variants.labels).toEqual(expect.arrayContaining(['Shade: 100 Equus', 'Size: 0.1 oz']));
+    expect(inferRole(facts).label).toBe('Lip color');
+  });
+
+  test('builds specific source-backed insight copy', () => {
+    const bundle = buildInsightBundle(row());
+
+    expect(bundle.quality_state).toBe('reviewed');
+    expect(bundle.evidence_profile).toBe('official_pdp_reviewed_formula_and_usage');
+    expect(bundle.product_intel_core.what_it_is.body).toContain('satin finish');
+    expect(bundle.product_intel_core.why_it_stands_out.map((item) => item.headline)).toContain('Ingredient list is available');
+    expect(bundle.product_intel_core.why_it_stands_out.map((item) => item.headline)).not.toContain('Official product detail');
+  });
+
+  test('treats previous generic reviewed bundles as weak and replaceable', () => {
+    expect(isWeakExistingInsight(kbEntry(weakBundle()))).toBe(true);
+
+    const plan = buildPlan(
+      row({
+        ext_kb_key: 'product:ext_tf_lip',
+        ext_analysis: { product_intel_v1: weakBundle() },
+        ext_source: 'aurora_product_intel_kb',
+        ext_source_meta: { quality_state: 'reviewed' },
+      }),
+      { brand: 'tom ford', includeStrong: false },
+    );
+
+    expect(plan.changed).toBe(true);
+    expect(plan.writes.some((write) => write.action === 'update')).toBe(true);
+    expect(plan.writes.find((write) => write.action === 'update').existing_weak).toBe(true);
+  });
+
+  test('protects strong existing reviewed content by default', () => {
+    expect(isWeakExistingInsight(kbEntry(strongBundle()))).toBe(false);
+
+    const plan = buildPlan(
+      row({
+        ext_kb_key: 'product:ext_tf_lip',
+        ext_analysis: { product_intel_v1: strongBundle() },
+        ext_source: 'aurora_product_intel_kb',
+        ext_source_meta: { quality_state: 'reviewed' },
+      }),
+      { brand: 'tom ford', includeStrong: false },
+    );
+
+    expect(plan.changed).toBe(true);
+    const extWrite = plan.writes.find((write) => write.kb_key === 'product:ext_tf_lip');
+    expect(extWrite.action).toBe('skip');
+    expect(extWrite.reason).toBe('protected_high_quality_existing:reviewed');
+    const sigWrite = plan.writes.find((write) => write.kb_key === 'product:sig_tf_lip');
+    expect(sigWrite.action).toBe('insert');
+  });
+
+  test('can explicitly repair stale url-key insight rows without enabling it by default', () => {
+    const staleUrlRow = row({
+      url_kb_key: 'url:https://www.tomfordbeauty.com/product/lip-color',
+      url_analysis: { product_intel_v1: weakBundle() },
+      url_source: 'pivota_manual_reviewed_seller_only_v1',
+      url_source_meta: { quality_state: 'eligible' },
+    });
+
+    const defaultPlan = buildPlan(staleUrlRow, { brand: 'tom ford', includeStrong: false });
+    expect(defaultPlan.writes.some((write) => write.kb_key.startsWith('url:'))).toBe(false);
+
+    const urlPlan = buildPlan(staleUrlRow, { brand: 'tom ford', includeStrong: false, includeUrlKey: true });
+    const urlWrite = urlPlan.writes.find((write) => write.kb_key === 'url:https://www.tomfordbeauty.com/product/lip-color');
+    expect(urlWrite.action).toBe('update');
+    expect(urlWrite.existing_weak).toBe(true);
+  });
+
+  test('does not treat polluted legacy raw ingredient text as INCI evidence', () => {
+    const serumRow = row({
+      external_product_id: 'ext_guerlain_serum',
+      title: 'Abeille Royale Youth Watery Oil Serum',
+      brand: 'GUERLAIN',
+      seed_data: {
+        brand: 'GUERLAIN',
+        pdp_description_raw: 'A serum that draws on honey and royal jelly cues for a skin-repair routine step.',
+        raw_ingredient_text_clean: '$62.00\n4.8\n(273)',
+        pdp_how_to_use_raw: 'Apply morning and evening before cream.',
+        variants: [{ title: '30 ml', options: [{ name: 'Size', value: '30 ml' }] }],
+      },
+    });
+
+    const facts = readSeedFacts(serumRow);
+    expect(facts.rawIngredients).toEqual([]);
+    expect(inferRole(facts).label).toBe('Treatment serum');
+
+    const bundle = buildInsightBundle(serumRow);
+    expect(bundle.evidence_profile).toBe('official_pdp_reviewed_line');
+    expect(bundle.product_intel_core.why_it_stands_out.map((item) => item.headline)).not.toContain('Ingredient list is available');
+  });
+});

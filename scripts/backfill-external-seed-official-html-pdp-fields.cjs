@@ -9,7 +9,13 @@ const { query, closePool } = require('../src/db');
 const CONTRACT_VERSION = 'external_seed.official_html_pdp_fields.v1';
 const PDP_CONTENT_ASSET_VERSION = 'pivota.pdp_content_asset.v1';
 const SNAPSHOT_CONTRACT_VERSION = 'external_seed.snapshot_contract.v1';
-const SHOPIFY_PRODUCT_JSON_VARIANT_HOSTS = new Set(['medicube.us', 'skin1004.com', 'tirtir.global', 'us.laneige.com']);
+const SHOPIFY_PRODUCT_JSON_VARIANT_HOSTS = new Set([
+  'medicube.us',
+  'skin1004.com',
+  'tirtir.global',
+  'us.laneige.com',
+  'tomfordbeauty.com',
+]);
 const REVIEW_SUMMARY_ONLY_OKENDO_HOSTS = new Set(['beautyofjoseon.com', 'kravebeauty.com']);
 const REVIEW_SUMMARY_ONLY_GENERIC_HOSTS = new Set([...REVIEW_SUMMARY_ONLY_OKENDO_HOSTS, 'roundlab.com']);
 
@@ -1892,6 +1898,223 @@ function extractFentyFields(html, options = {}) {
   return fields;
 }
 
+function extractJsonLdObjects(html) {
+  const objects = [];
+  for (const match of String(html || '').matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+    const raw = normalizeText(match[1]);
+    if (!raw) continue;
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) objects.push(...parsed.filter(Boolean));
+      else if (parsed && typeof parsed === 'object') objects.push(parsed);
+    } catch {
+      // Ignore malformed JSON-LD; extractor remains fail-closed for this source.
+    }
+  }
+  return objects;
+}
+
+function jsonLdTypeMatches(object, expected) {
+  const type = object?.['@type'];
+  if (Array.isArray(type)) return type.some((item) => normalizeText(item).toLowerCase() === expected.toLowerCase());
+  return normalizeText(type).toLowerCase() === expected.toLowerCase();
+}
+
+function findJsonLdProduct(html, options = {}) {
+  const productTitle = normalizeText(options.productTitle);
+  const candidates = extractJsonLdObjects(html).filter(
+    (object) => jsonLdTypeMatches(object, 'ProductGroup') || jsonLdTypeMatches(object, 'Product'),
+  );
+  if (!productTitle) return candidates[0] || null;
+  return (
+    candidates.find((candidate) => scoreProductTitleMatch(productTitle, candidate.name) >= 0.75) ||
+    candidates.find((candidate) => scoreProductTitleMatch(productTitle, candidate.description) >= 0.45) ||
+    candidates[0] ||
+    null
+  );
+}
+
+function imageUrlFromJsonLd(value) {
+  const item = Array.isArray(value) ? value[0] : value;
+  if (typeof item === 'string') return normalizeText(item);
+  return normalizeText(item?.url || item?.contentUrl || item?.thumbnail?.url);
+}
+
+function variantOptionFromGuerlainProduct(product) {
+  const color = normalizeText(product?.color);
+  if (color) return { name: 'Shade', value: color, axis_kind: 'shade' };
+
+  const size = normalizeText(product?.size);
+  if (size) return { name: 'Size', value: size, axis_kind: 'volume' };
+
+  const description = stripHtml(product?.description);
+  const capacityMatch = description.match(/\bCapacity:\s*([0-9]+(?:\.[0-9]+)?\s*(?:g|ml|mL|ML|oz|fl\.?\s*oz))/i);
+  if (capacityMatch) {
+    const capacity = normalizeText(capacityMatch[1]).replace(/\s+$/, '');
+    if (capacity) return { name: 'Format', value: `${capacity} lipstick refill + customizable case`, axis_kind: 'format' };
+  }
+
+  const category = normalizeText(product?.category);
+  if (/\blipstick\b/i.test(`${category} ${product?.name || ''}`)) {
+    return { name: 'Format', value: 'Customizable lipstick set', axis_kind: 'format' };
+  }
+
+  return null;
+}
+
+function buildGuerlainVariant(product, fallbackUrl = '') {
+  const option = variantOptionFromGuerlainProduct(product);
+  if (!option) return null;
+  const sku = normalizeText(product?.sku || product?.mpn || product?.productID || product?.gtin13);
+  const variantId = sku || crypto.createHash('sha1').update(JSON.stringify(product || {})).digest('hex').slice(0, 12);
+  const offer = ensureObject(product?.offers);
+  const price = Number(offer.price);
+  const productUrl = normalizeText(offer.url || product?.url || fallbackUrl);
+  const imageUrl = imageUrlFromJsonLd(product?.image);
+  return {
+    id: variantId,
+    variant_id: variantId,
+    sku: sku || variantId,
+    title: normalizeText(product?.name) || option.value,
+    options: [option],
+    option_name: option.name,
+    option_value: option.value,
+    ...(Number.isFinite(price) ? { price, price_amount: price } : {}),
+    ...(normalizeText(offer.priceCurrency) ? { currency: normalizeText(offer.priceCurrency).toUpperCase() } : {}),
+    ...(normalizeText(offer.availability) ? {
+      available: /instock/i.test(offer.availability),
+      in_stock: /instock/i.test(offer.availability),
+    } : {}),
+    ...(imageUrl ? { image_url: imageUrl, image_urls: [imageUrl], images: [imageUrl] } : {}),
+    ...(productUrl ? { product_url: productUrl, deep_link: productUrl } : {}),
+    source_origin: 'official_guerlain_json_ld',
+    source_quality_status: 'high',
+  };
+}
+
+function extractGuerlainVariantsFromJsonLd(product) {
+  const variants = asArray(product?.hasVariant)
+    .map((variant) => buildGuerlainVariant(variant, product?.url))
+    .filter(Boolean);
+  if (variants.length > 0) return variants;
+  const singleton = buildGuerlainVariant(product, product?.url);
+  return singleton ? [singleton] : [];
+}
+
+function extractGuerlainIngredientSections(html) {
+  const sections = [];
+  const source = String(html || '');
+  const titleMatches = Array.from(source.matchAll(/<h3\b[^>]*class=["'][^"']*\bGSA_ingredient_title\b[^"']*["'][^>]*>([\s\S]*?)<\/h3>/gi));
+  for (const match of titleMatches) {
+    const title = cleanSectionText(match[1]);
+    if (!title) continue;
+    const slice = source.slice(match.index, match.index + 1800);
+    const descriptionMatch = slice.match(/<p\b[^>]*class=["'][^"']*\bGSA_ingredient_description\b[^"']*["'][^>]*>([\s\S]*?)<\/p>/i);
+    const body = descriptionMatch ? cleanSectionText(descriptionMatch[1]) : '';
+    sections.push({ heading: title, body });
+  }
+  return sections.filter((section) => section.heading && section.body.length >= 40).slice(0, 6);
+}
+
+function extractGuerlainHowToUse(html) {
+  const source = String(html || '');
+  const heading = source.match(/<h2\b[^>]*>\s*([\s\S]*?(?:APPLICATION|TECHNIQUE|HOW TO)[\s\S]*?)<\/h2>/i);
+  if (heading) {
+    const slice = source.slice(heading.index, heading.index + 2600);
+    const text = cleanSectionText(slice)
+      .replace(cleanSectionText(heading[1]), '')
+      .replace(/\b(?:Play|Pause|Previous|Next)\b/gi, ' ')
+      .trim();
+    const applyMatch = text.match(/\bApply[\s\S]{40,1000}?(?=\s{2,}|$)/i);
+    const candidate = normalizeHowToUseCandidate(applyMatch ? applyMatch[0] : text);
+    if (looksLikeHowToUse(candidate)) return candidate;
+  }
+
+  const text = stripHtml(source);
+  const applyMatches = Array.from(text.matchAll(/\bApply\b[\s\S]{45,650}?(?=\b(?:Ingredients?|Reviews?|You may also like|Shop all)\b|$)/gi));
+  for (const match of applyMatches) {
+    const candidate = normalizeHowToUseCandidate(match[0]);
+    if (looksLikeHowToUse(candidate) && !/\b(?:apply product|apply right|apply filters|apply coupon)\b/i.test(candidate)) {
+      return candidate;
+    }
+  }
+  return '';
+}
+
+function extractGuerlainFields(html, options = {}) {
+  const fields = {};
+  const product = findJsonLdProduct(html, options);
+  if (!product) return fields;
+
+  const description = cleanSectionText(product.description);
+  if (description.length >= 60) fields.pdp_description_raw = description;
+
+  const variants = extractGuerlainVariantsFromJsonLd(product);
+  if (variants.length > 0) fields.variants = variants;
+
+  const howTo = extractGuerlainHowToUse(html);
+  if (looksLikeHowToUse(howTo)) fields.pdp_how_to_use_raw = howTo;
+
+  const ingredientSections = extractGuerlainIngredientSections(html);
+  const activeItems = ingredientSections
+    .map((section) => section.heading.replace(/\b(?:THE|FROM|AND|OF|TO|WESTERN|EUROPE|BRITTANY|FRANCE)\b/gi, ' '))
+    .map((item) => normalizeText(item).replace(/\s{2,}/g, ' '))
+    .filter((item) => /\b(?:honey|royal jelly|lily|wax|extract|oil|butter|acid|vitamin)\b/i.test(item));
+  if (activeItems.length > 0) fields.pdp_active_ingredients_raw = Array.from(new Set(activeItems)).join(', ');
+
+  const details = [];
+  if (description.length >= 60) details.push({ heading: 'Overview', body: description });
+  if (ingredientSections.length > 0) {
+    details.push({
+      heading: 'Key Ingredients',
+      body: ingredientSections.map((section) => `${section.heading}: ${section.body}`).join('\n'),
+    });
+  }
+  if (looksLikeHowToUse(howTo)) details.push({ heading: 'How To Use', body: howTo });
+  if (details.length > 0) fields.pdp_details_sections = details.slice(0, 8);
+
+  return fields;
+}
+
+function extractTomFordAccordionText(html, label) {
+  const labelPattern = escapeRegExp(label).replace(/\s+/g, '\\s+');
+  const match = String(html || '').match(
+    new RegExp(`<h2>\\s*${labelPattern}\\s*<\\/h2>[\\s\\S]*?<div class=["'][^"']*\\bdetails-content\\b[^"']*["'][^>]*>([\\s\\S]*?)<\\/details>`, 'i'),
+  );
+  if (!match) return '';
+  return cleanSectionText(match[1])
+    .replace(new RegExp(`^\\s*${labelPattern}\\s*`, 'i'), '')
+    .replace(/:root\s*\{[\s\S]*$/i, '')
+    .trim();
+}
+
+function extractTomFordFields(html, options = {}) {
+  const fields = {};
+  const product = findJsonLdProduct(html, options);
+  const description = cleanSectionText(product?.description);
+  if (description.length >= 60) fields.pdp_description_raw = description;
+
+  const productDetails = extractTomFordAccordionText(html, 'PRODUCT DETAILS');
+  const howTo = normalizeHowToUseCandidate(extractTomFordAccordionText(html, 'HOW TO USE'));
+  const ingredientsBlock = extractTomFordAccordionText(html, 'INGREDIENTS AND SAFETY');
+  const ingredientMatch = ingredientsBlock.match(/\bIngredients:\s*([\s\S]*?)(?:\bPlease be aware\b|$)/i);
+  const fullIngredients = ingredientMatch
+    ? cleanSectionText(ingredientMatch[1]).replace(/<ILN[0-9A-Z]+>/gi, '').trim()
+    : '';
+
+  if (looksLikeFullInci(fullIngredients) || looksLikeShortOfficialInci(fullIngredients)) {
+    fields.pdp_ingredients_raw = fullIngredients;
+  }
+  if (looksLikeHowToUse(howTo)) fields.pdp_how_to_use_raw = howTo;
+
+  const details = [];
+  if (description.length >= 60) details.push({ heading: 'Overview', body: description });
+  if (productDetails.length >= 40) details.push({ heading: 'Product Details', body: truncateOfficialDetailText(productDetails) || productDetails });
+  if (looksLikeHowToUse(howTo)) details.push({ heading: 'How To Use', body: howTo });
+  if (details.length > 0) fields.pdp_details_sections = details.slice(0, 8);
+  return fields;
+}
+
 async function extractOfficialHtmlFields(host, html, options = {}) {
   let fields = {};
   if (host === 'skin1004.com') fields = extractSkin1004Fields(html);
@@ -1903,6 +2126,8 @@ async function extractOfficialHtmlFields(host, html, options = {}) {
   else if (host === 'tirtir.global') fields = await extractTirtirFields(html, options);
   else if (host === 'theordinary.com') fields = {};
   else if (host === 'fentybeauty.com') fields = extractFentyFields(html, options);
+  else if (host === 'guerlain.com') fields = extractGuerlainFields(html, options);
+  else if (host === 'tomfordbeauty.com') fields = extractTomFordFields(html, options);
   else if (!options.reviewSummaryOnly || !REVIEW_SUMMARY_ONLY_GENERIC_HOSTS.has(host)) return {};
 
   if (options.reviewSummaryOnly && REVIEW_SUMMARY_ONLY_OKENDO_HOSTS.has(host)) {
@@ -2551,6 +2776,10 @@ module.exports = {
     extractLaneigeFields,
     extractFentyFields,
     extractFentyFullIngredients,
+    extractGuerlainFields,
+    extractGuerlainVariantsFromJsonLd,
+    extractTomFordFields,
+    extractTomFordAccordionText,
     extractOfficialShopifyVariants,
     fetchStampedReviewSummary,
     fetchBazaarvoiceReviewSummary,

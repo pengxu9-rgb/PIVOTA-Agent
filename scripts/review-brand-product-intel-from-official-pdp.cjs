@@ -1,0 +1,1234 @@
+#!/usr/bin/env node
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+
+const { closePool, query, withClient } = require('../src/db');
+const {
+  PRODUCT_INTEL_CONTRACT_VERSION,
+  normalizePublishedProductIntelBundle,
+} = require('../src/pdpProductIntel');
+const {
+  assessPivotaInsightReplacement,
+  buildPivotaInsightInventoryRow,
+} = require('../src/services/pivotaInsightsQuality');
+
+const REVIEW_SOURCE = 'pivota_insights_official_pdp_manual_review_v1';
+const REVIEWER = 'codex_manual_review';
+const PROTECTED_QUALITY_STATES = new Set(['reviewed', 'verified', 'published', 'ready']);
+const SUPPORTED_BRANDS = new Set(['guerlain', 'tom ford', 'tom ford beauty']);
+
+function argValue(name, fallback = '') {
+  const prefix = `--${name}=`;
+  const hit = process.argv.find((arg) => arg.startsWith(prefix));
+  if (hit) return hit.slice(prefix.length);
+  const index = process.argv.indexOf(`--${name}`);
+  if (index >= 0 && process.argv[index + 1] && !process.argv[index + 1].startsWith('--')) {
+    return process.argv[index + 1];
+  }
+  return fallback;
+}
+
+function hasFlag(name) {
+  return process.argv.includes(`--${name}`);
+}
+
+function asString(value) {
+  if (typeof value === 'string') return value.trim();
+  if (value == null) return '';
+  return String(value).trim();
+}
+
+function asObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function uniq(values) {
+  const seen = new Set();
+  const out = [];
+  for (const value of values) {
+    const text = asString(value);
+    if (!text) continue;
+    const key = text.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(text);
+  }
+  return out;
+}
+
+function stripHtml(input) {
+  return asString(input)
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&rsquo;/gi, "'")
+    .replace(/&ndash;|&mdash;/gi, '-')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function sentence(value) {
+  const text = stripHtml(value).replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  return /[.!?]$/.test(text) ? text : `${text}.`;
+}
+
+function compactText(value, limit = 360) {
+  const text = stripHtml(value);
+  if (!text) return '';
+  if (text.length <= limit) return text;
+  const truncated = text.slice(0, limit);
+  const boundary = truncated.lastIndexOf(' ');
+  return truncated.slice(0, boundary > limit * 0.65 ? boundary : limit).trim();
+}
+
+function isLowSignalMarketingSentence(value) {
+  const current = stripHtml(value);
+  return (
+    /\b(add to bag|shop now|discover|limited time|free shipping|subscribe|sign up)\b/i.test(current) ||
+    /\b(anything but ordinary|far from innocent|you won't want to|must-have|iconic|indulge in)\b/i.test(current) ||
+    /\b(inspired packaging|wardrobe of lip and face cosmetics|sensuous beauty|afterglow)\b/i.test(current)
+  );
+}
+
+function firstUsefulSentence(value, limit = 260) {
+  const text = stripHtml(value);
+  if (!text) return '';
+  const sentences = text.match(/[^.!?]+[.!?]?/g) || [];
+  for (const raw of sentences) {
+    const current = stripHtml(raw);
+    if (current.length < 32) continue;
+    if (isLowSignalMarketingSentence(current)) continue;
+    return sentence(compactText(current, limit));
+  }
+  if (isLowSignalMarketingSentence(text)) return '';
+  return sentence(compactText(text, limit));
+}
+
+function articleFor(label) {
+  return /^[aeiou]/i.test(asString(label)) ? 'an' : 'a';
+}
+
+function stableJson(value) {
+  if (value === null || value === undefined) return 'null';
+  if (Array.isArray(value)) return `[${value.map((item) => stableJson(item)).join(',')}]`;
+  if (typeof value === 'object') {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function hashJson(value) {
+  return crypto.createHash('sha256').update(stableJson(value)).digest('hex');
+}
+
+function parseListish(value) {
+  if (Array.isArray(value)) {
+    return uniq(value.flatMap((item) => {
+      if (typeof item === 'string') return item;
+      if (item && typeof item === 'object') {
+        return [
+          item.heading,
+          item.title,
+          item.name,
+          item.label,
+          item.ingredient,
+          item.value,
+          item.text,
+          item.description,
+          item.body,
+        ].filter(Boolean).join(' ');
+      }
+      return '';
+    }));
+  }
+  const text = stripHtml(value);
+  if (!text) return [];
+  return uniq(
+    text
+      .split(/\s*(?:\n|•|\||;)\s*/g)
+      .map((item) => item.trim())
+      .filter(Boolean),
+  );
+}
+
+function isLikelyInciText(value) {
+  const text = stripHtml(value);
+  if (text.length < 40) return false;
+  if (/\$\s*\d|\b\d(?:\.\d)?\s*\(\d+\)|reviews?\b|add to bag|shop now/i.test(text)) return false;
+  const separatorCount = (text.match(/[,;]/g) || []).length;
+  const inciCueCount = (text.match(/\b(aqua|water|glycerin|dimethicone|silica|mica|titanium dioxide|iron oxides?|parfum|fragrance|linalool|limonene|citronellol|geraniol|tocopherol|squalane|butylene glycol|phenoxyethanol|ethylhexyl|caprylyl|stearate|palmitate|benzoate|extract|acid|wax|oil)\b/gi) || []).length;
+  return separatorCount >= 2 && inciCueCount >= 2;
+}
+
+function readIngredients(seedData, snapshot) {
+  const strongFields = [
+    seedData.pdp_ingredients_raw,
+    seedData.ingredients_inci,
+    snapshot.pdp_ingredients_raw,
+    snapshot.ingredients_inci,
+  ];
+  for (const value of strongFields) {
+    if (isLikelyInciText(value)) return parseListish(value);
+  }
+  return [];
+}
+
+function readFirstField(seedData, snapshot, keys) {
+  for (const key of keys) {
+    const value = seedData[key];
+    if (asString(value) || (Array.isArray(value) && value.length)) return value;
+  }
+  for (const key of keys) {
+    const value = snapshot[key];
+    if (asString(value) || (Array.isArray(value) && value.length)) return value;
+  }
+  return '';
+}
+
+function displayBrand(raw) {
+  const brand = asString(raw);
+  if (/^tom\s*ford/i.test(brand)) return 'Tom Ford Beauty';
+  if (/^guerlain/i.test(brand)) return 'Guerlain';
+  return brand || 'the brand';
+}
+
+function normalizeBrandKey(raw) {
+  return asString(raw)
+    .replace(/\s+beauty$/i, '')
+    .replace(/\s+us$/i, '')
+    .toLowerCase();
+}
+
+function readVariantValues(variant) {
+  const out = [];
+  const item = asObject(variant);
+  for (const key of ['shade', 'color', 'colour', 'size', 'format', 'scent', 'title', 'name', 'label']) {
+    if (asString(item[key])) out.push(item[key]);
+  }
+  const options = asObject(item.options || item.option_values || item.selected_options);
+  for (const [key, value] of Object.entries(options)) {
+    if (/^default/i.test(asString(value))) continue;
+    if (asString(key) && asString(value)) out.push(`${key}: ${value}`);
+  }
+  for (const option of asArray(item.options || item.option_values || item.selected_options)) {
+    if (typeof option === 'string') {
+      if (!/^default/i.test(option)) out.push(option);
+    } else if (option && typeof option === 'object') {
+      const name = asString(option.name || option.label || option.option_name);
+      const value = asString(option.value || option.option_value || option.title);
+      if (value && !/^default/i.test(value)) out.push(name ? `${name}: ${value}` : value);
+    }
+  }
+  return uniq(out).filter((value) => !/^(default|default title|single)$/i.test(value));
+}
+
+function readVariantSummary(seedData, snapshot) {
+  const variants = asArray(seedData.variants).length ? asArray(seedData.variants) : asArray(snapshot.variants);
+  const labels = uniq(variants.flatMap(readVariantValues));
+  const shadeLike = labels.filter((label) => /\b(shade|color|colour)\b/i.test(label) || /#[0-9a-f]{3,6}\b/i.test(label));
+  const sizeLike = labels.filter((label) => /\b(size|format|ml|oz|g|fl\.?\s*oz|lipstick refill|candle)\b/i.test(label));
+  return {
+    count: variants.length,
+    labels: labels.slice(0, 8),
+    shadeLike: shadeLike.slice(0, 6),
+    sizeLike: sizeLike.slice(0, 4),
+  };
+}
+
+function readSeedFacts(row) {
+  const seedData = asObject(row.seed_data);
+  const snapshot = asObject(seedData.snapshot);
+  const title = asString(row.title || row.catalog_title || snapshot.title || seedData.title);
+  const brand = displayBrand(row.brand || snapshot.brand || seedData.brand);
+  const description = stripHtml(readFirstField(seedData, snapshot, [
+    'pdp_description_raw',
+    'description',
+    'short_description',
+    'pdp_overview_raw',
+    'overview',
+  ]));
+  const howTo = parseListish(readFirstField(seedData, snapshot, [
+    'pdp_how_to_use_raw',
+    'how_to_use',
+    'directions',
+    'usage',
+  ]));
+  const activeIngredients = parseListish(readFirstField(seedData, snapshot, [
+    'pdp_active_ingredients_raw',
+    'active_ingredients',
+    'key_ingredients',
+    'pdp_key_ingredients_raw',
+  ]));
+  const safeRawIngredients = readIngredients(seedData, snapshot);
+  const details = parseListish(readFirstField(seedData, snapshot, [
+    'pdp_details_sections',
+    'details_sections',
+    'product_details',
+    'pdp_product_facts_raw',
+  ]));
+  return {
+    seedData,
+    snapshot,
+    title,
+    brand,
+    brandKey: normalizeBrandKey(brand),
+    description,
+    howTo,
+    activeIngredients,
+    rawIngredients: safeRawIngredients,
+    details,
+    variants: readVariantSummary(seedData, snapshot),
+    canonicalUrl: asString(row.canonical_url || row.destination_url || row.catalog_canonical_url),
+    categoryPath: asString(row.category_path),
+    productType: asString(row.product_type || row.category),
+  };
+}
+
+function combinedText(facts) {
+  return [
+    facts.title,
+    facts.description,
+    facts.productType,
+    facts.categoryPath,
+    facts.activeIngredients.join(' '),
+    facts.rawIngredients.slice(0, 45).join(' '),
+    facts.details.join(' '),
+    facts.variants.labels.join(' '),
+  ].join(' ');
+}
+
+function inferRole(facts) {
+  const text = combinedText(facts).toLowerCase();
+  if (/\bcandle\b/.test(text)) return { label: 'Scented candle', step: 'home fragrance', amPm: ['as_needed'] };
+  if (/\bbody\s+spray\b/.test(text)) return { label: 'Body fragrance spray', step: 'body fragrance', amPm: ['as_needed'] };
+  if (/\bbrow\s+pencil|eyebrow|brow\b/.test(text)) return { label: 'Brow pencil', step: 'brow definition', amPm: ['as_needed'] };
+  if (/\blip\s+pencil|contour\s+g\b/.test(text)) return { label: 'Lip liner', step: 'lip definition', amPm: ['as_needed'] };
+  if (/\blipstick|lip color|rouge g|kisskiss|lip colour\b/.test(text)) return { label: 'Lip color', step: 'lip color', amPm: ['as_needed'] };
+  if (/\blip\s+balm|lip\s+oil|lip\s+serum|lip\s+treatment\b/.test(text)) return { label: 'Lip treatment', step: 'lip treatment', amPm: ['as_needed'] };
+  if (/\bfoundation|concealer|skin tint|complexion\b/.test(text)) return { label: 'Complexion makeup', step: 'complexion', amPm: ['as_needed'] };
+  if (/\bprimer|base perfecting|pore prep\b/.test(text)) return { label: 'Makeup primer', step: 'primer', amPm: ['as_needed'] };
+  if (/\bpowder|bronzer|blush|highlighter\b/.test(text)) return { label: 'Face color makeup', step: 'face color', amPm: ['as_needed'] };
+  if (/\bmascara|eyeshadow|eye color|eyeliner\b/.test(text)) return { label: 'Eye makeup', step: 'eye makeup', amPm: ['as_needed'] };
+  if (/\bbrush\b/.test(text)) return { label: 'Makeup brush', step: 'application tool', amPm: ['as_needed'] };
+  if (/\bserum|cream|moisturizer|lotion|cleanser|mask|spf|sunscreen|treatment\b/.test(text)) {
+    if (/\bcleanser\b/.test(text)) return { label: 'Cleanser', step: 'cleanser', amPm: ['am', 'pm'] };
+    if (/\bspf|sunscreen\b/.test(text)) return { label: 'Daily sunscreen', step: 'sunscreen', amPm: ['am'] };
+    if (/\bserum\b/.test(text)) return { label: 'Treatment serum', step: 'serum', amPm: ['am', 'pm'] };
+    if (/\bmask\b/.test(text)) return { label: 'Treatment mask', step: 'mask', amPm: ['as_needed'] };
+    return { label: 'Skincare treatment', step: 'skincare', amPm: ['am', 'pm'] };
+  }
+  if (/\bparfum|eau de parfum|eau de toilette|fragrance|perfume|cologne\b/.test(text)) {
+    return { label: 'Fine fragrance', step: 'fragrance', amPm: ['as_needed'] };
+  }
+  return { label: 'Beauty product', step: 'beauty routine', amPm: ['as_needed'] };
+}
+
+function findTokens(text, patterns) {
+  const lower = stripHtml(text).toLowerCase();
+  const out = [];
+  for (const [label, pattern] of patterns) {
+    if (pattern.test(lower)) out.push(label);
+  }
+  return uniq(out);
+}
+
+function inferAnchors(facts, role) {
+  const text = combinedText(facts);
+  const scentAnchors = role.step === 'fragrance' || role.step === 'body fragrance' || role.step === 'home fragrance'
+    ? findTokens(text, [
+      ['leather', /\bleather\b/],
+      ['oud', /\boud\b/],
+      ['rose', /\brose\b/],
+      ['vanilla', /\bvanilla\b/],
+      ['amber', /\bamber\b/],
+      ['sandalwood', /\bsandalwood\b/],
+      ['tobacco', /\btobacco\b/],
+      ['cherry', /\bcherry\b/],
+      ['iris', /\biris\b/],
+      ['jasmine', /\bjasmine\b/],
+      ['citrus', /\bcitrus|bergamot|mandarin|orange|lemon\b/],
+    ])
+    : [];
+  const productAnchors = findTokens(text, [
+    ['honey', /\bhoney|royal jelly|bee\b/],
+    ['orchid', /\borchid\b/],
+    ['hyaluronic acid', /\bhyaluronic\b/],
+    ['peptide', /\bpeptide\b/],
+    ['niacinamide', /\bniacinamide\b/],
+    ['shea butter', /\bshea\b/],
+    ['squalane', /\bsqualane\b/],
+    ['SPF', /\bspf\b/],
+    ['matte finish', /\bmatte\b/],
+    ['satin finish', /\bsatin\b/],
+    ['shine finish', /\bshine|gloss|glossy\b/],
+    ['refillable format', /\brefill|case\b/],
+    ['shade range', /\bshade|color|colour\b/],
+  ]);
+  const anchors = [...scentAnchors, ...productAnchors];
+  if (facts.variants.sizeLike.length) anchors.push(...facts.variants.sizeLike);
+  if (role.step === 'lip color' && facts.variants.shadeLike.length) anchors.push('shade clarity');
+  if (facts.rawIngredients.length) anchors.push('full INCI available');
+  return uniq(anchors).slice(0, 6);
+}
+
+function inferBestFor(facts, role, anchors) {
+  const text = combinedText(facts);
+  let labels = [];
+  if (role.step === 'fragrance' || role.step === 'body fragrance' || role.step === 'home fragrance') {
+    labels = findTokens(text, [
+      ['warm fragrance profiles', /\bamber|vanilla|tobacco|leather|oud|sandalwood\b/],
+      ['floral fragrance profiles', /\brose|jasmine|orchid|iris|flower|floral\b/],
+      ['fresh citrus profiles', /\bcitrus|bergamot|mandarin|orange|lemon|fresh\b/],
+      ['fragrance layering', /\blayer|body spray|all over body spray\b/],
+      ['home scent', /\bcandle|home fragrance\b/],
+    ]);
+  } else if (role.step.includes('lip')) {
+    labels = findTokens(text, [
+      ['defined lip looks', /\bliner|contour|define|definition\b/],
+      ['refillable lip color', /\brefill|case\b/],
+      ['color payoff', /\bpigment|color|colour|shade|lipstick|rouge\b/],
+      ['lip comfort', /\bcomfort|moistur|hydr|balm|care\b/],
+      ['shine finish', /\bshine|gloss|glossy\b/],
+      ['matte finish', /\bmatte\b/],
+    ]);
+  } else if (role.step === 'complexion' || role.step === 'primer' || role.step === 'face color') {
+    labels = findTokens(text, [
+      ['base makeup prep', /\bprimer|prep|base\b/],
+      ['complexion coverage', /\bfoundation|coverage|concealer|skin tint\b/],
+      ['soft-focus finish', /\bblur|pore|soft-focus|matte|powder\b/],
+      ['radiant finish', /\bradiant|glow|highlight|luminous\b/],
+    ]);
+  } else if (role.step === 'brow definition') {
+    labels = findTokens(text, [
+      ['brow definition', /\bbrow|eyebrow|definition|define\b/],
+      ['precision application', /\bprecision|pencil|clear-cut\b/],
+      ['shade matching', /\bshade|taupe|blonde|brown|chestnut\b/],
+    ]);
+  } else if (role.step === 'skincare' || role.step === 'serum') {
+    labels = findTokens(text, [
+      ['hydration', /\bhydrat|hyaluronic|moistur\b/],
+      ['firmness', /\bfirm|peptide|elastic|lift\b/],
+      ['radiance', /\bradiance|bright|glow\b/],
+      ['barrier support', /\bbarrier|squalane|shea|ceramide\b/],
+    ]);
+  }
+  if (!labels.length && anchors.length) labels = anchors.slice(0, 3);
+  if (!labels.length) labels = [role.label];
+  return uniq(labels).slice(0, 4).map((label) => ({
+    tag: label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''),
+    label,
+    confidence: 'moderate',
+  }));
+}
+
+function cleanInstruction(value, limit = 170) {
+  let text = stripHtml(value)
+    .replace(/^[-*\s]+/, '')
+    .replace(/\s+-\s+/g, '. ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!text) return '';
+  text = text
+    .replace(/\bshop\s+now\b[\s\S]*$/i, '')
+    .replace(/\badd\s+to\s+bag\b[\s\S]*$/i, '')
+    .trim();
+  const sentences = text.match(/[^.!?]+[.!?]?/g) || [];
+  for (const raw of sentences) {
+    const current = sentence(raw);
+    if (current.length >= 24 && current.length <= limit) return current;
+  }
+  return compactText(text, limit);
+}
+
+function buildPairingNotes(facts, role) {
+  const howTo = facts.howTo.map((item) => cleanInstruction(item, 180)).filter(Boolean);
+  if (howTo.length) return howTo.slice(0, 2);
+  if (role.step === 'fragrance') return ['Apply to pulse points or clothing as appropriate for the fragrance format.'];
+  if (role.step === 'body fragrance') return ['Use as a lighter body-fragrance layer, then pair with matching scent formats if desired.'];
+  if (role.step === 'home fragrance') return ['Use as a home scent item and follow the brand safety directions for burn time and placement.'];
+  if (role.step === 'lip definition') return ['Use before lip color to define the lip line and support a cleaner edge.'];
+  if (role.step === 'lip color') return ['Apply directly to lips; pair with liner if you want more definition.'];
+  if (role.step === 'primer') return ['Apply before complexion makeup where you want smoother makeup laydown.'];
+  if (role.step === 'application tool') return ['Use with the product textures the brush is designed to apply.'];
+  return ['Use in the routine step implied by the official product directions.'];
+}
+
+function buildCompleteHighlight(values, fallback) {
+  const items = uniq(values).filter(Boolean);
+  let out = '';
+  for (const item of items) {
+    const text = item.replace(/^shade:\s*/i, '').replace(/^size:\s*/i, '').trim();
+    if (!text) continue;
+    const next = out ? `${out}, ${text}` : text;
+    if (next.length > 40) break;
+    out = next;
+  }
+  return out || compactText(fallback, 40);
+}
+
+function firstUsefulDetail(details) {
+  for (const detail of details) {
+    const text = stripHtml(detail);
+    if (text.length < 24) continue;
+    if (/^product\s+type\b/i.test(text)) continue;
+    if (/^ingredients?:/i.test(text)) continue;
+    if (isLowSignalMarketingSentence(text)) continue;
+    return text;
+  }
+  return '';
+}
+
+function buildWhatItIs(facts, role) {
+  const description = firstUsefulSentence(facts.description, 240);
+  const detail = firstUsefulDetail(facts.details);
+  const pieces = [`${facts.title} is ${articleFor(role.label)} ${role.label.toLowerCase()} from ${facts.brand}`];
+  if (description) pieces.push(`the official PDP describes it as ${description.replace(/\.$/, '')}`);
+  if (!description && detail) pieces.push(`official details identify it as ${compactText(detail, 160)}`);
+  if (!description && !detail && facts.variants.labels.length) {
+    pieces.push(`official variant data clarifies ${facts.variants.labels.slice(0, 3).join(', ')}`);
+  }
+  if (!description && !detail && facts.rawIngredients.length) {
+    pieces.push('the official source also exposes an ingredient list for formula review');
+  }
+  return sentence(pieces.join('; '));
+}
+
+function buildWhyItStandsOut(facts, role, anchors) {
+  const why = [];
+  const anchorText = anchors.filter((item) => !/^full inci/i.test(item)).slice(0, 4).join(', ');
+  if (anchorText) {
+    why.push({
+      headline: role.step === 'fragrance' || role.step === 'body fragrance' || role.step === 'home fragrance'
+        ? 'Source-backed scent profile'
+        : 'Source-backed product cues',
+      body: sentence(`Official PDP fields surface ${anchorText}, giving shoppers concrete cues to compare within ${facts.brand}`),
+      evidence_strength: 'official_pdp_reviewed',
+    });
+  }
+  if (facts.rawIngredients.length && role.step !== 'home fragrance') {
+    why.push({
+      headline: 'Ingredient list is available',
+      body: sentence(`The official source exposes a full ingredient list, so formula-sensitive shoppers can inspect the INCI instead of relying on generic claims`),
+      evidence_strength: 'official_pdp_reviewed',
+    });
+  } else if (facts.activeIngredients.length) {
+    why.push({
+      headline: 'Key ingredients are identified',
+      body: sentence(`Official PDP fields identify ${facts.activeIngredients.slice(0, 3).join(', ')}, which is enough for a cautious high-level formula read`),
+      evidence_strength: 'official_pdp_reviewed',
+    });
+  }
+  if (facts.variants.count > 0 && facts.variants.labels.length) {
+    why.push({
+      headline: 'Variant choice is explicit',
+      body: sentence(`Stored variant data exposes ${facts.variants.labels.slice(0, 4).join(', ')}, reducing ambiguity around shade, size, or format`),
+      evidence_strength: 'official_pdp_reviewed',
+    });
+  }
+  if (facts.howTo.length) {
+    why.push({
+      headline: 'Usage instructions available',
+      body: sentence(`Official directions are present, including: ${cleanInstruction(facts.howTo[0], 170)}`),
+      evidence_strength: 'official_pdp_reviewed',
+    });
+  }
+  if (!why.length) {
+    why.push({
+      headline: 'Official PDP evidence only',
+      body: sentence(`This insight is limited to the official product fields currently available for ${facts.title}`),
+      evidence_strength: 'official_pdp_reviewed_limited',
+    });
+  }
+  return why.slice(0, 3);
+}
+
+function buildWatchouts(facts, role) {
+  const watchouts = [];
+  if (role.step === 'fragrance' || role.step === 'body fragrance' || role.step === 'home fragrance') {
+    watchouts.push({
+      type: 'scent_sensitivity',
+      label: 'Fragrance preferences are personal; sample first if you are sensitive to scent intensity.',
+      severity: 'low',
+    });
+  } else if (role.step.includes('lip')) {
+    watchouts.push({
+      type: 'shade_fit',
+      label: 'Color appearance can shift with lip tone, lighting, and paired liner.',
+      severity: 'low',
+    });
+  } else if (/\bretinol|aha|bha|pha|exfoliat/i.test(combinedText(facts))) {
+    watchouts.push({
+      type: 'active_layering',
+      label: 'Introduce renewal or exfoliating actives gradually if your skin is reactive.',
+      severity: 'medium',
+    });
+  }
+  if (!watchouts.length) {
+    watchouts.push({
+      type: 'fit_check',
+      label: 'Check the official ingredient list and format details against your personal sensitivities.',
+      severity: 'low',
+    });
+  }
+  return watchouts;
+}
+
+function hasOfficialPdpEvidence(row) {
+  const facts = readSeedFacts(row);
+  return Boolean(
+    facts.canonicalUrl &&
+      (facts.description || facts.details.length || facts.howTo.length || facts.rawIngredients.length || facts.activeIngredients.length || facts.variants.labels.length)
+  );
+}
+
+function evidenceProfileFor(facts) {
+  if (facts.rawIngredients.length && facts.howTo.length) return 'official_pdp_reviewed_formula_and_usage';
+  if (facts.rawIngredients.length) return 'official_pdp_reviewed_formula';
+  if (facts.activeIngredients.length && facts.howTo.length) return 'official_pdp_reviewed_key_ingredients_and_usage';
+  if (facts.activeIngredients.length) return 'official_pdp_reviewed_key_ingredients';
+  if (facts.howTo.length || facts.details.length || facts.variants.labels.length) return 'official_pdp_reviewed_line';
+  return 'official_pdp_reviewed_limited';
+}
+
+function buildInsightBundle(row) {
+  const facts = readSeedFacts(row);
+  const role = inferRole(facts);
+  const anchors = inferAnchors(facts, role);
+  const bestFor = inferBestFor(facts, role, anchors);
+  const whatItIs = buildWhatItIs(facts, role);
+  const evidenceProfile = evidenceProfileFor(facts);
+  const highlight = buildCompleteHighlight(anchors.length ? anchors : bestFor.map((item) => item.label), role.label);
+  const generatedAt = new Date().toISOString();
+  return {
+    contract_version: PRODUCT_INTEL_CONTRACT_VERSION,
+    display_name: 'Pivota Insights',
+    canonical_product_ref: {
+      merchant_id: 'external_seed',
+      platform: 'external_seed',
+      product_id: row.external_product_id,
+      pivota_signature_id: row.pivota_signature_id || null,
+    },
+    product_group_id: row.product_key || null,
+    product_intel_core: {
+      what_it_is: {
+        headline: role.label,
+        body: whatItIs,
+      },
+      best_for: bestFor,
+      why_it_stands_out: buildWhyItStandsOut(facts, role, anchors),
+      routine_fit: {
+        step: role.step,
+        am_pm: role.amPm,
+        pairing_notes: buildPairingNotes(facts, role),
+      },
+      watchouts: buildWatchouts(facts, role),
+      display_name: 'Pivota Insights',
+      freshness: {
+        source_version: 'official_pdp_manual_review_v1',
+        generated_at: generatedAt,
+      },
+      quality_state: 'reviewed',
+      evidence_profile: evidenceProfile,
+      source_coverage: {
+        official_pdp_description: Boolean(facts.description),
+        official_pdp_formula: facts.rawIngredients.length > 0 || facts.activeIngredients.length > 0,
+        official_pdp_how_to: facts.howTo.length > 0,
+        official_pdp_variants: facts.variants.count,
+        canonical_url: facts.canonicalUrl || null,
+      },
+    },
+    community_signals: {
+      status: 'unavailable',
+      unavailable_reason: 'no_reviewed_external_consensus_for_this_publish',
+      confidence: 'low',
+      evidence_profile: evidenceProfile,
+    },
+    recommendation_intents: {
+      similar: [],
+      complementary: [],
+      routine_pairing: [],
+      underfill_reason: 'not_generated_in_manual_insight_review',
+      confidence: 'low',
+    },
+    shopping_card: {
+      contract_version: 'pivota.shopping_card.v1',
+      title: facts.title,
+      subtitle: role.label,
+      highlight,
+      intro: whatItIs,
+      evidence_profile: evidenceProfile,
+    },
+    search_card: {
+      title_candidate: facts.title,
+      compact_candidate: role.label,
+      highlight_candidate: highlight,
+      intro_candidate: whatItIs,
+    },
+    quality_state: 'reviewed',
+    evidence_profile: evidenceProfile,
+    source_coverage: {
+      source: 'official_pdp',
+      canonical_url: facts.canonicalUrl || null,
+      fields: {
+        description: Boolean(facts.description),
+        ingredients: facts.rawIngredients.length,
+        active_ingredients: facts.activeIngredients.length,
+        how_to: facts.howTo.length,
+        details: facts.details.length,
+        variants: facts.variants.count,
+      },
+    },
+    confidence: {
+      tier: facts.rawIngredients.length || facts.activeIngredients.length || facts.howTo.length ? 'moderate' : 'limited',
+      rationale: 'Reviewed against official PDP fields already stored on the external seed.',
+    },
+    freshness: {
+      source_version: 'official_pdp_manual_review_v1',
+      generated_at: generatedAt,
+    },
+    provenance: {
+      source: REVIEW_SOURCE,
+      generator: 'strict_human_manual_rewrite',
+      reviewer: REVIEWER,
+      reviewer_kind: 'assistant',
+      review_status: 'completed',
+      review_decision: 'rewrite',
+      review_tier: 'assistant_reviewed',
+      selection_strategy: 'curated_override',
+      field_sources: {
+        what_it_is: 'official_pdp_manual_review',
+        why_it_stands_out: 'official_pdp_manual_review',
+        best_for: 'official_pdp_derived',
+        routine_fit: 'official_pdp_derived',
+        watchouts: 'human_standard',
+      },
+      source_signals: [
+        facts.description ? 'official_pdp_description' : null,
+        facts.rawIngredients.length ? 'official_pdp_ingredients' : null,
+        facts.activeIngredients.length ? 'official_pdp_active_ingredients' : null,
+        facts.howTo.length ? 'official_pdp_how_to' : null,
+        facts.details.length ? 'official_pdp_details' : null,
+        facts.variants.labels.length ? 'official_pdp_variants' : null,
+      ].filter(Boolean),
+    },
+  };
+}
+
+function readBundle(entry) {
+  return asObject(entry?.analysis?.product_intel_v1 || entry?.analysis?.product_intel || entry?.analysis);
+}
+
+function readTextFromBundle(bundle) {
+  const core = asObject(bundle.product_intel_core);
+  return [
+    bundle.shopping_card?.highlight,
+    bundle.shopping_card?.intro,
+    bundle.search_card?.highlight_candidate,
+    bundle.search_card?.intro_candidate,
+    core.what_it_is?.headline,
+    core.what_it_is?.body,
+    ...asArray(core.why_it_stands_out).flatMap((item) => [item.headline, item.body]),
+    ...asArray(core.best_for).flatMap((item) => [item.label, item.tag]),
+  ].map(asString).join(' ');
+}
+
+function readQualityState(entry) {
+  const bundle = readBundle(entry);
+  const core = asObject(bundle.product_intel_core);
+  return asString(bundle.quality_state || core.quality_state || entry?.source_meta?.quality_state).toLowerCase();
+}
+
+function readEvidenceProfile(entry) {
+  const bundle = readBundle(entry);
+  const core = asObject(bundle.product_intel_core);
+  return asString(bundle.evidence_profile || core.evidence_profile || entry?.source_meta?.evidence_profile).toLowerCase();
+}
+
+function isWeakExistingInsight(entry) {
+  if (!entry) return true;
+  const bundle = readBundle(entry);
+  if (!Object.keys(bundle).length) return true;
+  const qualityState = readQualityState(entry);
+  const evidenceProfile = readEvidenceProfile(entry);
+  if (/^(eligible|limited|draft|unreviewed)$/.test(qualityState)) return true;
+  if (/seller_only/.test(evidenceProfile)) return true;
+  const text = readTextFromBundle(bundle);
+  if (!stripHtml(text)) return true;
+  const weakPatterns = [
+    /\blisted on the official source page\b/i,
+    /\bofficial product detail\b/i,
+    /\bformula context captured\b/i,
+    /\blipstick identity\b/i,
+    /\bfragrance identity\b/i,
+    /\bbeauty product listed\b/i,
+    /\ba .* product listed on the official\b/i,
+    /\bofficial pdp fields identify\s*$/i,
+  ];
+  if (weakPatterns.some((pattern) => pattern.test(text))) return true;
+  const why = asArray(asObject(bundle.product_intel_core).why_it_stands_out);
+  if (why.length < 2) return true;
+  const bodies = why.map((item) => stripHtml(`${item?.headline || ''} ${item?.body || ''}`)).join(' ');
+  if (bodies.length < 120) return true;
+  return false;
+}
+
+function shouldSkipExisting(entry, args) {
+  if (!entry) return null;
+  const state = readQualityState(entry);
+  const weak = isWeakExistingInsight(entry);
+  if (!weak && PROTECTED_QUALITY_STATES.has(state) && !args.includeStrong) {
+    return `protected_high_quality_existing:${state || 'unknown'}`;
+  }
+  if (!weak && !args.includeStrong) return 'existing_not_weak';
+  return null;
+}
+
+function buildKbKeys(row, args = {}) {
+  const keys = [
+    `product:${row.external_product_id}`,
+    row.pivota_signature_id ? `product:${row.pivota_signature_id}` : '',
+  ];
+  if (args.includeUrlKey) {
+    const facts = readSeedFacts(row);
+    if (facts.canonicalUrl) keys.push(`url:${facts.canonicalUrl}`);
+  }
+  return uniq(keys);
+}
+
+function existingEntryForKey(row, kbKey) {
+  if (kbKey === `product:${row.external_product_id}` && row.ext_kb_key) {
+    return {
+      kb_key: row.ext_kb_key,
+      analysis: row.ext_analysis,
+      source: row.ext_source,
+      source_meta: row.ext_source_meta,
+      last_success_at: row.ext_last_success_at,
+      updated_at: row.ext_updated_at,
+    };
+  }
+  if (kbKey === `product:${row.pivota_signature_id}` && row.sig_kb_key) {
+    return {
+      kb_key: row.sig_kb_key,
+      analysis: row.sig_analysis,
+      source: row.sig_source,
+      source_meta: row.sig_source_meta,
+      last_success_at: row.sig_last_success_at,
+      updated_at: row.sig_updated_at,
+    };
+  }
+  const urlKey = row.url_kb_key;
+  if (kbKey === urlKey && row.url_kb_key) {
+    return {
+      kb_key: row.url_kb_key,
+      analysis: row.url_analysis,
+      source: row.url_source,
+      source_meta: row.url_source_meta,
+      last_success_at: row.url_last_success_at,
+      updated_at: row.url_updated_at,
+    };
+  }
+  return null;
+}
+
+function buildPlan(row, args) {
+  const facts = readSeedFacts(row);
+  const bundle = buildInsightBundle(row);
+  const canonicalProductRef = {
+    merchant_id: 'external_seed',
+    platform: 'external_seed',
+    product_id: row.external_product_id,
+    pivota_signature_id: row.pivota_signature_id || null,
+  };
+  const normalized = normalizePublishedProductIntelBundle(bundle, {
+    canonicalProductRef,
+    productGroupId: row.product_key || null,
+    requireReviewed: true,
+  });
+  const plan = {
+    external_product_id: row.external_product_id,
+    pivota_signature_id: row.pivota_signature_id || null,
+    title: row.title,
+    brand: facts.brand,
+    canonical_url: facts.canonicalUrl || null,
+    changed: false,
+    blocked: false,
+    skip_reason: null,
+    candidate_hash: hashJson(bundle),
+    evidence_profile: bundle.evidence_profile,
+    source_coverage: bundle.source_coverage,
+    preview: {
+      headline: bundle.product_intel_core.what_it_is.headline,
+      what_it_is: bundle.product_intel_core.what_it_is.body,
+      why_it_stands_out: bundle.product_intel_core.why_it_stands_out,
+      best_for: bundle.product_intel_core.best_for,
+      shopping_highlight: bundle.shopping_card.highlight,
+    },
+    writes: [],
+  };
+  if (!SUPPORTED_BRANDS.has(facts.brandKey) && !SUPPORTED_BRANDS.has(asString(args.brand).toLowerCase())) {
+    plan.blocked = true;
+    plan.skip_reason = 'unsupported_brand_for_manual_template';
+    return plan;
+  }
+  if (!hasOfficialPdpEvidence(row)) {
+    plan.blocked = true;
+    plan.skip_reason = 'missing_official_pdp_evidence';
+    return plan;
+  }
+  if (!normalized) {
+    plan.blocked = true;
+    plan.skip_reason = 'candidate_failed_reviewed_normalization';
+    return plan;
+  }
+  const candidateBase = {
+    analysis: { product_intel_v1: bundle },
+    source: REVIEW_SOURCE,
+    source_meta: {
+      external_product_id: row.external_product_id,
+      pivota_signature_id: row.pivota_signature_id || null,
+      review_status: 'completed',
+      review_decision: 'rewrite',
+      review_tier: 'assistant_reviewed',
+      reviewer: REVIEWER,
+      evidence_profile: bundle.evidence_profile,
+      quality_state: bundle.quality_state,
+      source_origin: 'official_pdp_fields',
+      source_url: facts.canonicalUrl || null,
+    },
+  };
+  for (const kbKey of buildKbKeys(row, args)) {
+    const existing = existingEntryForKey(row, kbKey);
+    const skipReason = shouldSkipExisting(existing, args);
+    if (skipReason) {
+      plan.writes.push({
+        kb_key: kbKey,
+        action: 'skip',
+        reason: skipReason,
+        old_hash: existing?.analysis ? hashJson(existing.analysis) : null,
+        existing_weak: existing ? isWeakExistingInsight(existing) : true,
+      });
+      continue;
+    }
+    const candidate = {
+      ...candidateBase,
+      kb_key: kbKey,
+    };
+    const assessment = assessPivotaInsightReplacement({
+      existingEntry: existing,
+      candidateEntry: candidate,
+      sourceRow: {
+        quality_improvement_review: {
+          decision: 'approved_replacement',
+          reviewer_kind: 'assistant',
+          owner_delegated: true,
+          reason: `Owner requested strict manual-quality rewrite of weak ${facts.brand} insights using official PDP fields; high-quality existing bundles remain protected by script gating.`,
+        },
+      },
+    });
+    if (!assessment.allowed) {
+      plan.writes.push({
+        kb_key: kbKey,
+        action: 'skip',
+        reason: assessment.reason,
+        old_hash: existing?.analysis ? hashJson(existing.analysis) : null,
+        candidate_hash: hashJson(candidate.analysis),
+        existing_weak: existing ? isWeakExistingInsight(existing) : true,
+        assessment,
+      });
+      continue;
+    }
+    plan.changed = true;
+    plan.writes.push({
+      kb_key: kbKey,
+      action: existing ? 'update' : 'insert',
+      reason: assessment.reason,
+      old_hash: existing?.analysis ? hashJson(existing.analysis) : null,
+      candidate_hash: hashJson(candidate.analysis),
+      existing_weak: existing ? isWeakExistingInsight(existing) : true,
+      analysis: candidate.analysis,
+      source: candidate.source,
+      source_meta: {
+        ...candidate.source_meta,
+        quality_improvement: {
+          previous_bundle_hash: assessment.previous_bundle_hash || null,
+          candidate_bundle_hash: assessment.candidate_bundle_hash || null,
+          replacement_decision: assessment.reason,
+          existing_quality_lane: assessment.existing?.lane || null,
+          candidate_quality_lane: assessment.candidate?.lane || null,
+          existing_evidence_profile: assessment.existing?.evidence_profile || null,
+          candidate_evidence_profile: assessment.candidate?.evidence_profile || null,
+        },
+      },
+      after_inventory: buildPivotaInsightInventoryRow(candidate, {
+        productId: row.external_product_id,
+        title: row.title,
+      }),
+    });
+  }
+  if (!plan.writes.some((write) => write.action === 'insert' || write.action === 'update')) {
+    plan.changed = false;
+    if (!plan.skip_reason) plan.skip_reason = 'no_safe_writes';
+  }
+  return plan;
+}
+
+function parseProductIds(value) {
+  return uniq(asString(value).split(',').map((item) => item.trim()).filter(Boolean));
+}
+
+function readProductIdsFromReport(reportPath) {
+  const filePath = asString(reportPath);
+  if (!filePath) return [];
+  const absolutePath = path.isAbsolute(filePath) ? filePath : path.join(path.resolve(__dirname, '..'), filePath);
+  const parsed = JSON.parse(fs.readFileSync(absolutePath, 'utf8'));
+  return uniq([
+    ...asArray(parsed.summary?.weak_insights_ids),
+    ...asArray(parsed.weak_insights_ids),
+  ]);
+}
+
+async function fetchRows(args) {
+  const params = [];
+  const where = ["eps.status = 'active'"];
+  if (args.productIds.length) {
+    params.push(args.productIds);
+    where.push(`(eps.external_product_id = ANY($${params.length}) OR cp.pivota_signature_id = ANY($${params.length}))`);
+  } else if (args.brand) {
+    params.push(`%${args.brand}%`);
+    where.push(`(
+      eps.seed_data->>'brand' ILIKE $${params.length}
+      OR eps.seed_data->'snapshot'->>'brand' ILIKE $${params.length}
+      OR cp.brand ILIKE $${params.length}
+    )`);
+  } else {
+    where.push("FALSE");
+  }
+  const limitSql = args.limit > 0 ? `LIMIT ${Number(args.limit)}` : '';
+  const result = await query(
+    `
+      SELECT
+        eps.external_product_id,
+        eps.title,
+        coalesce(eps.seed_data->>'brand', eps.seed_data->'snapshot'->>'brand', cp.brand) AS brand,
+        eps.domain,
+        eps.market,
+        eps.canonical_url,
+        eps.destination_url,
+        eps.seed_data,
+        cp.pivota_signature_id,
+        cp.product_key,
+        cp.title AS catalog_title,
+        cp.brand AS catalog_brand,
+        cp.category,
+        cp.product_type,
+        cp.category_path,
+        cp.description,
+        cp.image_url,
+        cp.canonical_url AS catalog_canonical_url,
+        kb_ext.kb_key AS ext_kb_key,
+        kb_ext.analysis AS ext_analysis,
+        kb_ext.source AS ext_source,
+        kb_ext.source_meta AS ext_source_meta,
+        kb_ext.last_success_at AS ext_last_success_at,
+        kb_ext.updated_at AS ext_updated_at,
+        kb_sig.kb_key AS sig_kb_key,
+        kb_sig.analysis AS sig_analysis,
+        kb_sig.source AS sig_source,
+        kb_sig.source_meta AS sig_source_meta,
+        kb_sig.last_success_at AS sig_last_success_at,
+        kb_sig.updated_at AS sig_updated_at,
+        kb_url.kb_key AS url_kb_key,
+        kb_url.analysis AS url_analysis,
+        kb_url.source AS url_source,
+        kb_url.source_meta AS url_source_meta,
+        kb_url.last_success_at AS url_last_success_at,
+        kb_url.updated_at AS url_updated_at
+      FROM external_product_seeds eps
+      LEFT JOIN catalog_products cp
+        ON cp.merchant_id = 'external_seed'
+       AND cp.platform = 'external_seed'
+       AND cp.source_product_id = eps.external_product_id
+      LEFT JOIN aurora_product_intel_kb kb_ext
+        ON kb_ext.kb_key = 'product:' || eps.external_product_id
+      LEFT JOIN aurora_product_intel_kb kb_sig
+        ON kb_sig.kb_key = 'product:' || cp.pivota_signature_id
+      LEFT JOIN aurora_product_intel_kb kb_url
+        ON kb_url.kb_key = 'url:' || coalesce(nullif(eps.canonical_url, ''), nullif(eps.destination_url, ''), nullif(cp.canonical_url, ''))
+      WHERE ${where.join('\n        AND ')}
+      ORDER BY eps.title, eps.external_product_id
+      ${limitSql}
+    `,
+    params,
+  );
+  return result.rows || [];
+}
+
+function parseArgs() {
+  const brand = asString(argValue('brand'));
+  const productIds = uniq([
+    ...parseProductIds(argValue('product-ids') || argValue('product-id')),
+    ...readProductIdsFromReport(argValue('product-ids-from-report')),
+  ]);
+  return {
+    apply: hasFlag('apply'),
+    includeStrong: hasFlag('include-strong'),
+    includeUrlKey: hasFlag('include-url-key'),
+    brand,
+    productIds,
+    limit: Math.max(0, Number(argValue('limit', '0')) || 0),
+    outDir: argValue('out-dir', 'reports/pdp_db_quality_inventory/official_pdp_insights_review'),
+  };
+}
+
+function writeReport(args, report) {
+  const rootDir = path.resolve(__dirname, '..');
+  const outDir = path.isAbsolute(args.outDir) ? args.outDir : path.join(rootDir, args.outDir);
+  fs.mkdirSync(outDir, { recursive: true });
+  const name = `${args.apply ? 'apply' : 'dry-run'}-${report.generated_at.replace(/[:.]/g, '-')}.json`;
+  const filePath = path.join(outDir, name);
+  fs.writeFileSync(filePath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+  return filePath;
+}
+
+async function applyPlans(plans) {
+  let upserts = 0;
+  await withClient(async (client) => {
+    await client.query('BEGIN');
+    try {
+      for (const plan of plans) {
+        for (const write of plan.writes) {
+          if (write.action !== 'insert' && write.action !== 'update') continue;
+          await client.query(
+            `
+              INSERT INTO aurora_product_intel_kb (
+                kb_key,
+                analysis,
+                source,
+                source_meta,
+                last_success_at,
+                created_at,
+                updated_at
+              )
+              VALUES ($1, $2::jsonb, $3, $4::jsonb, NOW(), NOW(), NOW())
+              ON CONFLICT (kb_key) DO UPDATE
+              SET analysis = EXCLUDED.analysis,
+                  source = EXCLUDED.source,
+                  source_meta = EXCLUDED.source_meta,
+                  last_success_at = NOW(),
+                  updated_at = NOW()
+            `,
+            [write.kb_key, JSON.stringify(write.analysis), write.source, JSON.stringify(write.source_meta)],
+          );
+          upserts += 1;
+        }
+      }
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    }
+  });
+  return { upserts };
+}
+
+function summarize(plans) {
+  const summary = {
+    scanned: plans.length,
+    changed_products: plans.filter((plan) => plan.changed).length,
+    blocked_products: plans.filter((plan) => plan.blocked).length,
+    skipped_products: plans.filter((plan) => !plan.changed && !plan.blocked).length,
+    write_actions: {},
+    skip_reasons: {},
+    evidence_profiles: {},
+  };
+  for (const plan of plans) {
+    if (plan.evidence_profile) {
+      summary.evidence_profiles[plan.evidence_profile] = (summary.evidence_profiles[plan.evidence_profile] || 0) + 1;
+    }
+    if (plan.skip_reason) summary.skip_reasons[plan.skip_reason] = (summary.skip_reasons[plan.skip_reason] || 0) + 1;
+    for (const write of plan.writes) {
+      summary.write_actions[write.action] = (summary.write_actions[write.action] || 0) + 1;
+      if (write.action === 'skip') {
+        summary.skip_reasons[write.reason] = (summary.skip_reasons[write.reason] || 0) + 1;
+      }
+    }
+  }
+  return summary;
+}
+
+async function main() {
+  const args = parseArgs();
+  if (!args.brand && !args.productIds.length) {
+    throw new Error('Provide --brand or --product-ids');
+  }
+  const generatedAt = new Date().toISOString();
+  const rows = await fetchRows(args);
+  const plans = rows.map((row) => buildPlan(row, args));
+  const report = {
+    generated_at: generatedAt,
+    source: REVIEW_SOURCE,
+    mode: args.apply ? 'apply' : 'dry_run',
+    filters: {
+      brand: args.brand || null,
+      product_ids: args.productIds,
+      limit: args.limit || null,
+      include_strong: args.includeStrong,
+      include_url_key: args.includeUrlKey,
+    },
+    summary: summarize(plans),
+    plans: plans.map((plan) => ({
+      ...plan,
+      writes: plan.writes.map((write) => {
+        const { analysis, source_meta: sourceMeta, ...rest } = write;
+        return {
+          ...rest,
+          source_meta: sourceMeta ? {
+            evidence_profile: sourceMeta.evidence_profile,
+            quality_state: sourceMeta.quality_state,
+            source_origin: sourceMeta.source_origin,
+            source_url: sourceMeta.source_url,
+            quality_improvement: sourceMeta.quality_improvement,
+          } : undefined,
+        };
+      }),
+    })),
+  };
+  if (args.apply) {
+    report.apply_result = await applyPlans(plans);
+  }
+  const reportPath = writeReport(args, report);
+  process.stdout.write(`${JSON.stringify({ status: 'ok', report: reportPath, summary: report.summary, apply_result: report.apply_result || null }, null, 2)}\n`);
+}
+
+if (require.main === module) {
+  main()
+    .catch((error) => {
+      process.stderr.write(`${error.stack || error.message}\n`);
+      process.exitCode = 1;
+    })
+    .finally(() => closePool().catch(() => {}));
+}
+
+module.exports = {
+  buildInsightBundle,
+  buildPlan,
+  inferRole,
+  inferAnchors,
+  isWeakExistingInsight,
+  readSeedFacts,
+};

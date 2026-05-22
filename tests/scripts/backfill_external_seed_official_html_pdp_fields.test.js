@@ -11,6 +11,8 @@ const {
     extractLaneigeFields,
     extractFentyFields,
     extractFentyFullIngredients,
+    extractGuerlainFields,
+    extractTomFordFields,
     extractOfficialShopifyVariants,
     fetchStampedReviewSummary,
     fetchBazaarvoiceReviewSummary,
@@ -865,6 +867,123 @@ describe('backfill-external-seed-official-html-pdp-fields TIRTIR sheet matching'
 
     expect(full).toBe(sharedInci);
     expect(full).not.toBe(shade380Inci);
+  });
+
+  test('extracts Guerlain JSON-LD size variants and official usage/details without inventing INCI', () => {
+    const html = `
+      <script type="application/ld+json">
+      {
+        "@context": "https://schema.org/",
+        "@type": "ProductGroup",
+        "name": "Abeille Royale YOUTH WATERY OIL SERUM",
+        "productGroupID": "P062033",
+        "url": "https://www.guerlain.com/us/en-us/p/abeille-royale-youth-watery-oil-serum-P062033.html",
+        "description": "A repair-focused serum with honey fractions that helps skin look plumper and more radiant over time.",
+        "hasVariant": [{
+          "@type": "Product",
+          "name": "Abeille Royale YOUTH WATERY OIL SERUM 50 ML / 1.69 OZ",
+          "sku": "G062033",
+          "size": "50 ML / 1.69 OZ",
+          "image": [{"url": "https://www.guerlain.com/serum.png"}],
+          "offers": {
+            "url": "https://www.guerlain.com/us/en-us/p/abeille-royale-youth-watery-oil-serum-P062033.html?v=G062033",
+            "priceCurrency": "USD",
+            "price": "160.00",
+            "availability": "http://schema.org/InStock"
+          }
+        }]
+      }
+      </script>
+      <section>
+        <h2>THE PLUMPING APPLICATION TECHNIQUE BY GUERLAIN SPA FACIALISTS</h2>
+        <p>Apply the Youth Serum daily, morning and evening, to clean, dry skin before the Honey Treatment cream.</p>
+      </section>
+      <h3 class="GSA_ingredient_title">EXCLUSIVE ROYAL JELLY</h3>
+      <p class="GSA_ingredient_description">Royal jelly is a hive ingredient selected by Guerlain for this Abeille Royale formula.</p>
+    `;
+
+    const fields = extractGuerlainFields(html, {
+      productTitle: 'Abeille Royale YOUTH WATERY OIL SERUM',
+    });
+
+    expect(fields.variants).toHaveLength(1);
+    expect(fields.variants[0]).toEqual(
+      expect.objectContaining({
+        variant_id: 'G062033',
+        option_name: 'Size',
+        option_value: '50 ML / 1.69 OZ',
+        source_origin: 'official_guerlain_json_ld',
+      }),
+    );
+    expect(fields.pdp_how_to_use_raw).toContain('Apply the Youth Serum daily');
+    expect(fields.pdp_details_sections).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ heading: 'Overview', body: expect.stringContaining('repair-focused serum') }),
+        expect.objectContaining({ heading: 'Key Ingredients', body: expect.stringContaining('EXCLUSIVE ROYAL JELLY') }),
+      ]),
+    );
+    expect(fields.pdp_ingredients_raw).toBeUndefined();
+  });
+
+  test('extracts Guerlain singleton customizable lipstick format from official product JSON-LD', () => {
+    const html = `
+      <script type="application/ld+json">
+      {
+        "@context":"http://schema.org/",
+        "@type":"Product",
+        "name":"ROUGE G THE CUSTOMIZABLE ULTRA-CARE LIPSTICK",
+        "description":"Rouge G is a customizable lipstick. Capacity: 3.5 g. The new Rouge G cases are only compatible with the new-generation refills.",
+        "sku":"G044110",
+        "category":"Lipstick",
+        "image":["https://www.guerlain.com/rouge.png"],
+        "offers":{"url":"https://www.guerlain.com/us/en-us/p/rouge-g-the-customizable-ultra-care-lipstick-S000070.html?v=S000070","priceCurrency":"USD","price":87,"availability":"http://schema.org/InStock"}
+      }
+      </script>
+    `;
+
+    const fields = extractGuerlainFields(html, {
+      productTitle: 'ROUGE G THE CUSTOMIZABLE ULTRA-CARE LIPSTICK',
+    });
+
+    expect(fields.variants).toHaveLength(1);
+    expect(fields.variants[0]).toEqual(
+      expect.objectContaining({
+        sku: 'G044110',
+        option_name: 'Format',
+        option_value: '3.5 g lipstick refill + customizable case',
+      }),
+    );
+  });
+
+  test('extracts Tom Ford official accordion INCI, how-to, and overview', () => {
+    const inci =
+      'Alcohol Denat., Fragrance (parfum), Water Aqua Eau, Dipropylene Glycol, Linalool, Hydroxycitronellal, Coumarin, Farnesol, Limonene, Cinnamyl Alcohol, Eugenol, Tocopherol.';
+    const html = `
+      <script type="application/ld+json">
+      {"@context":"http://schema.org/","@type":"ProductGroup","name":"Oud Wood Parfum","description":"Oud Wood Parfum reveals rich wood notes and glowing amber with cardamom and patchouli.","hasVariant":[]}
+      </script>
+      <accordion-custom><details><summary><h2>PRODUCT DETAILS</h2></summary>
+        <div class="details-content"><span>Key Notes</span><span>Cardamom, Pink Pepper, Patchouli, Amber, Oud, Tonka Bean</span></div>
+      </details></accordion-custom>
+      <accordion-custom><details><summary><h2>HOW TO USE</h2></summary>
+        <div class="details-content"><span>On clean skin, spray fragrance once or twice on desired areas. Do not rub the fragrance on skin.</span></div>
+      </details></accordion-custom>
+      <accordion-custom><details><summary><h2>INGREDIENTS AND SAFETY</h2></summary>
+        <div class="details-content"><span>Key Ingredients</span><span>Ingredients: ${inci} <ILN50552></span>
+        <span>Please be aware that ingredient lists may change.</span></div>
+      </details></accordion-custom>
+    `;
+
+    const fields = extractTomFordFields(html, { productTitle: 'Oud Wood Parfum' });
+
+    expect(fields.pdp_description_raw).toContain('rich wood notes');
+    expect(fields.pdp_ingredients_raw).toBe(inci);
+    expect(fields.pdp_how_to_use_raw).toContain('spray fragrance once or twice');
+    expect(fields.pdp_details_sections).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ heading: 'Product Details', body: expect.stringContaining('Cardamom') }),
+      ]),
+    );
   });
 
   test('extracts Fenty shade INCI across stylized punctuation and reordered label words', () => {
