@@ -109,6 +109,41 @@ describe('externalSeedPdpQuality', () => {
     expect(result.failure_reasons).toEqual([]);
   });
 
+  test('exempts terminal source-unavailable rows from expected identity and intel gaps', () => {
+    const result = buildExternalSeedQualityResult({
+      seedId: 'eps_source_unavailable',
+      externalProductId: 'ext_source_unavailable',
+      seedGate: { status: 'passed', failure_reasons: [] },
+      extractorGate: {
+        status: 'terminal_source_unavailable',
+        source_unavailable: true,
+        failure_reasons: [],
+      },
+      identityGate: {
+        status: 'failed',
+        failure_reasons: ['missing_pdp_identity'],
+      },
+      productIntelGate: {
+        status: 'failed',
+        failure_reasons: ['product_intel_module_empty_or_blocked'],
+      },
+      livePdpGate: { status: 'passed', failure_reasons: [] },
+      similarGate: { status: 'exempt', failure_reasons: ['similar_underfill'] },
+      variantGate: { status: 'passed', failure_reasons: [] },
+    });
+
+    expect(result.status).toBe('passed');
+    expect(result.source_unavailable).toBe(true);
+    expect(result.failure_reasons).toEqual([]);
+    expect(result.suppressed_failure_reasons).toEqual(
+      expect.arrayContaining([
+        'missing_pdp_identity',
+        'product_intel_module_empty_or_blocked',
+        'similar_underfill',
+      ]),
+    );
+  });
+
   test('flags polluted live description and details independently from facts', () => {
     const livePdpGate = buildLivePdpGate({
       extractorProduct: {

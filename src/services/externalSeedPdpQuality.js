@@ -1228,7 +1228,7 @@ function buildExternalSeedQualityResult({
   similarGate = {},
   variantGate = {},
 } = {}) {
-  const failureReasons = [
+  const rawFailureReasons = [
     ...(Array.isArray(seedGate.failure_reasons) ? seedGate.failure_reasons : []),
     ...(Array.isArray(extractorGate.failure_reasons) ? extractorGate.failure_reasons : []),
     ...(Array.isArray(identityGate.failure_reasons) ? identityGate.failure_reasons : []),
@@ -1237,6 +1237,23 @@ function buildExternalSeedQualityResult({
     ...(Array.isArray(similarGate.failure_reasons) ? similarGate.failure_reasons : []),
     ...(Array.isArray(variantGate.failure_reasons) ? variantGate.failure_reasons : []),
   ].filter(Boolean);
+  const sourceUnavailable =
+    extractorGate.source_unavailable === true ||
+    normalizeNonEmptyString(extractorGate.status).toLowerCase() === 'terminal_source_unavailable';
+  const terminalSourceUnavailableSuppressedReasons = sourceUnavailable
+    ? rawFailureReasons.filter((reason) =>
+      [
+        'missing_pdp_identity',
+        'missing_product_intel',
+        'product_intel_module_empty_or_blocked',
+        'similar_underfill',
+        'similar_card_missing_highlight',
+        'similar_card_seller_only_fallback',
+      ].includes(reason),
+    )
+    : [];
+  const suppressedReasonSet = new Set(terminalSourceUnavailableSuppressedReasons);
+  const failureReasons = rawFailureReasons.filter((reason) => !suppressedReasonSet.has(reason));
   const rootCauseClassification = [];
   if (failureReasons.includes('extractor_failure')) rootCauseClassification.push('extractor_issue');
   if (
@@ -1304,6 +1321,10 @@ function buildExternalSeedQualityResult({
     live_pdp_gate: livePdpGate,
     similar_gate: similarGate,
     variant_gate: variantGate,
+    ...(sourceUnavailable ? { source_unavailable: true } : {}),
+    ...(terminalSourceUnavailableSuppressedReasons.length > 0
+      ? { suppressed_failure_reasons: Array.from(new Set(terminalSourceUnavailableSuppressedReasons)) }
+      : {}),
     root_cause_classification: Array.from(new Set(rootCauseClassification)),
     failure_reasons: Array.from(new Set(failureReasons)),
   };
