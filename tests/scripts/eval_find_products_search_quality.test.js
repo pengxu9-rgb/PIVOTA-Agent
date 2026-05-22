@@ -1,5 +1,6 @@
 const {
   evaluateSearchResponse,
+  requestJson,
   summarizeResults,
 } = require('../../scripts/eval-find-products-search-quality.cjs');
 
@@ -103,5 +104,25 @@ describe('eval-find-products-search-quality', () => {
     expect(summary.failed).toBe(1);
     expect(summary.hard_constraint_violations).toBe(2);
     expect(summary.p95_latency_ms).toBe(200);
+  });
+
+  test('converts fetch failures into failed request results', async () => {
+    const originalFetch = global.fetch;
+    global.fetch = jest.fn().mockRejectedValue(new TypeError('fetch failed'));
+
+    try {
+      const result = await requestJson({
+        url: 'https://example.test/agent/shop/v1/invoke',
+        payload: { operation: 'find_products_multi' },
+        timeoutMs: 10,
+        attempts: 1,
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.status).toBe(0);
+      expect(result.body.error.message).toBe('fetch failed');
+    } finally {
+      global.fetch = originalFetch;
+    }
   });
 });

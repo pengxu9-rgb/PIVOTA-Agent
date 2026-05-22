@@ -274,11 +274,13 @@ function classifyBeautyServingQualityRow({
     image_url: imageUrl || null,
     price_amount: amount,
     merchant_url_ok: merchantUrlHealth?.checked ? Boolean(merchantUrlHealth.ok) : null,
-    auto_fixable: [CLASSIFICATIONS.SOURCE_UNAVAILABLE, CLASSIFICATIONS.NON_MERCHANDISE].includes(classification),
+    auto_fixable: !sourceUnavailable && [CLASSIFICATIONS.SOURCE_UNAVAILABLE, CLASSIFICATIONS.NON_MERCHANDISE].includes(classification),
     recommended_action: classification === CLASSIFICATIONS.PASS
       ? 'keep_serving'
       : classification === CLASSIFICATIONS.REPAIRABLE_BACKFILL
         ? 'run targeted catalog-intelligence backfill, then image/offer/recall-doc backfills'
+        : sourceUnavailable
+          ? 'already held by external_seed.source_unavailable.v1'
         : classification === CLASSIFICATIONS.SOURCE_UNAVAILABLE || classification === CLASSIFICATIONS.NON_MERCHANDISE
           ? 'mark source unavailable with external_seed.source_unavailable.v1'
           : classification === CLASSIFICATIONS.CACHE_ISSUE

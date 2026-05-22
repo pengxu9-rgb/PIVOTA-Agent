@@ -108,17 +108,46 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 30000) {
   }
 }
 
-async function requestJson({ url, payload, headers = {}, timeoutMs = 30000 }) {
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function requestJson({ url, payload, headers = {}, timeoutMs = 30000, attempts = 2 }) {
   const startedAt = Date.now();
-  const response = await fetchWithTimeout(
-    url,
-    {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', ...headers },
-      body: JSON.stringify(payload),
-    },
-    timeoutMs,
-  );
+  let lastError = null;
+  const maxAttempts = Math.max(1, Number(attempts) || 1);
+  let response = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      response = await fetchWithTimeout(
+        url,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', ...headers },
+          body: JSON.stringify(payload),
+        },
+        timeoutMs,
+      );
+      break;
+    } catch (error) {
+      lastError = error;
+      if (attempt < maxAttempts) await sleep(250 * attempt);
+    }
+  }
+  if (!response) {
+    return {
+      status: 0,
+      ok: false,
+      body: {
+        status: 'error',
+        error: {
+          code: lastError?.code || lastError?.name || 'REQUEST_FAILED',
+          message: String(lastError?.message || lastError || 'request failed'),
+        },
+      },
+      latency_ms: Math.max(0, Date.now() - startedAt),
+    };
+  }
   const text = await response.text();
   let body = null;
   try {
@@ -523,6 +552,7 @@ module.exports = {
   evaluateSearchResponse,
   extractProducts,
   loadCases,
+  requestJson,
   renderMarkdownReport,
   runEval,
   summarizeResults,
