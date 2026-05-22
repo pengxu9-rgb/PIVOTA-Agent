@@ -3645,6 +3645,240 @@ Contains four types of peptides`,
     }
   });
 
+  test('derives category from source title for clear Sigma brush-care products', () => {
+    const targetUrl = 'https://sigmabeauty.com/products/the-all-in-one-brush-care-set';
+    const payload = buildSeedUpdatePayload(
+      {
+        id: 'eps_sigma_brush_care',
+        external_product_id: 'ext_sigma_brush_care',
+        title: 'The All-In-One Brush Care Set',
+        canonical_url: targetUrl,
+        destination_url: targetUrl,
+        seed_data: { snapshot: { canonical_url: targetUrl } },
+      },
+      {
+        products: [
+          {
+            title: 'All-In-One Brush Care Set',
+            url: targetUrl,
+            description_raw:
+              "Deep clean, dry, and reshape your brushes with SigMagic Brushampoo Liquid and the Sigma Dry'n Shape Spa.",
+            field_quality_summary: {
+              description_raw: {
+                source_origin: 'shopify_json',
+                source_quality_status: 'medium',
+              },
+            },
+            variants: [
+              {
+                id: '43062642081945',
+                title: 'Default Title',
+                price: '65.00',
+                currency: 'USD',
+                stock: 'In Stock',
+                url: `${targetUrl}?variant=43062642081945`,
+              },
+            ],
+          },
+        ],
+        variants: [],
+        diagnostics: { discovery_strategy: 'shopify_json' },
+      },
+      targetUrl,
+    );
+
+    expect(payload.nextRow.seed_data.category).toBe('Brush Care Set');
+    expect(payload.nextRow.seed_data.snapshot.category).toBe('Brush Care Set');
+    expect(payload.nextRow.seed_data.source_derived_category_v1).toMatchObject({
+      category: 'Brush Care Set',
+      source_kind: 'source_title_pattern',
+      source_title: 'All-In-One Brush Care Set',
+    });
+  });
+
+  test('keeps explicit Sigma brush set title category ahead of bundled cleaning-tool body copy', () => {
+    const targetUrl = 'https://sigmabeauty.com/products/the-polish-perfect-brush-set';
+    const payload = buildSeedUpdatePayload(
+      {
+        id: 'eps_sigma_polish_perfect',
+        external_product_id: 'ext_sigma_polish_perfect',
+        title: 'The Polish & Perfect Brush Set',
+        canonical_url: targetUrl,
+        destination_url: targetUrl,
+        seed_data: { snapshot: { canonical_url: targetUrl } },
+      },
+      {
+        products: [
+          {
+            title: 'Polish & Perfect Brush Set',
+            url: targetUrl,
+            description_raw:
+              "A brush set that includes Sigma's SigMagic Scrub alongside five brushes for applying and blending makeup.",
+            field_quality_summary: {
+              description_raw: {
+                source_origin: 'shopify_json',
+                source_quality_status: 'medium',
+              },
+            },
+            variants: [
+              {
+                id: '43062642081945',
+                title: 'Default Title',
+                price: '138.00',
+                currency: 'USD',
+                stock: 'In Stock',
+                url: `${targetUrl}?variant=43062642081945`,
+              },
+            ],
+          },
+        ],
+        variants: [],
+        diagnostics: { discovery_strategy: 'shopify_json' },
+      },
+      targetUrl,
+    );
+
+    expect(payload.nextRow.seed_data.category).toBe('Brush Set');
+    expect(payload.nextRow.seed_data.snapshot.category).toBe('Brush Set');
+  });
+
+  test('keeps Sigma makeup brush title category ahead of incidental cleaning-tool body copy', () => {
+    const targetUrl = 'https://sigmabeauty.com/products/foundation-brush';
+    const payload = buildSeedUpdatePayload(
+      {
+        id: 'eps_sigma_foundation_brush',
+        external_product_id: 'ext_sigma_foundation_brush',
+        title: 'Foundation Brush',
+        canonical_url: targetUrl,
+        destination_url: targetUrl,
+        seed_data: { snapshot: { canonical_url: targetUrl } },
+      },
+      {
+        products: [
+          {
+            title: 'Foundation Brush',
+            url: targetUrl,
+            description_raw: 'Wash weekly with a brush cleaning tool or gentle soap to keep fibers fresh.',
+            field_quality_summary: {
+              description_raw: {
+                source_origin: 'shopify_json',
+                source_quality_status: 'medium',
+              },
+            },
+            variants: [
+              {
+                id: '43062642081945',
+                title: 'Default Title',
+                price: '25.00',
+                currency: 'USD',
+                stock: 'In Stock',
+                url: `${targetUrl}?variant=43062642081945`,
+              },
+            ],
+          },
+        ],
+        variants: [],
+        diagnostics: { discovery_strategy: 'shopify_json' },
+      },
+      targetUrl,
+    );
+
+    expect(payload.nextRow.seed_data.category).toBe('Face Makeup Brush');
+    expect(payload.nextRow.seed_data.snapshot.category).toBe('Face Makeup Brush');
+  });
+
+  test('derives category from source title for clear Sigma eye brushes', () => {
+    const targetUrl = 'https://sigmabeauty.com/products/e05-mini-eyeliner-brush-pink';
+    const payload = buildSeedUpdatePayload(
+      {
+        id: 'eps_sigma_mini_liner',
+        external_product_id: 'ext_sigma_mini_liner',
+        title: 'E05 Mini Eyeliner Brush - Pink',
+        canonical_url: targetUrl,
+        destination_url: targetUrl,
+        seed_data: { snapshot: { canonical_url: targetUrl } },
+      },
+      {
+        products: [
+          {
+            title: 'E05 Mini Eyeliner Brush - Pink',
+            url: targetUrl,
+            description_raw: 'Get a fine, clean line with gel or liquid formulas using this SigmaTech fiber eyeliner brush.',
+            field_quality_summary: {
+              description_raw: {
+                source_origin: 'shopify_json',
+                source_quality_status: 'medium',
+              },
+            },
+            variants: [
+              {
+                id: '43062642081945',
+                title: 'Default Title',
+                price: '6.00',
+                currency: 'USD',
+                stock: 'In Stock',
+                url: `${targetUrl}?variant=43062642081945`,
+              },
+            ],
+          },
+        ],
+        variants: [],
+        diagnostics: { discovery_strategy: 'shopify_json' },
+      },
+      targetUrl,
+    );
+
+    expect(payload.nextRow.seed_data.category).toBe('Eye Makeup Brush');
+    expect(payload.nextRow.seed_data.snapshot.category).toBe('Eye Makeup Brush');
+    expect(payload.nextRow.seed_data.derived.recall.category).toBe('Makeup Brush');
+  });
+
+  test('does not derive category for Sigma mystery, surprise, gift, or value products', () => {
+    const targetUrl = 'https://sigmabeauty.com/products/makeup-brush-bundle-118-value';
+    const payload = buildSeedUpdatePayload(
+      {
+        id: 'eps_sigma_mystery_bundle',
+        external_product_id: 'ext_sigma_mystery_bundle',
+        title: 'Makeup & Brush Bundle ($118 Value)',
+        canonical_url: targetUrl,
+        destination_url: targetUrl,
+        seed_data: { snapshot: { canonical_url: targetUrl } },
+      },
+      {
+        products: [
+          {
+            title: 'Mystery Bundle ($100+ Value)',
+            url: targetUrl,
+            description_raw: 'A surprise selection from Sigma Beauty.',
+            field_quality_summary: {
+              description_raw: {
+                source_origin: 'shopify_json',
+                source_quality_status: 'medium',
+              },
+            },
+            variants: [
+              {
+                id: '43062642081945',
+                title: 'Default Title',
+                price: '118.00',
+                currency: 'USD',
+                stock: 'In Stock',
+                url: `${targetUrl}?variant=43062642081945`,
+              },
+            ],
+          },
+        ],
+        variants: [],
+        diagnostics: { discovery_strategy: 'shopify_json' },
+      },
+      targetUrl,
+    );
+
+    expect(payload.nextRow.seed_data.category).toBeUndefined();
+    expect(payload.nextRow.seed_data.snapshot.category).toBeUndefined();
+    expect(payload.nextRow.seed_data.source_derived_category_v1).toBeUndefined();
+  });
+
   test('persists canonical pdp_* fields from catalog extraction into seed snapshot', () => {
     const row = {
       id: 'eps_boj_sunscreen',

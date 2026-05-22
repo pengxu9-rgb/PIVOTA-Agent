@@ -4700,8 +4700,9 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
       representativeProduct?.productType ||
       representativeProduct?.type,
   );
+  const sourceDerivedCategory = extractedCategory ? null : deriveSourceBackedCategoryFromProductText(representativeProduct);
   const existingCategory = normalizeNonEmptyString(seedData.category || snapshot.category);
-  const nextCategory = extractedCategory || (identityRepairBackfill ? '' : existingCategory);
+  const nextCategory = extractedCategory || sourceDerivedCategory?.category || (identityRepairBackfill ? '' : existingCategory);
   const shopifyProductJsonMetadata =
     representativeProduct?.shopify_product_json_metadata_v1 &&
     typeof representativeProduct.shopify_product_json_metadata_v1 === 'object'
@@ -4715,6 +4716,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     canonical_url: representativeProductUrl || normalizeUrlLike(snapshot.canonical_url) || normalizeUrlLike(targetUrl),
     title,
     ...(nextCategory ? { category: nextCategory } : {}),
+    ...(sourceDerivedCategory ? { source_derived_category_v1: sourceDerivedCategory } : {}),
     ...(shopifyProductJsonMetadata ? { shopify_product_json_metadata_v1: shopifyProductJsonMetadata } : {}),
     description: clearSyntheticLegacyDescription
       ? ''
@@ -4782,6 +4784,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     ...seedData,
     title,
     ...(nextCategory ? { category: nextCategory } : {}),
+    ...(sourceDerivedCategory ? { source_derived_category_v1: sourceDerivedCategory } : {}),
     ...(shopifyProductJsonMetadata ? { shopify_product_json_metadata_v1: shopifyProductJsonMetadata } : {}),
     ...(priceAmount != null ? { price_amount: priceAmount } : {}),
     price_currency: currency,
@@ -5842,6 +5845,67 @@ function shopifyHandlesMatch(leftHandle, rightHandle, ...referenceValues) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function deriveSourceBackedCategoryFromProductText(representativeProduct) {
+  if (!representativeProduct || typeof representativeProduct !== 'object') return null;
+  const title = normalizeNonEmptyString(representativeProduct?.title);
+  if (!title) return null;
+
+  const detailText = Array.isArray(representativeProduct?.details_sections)
+    ? representativeProduct.details_sections.map((section) => `${section?.heading || ''} ${section?.body || ''}`).join(' ')
+    : Array.isArray(representativeProduct?.pdp_details_sections)
+      ? representativeProduct.pdp_details_sections.map((section) => `${section?.heading || ''} ${section?.body || ''}`).join(' ')
+      : '';
+  const text = normalizePdpCopy(
+    [
+      title,
+      representativeProduct?.description,
+      representativeProduct?.description_raw,
+      representativeProduct?.pdp_description_raw,
+      detailText,
+    ].join(' '),
+  );
+  const titleLower = title.toLowerCase();
+  const textLower = text.toLowerCase();
+  if (/\b(?:e-?gift\s+card|gift\s+card|mystery|surprise|value)\b|\$\s*\d/i.test(title)) return null;
+
+  let category = '';
+  if (/\bdry['’]?n\s+shape\b.*\btower\b|\btower\b.*\bdry['’]?n\s+shape\b/i.test(title)) {
+    category = 'Brush Cleaning Tool';
+  } else if (/\bbrush\s+care\s+(?:set|starter)\b/i.test(title)) {
+    category = 'Brush Care Set';
+  } else if (/\bbrush\s+set\b/i.test(title)) {
+    category = 'Brush Set';
+  } else if (/\bbrush\s+cleaning\s+tool\b/i.test(text) && /\b(?:clean|cleaning|care|brushampoo|dry|shape|spa|tower|tool)\b/i.test(title)) {
+    category = 'Brush Cleaning Tool';
+  } else if (/\b(?:brush\s+care|brushampoo|brush\s+cleaning)\b/i.test(text) && /\b(?:care|clean|cleaning)\b/i.test(title)) {
+    category = 'Brush Care Set';
+  } else if (/\b(?:eyeshadow|eye\s+shadow)\b.*\b(?:palette|quad)\b|\b(?:palette|quad)\b.*\b(?:eyeshadow|eye\s+shadow)\b/i.test(title)) {
+    category = 'Eyeshadow Palette';
+  } else if (/\bbrow\s+wax\b/i.test(title)) {
+    category = 'Brow Wax';
+  } else if (
+    /\b(?:eyeliner|eye\s+liner|winged\s+liner|smudge|crease|shader|blending|pencil)\b/i.test(titleLower) &&
+    /\bbrush\b/i.test(titleLower)
+  ) {
+    category = 'Eye Makeup Brush';
+  } else if (
+    /\b(?:cheek|face|foundation|concealer|powder|complexion|sculpt)\b/i.test(titleLower) &&
+    /\bbrush\b/i.test(titleLower)
+  ) {
+    category = 'Face Makeup Brush';
+  } else if (/\bbrushes\s+included\b/i.test(text) && /\b(?:set|trio|bundle|vault)\b/i.test(title)) {
+    category = 'Brush Set';
+  }
+
+  if (!category) return null;
+  return {
+    category,
+    source_kind: 'source_title_pattern',
+    source_title: title,
+    source_fields: ['title'],
+  };
 }
 
 function shouldHydrateDirectShopifyProductJsonMetadata(response, representativeProduct, targetUrl) {
