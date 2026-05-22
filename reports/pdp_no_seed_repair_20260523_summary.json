@@ -1,0 +1,41 @@
+{
+  "incident": "Agent UI PDP PRODUCT_NOT_SERVABLE/no_seed",
+  "root_cause": "external_product_seeds rows were available by external_product_id, but external seed mirror catalog rows had null external_product_seeds.attached_product_key values, leaving index_pipeline_state stuck at blocker_code=no_seed while the product detail path could otherwise resolve the seed.",
+  "runtime_hotfix_commit": "ceae0b1d15e72337a825137ce106cbf60719a45a",
+  "durable_repair": {
+    "external_seed_rows_attached": 4372,
+    "index_rows_marked_eligible": 3682,
+    "index_rows_marked_low_quality": 296,
+    "legacy_no_seed_rows_normalized": {
+      "candidate_rows": 163,
+      "candidate_content_keys": 139,
+      "updated_index_rows_eligible": 26,
+      "updated_index_rows_low_quality": 113
+    }
+  },
+  "final_aggregate_postcheck": {
+    "mirrored": 4572,
+    "seed_by_source_product_id": 4572,
+    "seed_exists_unattached": 0,
+    "serving_eligible": 4240,
+    "no_seed_blocked": 0,
+    "no_seed_but_seed_exists": 0,
+    "no_seed_but_seed_exists_unattached": 0
+  },
+  "original_failure_probe": {
+    "requested_product_id": "sig_b8e6d166a1100859f44f334026fb7515",
+    "resolved_product_id": "ext_2d0f63bc28f27e6fcb704b5f",
+    "status": 200,
+    "title": "Fenty Eau De Parfum Travel Set + Refills",
+    "modules": [
+      "canonical",
+      "offers",
+      "product_overview",
+      "product_facts"
+    ]
+  },
+  "notes": [
+    "reports/pdp_no_seed_repair_20260523_final_postcheck.json is the authoritative zero-candidate postcheck for attachment repair.",
+    "Intermediate local dry-run/apply reports were left uncommitted because the final postcheck and this summary capture the durable outcome."
+  ]
+}

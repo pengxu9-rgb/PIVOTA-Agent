@@ -1,0 +1,33 @@
+{
+  "ok": true,
+  "dry_run": true,
+  "before": {
+    "requested": {
+      "market": null,
+      "domain": null,
+      "limit": null,
+      "write": false,
+      "update_index": true,
+      "quality_threshold": 60
+    },
+    "totals": {
+      "matched_unattached_rows": 0,
+      "repairable_rows": 0,
+      "ambiguous_or_blocked_rows": 0,
+      "repairable_stale_no_seed_rows": 0,
+      "repairable_stale_no_seed_content_keys": 0,
+      "eligible_content_keys": 0,
+      "low_quality_content_keys": 0
+    },
+    "by_repair_status": [],
+    "by_domain": [],
+    "by_index_action": [],
+    "samples": []
+  },
+  "writes": {
+    "seed_rows_attached": 0,
+    "index_rows_marked_eligible": 0,
+    "index_rows_marked_low_quality": 0
+  },
+  "after": null
+}
