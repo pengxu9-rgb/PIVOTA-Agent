@@ -4636,6 +4636,7 @@ function buildPdpPayload(args) {
   const recommendations = args.relatedProducts?.length
     ? buildRecommendations(args.relatedProducts, currency)
     : null;
+  const relatedServicesNearby = product._related_services_nearby;
   const productSource = stripHtml(product.source || product.product_source || product.productSource);
   const productPurchaseRoute = stripHtml(product.purchase_route || product.purchaseRoute);
   const productCommerceMode = stripHtml(product.commerce_mode || product.commerceMode);
@@ -4815,6 +4816,17 @@ function buildPdpPayload(args) {
       priority: 20,
       data: recommendations,
     });
+  }
+  if (relatedServicesNearby && relatedServicesNearby.providers?.length) {
+    modules.push({
+      module_id: 'm_related_services_nearby',
+      type: 'related_services_nearby',
+      priority: 35,
+      data: relatedServicesNearby,
+    });
+  }
+  if (Object.prototype.hasOwnProperty.call(product, '_related_services_nearby')) {
+    delete product._related_services_nearby;
   }
 
   const availabilityInStock = normalizeInStock(product.in_stock);
