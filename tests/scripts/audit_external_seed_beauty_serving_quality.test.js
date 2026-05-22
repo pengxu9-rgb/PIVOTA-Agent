@@ -30,7 +30,8 @@ describe('audit-external-seed-beauty-serving-quality', () => {
     });
 
     expect(result.classification).toBe(CLASSIFICATIONS.SOURCE_UNAVAILABLE);
-    expect(result.auto_fixable).toBe(true);
+    expect(result.auto_fixable).toBe(false);
+    expect(result.recommended_action).toBe('already held by external_seed.source_unavailable.v1');
     expect(result.failure_reasons).toEqual(expect.arrayContaining(['source_unavailable_marker']));
   });
 

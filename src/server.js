@@ -157,6 +157,7 @@ const {
 } = require('./findProductsMulti/policy');
 const {
   extractHumanApparelCategories,
+  extractIntentRuleBased,
 } = require('./findProductsMulti/intent');
 const {
   expandQueryWithZhAlias,
@@ -4361,7 +4362,22 @@ async function fetchExternalSeedSimilarCardSourcesFromDb(productIds = []) {
       `
         SELECT
           external_product_id,
+          coalesce(seed_data->'snapshot'->>'brand', seed_data->>'brand', '') AS brand,
+          coalesce(seed_data->'snapshot'->>'category', seed_data->>'category', '') AS category,
+          coalesce(seed_data->'snapshot'->>'product_type', seed_data->>'product_type', '') AS product_type,
           coalesce(seed_data->'snapshot'->>'title', seed_data->>'title', title, '') AS title,
+          coalesce(
+            seed_data->'image_asset_cache_v1'->'visible_image_urls'->>0,
+            seed_data->'snapshot'->'image_asset_cache_v1'->'visible_image_urls'->>0,
+            seed_data->'snapshot'->'image_urls'->>0,
+            seed_data->'snapshot'->'images'->0->>'url',
+            seed_data->'snapshot'->>'image_url',
+            seed_data->>'image_url',
+            image_url,
+            ''
+          ) AS image_url,
+          coalesce(price_amount::text, seed_data->'snapshot'->>'price', seed_data->>'price', '') AS price_amount,
+          coalesce(price_currency, seed_data->'snapshot'->>'currency', seed_data->>'currency', '') AS price_currency,
           coalesce(
             seed_data->'snapshot'->>'pdp_description_raw',
             seed_data->>'pdp_description_raw',
@@ -4394,15 +4410,30 @@ async function fetchExternalSeedSimilarCardSourcesFromDb(productIds = []) {
       const pdpDetailsSections = Array.isArray(row?.pdp_details_sections)
         ? row.pdp_details_sections
         : [];
+      const priceAmount = Number(row?.price_amount);
       out.set(externalProductId, {
         product_id: externalProductId,
+        brand: firstNonEmptyString(row?.brand),
+        category: firstNonEmptyString(row?.category),
+        product_type: firstNonEmptyString(row?.product_type),
         title: firstNonEmptyString(row?.title),
+        image_url: firstNonEmptyString(row?.image_url),
+        price: Number.isFinite(priceAmount) && priceAmount > 0
+          ? {
+              amount: priceAmount,
+              currency: firstNonEmptyString(row?.price_currency, 'USD'),
+            }
+          : null,
         description: firstNonEmptyString(row?.description),
         pdp_description_raw: firstNonEmptyString(row?.pdp_description_raw),
         pdp_details_sections: pdpDetailsSections,
         seed_data: {
           snapshot: {
+            brand: firstNonEmptyString(row?.brand),
+            category: firstNonEmptyString(row?.category),
+            product_type: firstNonEmptyString(row?.product_type),
             title: firstNonEmptyString(row?.title),
+            image_url: firstNonEmptyString(row?.image_url),
             description: firstNonEmptyString(row?.description),
             pdp_description_raw: firstNonEmptyString(row?.pdp_description_raw),
             pdp_details_sections: pdpDetailsSections,
@@ -14569,6 +14600,26 @@ function buildSearchQualityTierCounts(products = [], contract = null, queryText 
   return counts;
 }
 
+function relaxSearchQualityContractForMultiFamilyBeautyIntent(contract = null, beautyIntent = null) {
+  if (!isBeautySearchQualityContractApplied(contract)) return contract;
+  const families = Array.isArray(beautyIntent?.families)
+    ? beautyIntent.families.map((value) => String(value || '').trim()).filter(Boolean)
+    : [];
+  if (families.length <= 1) return contract;
+  const hard = contract.hard_constraints && typeof contract.hard_constraints === 'object'
+    ? contract.hard_constraints
+    : {};
+  if (!hard.category_path_prefix) return contract;
+  return {
+    ...contract,
+    hard_constraints: {
+      ...hard,
+      category_path_prefix: null,
+    },
+    category_path_prefix_relaxed_for_multi_family: true,
+  };
+}
+
 function summarizeSearchQualityFailureReasons({ scoredRejected = [], servingRejected = [] } = {}) {
   const counts = {};
   const add = (reason) => {
@@ -17290,6 +17341,15 @@ async function searchBeautyExternalSeedProductsMainline({
     (searchQualityContractApplied && searchQualityContract?.effective_query) ||
     rawQueryText;
   const beautyIntent = inferBeautyMainlineIntent(queryText);
+  const effectiveSearchQualityContract = relaxSearchQualityContractForMultiFamilyBeautyIntent(
+    searchQualityContract,
+    beautyIntent,
+  );
+  const searchQualityContractRelaxedForMultiFamily = Boolean(
+    effectiveSearchQualityContract &&
+      searchQualityContract &&
+      effectiveSearchQualityContract !== searchQualityContract,
+  );
   if (
     (!beautyIntent.beautyLike && !searchQualityContractApplied) ||
     !String(queryText || '').trim()
@@ -17386,7 +17446,7 @@ async function searchBeautyExternalSeedProductsMainline({
         intent: beautyIntent,
         normalizedQuery: beautyIntent.normalized,
         queryTokens: Array.from(new Set(tokenizeSearchTextForMatch(beautyIntent.normalized))),
-        searchQualityContract: searchQualityEnforced ? searchQualityContract : null,
+        searchQualityContract: searchQualityEnforced ? effectiveSearchQualityContract : null,
       }).relevant !== true,
     );
   const broadenedRows = shouldBroaden
@@ -17408,7 +17468,7 @@ async function searchBeautyExternalSeedProductsMainline({
   canonicalTelemetry.canonical_dedupe_count = mergedCanonical.canonical_dedupe_count;
   const searchQualityTierCounts = buildSearchQualityTierCounts(
     recallProducts,
-    searchQualityContractApplied ? searchQualityContract : null,
+    searchQualityContractApplied ? effectiveSearchQualityContract : null,
     queryText,
   );
   const scoreRejected = [];
@@ -17420,7 +17480,7 @@ async function searchBeautyExternalSeedProductsMainline({
         intent: beautyIntent,
         normalizedQuery,
         queryTokens,
-        searchQualityContract: searchQualityEnforced ? searchQualityContract : null,
+        searchQualityContract: searchQualityEnforced ? effectiveSearchQualityContract : null,
       });
       if (base.relevant !== true) {
         scoreRejected.push({
@@ -17465,7 +17525,7 @@ async function searchBeautyExternalSeedProductsMainline({
           : row.product;
         const compactProduct = compactBeautyMainlineProductForResponse(productForResponse, beautyIntent, queryText);
         return searchQualityContractApplied
-          ? applySearchQualityContractResponseHints(compactProduct, searchQualityContract, queryText)
+          ? applySearchQualityContractResponseHints(compactProduct, effectiveSearchQualityContract, queryText)
           : compactProduct;
       }),
     ),
@@ -17489,7 +17549,16 @@ async function searchBeautyExternalSeedProductsMainline({
         rejected_count: 0,
         input_count: displayRankedProducts.length,
       };
-  const rankedProducts = servingEligibilityGate.products;
+  const budgetConstraint = resolveBeautyMainlineBudgetConstraint({
+    search,
+    intent,
+    queryText,
+  });
+  const budgetFilter = budgetConstraint
+    ? filterFindProductsMultiDirectProductsByBudget(budgetConstraint, servingEligibilityGate.products)
+    : null;
+  const rankedProducts = budgetFilter ? budgetFilter.products : servingEligibilityGate.products;
+  const budgetFxMetadata = budgetFilter?.resolution?.metadata || null;
   const searchQualityFailureReasons = summarizeSearchQualityFailureReasons({
     scoredRejected: scoreRejected,
     servingRejected: servingEligibilityGate.rejected,
@@ -17529,8 +17598,15 @@ async function searchBeautyExternalSeedProductsMainline({
       search_quality_contract: projectSearchQualityContractForMetadata(searchQualityContract),
       search_quality_contract_applied: searchQualityContractApplied,
       search_quality_contract_mode: SEARCH_QUALITY_CONTRACT_V1_MODE,
+      ...(searchQualityContractRelaxedForMultiFamily
+        ? { search_quality_contract_relaxed_for_multi_family: true }
+        : {}),
       search_quality_failure_reasons: searchQualityFailureReasons,
       search_quality_tier_counts: searchQualityTierCounts,
+      beauty_mainline_budget_filter_applied: Boolean(budgetFilter),
+      beauty_mainline_budget_filtered_out_count: budgetFilter?.filteredOut || 0,
+      beauty_mainline_budget_currency_filtered_out_count: budgetFilter?.currencyFilteredOut || 0,
+      ...(budgetFxMetadata || {}),
       ...canonicalTelemetry,
       canonical_returned_count: pagedCanonicalCount,
       creator_external_seed_tool_scope: broadenedRows ? 'all_tools' : (creatorScoped ? 'creator_preferred' : 'all_tools'),
@@ -17611,6 +17687,14 @@ async function searchBeautyExternalSeedProductsMainline({
           canonical_chain: canonicalTelemetry,
           search_quality_contract_applied: searchQualityContractApplied,
           search_quality_contract_mode: SEARCH_QUALITY_CONTRACT_V1_MODE,
+          ...(searchQualityContractRelaxedForMultiFamily
+            ? { search_quality_contract_relaxed_for_multi_family: true }
+            : {}),
+          budget_filter: {
+            applied: Boolean(budgetFilter),
+            filtered_out_count: budgetFilter?.filteredOut || 0,
+            currency_filtered_out_count: budgetFilter?.currencyFilteredOut || 0,
+          },
           search_card_quality_gate: {
             applied: searchQualityServingGateRequired || brandBrowseGateRequired,
             input_count: servingEligibilityGate.input_count,
@@ -22319,7 +22403,7 @@ function shouldHydrateSimilarCardFromOfficialSeed(item = {}) {
   if (!item || typeof item !== 'object') return false;
   const externalSeedIds = collectExternalSeedIdCandidatesForVisibleCatalogHydration(item);
   if (!externalSeedIds.length) return false;
-  return isSellerOnlySimilarCardEvidence(item) || !hasSimilarCardPresentation(item);
+  return isSellerOnlySimilarCardEvidence(item) || !hasSimilarCardPresentation(item) || !hasSimilarCardImage(item);
 }
 
 function mergeSimilarCardEnrichment(candidate = {}, detail = {}) {
@@ -22736,9 +22820,19 @@ async function enrichSimilarProductsForPdpCards({
         if (externalSeedId) {
           const officialSeedProduct = officialSeedCardSourcesById.get(externalSeedId);
           if (officialSeedProduct) {
-            const officialSeedEnriched = applyOfficialSeedSimilarCardEnrichment(item, officialSeedProduct);
+            const alreadyHasTrustedPresentation =
+              hasSimilarCardPresentation(item) && !isSellerOnlySimilarCardEvidence(item);
+            const officialSeedEnriched = mergeSimilarCardEnrichment(
+              alreadyHasTrustedPresentation
+                ? item
+                : applyOfficialSeedSimilarCardEnrichment(item, officialSeedProduct),
+              officialSeedProduct,
+            );
             if (officialSeedEnriched !== item && hasSimilarCardPresentation(officialSeedEnriched)) {
               metadata.card_enrichment_official_seed_hit_count += 1;
+              return annotateSimilarCardStatus(officialSeedEnriched);
+            }
+            if (officialSeedEnriched !== item && hasSimilarCardImage(officialSeedEnriched)) {
               return annotateSimilarCardStatus(officialSeedEnriched);
             }
           }
@@ -22991,6 +23085,169 @@ function filterPublicVisibleSimilarProducts(products) {
     const visibleSigId = resolveVisibleSimilarProductSigId(product);
     return isPivotaSignatureProductId(visibleSigId);
   });
+}
+
+function dedupeSimilarCandidatesByMerchantProductId(products) {
+  const out = [];
+  const seen = new Set();
+  for (const item of Array.isArray(products) ? products : []) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+    const merchantId = firstNonEmptyString(item.merchant_id, item.merchantId) || EXTERNAL_SEED_MERCHANT_ID;
+    const productId = firstNonEmptyString(
+      item.product_id,
+      item.productId,
+      item.id,
+      item.external_product_id,
+      item.externalProductId,
+    );
+    if (!productId) continue;
+    const key = `${merchantId}::${productId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+  return out;
+}
+
+function isBundleOrSetPdpForComponentScopedSimilar(product = {}) {
+  const seedData =
+    product?.seed_data && typeof product.seed_data === 'object' && !Array.isArray(product.seed_data)
+      ? product.seed_data
+      : {};
+  const snapshot =
+    seedData.snapshot && typeof seedData.snapshot === 'object' && !Array.isArray(seedData.snapshot)
+      ? seedData.snapshot
+      : {};
+  const productKind =
+    product?.product_kind && typeof product.product_kind === 'object' && !Array.isArray(product.product_kind)
+      ? product.product_kind
+      : {};
+  const family = normalizeSearchTextForMatch(
+    firstNonEmptyString(
+      product.product_family,
+      product.external_seed_product_family,
+      productKind.family,
+      seedData.product_family,
+      snapshot.product_family,
+    ),
+  );
+  if (['bundle', 'set', 'gift_set', 'kit', 'routine_set'].includes(family)) return true;
+  const text = [
+    product.title,
+    product.name,
+    product.category,
+    product.product_type,
+    product.productType,
+    product.category_path,
+    product.categoryPath,
+    seedData.title,
+    seedData.product_type,
+    snapshot.title,
+    snapshot.product_type,
+  ]
+    .filter(Boolean)
+    .join(' ');
+  return /\b(set|bundle|kit|duo|trio|routine|regimen|gift\s*set|minis?)\b/i.test(text);
+}
+
+function scopeBundleSimilarToReviewedComponents({
+  products = [],
+  baseProduct = {},
+  componentCandidates = [],
+} = {}) {
+  const list = Array.isArray(products) ? products : [];
+  if (!Array.isArray(componentCandidates) || componentCandidates.length <= 0) {
+    return { products: list, applied: false, dropped_count: 0 };
+  }
+  if (!isBundleOrSetPdpForComponentScopedSimilar(baseProduct)) {
+    return { products: list, applied: false, dropped_count: 0 };
+  }
+  const componentIds = new Set(
+    componentCandidates
+      .map((item) => firstNonEmptyString(
+        item.product_id,
+        item.productId,
+        item.id,
+        item.external_product_id,
+        item.externalProductId,
+        item.platform_product_id,
+        item.platformProductId,
+      ))
+      .filter((value) => isExternalSeedProductId(value)),
+  );
+  const scoped = list.filter((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+    if (String(item.retrieval_source || '').trim() === 'reviewed_component_ref') return true;
+    const ids = collectExternalSeedIdCandidatesForVisibleCatalogHydration(item);
+    return ids.some((id) => componentIds.has(id));
+  });
+  return {
+    products: scoped,
+    applied: true,
+    dropped_count: Math.max(0, list.length - scoped.length),
+  };
+}
+
+function collectPdpComponentSimilarCandidates(product = {}) {
+  const seedData =
+    product?.seed_data && typeof product.seed_data === 'object' && !Array.isArray(product.seed_data)
+      ? product.seed_data
+      : {};
+  const snapshot =
+    seedData.snapshot && typeof seedData.snapshot === 'object' && !Array.isArray(seedData.snapshot)
+      ? seedData.snapshot
+      : {};
+  const baseExternalId = firstNonEmptyString(
+    product.external_product_id,
+    product.external_seed_product_id,
+    product.source_product_id,
+    product.platform_product_id,
+    product.product_id,
+    product.id,
+  );
+  const refs = [
+    ...(Array.isArray(seedData.bundle_component_refs) ? seedData.bundle_component_refs : []),
+    ...(Array.isArray(seedData.component_product_refs) ? seedData.component_product_refs : []),
+    ...(Array.isArray(snapshot.bundle_component_refs) ? snapshot.bundle_component_refs : []),
+    ...(Array.isArray(snapshot.component_product_refs) ? snapshot.component_product_refs : []),
+  ];
+  const out = [];
+  const seen = new Set();
+  for (const ref of refs) {
+    if (!ref || typeof ref !== 'object' || Array.isArray(ref)) continue;
+    const reviewState = String(ref.review_state || ref.reviewStatus || '').trim().toLowerCase();
+    if (!['reviewed', 'approved', 'verified'].includes(reviewState)) continue;
+    const externalProductId = firstNonEmptyString(
+      ref.external_product_id,
+      ref.externalProductId,
+      ref.product_id,
+      ref.productId,
+      ref.platform_product_id,
+      ref.platformProductId,
+    );
+    if (!isExternalSeedProductId(externalProductId)) continue;
+    if (baseExternalId && externalProductId === baseExternalId) continue;
+    if (seen.has(externalProductId)) continue;
+    seen.add(externalProductId);
+    out.push({
+      merchant_id: EXTERNAL_SEED_MERCHANT_ID,
+      product_id: externalProductId,
+      external_product_id: externalProductId,
+      platform_product_id: externalProductId,
+      source: 'external_seed',
+      retrieval_source: 'reviewed_component_ref',
+      reason: 'component_ref:reviewed_bundle_component',
+      title: firstNonEmptyString(ref.title, ref.name),
+      category: firstNonEmptyString(ref.component_role, ref.role, ref.category),
+      product_type: firstNonEmptyString(ref.component_role, ref.role, ref.product_type),
+      canonical_url: firstNonEmptyString(ref.canonical_url, ref.destination_url, ref.url),
+      destination_url: firstNonEmptyString(ref.destination_url, ref.canonical_url, ref.url),
+      card_badge: 'Included item',
+      component_role: firstNonEmptyString(ref.component_role, ref.role),
+      component_source_kind: firstNonEmptyString(ref.source_kind, ref.sourceKind),
+    });
+  }
+  return out;
 }
 
 async function prewarmPdpSimilarForProduct({
@@ -26615,6 +26872,39 @@ function filterFindProductsMultiDirectProductsByBudget(priceConstraint, products
     filteredOut: Math.max(0, list.length - responseProducts.length),
     currencyFilteredOut,
   };
+}
+
+function resolveBeautyMainlineBudgetConstraint({ search = {}, intent = null, queryText = '' } = {}) {
+  const explicitMin = parseQueryNumber(search.price_min ?? search.min_price);
+  const explicitMax = parseQueryNumber(search.price_max ?? search.max_price);
+  const explicitCurrency = getProductPriceCurrency({
+    currency: firstNonEmptyString(
+      search.currency,
+      search.price_currency,
+      search.priceCurrency,
+      search.currency_code,
+    ),
+  }, '');
+  if (explicitMin != null || explicitMax != null) {
+    return {
+      currency: explicitCurrency || null,
+      min: explicitMin,
+      max: explicitMax,
+    };
+  }
+
+  const intentPrice = intent?.hard_constraints?.price || null;
+  if (intentPrice && (intentPrice.min != null || intentPrice.max != null)) {
+    return intentPrice;
+  }
+
+  const parsedPrice =
+    extractIntentRuleBased(String(queryText || '').trim(), [], [])?.hard_constraints?.price || null;
+  if (parsedPrice && (parsedPrice.min != null || parsedPrice.max != null)) {
+    return parsedPrice;
+  }
+
+  return null;
 }
 
 const AURORA_CHATBOX_ORIGINS = new Set([
@@ -30991,11 +31281,46 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     if (!body || typeof body !== 'object' || Array.isArray(body)) return body;
     if (body.beauty_expert_v1 && typeof body.beauty_expert_v1 === 'object') return body;
     const querySource = String(body.metadata?.query_source || body.meta?.query_source || '').trim().toLowerCase();
+    const responseAlreadyBeautyMainline =
+      /beauty_external_seed_mainline|beauty_discovery_mainline/.test(querySource);
     if (
       PIVOT_BEAUTY_CONTRACT_V1_ENABLED &&
-      /beauty_external_seed_mainline|beauty_discovery_mainline/.test(querySource)
+      responseAlreadyBeautyMainline
     ) {
-      return body;
+      const requestBody = req?.body && typeof req.body === 'object' && !Array.isArray(req.body)
+        ? req.body
+        : {};
+      const requestMetadata = requestBody.metadata && typeof requestBody.metadata === 'object' && !Array.isArray(requestBody.metadata)
+        ? requestBody.metadata
+        : {};
+      const requestPayload = requestBody.payload && typeof requestBody.payload === 'object' && !Array.isArray(requestBody.payload)
+        ? requestBody.payload
+        : {};
+      const requestContext = requestBody.context && typeof requestBody.context === 'object' && !Array.isArray(requestBody.context)
+        ? requestBody.context
+        : {};
+      const payloadContext = requestPayload.context && typeof requestPayload.context === 'object' && !Array.isArray(requestPayload.context)
+        ? requestPayload.context
+        : {};
+      const hasExplicitBeautyRequest = [requestContext, payloadContext].some((contextValue) => {
+        const normalizedNeed =
+          contextValue?.normalized_need &&
+          typeof contextValue.normalized_need === 'object' &&
+          !Array.isArray(contextValue.normalized_need)
+            ? contextValue.normalized_need
+            : {};
+        const beautyRequest =
+          normalizedNeed.beauty_request &&
+          typeof normalizedNeed.beauty_request === 'object' &&
+          !Array.isArray(normalizedNeed.beauty_request)
+            ? normalizedNeed.beauty_request
+            : {};
+        return Object.keys(beautyRequest).length > 0;
+      });
+      const allowOrchestrationDelegate =
+        requestMetadata.allow_orchestration_delegate === true ||
+        String(requestMetadata.allow_orchestration_delegate || '').trim().toLowerCase() === 'true';
+      if (!allowOrchestrationDelegate && !hasExplicitBeautyRequest) return body;
     }
     try {
       const { attachBeautyExpertV1ToResponse } = require('./modules/orchestration/aurora_beauty/beautyExpertV1');
@@ -31769,7 +32094,27 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
   // Discovery / chitchat routing: when the user hasn't expressed a shopping goal yet,
   // do NOT query the catalog. Return a guided, creator-styled prompt instead.
-  if (operation === 'find_products_multi' && effectiveIntent?.scenario?.name === 'discovery') {
+  const findProductsMultiProductOnly =
+    operation === 'find_products_multi' &&
+    parseQueryBoolean(
+      (effectivePayload?.search && typeof effectivePayload.search === 'object'
+        ? effectivePayload.search.product_only ?? effectivePayload.search.productOnly
+        : undefined) ??
+        (effectivePayload && typeof effectivePayload === 'object'
+          ? effectivePayload.product_only ?? effectivePayload.productOnly
+          : undefined) ??
+        (req?.body?.payload?.search && typeof req.body.payload.search === 'object'
+          ? req.body.payload.search.product_only ?? req.body.payload.search.productOnly
+          : undefined) ??
+        (req?.body?.payload && typeof req.body.payload === 'object'
+          ? req.body.payload.product_only ?? req.body.payload.productOnly
+          : undefined),
+    ) === true;
+  if (
+    operation === 'find_products_multi' &&
+    !findProductsMultiProductOnly &&
+    effectiveIntent?.scenario?.name === 'discovery'
+  ) {
     const base = {
       status: 'success',
       success: true,
@@ -31786,13 +32131,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       },
     };
 
-    const withPolicy = applyFindProductsMultiPolicy({
+    const withPolicyRaw = applyFindProductsMultiPolicy({
       response: base,
       intent: effectiveIntent,
       requestPayload: effectivePayload,
       metadata: policyMetadata,
       rawUserQuery,
     });
+    const withPolicy =
+      withPolicyRaw && typeof withPolicyRaw === 'object' && !Array.isArray(withPolicyRaw)
+        ? withPolicyRaw
+        : base;
 
     const promotions = await getActivePromotions(now, creatorId);
     const enriched = applyDealsToResponse(withPolicy, promotions, now, creatorId);
@@ -31816,17 +32165,20 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       invokeSearchRail,
     });
     if (
-      publicBrandScopeNames.length > 0 ||
-      shouldBridgePublicBeautySearchToDiscovery({
-        operation,
-        metadata,
-        search: publicBeautySearch,
-        queryText: publicBeautyQueryText,
-        queryClass: traceQueryClass,
-        intent: effectiveIntent,
-        invokeSearchRail,
-        strictDecision: publicBeautyStrictDecision,
-      })
+      !findProductsMultiProductOnly &&
+      (
+        publicBrandScopeNames.length > 0 ||
+        shouldBridgePublicBeautySearchToDiscovery({
+          operation,
+          metadata,
+          search: publicBeautySearch,
+          queryText: publicBeautyQueryText,
+          queryClass: traceQueryClass,
+          intent: effectiveIntent,
+          invokeSearchRail,
+          strictDecision: publicBeautyStrictDecision,
+        })
+      )
     ) {
       const bridgeStartedAtMs = Date.now();
       const { discoveryPayload, page, limit, offset } =
@@ -33390,12 +33742,20 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         };
       }
 
-      if (wantsSimilar && relatedProducts.length > 0) {
+      const componentSimilarCandidates = wantsSimilar
+        ? collectPdpComponentSimilarCandidates(canonicalProductForPdp)
+        : [];
+
+      if (wantsSimilar && (relatedProducts.length > 0 || componentSimilarCandidates.length > 0)) {
 	        const similarCardEnrichmentStartedAt = Date.now();
 	        const similarLimit = resolvePdpSimilarDisplayLimit(payload);
           const similarCandidateLimit = resolvePdpSimilarCandidateLimit(similarLimit);
+        const relatedProductsForEnrichment = dedupeSimilarCandidatesByMerchantProductId([
+          ...componentSimilarCandidates,
+          ...relatedProducts,
+        ]);
 	        const enrichedRelatedProducts = await enrichSimilarProductsForPdpCards({
-	          items: relatedProducts,
+	          items: relatedProductsForEnrichment,
 	          checkoutToken,
 	          bypassCache,
 	          maxItems: similarCandidateLimit,
@@ -33413,7 +33773,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         );
         const hydratedSimilarCandidates = await hydrateVisibleSimilarProductSigIdsFromCatalog(displayableSimilarCandidates);
         const publicSimilarCandidates = filterPublicVisibleSimilarProducts(hydratedSimilarCandidates);
-        const displayableRelatedProducts = publicSimilarCandidates.slice(0, similarLimit);
+        const componentScopedSimilar = scopeBundleSimilarToReviewedComponents({
+          products: publicSimilarCandidates,
+          baseProduct: canonicalProductForPdp,
+          componentCandidates: componentSimilarCandidates,
+        });
+        const displayableRelatedProducts = componentScopedSimilar.products.slice(0, similarLimit);
         const publicExternalIdFilteredCount = Math.max(
           0,
           hydratedSimilarCandidates.length - publicSimilarCandidates.length,
@@ -33446,6 +33811,35 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               card_image_missing_count: missingImageCount,
               card_highlight_filtered_count: filteredHighlightMissingCount,
               public_external_id_filtered_count: publicExternalIdFilteredCount,
+              component_ref_candidate_count: componentSimilarCandidates.length,
+              component_ref_scope_applied: componentScopedSimilar.applied,
+              component_ref_scope_dropped_count: componentScopedSimilar.dropped_count,
+            },
+          };
+        } else {
+          relatedProductsEnvelope = {
+            status: relatedProducts.length > 0 ? 'success' : 'empty',
+            strategy: 'related_products',
+            items: relatedProducts,
+            metadata: {
+              ...calibrateSimilarMetadataForVisibleProducts({
+                metadata: { similar_status: relatedProducts.length > 0 ? 'ready' : 'empty' },
+                products: relatedProducts,
+                requestedLimit: similarLimit,
+              }),
+              ...cardEnrichmentMetadata,
+              card_enrichment_status:
+                cardEnrichmentMetadata.card_enrichment_status ||
+                (relatedProducts.length > 0 && missingHighlightCount <= 0 && missingImageCount <= 0
+                  ? 'ready'
+                  : 'partial'),
+              card_highlight_missing_count: missingHighlightCount,
+              card_image_missing_count: missingImageCount,
+              card_highlight_filtered_count: filteredHighlightMissingCount,
+              public_external_id_filtered_count: publicExternalIdFilteredCount,
+              component_ref_candidate_count: componentSimilarCandidates.length,
+              component_ref_scope_applied: componentScopedSimilar.applied,
+              component_ref_scope_dropped_count: componentScopedSimilar.dropped_count,
             },
           };
         }
@@ -35953,6 +36347,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       }
 
       const creatorBeautyMainlineDirectEligible =
+        !findProductsMultiProductOnly &&
         (!strictCommerceFindProductsMulti || routeSearchQualityContractApplied) &&
         queryText.length > 0 &&
         process.env.DATABASE_URL &&
@@ -41515,6 +41910,10 @@ module.exports._debug = {
   promoteVisibleSimilarProductSigIds,
   hydrateVisibleSimilarProductSigIdsFromCatalog,
   filterPublicVisibleSimilarProducts,
+  dedupeSimilarCandidatesByMerchantProductId,
+  isBundleOrSetPdpForComponentScopedSimilar,
+  scopeBundleSimilarToReviewedComponents,
+  collectPdpComponentSimilarCandidates,
   calibrateSimilarMetadataForVisibleProducts,
   enrichSimilarProductsForPdpCards,
   getSimilarCardEnrichmentMetadata,

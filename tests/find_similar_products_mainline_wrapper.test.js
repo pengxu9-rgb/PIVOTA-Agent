@@ -485,6 +485,282 @@ describe('find_similar_products mainline wrapper', () => {
     expect(out.map((item) => item.product_id)).toEqual(['sig_mirrored', 'internal_1']);
   });
 
+  it('collects only reviewed external seed component refs for PDP similar', async () => {
+    const app = require('../src/server');
+
+    const out = app._debug.collectPdpComponentSimilarCandidates({
+      external_product_id: 'ext_bundle_base',
+      seed_data: {
+        bundle_component_refs: [
+          {
+            external_product_id: 'ext_component_1',
+            title: 'Great Barrier Relief',
+            size_label: '45 ml',
+            review_state: 'reviewed',
+            source_kind: 'manual_reviewed_bundle_component_ref',
+          },
+          {
+            external_product_id: 'ext_component_1',
+            title: 'Great Barrier Relief duplicate',
+            review_state: 'reviewed',
+          },
+          {
+            external_product_id: 'ext_component_unreviewed',
+            title: 'Unreviewed component',
+          },
+          {
+            external_product_id: 'ext_bundle_base',
+            title: 'Self reference',
+            review_state: 'reviewed',
+          },
+          {
+            external_product_id: 'shopify_123',
+            title: 'Non external seed ref',
+            review_state: 'reviewed',
+          },
+        ],
+        snapshot: {
+          component_product_refs: [
+            {
+              product_id: 'ext_component_2',
+              name: 'Matcha Hemp Hydrating Cleanser',
+              role: 'cleanser',
+              review_state: 'approved',
+              canonical_url: 'https://kravebeauty.com/products/matcha-hemp-hydrating-cleanser',
+            },
+          ],
+        },
+      },
+    });
+
+    expect(out).toEqual([
+      expect.objectContaining({
+        merchant_id: 'external_seed',
+        product_id: 'ext_component_1',
+        retrieval_source: 'reviewed_component_ref',
+        reason: 'component_ref:reviewed_bundle_component',
+        title: 'Great Barrier Relief',
+        component_source_kind: 'manual_reviewed_bundle_component_ref',
+      }),
+      expect.objectContaining({
+        merchant_id: 'external_seed',
+        product_id: 'ext_component_2',
+        retrieval_source: 'reviewed_component_ref',
+        title: 'Matcha Hemp Hydrating Cleanser',
+        product_type: 'cleanser',
+      }),
+    ]);
+  });
+
+  it('scopes bundle PDP similar results to reviewed component refs', () => {
+    const app = require('../src/server');
+
+    const out = app._debug.scopeBundleSimilarToReviewedComponents({
+      baseProduct: {
+        title: 'Barrier Care Kit',
+        product_kind: { family: 'bundle' },
+      },
+      componentCandidates: [
+        {
+          product_id: 'ext_component_1',
+          retrieval_source: 'reviewed_component_ref',
+        },
+      ],
+      products: [
+        {
+          product_id: 'sig_component_1',
+          source_product_id: 'ext_component_1',
+          retrieval_source: 'reviewed_component_ref',
+          title: 'Great Barrier Relief',
+        },
+        {
+          product_id: 'sig_unrelated_gift_set',
+          source_product_id: 'ext_unrelated_gift_set',
+          title: 'Cosmic Kylie Jenner 3-Piece Gift Set',
+          reason: 'L3E:external:external_leaf_category',
+        },
+      ],
+    });
+
+    expect(out).toEqual({
+      products: [
+        expect.objectContaining({
+          product_id: 'sig_component_1',
+          source_product_id: 'ext_component_1',
+        }),
+      ],
+      applied: true,
+      dropped_count: 1,
+    });
+  });
+
+  it('does not component-scope non-bundle PDP similar results', () => {
+    const app = require('../src/server');
+
+    const out = app._debug.scopeBundleSimilarToReviewedComponents({
+      baseProduct: {
+        title: 'Great Barrier Relief',
+        product_type: 'Serum',
+      },
+      componentCandidates: [
+        {
+          product_id: 'ext_component_1',
+          retrieval_source: 'reviewed_component_ref',
+        },
+      ],
+      products: [
+        { product_id: 'sig_component_1', source_product_id: 'ext_component_1' },
+        { product_id: 'sig_same_category', source_product_id: 'ext_same_category' },
+      ],
+    });
+
+    expect(out).toEqual({
+      products: [
+        { product_id: 'sig_component_1', source_product_id: 'ext_component_1' },
+        { product_id: 'sig_same_category', source_product_id: 'ext_same_category' },
+      ],
+      applied: false,
+      dropped_count: 0,
+    });
+  });
+
+  it('hydrates reviewed component-ref similar cards from official seed sources', async () => {
+    jest.resetModules();
+    process.env.DATABASE_URL = 'postgres://test';
+    const dbQueryMock = jest.fn().mockImplementation((sql) => {
+      const text = String(sql || '');
+      if (text.includes('FROM external_product_seeds')) {
+        return Promise.resolve({
+          rows: [
+            {
+              external_product_id: 'ext_component_1',
+              brand: 'KraveBeauty',
+              category: 'Serum',
+              product_type: 'Serum',
+              title: 'Great Barrier Relief',
+              image_url: 'https://cdn.example.test/gbr.jpg',
+              price_amount: '28.00',
+              price_currency: 'USD',
+              description:
+                'A barrier-supporting serum from the official product page for skin barrier recovery and protection.',
+              pdp_description_raw:
+                'A barrier-supporting serum from the official product page for skin barrier recovery and protection.',
+              pdp_details_sections: [],
+            },
+          ],
+        });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+    jest.doMock('../src/db', () => ({
+      query: dbQueryMock,
+    }));
+
+    const app = require('../src/server');
+    const items = await app._debug.enrichSimilarProductsForPdpCards({
+      items: [
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ext_component_1',
+          external_product_id: 'ext_component_1',
+          retrieval_source: 'reviewed_component_ref',
+          title: 'Great Barrier Relief',
+        },
+      ],
+      maxItems: 1,
+      budgetMs: 300,
+      productIntelBudgetMs: 1,
+    });
+
+    expect(items[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'ext_component_1',
+        image_url: 'https://cdn.example.test/gbr.jpg',
+        card_highlight_status: 'ready',
+        card_image_status: 'ready',
+      }),
+    );
+    expect(items[0].price).toEqual({ amount: 28, currency: 'USD' });
+    expect(app._debug.getSimilarCardEnrichmentMetadata(items)).toEqual(
+      expect.objectContaining({
+        card_enrichment_official_seed_attempted_count: 1,
+        card_enrichment_official_seed_hit_count: 1,
+      }),
+    );
+  });
+
+  it('hydrates official seed card sources when an external candidate has highlight but no image', () => {
+    const app = require('../src/server');
+
+    expect(app._debug.shouldHydrateSimilarCardFromOfficialSeed({
+      merchant_id: 'external_seed',
+      product_id: 'ext_component_with_highlight',
+      card_highlight: 'tamanu barrier serum',
+      card_highlight_status: 'ready',
+    })).toBe(true);
+
+    expect(app._debug.shouldHydrateSimilarCardFromOfficialSeed({
+      merchant_id: 'external_seed',
+      product_id: 'ext_component_ready',
+      image_url: 'https://cdn.example.test/component.jpg',
+      card_highlight: 'tamanu barrier serum',
+      card_highlight_status: 'ready',
+    })).toBe(false);
+  });
+
+  it('does not overwrite trusted component-ref highlights while hydrating missing images', async () => {
+    jest.resetModules();
+    process.env.DATABASE_URL = 'postgres://test';
+    jest.doMock('../src/db', () => ({
+      query: jest.fn().mockImplementation((sql) => {
+        if (String(sql || '').includes('FROM external_product_seeds')) {
+          return Promise.resolve({
+            rows: [
+              {
+                external_product_id: 'ext_component_1',
+                title: 'Great Barrier Relief',
+                image_url: 'https://cdn.example.test/gbr.jpg',
+                price_amount: '28.00',
+                price_currency: 'USD',
+                description: 'Shop Now Great Body Relief Pair',
+                pdp_description_raw: 'Shop Now Great Body Relief Pair',
+                pdp_details_sections: [],
+              },
+            ],
+          });
+        }
+        return Promise.resolve({ rows: [] });
+      }),
+    }));
+
+    const app = require('../src/server');
+    const items = await app._debug.enrichSimilarProductsForPdpCards({
+      items: [
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ext_component_1',
+          external_product_id: 'ext_component_1',
+          retrieval_source: 'reviewed_component_ref',
+          title: 'Great Barrier Relief',
+          card_highlight: 'tamanu barrier serum',
+          card_highlight_status: 'ready',
+        },
+      ],
+      maxItems: 1,
+      budgetMs: 300,
+      productIntelBudgetMs: 1,
+    });
+
+    expect(items[0]).toEqual(
+      expect.objectContaining({
+        image_url: 'https://cdn.example.test/gbr.jpg',
+        card_highlight: 'tamanu barrier serum',
+        card_highlight_status: 'ready',
+        card_image_status: 'ready',
+      }),
+    );
+  });
+
   it('runtime-classifies official hair styling seeds and blocks non-formula fill', () => {
     const { pickLayeredRecommendations } = require('../src/services/RecommendationEngine');
 
