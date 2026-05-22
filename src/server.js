@@ -64,6 +64,9 @@ const {
   enrichProductWithCatalogFashionFields,
 } = require('./services/catalogFashionFields');
 const {
+  enrichProductWithRelatedServices,
+} = require('./services/catalogRelatedServicesNearby');
+const {
   buildPdpImageDedupeKey,
   normalizePdpImageUrl,
 } = require('./utils/pdpImageUrls');
@@ -34040,6 +34043,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           'enrichProductWithCatalogFashionFields failed; PDP renders without merge',
         );
       }
+      try {
+        await enrichProductWithRelatedServices(canonicalProductForPdp);
+      } catch (err) {
+        logger.warn(
+          { err: err?.message || String(err) },
+          'enrichProductWithRelatedServices failed; PDP renders without related services',
+        );
+      }
 
       const pdpPayload = buildPdpPayload({
         product: canonicalProductForPdp,
@@ -35196,6 +35207,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         logger.warn(
           { err: err?.message || String(err) },
           'enrichProductWithCatalogFashionFields failed; PDP renders without merge',
+        );
+      }
+      try {
+        await enrichProductWithRelatedServices(product);
+      } catch (err) {
+        logger.warn(
+          { err: err?.message || String(err) },
+          'enrichProductWithRelatedServices failed; PDP renders without related services',
         );
       }
 
