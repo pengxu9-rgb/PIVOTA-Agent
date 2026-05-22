@@ -518,6 +518,12 @@ function buildCompactSubtitle({ product, bundle }) {
   ) {
     return 'SPF moisturizer';
   }
+  if (
+    whatBody.includes('color-correcting') &&
+    (whatBody.includes('skinstick') || whatBody.includes('skin stick') || /skinstick|skin stick/i.test(compactHeadline))
+  ) {
+    return 'Color-Correcting Skinstick';
+  }
   if (whatBody.includes('color-correcting') && whatBody.includes('eye') && stepLabel) {
     return toHeadlineCase(`color-correcting ${stepLabel}`);
   }

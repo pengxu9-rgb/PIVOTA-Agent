@@ -154,6 +154,18 @@ function buildOwnerDelegatedPublishRow(compareRow, reviewRow, options = {}) {
       candidate_bundle_hash: asString(reviewRow.candidate_bundle_hash),
       previous_bundle_hash: asString(reviewRow.previous_bundle_hash),
     },
+    quality_improvement_review: {
+      decision: 'approved_replacement',
+      reviewer,
+      reviewer_kind: 'assistant',
+      owner_delegated: true,
+      approval_basis: 'owner_delegated_assistant_quality_review',
+      reason:
+        asString(reviewRow.rationale) ||
+        'Owner-delegated assistant review approved this replacement as a quality improvement.',
+      candidate_bundle_hash: asString(reviewRow.candidate_bundle_hash),
+      previous_bundle_hash: asString(reviewRow.previous_bundle_hash),
+    },
     baseline: {
       canonical_product_ref: canonical,
     },

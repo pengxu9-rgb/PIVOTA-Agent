@@ -65,6 +65,16 @@ describe('build_owner_delegated_product_intel_publish_report', () => {
         candidate_bundle_hash: 'candidate-hash',
       }),
     );
+    expect(report.rows[0].quality_improvement_review).toEqual(
+      expect.objectContaining({
+        decision: 'approved_replacement',
+        reviewer_kind: 'assistant',
+        owner_delegated: true,
+        approval_basis: 'owner_delegated_assistant_quality_review',
+        candidate_bundle_hash: 'candidate-hash',
+        previous_bundle_hash: 'previous-hash',
+      }),
+    );
     expect(report.rows[0].reviewer_kind).not.toBe('human');
   });
 
