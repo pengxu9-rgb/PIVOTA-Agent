@@ -5131,13 +5131,36 @@ function collectCatalogPdpContentSourceProductIds(product = {}, productRef = {},
   for (const candidate of Array.isArray(extraCandidates) ? extraCandidates : [extraCandidates]) {
     if (isPlainObject(candidate)) refs.push(candidate);
   }
+  const normalizeContentSourceId = (value) => {
+    const text = String(value || '').trim();
+    if (!text || isPivotaSignatureProductId(text)) return '';
+    if (isExternalSeedProductId(text)) return text;
+    const productKeyMatch = text
+      .split('::')
+      .map((part) => part.trim())
+      .find((part) => isExternalSeedProductId(part));
+    return productKeyMatch || text;
+  };
   const values = [
-    ...refs.flatMap((ref) => [ref.product_id, ref.productId, ref.source_product_id, ref.sourceProductId]),
+    ...refs.flatMap((ref) => [
+      ref.product_id,
+      ref.productId,
+      ref.source_product_id,
+      ref.sourceProductId,
+      ref.product_key,
+      ref.productKey,
+      ref.source_listing_ref,
+      ref.sourceListingRef,
+    ]),
     ...(Array.isArray(extraCandidates) ? extraCandidates : [extraCandidates])
       .filter((value) => typeof value === 'string')
       .map((value) => value.trim()),
     product?.source_product_id,
     product?.sourceProductId,
+    product?.product_key,
+    product?.productKey,
+    product?.source_listing_ref,
+    product?.sourceListingRef,
     product?.platform_product_id,
     product?.platformProductId,
     product?.external_seed_id,
@@ -5149,7 +5172,7 @@ function collectCatalogPdpContentSourceProductIds(product = {}, productRef = {},
   return Array.from(
     new Set(
       values
-        .map((value) => String(value || '').trim())
+        .map(normalizeContentSourceId)
         .filter((value) => value && !isPivotaSignatureProductId(value)),
     ),
   ).slice(0, 20);

@@ -35,6 +35,7 @@ describe('external seed product detail hydration', () => {
     const refs = debug.collectCatalogPdpContentSourceProductIds(
       {
         product_id: 'sig_abc123',
+        product_key: 'prod::external_seed::external_seed::ext_product_key_ref',
         source_product_id: 'ext_payload_product',
         canonical_content_ref: { product_id: 'ext_content_base' },
         selected_commerce_ref: { product_id: 'ext_commerce_row' },
@@ -48,9 +49,10 @@ describe('external seed product detail hydration', () => {
       { product_id: 'ext_entry_ref' },
       [
         { product_id: 'ext_identity_canonical' },
-        { source_product_id: 'ext_catalog_identity' },
+        { source_product_id: 'ext_catalog_identity', source_listing_ref: 'prod::external_seed::external_seed::ext_listing_ref' },
         'sig_def456',
         'ext_string_ref',
+        'prod::external_seed::external_seed::ext_string_product_key_ref',
       ],
     );
 
@@ -64,7 +66,10 @@ describe('external seed product detail hydration', () => {
         'ext_identity_canonical',
         'ext_catalog_identity',
         'ext_payload_product',
+        'ext_product_key_ref',
+        'ext_listing_ref',
         'ext_string_ref',
+        'ext_string_product_key_ref',
       ]),
     );
     expect(refs).not.toEqual(expect.arrayContaining(['sig_abc123', 'sig_def456']));
