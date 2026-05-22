@@ -45,6 +45,10 @@ describe('catalogPdpContentFields', () => {
       title: 'Gel Eyeliner',
       product_family: 'set_or_collection',
       product_kind: 'bundle',
+      category: 'Gift Sets',
+      category_path: ['beauty', 'sets'],
+      catalog_category_path: 'beauty/sets',
+      product_type: 'Bundle',
       ingredient_intel: {
         force_fill_contract: {
           contract_version: 'pivota.pdp.force_fill.v1',

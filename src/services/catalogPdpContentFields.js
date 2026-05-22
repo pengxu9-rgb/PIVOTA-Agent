@@ -80,6 +80,41 @@ function firstCategoryPath(...values) {
   return null;
 }
 
+function normalizedCategoryPathText(value) {
+  const parts = categoryPathArray(value);
+  return parts ? parts.map((part) => part.toLowerCase()).join('/') : '';
+}
+
+function categoryPathLooksFormula(value) {
+  return /^beauty\/(?:skincare|skin-care|makeup\/(?:face|lip|eye|cheek|complexion|base)|fragrance|hair|haircare|body)(?:\/|$)/i
+    .test(normalizedCategoryPathText(value));
+}
+
+function categoryPathLooksSetOrBundle(value) {
+  const text = normalizedCategoryPathText(value);
+  return /(^|\/)(?:sets?|bundles?|kits?|collections?|gift|gifts)(?:\/|$)/i.test(text);
+}
+
+function textLooksSetOrBundle(value) {
+  return /\b(?:sets?|bundles?|kits?|collections?|gift\s+sets?)\b/i.test(asString(value));
+}
+
+function shouldSetCategoryPath(currentValue, incomingValue) {
+  const incoming = categoryPathArray(incomingValue);
+  if (!incoming) return false;
+  const current = categoryPathArray(currentValue);
+  if (!current || current.length === 0) return true;
+  return categoryPathLooksFormula(incoming) && categoryPathLooksSetOrBundle(current);
+}
+
+function shouldSetFormulaCategoryLabel(currentValue, incomingValue) {
+  const incoming = asString(incomingValue);
+  if (!incoming) return false;
+  const current = asString(currentValue);
+  if (!current) return true;
+  return textLooksSetOrBundle(current) && !textLooksSetOrBundle(incoming);
+}
+
 function parseCatalogPayload(value) {
   const payload = coerceObject(value);
   const seedData = coerceObject(payload.seed_data);
@@ -380,19 +415,21 @@ function mergeCatalogPdpContentFieldsIntoProduct(product, fields) {
     product.ingredient_remediation_v1 = fields.ingredient_remediation_v1;
   }
 
-  if (!asString(product.catalog_category_path) && fields.catalog_category_path) {
+  if (
+    (!asString(product.catalog_category_path) ||
+      (categoryPathLooksFormula(fields.catalog_category_path) &&
+        categoryPathLooksSetOrBundle(product.catalog_category_path))) &&
+    fields.catalog_category_path
+  ) {
     product.catalog_category_path = fields.catalog_category_path;
   }
-  if (
-    (!Array.isArray(product.category_path) || product.category_path.length === 0) &&
-    fields.category_path
-  ) {
+  if (shouldSetCategoryPath(product.category_path, fields.category_path)) {
     product.category_path = fields.category_path;
   }
-  if (!asString(product.category) && fields.category) {
+  if (shouldSetFormulaCategoryLabel(product.category, fields.category)) {
     product.category = fields.category;
   }
-  if (!asString(product.product_type) && fields.product_type) {
+  if (shouldSetFormulaCategoryLabel(product.product_type, fields.product_type)) {
     product.product_type = fields.product_type;
   }
 
