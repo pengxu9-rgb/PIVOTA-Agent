@@ -148,7 +148,23 @@ async function requestJson({ url, payload, headers = {}, timeoutMs = 30000, atte
       latency_ms: Math.max(0, Date.now() - startedAt),
     };
   }
-  const text = await response.text();
+  let text = '';
+  try {
+    text = await response.text();
+  } catch (error) {
+    return {
+      status: response.status || 0,
+      ok: false,
+      body: {
+        status: 'error',
+        error: {
+          code: error?.code || error?.name || 'RESPONSE_READ_FAILED',
+          message: String(error?.message || error || 'response read failed'),
+        },
+      },
+      latency_ms: Math.max(0, Date.now() - startedAt),
+    };
+  }
   let body = null;
   try {
     body = text ? JSON.parse(text) : null;

@@ -125,4 +125,27 @@ describe('eval-find-products-search-quality', () => {
       global.fetch = originalFetch;
     }
   });
+
+  test('converts response body read failures into failed request results', async () => {
+    const originalFetch = global.fetch;
+    global.fetch = jest.fn().mockResolvedValue({
+      status: 200,
+      text: jest.fn().mockRejectedValue(new TypeError('terminated')),
+    });
+
+    try {
+      const result = await requestJson({
+        url: 'https://example.test/agent/shop/v1/invoke',
+        payload: { operation: 'find_products_multi' },
+        timeoutMs: 10,
+        attempts: 1,
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.status).toBe(200);
+      expect(result.body.error.message).toBe('terminated');
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
 });
