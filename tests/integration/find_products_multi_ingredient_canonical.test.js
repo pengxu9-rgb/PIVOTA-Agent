@@ -58,7 +58,7 @@ function canonicalMixedNiacinamideRows() {
       pivota_signature_id: 'sig_foundation_niacinamide',
       pivota_canonical_url: 'https://agent.pivota.cc/products/sig_foundation_niacinamide',
       product_title: 'Architecture Radiance Hydrating Foundation Broad Spectrum SPF 50+',
-      product_description: 'Foundation with niacinamide for a radiant finish.',
+      product_description: 'Serum-infused foundation with niacinamide for a radiant finish.',
       brand: 'Test Beauty',
       product_type: 'Foundation',
       category: 'Foundation',

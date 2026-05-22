@@ -2060,7 +2060,6 @@ function productMatchesStrictSkincareCategoryIntent(product = {}, categoryIntent
       product.category,
       product.catalog_category_path,
       Array.isArray(product.category_path) ? product.category_path.join(' ') : product.category_path,
-      product.description,
       product.canonical_url,
       product.destination_url,
       product.url,
