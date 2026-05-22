@@ -22983,6 +22983,16 @@ async function hydrateVisibleSimilarProductSigIdsFromCatalog(products) {
   }
 }
 
+function filterPublicVisibleSimilarProducts(products) {
+  return (Array.isArray(products) ? products : []).filter((product) => {
+    if (!product || typeof product !== 'object' || Array.isArray(product)) return false;
+    const externalSeedIds = collectExternalSeedIdCandidatesForVisibleCatalogHydration(product);
+    if (!externalSeedIds.length) return true;
+    const visibleSigId = resolveVisibleSimilarProductSigId(product);
+    return isPivotaSignatureProductId(visibleSigId);
+  });
+}
+
 async function prewarmPdpSimilarForProduct({
   payload = {},
   canonicalProductForPdp = {},
@@ -33397,11 +33407,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         const missingImageCount = enrichedRelatedProducts.filter(
           (item) => String(item?.card_image_status || '').trim() === 'image_missing',
         ).length;
-        const displayableRelatedProducts = await hydrateVisibleSimilarProductSigIdsFromCatalog(
-          filterSimilarProductsWithCardHighlights(
-            enrichedRelatedProducts,
-            { baseProduct: canonicalProductForPdp },
-          ).slice(0, similarLimit),
+        const displayableSimilarCandidates = filterSimilarProductsWithCardHighlights(
+          enrichedRelatedProducts,
+          { baseProduct: canonicalProductForPdp },
+        );
+        const hydratedSimilarCandidates = await hydrateVisibleSimilarProductSigIdsFromCatalog(displayableSimilarCandidates);
+        const publicSimilarCandidates = filterPublicVisibleSimilarProducts(hydratedSimilarCandidates);
+        const displayableRelatedProducts = publicSimilarCandidates.slice(0, similarLimit);
+        const publicExternalIdFilteredCount = Math.max(
+          0,
+          hydratedSimilarCandidates.length - publicSimilarCandidates.length,
         );
         const filteredHighlightMissingCount = Math.max(
           0,
@@ -33430,6 +33445,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               card_highlight_missing_count: missingHighlightCount,
               card_image_missing_count: missingImageCount,
               card_highlight_filtered_count: filteredHighlightMissingCount,
+              public_external_id_filtered_count: publicExternalIdFilteredCount,
             },
           };
         }
@@ -37764,10 +37780,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               maxItems: directCandidateLimit,
             });
             const cardEnrichmentMetadata = getSimilarCardEnrichmentMetadata(enrichedProducts);
-            const products = await hydrateVisibleSimilarProductSigIdsFromCatalog(
-              filterSimilarProductsWithCardHighlights(enrichedProducts, {
-                baseProduct,
-              }).slice(0, limit),
+            const visibleSimilarCandidates = filterSimilarProductsWithCardHighlights(enrichedProducts, {
+              baseProduct,
+            });
+            const hydratedSimilarCandidates = await hydrateVisibleSimilarProductSigIdsFromCatalog(visibleSimilarCandidates);
+            const publicSimilarCandidates = filterPublicVisibleSimilarProducts(hydratedSimilarCandidates);
+            const products = publicSimilarCandidates.slice(0, limit);
+            const publicExternalIdFilteredCount = Math.max(
+              0,
+              hydratedSimilarCandidates.length - publicSimilarCandidates.length,
             );
             const cardHighlightMissingCount = enrichedProducts.filter(
               (item) => String(item?.card_highlight_status || '').trim() === 'highlight_missing',
@@ -37808,6 +37829,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     : 'partial'),
                 card_highlight_missing_count: cardHighlightMissingCount,
                 card_highlight_filtered_count: Math.max(0, enrichedProducts.length - products.length),
+                public_external_id_filtered_count: publicExternalIdFilteredCount,
                 card_image_missing_count: cardImageMissingCount,
               },
               total: products.length,
@@ -41492,6 +41514,7 @@ module.exports._debug = {
   promoteVisibleSimilarProductSigId,
   promoteVisibleSimilarProductSigIds,
   hydrateVisibleSimilarProductSigIdsFromCatalog,
+  filterPublicVisibleSimilarProducts,
   calibrateSimilarMetadataForVisibleProducts,
   enrichSimilarProductsForPdpCards,
   getSimilarCardEnrichmentMetadata,

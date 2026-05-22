@@ -458,6 +458,33 @@ describe('find_similar_products mainline wrapper', () => {
     );
   });
 
+  it('filters unresolved ext_* candidates from public similar cards after sig hydration', async () => {
+    const app = require('../src/server');
+
+    const out = app._debug.filterPublicVisibleSimilarProducts([
+      {
+        product_id: 'ext_unmirrored',
+        external_product_id: 'ext_unmirrored',
+        merchant_id: 'external_seed',
+        title: 'Unmirrored External Product',
+      },
+      {
+        product_id: 'sig_mirrored',
+        external_product_id: 'ext_mirrored',
+        pivota_signature_id: 'sig_mirrored',
+        merchant_id: 'external_seed',
+        title: 'Mirrored External Product',
+      },
+      {
+        product_id: 'internal_1',
+        merchant_id: 'merchant_1',
+        title: 'Internal Product',
+      },
+    ]);
+
+    expect(out.map((item) => item.product_id)).toEqual(['sig_mirrored', 'internal_1']);
+  });
+
   it('runtime-classifies official hair styling seeds and blocks non-formula fill', () => {
     const { pickLayeredRecommendations } = require('../src/services/RecommendationEngine');
 

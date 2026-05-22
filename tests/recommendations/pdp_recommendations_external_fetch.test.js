@@ -2734,6 +2734,8 @@ describe('RecommendationEngine external candidate fetch', () => {
 
     expect(_internals.getSimilarIntentFamilyFromText('Botanical Collagen LipGloss')).toBe('lip_treatment');
     expect(_internals.getSimilarIntentFamilyFromText('LipLift Max')).toBe('lip_treatment');
+    expect(_internals.getSimilarIntentFamilyFromText('Lip Barrier Relief')).toBe('lip_treatment');
+    expect(_internals.getSimilarIntentFamilyFromText('Ceramide Lip Repair Cream')).toBe('lip_treatment');
 
     const result = await recommend({
       pdp_product: {
@@ -2839,6 +2841,103 @@ describe('RecommendationEngine external candidate fetch', () => {
         'ext_other_lip_balm',
         'ext_other_lip_plumper',
       ]),
+    );
+    expect(result.items.map((item) => item.product_id)).not.toContain('ext_eye_liner');
+  });
+
+  test('recommend treats lip barrier products as lip treatment intent matches', async () => {
+    const { recommend, _internals } = require('../../src/services/RecommendationEngine');
+    _internals.resetCache();
+
+    const result = await recommend({
+      pdp_product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_krave_lip_barrier_relief',
+        title: 'Lip Barrier Relief',
+        brand: 'KraveBeauty',
+        category: 'Lip',
+        product_type: 'Lip',
+        category_path: 'beauty/skincare/lip',
+        semantic_vertical: 'skincare',
+        price: 14,
+        currency: 'USD',
+        inventory_quantity: 10,
+        status: 'active',
+        source: 'external_seed',
+      },
+      k: 4,
+      options: {
+        debug: true,
+        no_cache: true,
+        internal_candidates: [],
+        external_candidates: [
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_lip_balm',
+            title: 'Lip Balm with Hemp Seed Oil + Shea Butter',
+            brand: 'UpCircle Beauty',
+            category: 'Lip Balm',
+            product_type: 'Lip Balm',
+            category_path: 'beauty/makeup/lip/balm',
+            semantic_vertical: 'makeup',
+            price: 8,
+            currency: 'USD',
+            inventory_quantity: 10,
+            status: 'active',
+            source: 'external_seed',
+          },
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_lip_plumper',
+            title: 'Glossy Lip Plumper',
+            brand: 'Makeup Brand',
+            category: 'Lip Plumper',
+            product_type: 'Lip Plumper',
+            category_path: 'beauty/makeup/lip/plumper',
+            semantic_vertical: 'makeup',
+            price: 12,
+            currency: 'USD',
+            inventory_quantity: 10,
+            status: 'active',
+            source: 'external_seed',
+          },
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_lip_mask',
+            title: 'Ceramide Lip Sleeping Mask',
+            brand: 'Care Brand',
+            category: 'Lip Mask',
+            product_type: 'Lip Mask',
+            category_path: 'beauty/skincare/lip/mask',
+            semantic_vertical: 'skincare',
+            price: 16,
+            currency: 'USD',
+            inventory_quantity: 10,
+            status: 'active',
+            source: 'external_seed',
+          },
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_eye_liner',
+            title: 'Waterproof Eye Liner',
+            brand: 'KraveBeauty',
+            category: 'Eyeliner',
+            product_type: 'Eyeliner',
+            category_path: 'beauty/makeup/eyes/eyeliner',
+            semantic_vertical: 'makeup',
+            price: 14,
+            currency: 'USD',
+            inventory_quantity: 10,
+            status: 'active',
+            source: 'external_seed',
+          },
+        ],
+      },
+    });
+
+    expect(result.debug?.fetch_strategy?.base_intent_family).toBe('lip_treatment');
+    expect(result.items.map((item) => item.product_id)).toEqual(
+      expect.arrayContaining(['ext_lip_balm', 'ext_lip_plumper', 'ext_lip_mask']),
     );
     expect(result.items.map((item) => item.product_id)).not.toContain('ext_eye_liner');
   });

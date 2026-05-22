@@ -456,8 +456,8 @@ const SIMILAR_INTENT_FAMILY_RULES = Object.freeze([
   },
   {
     id: 'lip_treatment',
-    js: /\b(?:lip\s*(?:gloss|balm|treat|treatment|nourish(?:er|ing)?|plump(?:er|ing)?|luminiz(?:er|ers?)?|glow|lift|blush|tint|stain|colou?r)|lipgloss|lipglow|liplift|lipblush|liptint|lipstain|liptreat|lipnourish(?:er|ing)?)\b/i,
-    sql: '\\m(lip\\s*(gloss|balm|treat|treatment|nourish(er|ing)?|plump(er|ing)?|luminiz(er|ers?)?|glow|lift|blush|tint|stain|colou?r)|lipgloss|lipglow|liplift|lipblush|liptint|lipstain|liptreat|lipnourish(er|ing)?)\\M',
+    js: /\b(?:lip\s*(?:barrier|care|cream|gloss|balm|butter|(?:sleep(?:ing)?\s*)?mask|relief|repair|restore|rescue|sleep|soften(?:er|ing)?|treat|treatment|nourish(?:er|ing)?|plump(?:er|ing)?|luminiz(?:er|ers?)?|glow|lift|blush|tint|stain|colou?r)|lipgloss|lipglow|liplift|lipblush|liptint|lipstain|liptreat|lipnourish(?:er|ing)?)\b/i,
+    sql: '\\m(lip\\s*(barrier|care|cream|gloss|balm|butter|(sleep(ing)?\\s*)?mask|relief|repair|restore|rescue|sleep|soften(er|ing)?|treat|treatment|nourish(er|ing)?|plump(er|ing)?|luminiz(er|ers?)?|glow|lift|blush|tint|stain|colou?r)|lipgloss|lipglow|liplift|lipblush|liptint|lipstain|liptreat|lipnourish(er|ing)?)\\M',
   },
   {
     id: 'highlighter',
