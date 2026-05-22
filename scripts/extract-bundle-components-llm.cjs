@@ -103,7 +103,7 @@ async function loadBundleCandidates({ limit, market, ids }) {
       seed_data->>'product_family' = 'set_or_collection'
       OR seed_data->>'external_seed_product_family' = 'set_or_collection'
       OR seed_data->>'product_kind' = 'bundle'
-      OR lower(title) ~ '\\\\b(set|bundle|kit|trio|duo|collection|pack)\\\\b'
+      OR lower(title) ~ '\\m(set|bundle|kit|trio|duo|collection|pack)\\M'
     )`,
     `jsonb_array_length(COALESCE(seed_data->'bundle_component_refs','[]'::jsonb)) = 0`,
     `jsonb_array_length(COALESCE(seed_data->'snapshot'->'bundle_component_refs','[]'::jsonb)) = 0`,
