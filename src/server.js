@@ -33508,16 +33508,42 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const variantSelectorData = findPdpPayloadModuleData(pdpPayload, 'variant_selector') || null;
       let canonicalPayload = stripResponseOwnedPdpModulesFromCanonicalPayload(pdpPayload);
       const pdpProductForKind = canonicalPayload?.product || canonicalProductForPdp || {};
-      const pdpProductFamily = normalizeSearchTextForMatch(
+      const seedDataForKind =
+        canonicalProductForPdp?.seed_data &&
+        typeof canonicalProductForPdp.seed_data === 'object' &&
+        !Array.isArray(canonicalProductForPdp.seed_data)
+          ? canonicalProductForPdp.seed_data
+          : {};
+      const snapshotForKind =
+        seedDataForKind.snapshot &&
+        typeof seedDataForKind.snapshot === 'object' &&
+        !Array.isArray(seedDataForKind.snapshot)
+          ? seedDataForKind.snapshot
+          : {};
+      const normalizePdpProductFamilyKey = (value) =>
+        String(value || '')
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '_')
+          .replace(/^_+|_+$/g, '');
+      const pdpProductFamily = normalizePdpProductFamilyKey(
         firstNonEmptyString(
           pdpProductForKind.product_family,
           pdpProductForKind.external_seed_product_family,
           canonicalProductForPdp?.product_family,
           canonicalProductForPdp?.external_seed_product_family,
+          seedDataForKind.product_family,
+          seedDataForKind.external_seed_product_family,
+          snapshotForKind.product_family,
+          snapshotForKind.external_seed_product_family,
         ),
       );
+      const productFamilyFromIngredientSuppression = normalizePdpProductFamilyKey(
+        structuredIngredientSuppressedReason.replace(/^product_family_/, ''),
+      );
+      const effectivePdpProductFamily = pdpProductFamily || productFamilyFromIngredientSuppression;
       const setOrCollectionPdp =
-        pdpProductFamily === 'set_or_collection' ||
+        effectivePdpProductFamily === 'set_or_collection' ||
         /\b(?:set|duo|kit|bundle|collection|discovery\s+kit)\b/i.test(
           String(
             firstNonEmptyString(
@@ -33533,7 +33559,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         'non_merch',
         'non_merchandise',
         'sample',
-      ].includes(pdpProductFamily);
+      ].includes(effectivePdpProductFamily);
       const structuredDetailsNotApplicablePdp = setOrCollectionPdp || accessoryOrNonFormulaPdp;
       if (catalogIdentity?.pivota_signature_id && canonicalPayload?.product) {
         canonicalPayload = {
@@ -33952,13 +33978,19 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       }
 
       if (wantsHowToUse) {
+        const howToUseUnavailableReason =
+          structuredDetailsNotApplicablePdp && (productOverviewData || productDetailsData || supplementalDetailsData || productFactsData)
+            ? `not_applicable_${effectivePdpProductFamily || (setOrCollectionPdp ? 'set_or_collection' : 'product_family')}_structured_details`
+            : 'unavailable';
         modules.push({
           type: 'how_to_use',
           required: false,
           data: howToUseData,
-          ...(howToUseData ? {} : { reason: 'unavailable' }),
+          ...(howToUseData ? {} : { reason: howToUseUnavailableReason }),
         });
-        if (!howToUseData) missing.push({ type: 'how_to_use', reason: 'unavailable' });
+        if (!howToUseData && howToUseUnavailableReason === 'unavailable') {
+          missing.push({ type: 'how_to_use', reason: 'unavailable' });
+        }
       }
 
       if (wantsProductOverview) {
@@ -33974,7 +34006,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       if (wantsProductFacts) {
         const productFactsUnavailableReason =
           structuredDetailsNotApplicablePdp && (productOverviewData || productDetailsData || supplementalDetailsData)
-            ? `not_applicable_${pdpProductFamily || (setOrCollectionPdp ? 'set_or_collection' : 'product_family')}_overview`
+            ? `not_applicable_${effectivePdpProductFamily || (setOrCollectionPdp ? 'set_or_collection' : 'product_family')}_overview`
             : 'unavailable';
         modules.push({
           type: 'product_facts',
@@ -33990,7 +34022,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       if (wantsSupplementalDetails) {
         const supplementalDetailsUnavailableReason =
           structuredDetailsNotApplicablePdp && (productFactsData || productDetailsData || productOverviewData)
-            ? `not_applicable_${pdpProductFamily || (setOrCollectionPdp ? 'set_or_collection' : 'product_family')}_structured_details`
+            ? `not_applicable_${effectivePdpProductFamily || (setOrCollectionPdp ? 'set_or_collection' : 'product_family')}_structured_details`
             : 'unavailable';
         modules.push({
           type: 'supplemental_details',

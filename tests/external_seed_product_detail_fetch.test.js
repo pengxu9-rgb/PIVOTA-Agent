@@ -781,6 +781,103 @@ describe('external seed product detail hydration', () => {
     }
   });
 
+  test('get_pdp_v2 treats reviewed external seed sets as component-level not-applicable', async () => {
+    const { app, db } = loadServerWithDb({
+      PIVOTA_API_BASE: 'https://backend.test',
+      PIVOTA_API_KEY: 'test-token',
+    });
+
+    const statusRow = {
+      id: 'eps_boj_hanbang_set',
+      external_product_id: 'ext_boj_hanbang_set',
+      status: 'active',
+    };
+    const detailRow = {
+      ...statusRow,
+      canonical_url: 'https://beautyofjoseon.com/products/perfect-hanbang-palette',
+      destination_url: 'https://beautyofjoseon.com/products/perfect-hanbang-palette',
+      title: 'Perfect Hanbang Palette',
+      product_family: 'set_or_collection',
+      category: 'Beauty / Skincare Set',
+      product_type: 'Set',
+      image_url: 'https://cdn.example.com/hanbang-set.jpg',
+      price_amount: '48.00',
+      price_currency: 'USD',
+      availability: 'In Stock',
+      seed_data: {
+        brand: 'Beauty of Joseon',
+        product_family: 'set_or_collection',
+        description:
+          'A four-serum discovery set featuring Calming Barrier Serum, Glow Serum, Glow Deep Serum, and Revive Serum.',
+        bundle_component_refs: [
+          {
+            title: 'Calming Barrier Serum',
+            size_label: '30 ml',
+            review_state: 'reviewed',
+            inheritance_scope: ['ingredients_inci', 'how_to_use'],
+          },
+          {
+            title: 'Glow Serum',
+            size_label: '30 ml',
+            review_state: 'reviewed',
+            inheritance_scope: ['ingredients_inci', 'how_to_use'],
+          },
+        ],
+        snapshot: {
+          product_family: 'set_or_collection',
+          canonical_url: 'https://beautyofjoseon.com/products/perfect-hanbang-palette',
+          product_id: 'ext_boj_hanbang_set',
+        },
+      },
+    };
+    db.query.mockImplementation((sql) => {
+      const text = String(sql || '');
+      if (text.includes('FROM external_product_seeds') && text.includes('destination_url')) {
+        return Promise.resolve({ rows: [detailRow] });
+      }
+      if (text.includes('FROM external_product_seeds') && text.includes('status')) {
+        return Promise.resolve({ rows: [statusRow] });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+
+    nock('https://backend.test')
+      .get('/agent/v1/product-groups/resolve-by-product-id')
+      .query((query) => query && query.product_id === 'ext_boj_hanbang_set')
+      .reply(404, { error: 'PRODUCT_NOT_FOUND', message: 'No product group' });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'get_pdp_v2',
+        payload: {
+          product_ref: {
+            merchant_id: 'external_seed',
+            product_id: 'ext_boj_hanbang_set',
+          },
+          include: [
+            'variant_selector',
+            'active_ingredients',
+            'ingredients_inci',
+            'how_to_use',
+            'product_overview',
+            'product_facts',
+            'supplemental_details',
+          ],
+          options: { no_cache: true },
+        },
+      })
+      .expect(200);
+
+    const missingTypes = (res.body.missing || []).map((item) => item.type);
+    expect(missingTypes).not.toContain('variant_selector');
+    expect(missingTypes).not.toContain('active_ingredients');
+    expect(missingTypes).not.toContain('ingredients_inci');
+    expect(missingTypes).not.toContain('how_to_use');
+    expect(missingTypes).not.toContain('product_facts');
+    expect(missingTypes).not.toContain('supplemental_details');
+  });
+
   test('get_pdp_v2 serving_eligible_only blocks index-ineligible sig_* PDPs before sparse detail render', async () => {
     const { app, db } = loadServerWithDb({
       PIVOTA_API_BASE: 'https://backend.test',
