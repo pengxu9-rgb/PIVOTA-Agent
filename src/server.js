@@ -67,6 +67,10 @@ const {
   enrichProductWithRelatedServices,
 } = require('./services/catalogRelatedServicesNearby');
 const {
+  searchServices,
+  normalizeServicesSearchParams,
+} = require('./services/servicesSearch');
+const {
   buildPdpImageDedupeKey,
   normalizePdpImageUrl,
 } = require('./utils/pdpImageUrls');
@@ -27818,6 +27822,51 @@ app.get('/creator/:creatorId/categories/:categorySlug/products', async (req, res
       { err: err.message, creatorId, categorySlug },
       'Failed to load creator category products'
     );
+    return res.status(500).json({ error: 'INTERNAL_ERROR' });
+  }
+});
+
+app.get('/api/services', async (req, res) => {
+  let params;
+  try {
+    params = normalizeServicesSearchParams(req.query || {});
+  } catch (err) {
+    if (err?.code === 'SERVICES_SEARCH_VALIDATION' || err?.statusCode === 400) {
+      return res.status(400).json({ error: err.message });
+    }
+    logger.warn({ err: err?.message || String(err), query: req.query }, 'Failed to validate services search');
+    return res.status(500).json({ error: 'INTERNAL_ERROR' });
+  }
+
+  try {
+    const { results, total } = await searchServices(params);
+    return res.json({
+      status: 'success',
+      scope: {
+        city: params.city,
+        region: params.region,
+        country_code: params.country_code,
+      },
+      query: {
+        q: params.q,
+        service_type: params.service_type,
+        english_friendly: params.english_friendly,
+        priced_only: params.priced_only,
+        max_price_won: params.max_price_won,
+      },
+      results,
+      pagination: {
+        limit: params.limit,
+        offset: params.offset,
+        total,
+        has_more: params.offset + results.length < total,
+      },
+    });
+  } catch (err) {
+    if (err?.code === 'SERVICES_SEARCH_VALIDATION' || err?.statusCode === 400) {
+      return res.status(400).json({ error: err.message });
+    }
+    logger.warn({ err: err?.message || String(err), query: req.query }, 'Failed to search services');
     return res.status(500).json({ error: 'INTERNAL_ERROR' });
   }
 });
