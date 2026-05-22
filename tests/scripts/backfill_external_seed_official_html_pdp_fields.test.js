@@ -950,14 +950,14 @@ describe('backfill-external-seed-official-html-pdp-fields TIRTIR sheet matching'
     expect(patch.seedData.pdp_field_quality_summary.ingredients_raw.source_quality_status).toBe('high');
   });
 
-  test('missing-fields-only seed patch replaces non-displayable default variant placeholders', () => {
+  test('missing-fields-only seed patch replaces non-displayable generic variant placeholders', () => {
     const row = {
       seed_data: {
         variants: [
           {
             variant_id: 'legacy-default',
-            title: 'Default Title',
-            options: [{ name: 'Title', value: 'Default Title' }],
+            title: 'Single item',
+            options: [{ name: 'Format', value: 'Single item' }],
           },
         ],
         snapshot: {},

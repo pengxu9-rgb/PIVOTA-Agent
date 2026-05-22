@@ -180,7 +180,7 @@ function isDisplayableShopifyVariantOption(option) {
   const name = normalizeText(option?.name);
   const value = normalizeText(option?.value);
   if (!name || !value) return false;
-  if (/^(?:default|default title|title|single|n\/a)$/i.test(value)) return false;
+  if (/^(?:default|default title|title|single|single item|one size|standard|regular|n\/a)$/i.test(value)) return false;
   if (/^(?:default|default title|title)$/i.test(name) && /^(?:default|default title|title)$/i.test(value)) return false;
   return true;
 }
