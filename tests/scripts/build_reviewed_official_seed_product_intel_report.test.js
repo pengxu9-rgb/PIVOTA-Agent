@@ -207,6 +207,93 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     );
   });
 
+  test('sanitizes Sigma value, retailer, and ellipsis source text before public insight use', () => {
+    expect(
+      inferKind(
+        'Conceal & Correct Duo',
+        '',
+        '',
+        '$68 Value Brighten, correct, and conceal with precision using the Conceal & Correct Duo.',
+      ),
+    ).toBe('makeup_set');
+    expect(
+      inferKind(
+        'Soft Blend Eye Duo',
+        '',
+        '',
+        '$47 Value Create effortlessly sweet eye looks with the Peach Pie Eye Duo.',
+      ),
+    ).toBe('makeup_set');
+    expect(inferKind('Hydro Melt Lip Mask', '', '', 'Leave-on lip mask with jojoba oil.')).toBe('lip');
+    expect(inferKind('Brush Cleanser Trio', '', '', 'Give your brushes a deep, gentle clean.')).toBe(
+      'brush_care',
+    );
+
+    const lipDuoBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_sigma_lip_duo',
+        title: 'Hydrating Lip Duo',
+        canonical_url: 'https://sigmabeauty.com/products/hydrating-lip-duo',
+        seed_data: {
+          description:
+            '$56 Value Treat your lips with the Hydrating Lip Duo by Sigma Beauty--an exclusive bundle available only at Ulta Beauty.',
+          key_ingredients: ['Hyaluronic Acid'],
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_sigma_lip_duo',
+        sellable_item_group_id: 'sig_sigma_lip_duo',
+      },
+      generatedAt: '2026-05-22T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+    const paletteBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_sigma_palette',
+        title: 'Sigma x Angela Bright Eyeshadow Palette',
+        canonical_url: 'https://sigmabeauty.com/products/sigma-x-angela-bright-eyeshadow-palette',
+        seed_data: {
+          description: '"It finally happened...the Sigma x Angela Bright Eyeshadow Palette. Not eligible for discounts.',
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_sigma_palette',
+        sellable_item_group_id: 'sig_sigma_palette',
+      },
+      generatedAt: '2026-05-22T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+    const brushCareBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_sigma_brush_care',
+        title: 'Essential Brush Cleaning Duo',
+        canonical_url: 'https://sigmabeauty.com/products/essential-brush-cleaning-duo',
+        seed_data: {
+          description: 'Clear skin starts with clean makeup brushes.',
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_sigma_brush_care',
+        sellable_item_group_id: 'sig_sigma_brush_care',
+      },
+      generatedAt: '2026-05-22T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+
+    expect(lipDuoBundle.shopping_card.subtitle).toBe('Lip Set');
+    expect(lipDuoBundle.shopping_card.highlight).toBe('Lip-care routine set');
+    expect(JSON.stringify(lipDuoBundle)).not.toMatch(/\$\d|available only|Ulta Beauty|price or availability/i);
+    expect(paletteBundle.shopping_card.subtitle).toBe('Eye Makeup');
+    expect(paletteBundle.shopping_card.highlight).toBe('Eye-makeup formula detail');
+    expect(JSON.stringify(paletteBundle)).not.toMatch(/\.{2,}|discount/i);
+    expect(brushCareBundle.shopping_card.subtitle).toBe('Brush Care');
+    expect(brushCareBundle.shopping_card.highlight).toBe('Brush-care cleaning detail');
+    expect(JSON.stringify(brushCareBundle)).not.toMatch(/community-backed/i);
+  });
+
   test('uses compact Kylie highlights that avoid beauty-product and source-backed fallbacks', () => {
     const lipBundle = buildBundle({
       seed: {
