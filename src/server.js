@@ -33480,14 +33480,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const structuredIngredientSuppressedReason = String(
         structuredIngredientModules?.authority?.suppressed_reason || '',
       ).trim();
-      const suppressActiveIngredientFallback =
+      const productFamilyFormulaNotApplicable =
         /^product_family_(?:set_or_collection|non_merch|accessory)$/.test(
           structuredIngredientSuppressedReason,
         );
       const activeIngredientsData =
         allowsBeautyFormulaModules
           ? structuredIngredientModules.activeIngredientsData ||
-            (!suppressActiveIngredientFallback
+            (!productFamilyFormulaNotApplicable
               ? findPdpPayloadModuleData(pdpPayload, 'active_ingredients')
               : null) ||
             null
@@ -33495,7 +33495,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const ingredientsInciData =
         allowsBeautyFormulaModules
           ? structuredIngredientModules.ingredientsInciData ||
-            findPdpPayloadModuleData(pdpPayload, 'ingredients_inci') ||
+            (!productFamilyFormulaNotApplicable
+              ? findPdpPayloadModuleData(pdpPayload, 'ingredients_inci')
+              : null) ||
             null
           : null;
       const howToUseData = findPdpPayloadModuleData(pdpPayload, 'how_to_use') || null;
@@ -33526,6 +33528,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             ) || '',
           ),
         );
+      const accessoryOrNonFormulaPdp = [
+        'accessory',
+        'non_merch',
+        'non_merchandise',
+        'sample',
+      ].includes(pdpProductFamily);
+      const structuredDetailsNotApplicablePdp = setOrCollectionPdp || accessoryOrNonFormulaPdp;
       if (catalogIdentity?.pivota_signature_id && canonicalPayload?.product) {
         canonicalPayload = {
           ...canonicalPayload,
@@ -33910,30 +33919,36 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       );
 
       if (wantsActiveIngredients && allowsBeautyFormulaModules) {
+        const activeIngredientsUnavailableReason =
+          productFamilyFormulaNotApplicable ? structuredIngredientSuppressedReason : 'unavailable';
         modules.push({
           type: 'active_ingredients',
           required: false,
           data: activeIngredientsData,
           ...(activeIngredientsData
             ? {}
-            : { reason: structuredIngredientSuppressedReason || 'unavailable' }),
+            : { reason: activeIngredientsUnavailableReason }),
         });
-        if (!activeIngredientsData) {
+        if (!activeIngredientsData && !productFamilyFormulaNotApplicable) {
           missing.push({
             type: 'active_ingredients',
-            reason: structuredIngredientSuppressedReason || 'unavailable',
+            reason: activeIngredientsUnavailableReason,
           });
         }
       }
 
       if (wantsIngredientsInci && allowsBeautyFormulaModules) {
+        const ingredientsInciUnavailableReason =
+          productFamilyFormulaNotApplicable ? structuredIngredientSuppressedReason : 'unavailable';
         modules.push({
           type: 'ingredients_inci',
           required: false,
           data: ingredientsInciData,
-          ...(ingredientsInciData ? {} : { reason: 'unavailable' }),
+          ...(ingredientsInciData ? {} : { reason: ingredientsInciUnavailableReason }),
         });
-        if (!ingredientsInciData) missing.push({ type: 'ingredients_inci', reason: 'unavailable' });
+        if (!ingredientsInciData && !productFamilyFormulaNotApplicable) {
+          missing.push({ type: 'ingredients_inci', reason: ingredientsInciUnavailableReason });
+        }
       }
 
       if (wantsHowToUse) {
@@ -33957,19 +33972,25 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       }
 
       if (wantsProductFacts) {
+        const productFactsUnavailableReason =
+          structuredDetailsNotApplicablePdp && (productOverviewData || productDetailsData || supplementalDetailsData)
+            ? `not_applicable_${pdpProductFamily || (setOrCollectionPdp ? 'set_or_collection' : 'product_family')}_overview`
+            : 'unavailable';
         modules.push({
           type: 'product_facts',
           required: false,
           data: productFactsData,
-          ...(productFactsData ? {} : { reason: 'unavailable' }),
+          ...(productFactsData ? {} : { reason: productFactsUnavailableReason }),
         });
-        if (!productFactsData) missing.push({ type: 'product_facts', reason: 'unavailable' });
+        if (!productFactsData && productFactsUnavailableReason === 'unavailable') {
+          missing.push({ type: 'product_facts', reason: 'unavailable' });
+        }
       }
 
       if (wantsSupplementalDetails) {
         const supplementalDetailsUnavailableReason =
-          setOrCollectionPdp && (productFactsData || productDetailsData || productOverviewData)
-            ? 'not_applicable_component_summary_in_structured_details'
+          structuredDetailsNotApplicablePdp && (productFactsData || productDetailsData || productOverviewData)
+            ? `not_applicable_${pdpProductFamily || (setOrCollectionPdp ? 'set_or_collection' : 'product_family')}_structured_details`
             : 'unavailable';
         modules.push({
           type: 'supplemental_details',
