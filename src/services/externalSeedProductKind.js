@@ -66,6 +66,36 @@ function collectExternalSeedProductKindText(input = {}) {
     .join(' ');
 }
 
+function collectExternalSeedProductKindContentText(input = {}) {
+  const seedData = asPlainObject(input.seed_data);
+  const snapshot = asPlainObject(seedData.snapshot);
+  return [
+    input.title,
+    input.name,
+    input.display_name,
+    input.category,
+    input.product_type,
+    input.canonical_url,
+    input.destination_url,
+    input.url,
+    seedData.title,
+    seedData.name,
+    seedData.category,
+    seedData.product_type,
+    seedData.productType,
+    seedData.source_page_type,
+    snapshot.title,
+    snapshot.name,
+    snapshot.category,
+    snapshot.product_type,
+    snapshot.productType,
+    snapshot.source_page_type,
+  ]
+    .map(asString)
+    .filter(Boolean)
+    .join(' ');
+}
+
 function normalizeExplicitProductFamily(value) {
   const normalized = asString(value).toLowerCase().replace(/[\s-]+/g, '_');
   if (!normalized) return '';
@@ -144,6 +174,7 @@ function hasToolCategoryPath(input = {}) {
 
 function classifyExternalSeedProductKind(input = {}) {
   const text = collectExternalSeedProductKindText(input);
+  const contentText = collectExternalSeedProductKindContentText(input);
   const reasons = [];
 
   if (NON_MERCH_RE.test(text)) {
@@ -162,6 +193,10 @@ function classifyExternalSeedProductKind(input = {}) {
   }
   const strongBundleSignal = STRONG_BUNDLE_RE.test(text);
   const collectionBundleSignal = COLLECTION_BUNDLE_RE.test(text) && !COLLECTION_MEMBER_RE.test(text);
+  const strongBundleContentSignal = STRONG_BUNDLE_RE.test(contentText);
+  const collectionBundleContentSignal =
+    COLLECTION_BUNDLE_RE.test(contentText) && !COLLECTION_MEMBER_RE.test(contentText);
+  const formulaCategoryPathSignal = hasFormulaCategoryPath(input);
   if (
     explicitFamily?.family === 'single_formula' &&
     !SET_PHRASE_FORMULA_RE.test(text) &&
@@ -173,6 +208,16 @@ function classifyExternalSeedProductKind(input = {}) {
         : 'collection_bundle_overrides_single_formula_signal',
     );
     return { family: 'set_or_collection', reasons };
+  }
+  if (
+    explicitFamily?.family === 'set_or_collection' &&
+    formulaCategoryPathSignal &&
+    FORMULA_PRODUCT_RE.test(text) &&
+    !strongBundleContentSignal &&
+    !collectionBundleContentSignal
+  ) {
+    reasons.push('stale_bundle_kind_overridden_by_formula_category');
+    return { family: 'single_formula', reasons };
   }
   if (explicitFamily) {
     return { family: explicitFamily.family, reasons: [explicitFamily.reason] };
@@ -205,7 +250,7 @@ function classifyExternalSeedProductKind(input = {}) {
     reasons.push('collection_bundle_signal');
     return { family: 'set_or_collection', reasons };
   }
-  if (hasFormulaCategoryPath(input)) {
+  if (formulaCategoryPathSignal) {
     reasons.push('formula_category_path_signal');
     return { family: 'single_formula', reasons };
   }

@@ -89,6 +89,30 @@ describe('external seed product kind classification', () => {
     );
   });
 
+  test('overrides stale bundle product kind for formula makeup category paths', () => {
+    expect(
+      classifyExternalSeedProductKind({
+        title: 'Gel Eyeliner',
+        category_path: ['beauty', 'makeup', 'eye', 'eyeliner'],
+        product_type: 'Eyeliner',
+        seed_data: {
+          product_kind: 'bundle',
+          product_type: 'Eyeliner',
+          category_path: 'beauty/makeup/eye/eyeliner',
+          snapshot: {
+            product_kind: 'bundle',
+            product_type: 'Eyeliner',
+          },
+        },
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        family: 'single_formula',
+        reasons: expect.arrayContaining(['stale_bundle_kind_overridden_by_formula_category']),
+      }),
+    );
+  });
+
   test('lets strong collection titles override stale single-formula seed kind', () => {
     expect(
       classifyExternalSeedProductKind({
