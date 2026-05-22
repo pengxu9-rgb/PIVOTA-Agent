@@ -22993,6 +22993,90 @@ function filterPublicVisibleSimilarProducts(products) {
   });
 }
 
+function dedupeSimilarCandidatesByMerchantProductId(products) {
+  const out = [];
+  const seen = new Set();
+  for (const item of Array.isArray(products) ? products : []) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+    const merchantId = firstNonEmptyString(item.merchant_id, item.merchantId) || EXTERNAL_SEED_MERCHANT_ID;
+    const productId = firstNonEmptyString(
+      item.product_id,
+      item.productId,
+      item.id,
+      item.external_product_id,
+      item.externalProductId,
+    );
+    if (!productId) continue;
+    const key = `${merchantId}::${productId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+  return out;
+}
+
+function collectPdpComponentSimilarCandidates(product = {}) {
+  const seedData =
+    product?.seed_data && typeof product.seed_data === 'object' && !Array.isArray(product.seed_data)
+      ? product.seed_data
+      : {};
+  const snapshot =
+    seedData.snapshot && typeof seedData.snapshot === 'object' && !Array.isArray(seedData.snapshot)
+      ? seedData.snapshot
+      : {};
+  const baseExternalId = firstNonEmptyString(
+    product.external_product_id,
+    product.external_seed_product_id,
+    product.source_product_id,
+    product.platform_product_id,
+    product.product_id,
+    product.id,
+  );
+  const refs = [
+    ...(Array.isArray(seedData.bundle_component_refs) ? seedData.bundle_component_refs : []),
+    ...(Array.isArray(seedData.component_product_refs) ? seedData.component_product_refs : []),
+    ...(Array.isArray(snapshot.bundle_component_refs) ? snapshot.bundle_component_refs : []),
+    ...(Array.isArray(snapshot.component_product_refs) ? snapshot.component_product_refs : []),
+  ];
+  const out = [];
+  const seen = new Set();
+  for (const ref of refs) {
+    if (!ref || typeof ref !== 'object' || Array.isArray(ref)) continue;
+    const reviewState = String(ref.review_state || ref.reviewStatus || '').trim().toLowerCase();
+    if (!['reviewed', 'approved', 'verified'].includes(reviewState)) continue;
+    const externalProductId = firstNonEmptyString(
+      ref.external_product_id,
+      ref.externalProductId,
+      ref.product_id,
+      ref.productId,
+      ref.platform_product_id,
+      ref.platformProductId,
+    );
+    if (!isExternalSeedProductId(externalProductId)) continue;
+    if (baseExternalId && externalProductId === baseExternalId) continue;
+    if (seen.has(externalProductId)) continue;
+    seen.add(externalProductId);
+    out.push({
+      merchant_id: EXTERNAL_SEED_MERCHANT_ID,
+      product_id: externalProductId,
+      external_product_id: externalProductId,
+      platform_product_id: externalProductId,
+      source: 'external_seed',
+      retrieval_source: 'reviewed_component_ref',
+      reason: 'component_ref:reviewed_bundle_component',
+      title: firstNonEmptyString(ref.title, ref.name),
+      category: firstNonEmptyString(ref.component_role, ref.role, ref.category),
+      product_type: firstNonEmptyString(ref.component_role, ref.role, ref.product_type),
+      canonical_url: firstNonEmptyString(ref.canonical_url, ref.destination_url, ref.url),
+      destination_url: firstNonEmptyString(ref.destination_url, ref.canonical_url, ref.url),
+      card_badge: 'Included item',
+      component_role: firstNonEmptyString(ref.component_role, ref.role),
+      component_source_kind: firstNonEmptyString(ref.source_kind, ref.sourceKind),
+    });
+  }
+  return out;
+}
+
 async function prewarmPdpSimilarForProduct({
   payload = {},
   canonicalProductForPdp = {},
@@ -33390,12 +33474,20 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         };
       }
 
-      if (wantsSimilar && relatedProducts.length > 0) {
+      const componentSimilarCandidates = wantsSimilar
+        ? collectPdpComponentSimilarCandidates(canonicalProductForPdp)
+        : [];
+
+      if (wantsSimilar && (relatedProducts.length > 0 || componentSimilarCandidates.length > 0)) {
 	        const similarCardEnrichmentStartedAt = Date.now();
 	        const similarLimit = resolvePdpSimilarDisplayLimit(payload);
           const similarCandidateLimit = resolvePdpSimilarCandidateLimit(similarLimit);
+        const relatedProductsForEnrichment = dedupeSimilarCandidatesByMerchantProductId([
+          ...componentSimilarCandidates,
+          ...relatedProducts,
+        ]);
 	        const enrichedRelatedProducts = await enrichSimilarProductsForPdpCards({
-	          items: relatedProducts,
+	          items: relatedProductsForEnrichment,
 	          checkoutToken,
 	          bypassCache,
 	          maxItems: similarCandidateLimit,
@@ -33446,6 +33538,31 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               card_image_missing_count: missingImageCount,
               card_highlight_filtered_count: filteredHighlightMissingCount,
               public_external_id_filtered_count: publicExternalIdFilteredCount,
+              component_ref_candidate_count: componentSimilarCandidates.length,
+            },
+          };
+        } else {
+          relatedProductsEnvelope = {
+            status: relatedProducts.length > 0 ? 'success' : 'empty',
+            strategy: 'related_products',
+            items: relatedProducts,
+            metadata: {
+              ...calibrateSimilarMetadataForVisibleProducts({
+                metadata: { similar_status: relatedProducts.length > 0 ? 'ready' : 'empty' },
+                products: relatedProducts,
+                requestedLimit: similarLimit,
+              }),
+              ...cardEnrichmentMetadata,
+              card_enrichment_status:
+                cardEnrichmentMetadata.card_enrichment_status ||
+                (relatedProducts.length > 0 && missingHighlightCount <= 0 && missingImageCount <= 0
+                  ? 'ready'
+                  : 'partial'),
+              card_highlight_missing_count: missingHighlightCount,
+              card_image_missing_count: missingImageCount,
+              card_highlight_filtered_count: filteredHighlightMissingCount,
+              public_external_id_filtered_count: publicExternalIdFilteredCount,
+              component_ref_candidate_count: componentSimilarCandidates.length,
             },
           };
         }
@@ -41515,6 +41632,8 @@ module.exports._debug = {
   promoteVisibleSimilarProductSigIds,
   hydrateVisibleSimilarProductSigIdsFromCatalog,
   filterPublicVisibleSimilarProducts,
+  dedupeSimilarCandidatesByMerchantProductId,
+  collectPdpComponentSimilarCandidates,
   calibrateSimilarMetadataForVisibleProducts,
   enrichSimilarProductsForPdpCards,
   getSimilarCardEnrichmentMetadata,

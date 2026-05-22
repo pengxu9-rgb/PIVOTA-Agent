@@ -485,6 +485,73 @@ describe('find_similar_products mainline wrapper', () => {
     expect(out.map((item) => item.product_id)).toEqual(['sig_mirrored', 'internal_1']);
   });
 
+  it('collects only reviewed external seed component refs for PDP similar', async () => {
+    const app = require('../src/server');
+
+    const out = app._debug.collectPdpComponentSimilarCandidates({
+      external_product_id: 'ext_bundle_base',
+      seed_data: {
+        bundle_component_refs: [
+          {
+            external_product_id: 'ext_component_1',
+            title: 'Great Barrier Relief',
+            size_label: '45 ml',
+            review_state: 'reviewed',
+            source_kind: 'manual_reviewed_bundle_component_ref',
+          },
+          {
+            external_product_id: 'ext_component_1',
+            title: 'Great Barrier Relief duplicate',
+            review_state: 'reviewed',
+          },
+          {
+            external_product_id: 'ext_component_unreviewed',
+            title: 'Unreviewed component',
+          },
+          {
+            external_product_id: 'ext_bundle_base',
+            title: 'Self reference',
+            review_state: 'reviewed',
+          },
+          {
+            external_product_id: 'shopify_123',
+            title: 'Non external seed ref',
+            review_state: 'reviewed',
+          },
+        ],
+        snapshot: {
+          component_product_refs: [
+            {
+              product_id: 'ext_component_2',
+              name: 'Matcha Hemp Hydrating Cleanser',
+              role: 'cleanser',
+              review_state: 'approved',
+              canonical_url: 'https://kravebeauty.com/products/matcha-hemp-hydrating-cleanser',
+            },
+          ],
+        },
+      },
+    });
+
+    expect(out).toEqual([
+      expect.objectContaining({
+        merchant_id: 'external_seed',
+        product_id: 'ext_component_1',
+        retrieval_source: 'reviewed_component_ref',
+        reason: 'component_ref:reviewed_bundle_component',
+        title: 'Great Barrier Relief',
+        component_source_kind: 'manual_reviewed_bundle_component_ref',
+      }),
+      expect.objectContaining({
+        merchant_id: 'external_seed',
+        product_id: 'ext_component_2',
+        retrieval_source: 'reviewed_component_ref',
+        title: 'Matcha Hemp Hydrating Cleanser',
+        product_type: 'cleanser',
+      }),
+    ]);
+  });
+
   it('runtime-classifies official hair styling seeds and blocks non-formula fill', () => {
     const { pickLayeredRecommendations } = require('../src/services/RecommendationEngine');
 
