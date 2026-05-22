@@ -160,6 +160,20 @@ function classifyExternalSeedProductKind(input = {}) {
     reasons.push('sample_like_signal');
     return { family: 'sample', reasons };
   }
+  const strongBundleSignal = STRONG_BUNDLE_RE.test(text);
+  const collectionBundleSignal = COLLECTION_BUNDLE_RE.test(text) && !COLLECTION_MEMBER_RE.test(text);
+  if (
+    explicitFamily?.family === 'single_formula' &&
+    !SET_PHRASE_FORMULA_RE.test(text) &&
+    (strongBundleSignal || collectionBundleSignal)
+  ) {
+    reasons.push(
+      strongBundleSignal
+        ? 'bundle_set_overrides_single_formula_signal'
+        : 'collection_bundle_overrides_single_formula_signal',
+    );
+    return { family: 'set_or_collection', reasons };
+  }
   if (explicitFamily) {
     return { family: explicitFamily.family, reasons: [explicitFamily.reason] };
   }
@@ -183,11 +197,11 @@ function classifyExternalSeedProductKind(input = {}) {
     reasons.push('set_phrase_formula_signal');
     return { family: 'single_formula', reasons };
   }
-  if (STRONG_BUNDLE_RE.test(text)) {
+  if (strongBundleSignal) {
     reasons.push('bundle_set_signal');
     return { family: 'set_or_collection', reasons };
   }
-  if (COLLECTION_BUNDLE_RE.test(text) && !COLLECTION_MEMBER_RE.test(text)) {
+  if (collectionBundleSignal) {
     reasons.push('collection_bundle_signal');
     return { family: 'set_or_collection', reasons };
   }

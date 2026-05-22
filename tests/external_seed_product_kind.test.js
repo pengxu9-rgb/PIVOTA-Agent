@@ -89,6 +89,25 @@ describe('external seed product kind classification', () => {
     );
   });
 
+  test('lets strong collection titles override stale single-formula seed kind', () => {
+    expect(
+      classifyExternalSeedProductKind({
+        title: 'The Smooth Skin Collection',
+        seed_data: {
+          product_kind: 'single_formula',
+          snapshot: {
+            product_kind: 'single_formula',
+          },
+        },
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        family: 'set_or_collection',
+        reasons: expect.arrayContaining(['collection_bundle_overrides_single_formula_signal']),
+      }),
+    );
+  });
+
   test('classifies hidden free-gift app products as non-merch', () => {
     expect(
       classifyExternalSeedProductKind({
