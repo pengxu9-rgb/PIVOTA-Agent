@@ -207,6 +207,10 @@ test('beauty brand browse display dedupe collapses shade variants by product lin
     canonicalizeBeautyProductTitleForDedupe("Sun Stalk'r Instant Warmth Bronzer — Private Island"),
     'sun stalk r instant warmth bronzer',
   );
+  assert.equal(
+    canonicalizeBeautyProductTitleForDedupe('Bright Fix Eye Brightener — Honey Mustard'),
+    'bright fix eye brightener',
+  );
 
   const products = [
     canonicalFentyProduct('fenty_primer', 'Grip Trip Mattifying + Blurring Primer', {
@@ -239,12 +243,25 @@ test('beauty brand browse display dedupe collapses shade variants by product lin
       category_path: ['beauty', 'makeup', 'face', 'bronzer'],
       catalog_category_path: 'beauty/makeup/face/bronzer',
     }),
+    canonicalFentyProduct('fenty_eye_honey', 'Bright Fix Eye Brightener — Honey Mustard', {
+      category: 'Eye Brightener',
+      product_type: 'Eye Brightener',
+      category_path: ['beauty', 'makeup', 'eye', 'brightener'],
+      catalog_category_path: 'beauty/makeup/eye/brightener',
+    }),
+    canonicalFentyProduct('fenty_eye_seashell', 'Bright Fix Eye Brightener — Seashell', {
+      category: 'Eye Brightener',
+      product_type: 'Eye Brightener',
+      category_path: ['beauty', 'makeup', 'eye', 'brightener'],
+      catalog_category_path: 'beauty/makeup/eye/brightener',
+    }),
   ];
 
   assert.deepEqual(dedupeBeautyProductsByDisplayKey(products).map((product) => product.product_id), [
     'fenty_primer',
     'fenty_concealer_100c',
     'fenty_bronzer_private_island',
+    'fenty_eye_honey',
   ]);
 });
 

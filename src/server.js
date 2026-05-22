@@ -16644,7 +16644,7 @@ function looksLikeBeautyVariantTitleSuffix(suffix = '', baseTitle = '') {
   const suffixTokens = tokenizeSearchTextForMatch(normalizedSuffix).filter(Boolean);
   if (suffixTokens.length === 0 || suffixTokens.length > 5) return false;
   const baseHasBeautyProductTerm =
-    /\b(?:foundation|concealer|bronzer|blush|highlighter|lipstick|lip\s*color|lip\s*paint|lip\s*cream|lip\s*gloss|lip\s*balm|mascara|eyeliner|eyeshadow|brow|powder|primer|skin\s*tint|moisturi[sz]er|serum|cleanser|sunscreen|spf|fragrance|perfume|parfum|mist|shampoo|conditioner|cream|gel|oil|stick|pencil|liner)\b/.test(normalizedBase);
+    /\b(?:foundation|concealer|bronzer|blush|highlighter|eye\s*brightener|brightener|lipstick|lip\s*color|lip\s*paint|lip\s*cream|lip\s*gloss|lip\s*balm|mascara|eyeliner|eyeshadow|brow|powder|primer|skin\s*tint|moisturi[sz]er|serum|cleanser|sunscreen|spf|fragrance|perfume|parfum|mist|shampoo|conditioner|cream|gel|oil|stick|pencil|liner)\b/.test(normalizedBase);
   if (!baseHasBeautyProductTerm) return false;
   if (/\b(?:foundation|concealer|bronzer|blush|highlighter|lipstick|mascara|eyeliner|eyeshadow|moisturi[sz]er|serum|cleanser|sunscreen|fragrance|perfume|parfum|bundle|set|kit|duo|trio)\b/.test(normalizedSuffix)) {
     return false;
