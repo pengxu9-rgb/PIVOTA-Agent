@@ -36009,7 +36009,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         pivotBeautyContractInvoke &&
         shouldPreserveIngredientDirectForPivotBeautyContract(queryText, ingredientIntentIds);
       if (
-        !routeSearchQualityContractApplied &&
         strictCommerceFindProductsMulti &&
         ingredientIntentIds.length > 0 &&
         (!pivotBeautyContractInvoke || preserveIngredientDirectForPivotBeautyContract)

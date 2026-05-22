@@ -5,7 +5,7 @@ process.env.API_MODE = 'REAL';
 const request = require('supertest');
 const nock = require('nock');
 
-const BEAUTY_MAINLINE_QUERY_SOURCE = 'agent_products_beauty_external_seed_mainline';
+const INGREDIENT_DIRECT_QUERY_SOURCE = 'agent_products_ingredient_recall_direct';
 
 function mockDbRows(rows = [], capturedSqlRef = null) {
   jest.doMock('../../src/db', () => ({
@@ -104,7 +104,7 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
     }
   });
 
-  test('strict ingredient queries return external seed hits through beauty contract mainline', async () => {
+  test('strict ingredient queries return external seed hits through ingredient direct recall', async () => {
     const capturedSql = { value: '', all: [] };
     mockDbRows(
       [
@@ -168,43 +168,38 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
         invoke_search_rail: 'authoritative_shopping',
         legacy_contract: false,
         contract_bridge: expect.objectContaining({
-          attempted_contract: 'pivot.agent.v1',
-          resolved_contract: 'pivot.agent.v1',
+          attempted_contract: 'shop_invoke_strict',
+          resolved_contract: 'shop_invoke_strict',
           legacy_fallback: false,
         }),
-        query_source: BEAUTY_MAINLINE_QUERY_SOURCE,
-        external_seed_only_requested: true,
-        external_seed_rows_fetched: 2,
-        beauty_mainline_budget_filter_applied: true,
-        beauty_mainline_budget_filtered_out_count: 1,
-        search_quality_contract_applied: true,
-        search_quality_contract_mode: 'enforce',
-        search_quality_contract: expect.objectContaining({
-          contract_version: 'search_quality_contract_v1',
-          target_domain: 'beauty',
-          hard_constraints: expect.objectContaining({
-            category_path_prefix: 'beauty/skincare/treat/',
-          }),
-          soft_preferences: expect.objectContaining({
-            ingredient_tokens: expect.arrayContaining(['niacinamide']),
-          }),
-        }),
+        query_source: INGREDIENT_DIRECT_QUERY_SOURCE,
+        strict_constraint_query: true,
+        strict_constraint_reason: 'multi_constraint',
+        ingredient_intents: expect.arrayContaining(['niacinamide']),
+        matched_ingredient_ids: expect.arrayContaining(['niacinamide']),
+        ingredient_direct_prefetch_count: 2,
+        ingredient_direct_budget_filter_applied: true,
+        ingredient_direct_budget_filtered_out_count: 1,
         budget_fx_applied: true,
         budget_fx_rate: expect.any(Number),
         budget_fx_source: expect.any(String),
         budget_fx_candidate_currency: 'USD',
         budget_fx_unresolved: false,
         route_health: expect.objectContaining({
-          primary_path_used: 'beauty_external_seed_mainline',
+          primary_path_used: 'ingredient_recall_direct',
           fallback_triggered: false,
+        }),
+        search_decision: expect.objectContaining({
+          decision_authority: INGREDIENT_DIRECT_QUERY_SOURCE,
+          decision_locked: true,
         }),
       }),
     );
     const externalSeedSql = capturedSql.all.find((text) =>
       text.includes('FROM external_product_seeds') && !text.includes('FROM external_product_seeds eps'),
     );
-    expect(externalSeedSql).toContain("seed_data->'derived'->'recall'->>'category'");
-    expect(externalSeedSql).toContain("seed_data->>'product_type'");
+    expect(externalSeedSql).toContain("seed_data#>>'{derived,recall,category}'");
+    expect(externalSeedSql).toContain("seed_data#>>'{snapshot,category}'");
     expect(externalSeedSql).not.toMatch(/CAST\(COALESCE\(seed_data|seed_data::text/);
   });
 
@@ -315,14 +310,20 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
     );
     expect(res.body.metadata).toEqual(
       expect.objectContaining({
-        query_source: BEAUTY_MAINLINE_QUERY_SOURCE,
-        external_seed_rows_fetched: 3,
-        beauty_mainline_budget_filter_applied: true,
-        beauty_mainline_budget_filtered_out_count: 2,
-        beauty_mainline_budget_currency_filtered_out_count: 1,
-        search_quality_contract_applied: true,
+        query_source: INGREDIENT_DIRECT_QUERY_SOURCE,
+        strict_constraint_query: true,
+        strict_constraint_reason: 'multi_constraint',
+        ingredient_intents: expect.arrayContaining(['niacinamide']),
+        matched_ingredient_ids: expect.arrayContaining(['niacinamide']),
+        ingredient_direct_prefetch_count: 3,
+        ingredient_direct_budget_filter_applied: true,
+        ingredient_direct_budget_filtered_out_count: 2,
+        ingredient_direct_budget_currency_filtered_out_count: 1,
         budget_fx_candidate_currency: 'USD',
         budget_fx_unresolved: false,
+        route_health: expect.objectContaining({
+          primary_path_used: 'ingredient_recall_direct',
+        }),
       }),
     );
   });
@@ -408,10 +409,13 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
     ]);
     expect(res.body.metadata).toEqual(
       expect.objectContaining({
-        query_source: BEAUTY_MAINLINE_QUERY_SOURCE,
-        search_quality_contract_applied: true,
-        beauty_mainline_filter: expect.objectContaining({
-          target_families: expect.arrayContaining(['moisturizer']),
+        query_source: INGREDIENT_DIRECT_QUERY_SOURCE,
+        strict_constraint_query: true,
+        strict_constraint_reason: 'multi_constraint',
+        ingredient_intents: expect.arrayContaining(['ceramide_np']),
+        matched_ingredient_ids: expect.arrayContaining(['ceramide_np']),
+        route_health: expect.objectContaining({
+          primary_path_used: 'ingredient_recall_direct',
         }),
       }),
     );
@@ -432,7 +436,7 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
     expect(res.body.reply).toContain('Vanicream Daily Facial Moisturizer with Ceramides');
   });
 
-  test('strict ingredient empty responses stay on beauty contract mainline without fallback', async () => {
+  test('strict ingredient empty responses stay on ingredient direct recall without fallback', async () => {
     mockDbRows([]);
 
     const budgetRescueSearch = nock('http://pivota.test')
@@ -477,21 +481,25 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
         invoke_search_rail: 'authoritative_shopping',
         legacy_contract: false,
         contract_bridge: expect.objectContaining({
-          attempted_contract: 'pivot.agent.v1',
-          resolved_contract: 'pivot.agent.v1',
+          attempted_contract: 'shop_invoke_strict',
+          resolved_contract: 'shop_invoke_strict',
           legacy_fallback: false,
         }),
-        query_source: BEAUTY_MAINLINE_QUERY_SOURCE,
-        external_seed_only_requested: true,
-        external_seed_rows_fetched: 0,
+        query_source: INGREDIENT_DIRECT_QUERY_SOURCE,
+        strict_constraint_query: true,
+        strict_constraint_reason: 'multi_constraint',
+        strict_empty: true,
+        ingredient_intents: expect.arrayContaining(['ascorbic_acid']),
+        matched_ingredient_ids: expect.arrayContaining(['ascorbic_acid']),
+        ingredient_direct_prefetch_count: 0,
         external_seed_returned_count: 0,
-        failure_class: 'beauty_mainline_empty',
-        fallback_attempted: false,
-        fallback_adopted: false,
-        search_quality_contract_applied: true,
         route_health: expect.objectContaining({
-          primary_path_used: 'beauty_external_seed_mainline',
+          primary_path_used: 'ingredient_recall_direct',
           fallback_triggered: false,
+        }),
+        search_decision: expect.objectContaining({
+          final_decision: 'strict_empty',
+          decision_authority: INGREDIENT_DIRECT_QUERY_SOURCE,
         }),
       }),
     );
@@ -542,12 +550,14 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
       expect.objectContaining({
         invoke_search_rail: 'authoritative_shopping',
         legacy_contract: false,
-        query_source: BEAUTY_MAINLINE_QUERY_SOURCE,
-        failure_class: 'beauty_mainline_empty',
-        external_seed_only_requested: true,
-        search_quality_contract_applied: true,
+        query_source: INGREDIENT_DIRECT_QUERY_SOURCE,
+        strict_constraint_query: true,
+        strict_constraint_reason: 'ingredient',
+        strict_empty: true,
+        ingredient_intents: expect.arrayContaining(['niacinamide']),
+        matched_ingredient_ids: expect.arrayContaining(['niacinamide']),
         route_health: expect.objectContaining({
-          primary_path_used: 'beauty_external_seed_mainline',
+          primary_path_used: 'ingredient_recall_direct',
           fallback_triggered: false,
         }),
       }),
