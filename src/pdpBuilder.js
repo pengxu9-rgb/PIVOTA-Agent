@@ -1798,7 +1798,7 @@ function pickSingleSkuSizeLabel(product) {
     const value = asNonEmptyString(candidate);
     if (!value) continue;
     if (/^(default|default title|single|one size|n\/a)$/i.test(value)) continue;
-    if (/(?:\d+\s*(?:m\s*l|ml|fl\.?\s*oz|oz|g|kg|pads?|ea|count|ct|pack|sheets?))\b/i.test(value)) {
+    if (/(?:\d+\s*(?:m\s*l|ml|fl\.?\s*oz|oz|g|kg|pads?|ea|count|ct|pack|sheets?|pcs?|pieces?))\b/i.test(value)) {
       return value;
     }
   }

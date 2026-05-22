@@ -1655,6 +1655,51 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     ]);
   });
 
+  test('renders piece-count single-SKU variants from reviewed size detail', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_tirtir_holiday_set',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'My Glow Holiday Edition',
+        category: 'Gift Set',
+        image_url: 'https://example.com/holiday.png',
+        price: { amount: 38, currency: 'USD' },
+        size_detail_label: '3 pieces',
+        variants: [
+          {
+            id: 'v_default',
+            title: 'Default Title',
+            options: [{ name: 'Format', value: 'Single item' }],
+            source_quality_status: 'blocked',
+            price: { amount: 38, currency: 'USD' },
+          },
+        ],
+        in_stock: true,
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const variantSelector = payload.modules.find((module) => module.type === 'variant_selector');
+    expect(variantSelector).toBeTruthy();
+    expect(variantSelector?.data?.variants).toEqual([
+      expect.objectContaining({
+        variant_id: 'v_default',
+        display_label: 'Size: 3 pieces',
+        options: [expect.objectContaining({ name: 'Size', value: '3 pieces', axis_kind: 'size' })],
+      }),
+    ]);
+    expect(payload.product.default_variant_id).toBe('v_default');
+    expect(payload.product.variants).toEqual([
+      expect.objectContaining({
+        variant_id: 'v_default',
+        title: '3 pieces',
+        options: [expect.objectContaining({ name: 'Size', value: '3 pieces', axis_kind: 'size' })],
+      }),
+    ]);
+  });
+
   test('selects the variant matching the reviewed product price as the default variant', () => {
     const payload = buildPdpPayload({
       product: {
