@@ -1,10 +1,15 @@
 const {
   buildCandidateQuery,
+  buildPreImageSnapshotPath,
   buildProjectionForCandidate,
   parseArgs,
   renderMarkdownReport,
+  run,
   summarizeRows,
 } = require('../../scripts/reanalyze_product_intel_kb_seller_only');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 
 const INGREDIENTS = [
   'Water',
@@ -137,8 +142,88 @@ function fixtureCandidate({ reviewDecision = 'rewrite', seedData = {} } = {}) {
   };
 }
 
+function makeTempSnapshotDir() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'ws-a-mode-a-test-'));
+}
+
+function makeApplyOptions(snapshotDir, extraArgs = []) {
+  return parseArgs([
+    '--apply',
+    '--batch-id',
+    'ws_a_modeA_test_1',
+    '--snapshot-dir',
+    snapshotDir,
+    '--max-rows-per-run',
+    '50',
+    '--retry-budget',
+    '0',
+    '--backoff-ms',
+    '0',
+    ...extraArgs,
+  ]);
+}
+
+function makeFakeApplyDeps(candidate, { onUpdate } = {}) {
+  const queries = [];
+  const client = {
+    query: jest.fn(async (sql, params) => {
+      const text = String(sql);
+      queries.push({ sql: text, params });
+      if (text.trim() === 'BEGIN' || text.trim() === 'COMMIT' || text.trim() === 'ROLLBACK') {
+        return { rows: [], rowCount: 0 };
+      }
+      if (text.includes('FOR UPDATE OF kb')) {
+        return { rows: [candidate], rowCount: 1 };
+      }
+      if (text.includes('UPDATE aurora_product_intel_kb')) {
+        if (onUpdate) return onUpdate({ sql: text, params, queries });
+        return {
+          rows: [
+            {
+              kb_key: candidate.kb_key,
+              analysis: JSON.parse(params[1]),
+              source_meta: JSON.parse(params[2]),
+              last_success_at: '2026-05-22T00:00:00.000Z',
+              updated_at: '2026-05-22T00:00:00.000Z',
+            },
+          ],
+          rowCount: 1,
+        };
+      }
+      throw new Error(`unexpected query: ${text.slice(0, 80)}`);
+    }),
+  };
+  const stdout = { chunks: [], write(chunk) { this.chunks.push(chunk); } };
+  return {
+    deps: {
+      loadCandidates: jest.fn(async () => [candidate]),
+      withClient: jest.fn(async (fn) => fn(client)),
+      stdout,
+    },
+    queries,
+    client,
+    stdout,
+  };
+}
+
 describe('reanalyze_product_intel_kb_seller_only dry-run helpers', () => {
-  test('parseArgs supports dry-run filters and rejects apply at caller boundary', () => {
+  const originalReanalysisEnabled = process.env.PIVOTA_INSIGHTS_REANALYSIS_ENABLED;
+  const originalPublishEnabled = process.env.PIVOTA_INSIGHTS_REANALYSIS_PUBLISH_ENABLED;
+
+  afterEach(() => {
+    if (originalReanalysisEnabled === undefined) {
+      delete process.env.PIVOTA_INSIGHTS_REANALYSIS_ENABLED;
+    } else {
+      process.env.PIVOTA_INSIGHTS_REANALYSIS_ENABLED = originalReanalysisEnabled;
+    }
+    if (originalPublishEnabled === undefined) {
+      delete process.env.PIVOTA_INSIGHTS_REANALYSIS_PUBLISH_ENABLED;
+    } else {
+      process.env.PIVOTA_INSIGHTS_REANALYSIS_PUBLISH_ENABLED = originalPublishEnabled;
+    }
+  });
+
+  test('parseArgs supports dry-run filters and the apply flag', () => {
     const args = parseArgs([
       '--limit',
       '0',
@@ -268,5 +353,95 @@ describe('reanalyze_product_intel_kb_seller_only dry-run helpers', () => {
     expect(markdown).toContain('Domain x Classification');
     expect(markdown).toContain('beauty/skincare/serum');
     expect(markdown).toContain('product:ext_fixture');
+  });
+
+  test('--apply writes snapshots but rejects UPDATE when publish kill switch is false', async () => {
+    process.env.PIVOTA_INSIGHTS_REANALYSIS_ENABLED = 'true';
+    process.env.PIVOTA_INSIGHTS_REANALYSIS_PUBLISH_ENABLED = 'false';
+    const snapshotDir = makeTempSnapshotDir();
+    const candidate = fixtureCandidate();
+    const { deps, queries } = makeFakeApplyDeps(candidate);
+
+    const report = await run(makeApplyOptions(snapshotDir), deps);
+
+    expect(report.summary.classifications.would_render_after_publish).toBe(1);
+    expect(queries.some((entry) => entry.sql.includes('UPDATE aurora_product_intel_kb'))).toBe(false);
+    expect(fs.existsSync(buildPreImageSnapshotPath(snapshotDir, 'ws_a_modeA_test_1', candidate.kb_key))).toBe(true);
+  });
+
+  test('--apply same batch id is idempotent when pre-image snapshot already exists', async () => {
+    process.env.PIVOTA_INSIGHTS_REANALYSIS_ENABLED = 'true';
+    process.env.PIVOTA_INSIGHTS_REANALYSIS_PUBLISH_ENABLED = 'true';
+    const snapshotDir = makeTempSnapshotDir();
+    const candidate = fixtureCandidate();
+    fs.writeFileSync(
+      buildPreImageSnapshotPath(snapshotDir, 'ws_a_modeA_test_1', candidate.kb_key),
+      '{"already":"attempted"}\n',
+      'utf8',
+    );
+    const deps = {
+      loadCandidates: jest.fn(async () => [candidate]),
+      withClient: jest.fn(async () => {
+        throw new Error('withClient should not run for already-attempted row');
+      }),
+      stdout: { chunks: [], write(chunk) { this.chunks.push(chunk); } },
+    };
+
+    const report = await run(makeApplyOptions(snapshotDir), deps);
+
+    expect(deps.withClient).not.toHaveBeenCalled();
+    expect(report.summary.classifications.skipped_already_attempted).toBe(1);
+  });
+
+  test('--apply aborts the run when more than 5% of attempted rows fail UPDATE', async () => {
+    process.env.PIVOTA_INSIGHTS_REANALYSIS_ENABLED = 'true';
+    process.env.PIVOTA_INSIGHTS_REANALYSIS_PUBLISH_ENABLED = 'true';
+    const snapshotDir = makeTempSnapshotDir();
+    const candidate = fixtureCandidate();
+    const { deps, queries } = makeFakeApplyDeps(candidate, {
+      onUpdate: () => {
+        throw new Error('mock update failed');
+      },
+    });
+
+    const report = await run(makeApplyOptions(snapshotDir), deps);
+
+    expect(queries.some((entry) => entry.sql.includes('UPDATE aurora_product_intel_kb'))).toBe(true);
+    expect(report.aborted).toBe(true);
+    expect(report.abort_reason).toBe('update_failure_rate_exceeded');
+    expect(report.apply_stats.updateFailures).toBe(1);
+    expect(fs.existsSync(path.join(snapshotDir, 'ws_a_modeA_test_1__aborted.json'))).toBe(true);
+  });
+
+  test('--apply writes the pre-image snapshot before issuing UPDATE', async () => {
+    process.env.PIVOTA_INSIGHTS_REANALYSIS_ENABLED = 'true';
+    process.env.PIVOTA_INSIGHTS_REANALYSIS_PUBLISH_ENABLED = 'true';
+    const snapshotDir = makeTempSnapshotDir();
+    const candidate = fixtureCandidate();
+    const snapshotPath = buildPreImageSnapshotPath(snapshotDir, 'ws_a_modeA_test_1', candidate.kb_key);
+    let snapshotExistedBeforeUpdate = false;
+    const { deps } = makeFakeApplyDeps(candidate, {
+      onUpdate: ({ params }) => {
+        snapshotExistedBeforeUpdate = fs.existsSync(snapshotPath);
+        return {
+          rows: [
+            {
+              kb_key: candidate.kb_key,
+              analysis: JSON.parse(params[1]),
+              source_meta: JSON.parse(params[2]),
+              last_success_at: '2026-05-22T00:00:00.000Z',
+              updated_at: '2026-05-22T00:00:00.000Z',
+            },
+          ],
+          rowCount: 1,
+        };
+      },
+    });
+
+    const report = await run(makeApplyOptions(snapshotDir), deps);
+
+    expect(snapshotExistedBeforeUpdate).toBe(true);
+    expect(report.summary.classifications.would_render_after_publish).toBe(1);
+    expect(fs.readFileSync(path.join(snapshotDir, 'ws_a_modeA_test_1__post.jsonl'), 'utf8').trim()).toContain(candidate.kb_key);
   });
 });
