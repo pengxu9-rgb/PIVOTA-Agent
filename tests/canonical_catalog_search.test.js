@@ -275,6 +275,30 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
     expect(sql).toMatch(/p\.category_path LIKE \$6/);
     expect(sql).toMatch(/eps\.market\s*=\s*\$7/);
   });
+
+  test('brandFilter scopes category canonical recall to the requested brand', async () => {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      query: 'fenty lipstick',
+      categoryPathPrefix: 'beauty/makeup/lip/',
+      marketId: 'US',
+      brandFilter: { canonical: 'Fenty Beauty', alias: 'fenty', brand_key: 'fenty_beauty' },
+      deps: { query },
+    });
+    const { sql, params } = query.calls[0];
+
+    expect(params[4]).toBe('beauty/makeup/lip/%');
+    expect(params[5]).toBe('US');
+    expect(params).toContain('%fenty beauty%');
+    expect(params).toContain('%fentybeauty%');
+    expect(params).toContain('%fenty%');
+    expect(sql).toMatch(/p\.category_path LIKE \$5/);
+    expect(sql).toMatch(/eps\.market\s*=\s*\$6/);
+    expect(sql).toMatch(/AND \(\(\s*lower\(concat_ws\(' ',\s*p\.brand,/);
+    expect(sql).toMatch(/FROM external_product_seeds eps_brand/);
+    expect(sql).toMatch(/eps_brand\.external_product_id = p\.source_product_id/);
+    expect(sql).toMatch(/eps_brand\.seed_data->'derived'->'recall'->>'brand_name'/);
+  });
 });
 
 describe('canonicalCatalogSearch.__internal helpers', () => {
@@ -293,5 +317,15 @@ describe('canonicalCatalogSearch.__internal helpers', () => {
     expect(__internal.clampLimit(50, 12, 1, 100)).toBe(50);
     expect(__internal.clampLimit(500, 12, 1, 100)).toBe(100);
     expect(__internal.clampLimit(0.5, 12, 1, 100)).toBe(1); // floor → 0 → fallback
+  });
+
+  test('buildBrandFilterTerms normalizes canonical brand, alias, and compact brand key', () => {
+    expect(
+      __internal.buildBrandFilterTerms({
+        canonical: 'Fenty Beauty',
+        alias: 'fenty',
+        brand_key: 'fenty_beauty',
+      }),
+    ).toEqual(['fenty beauty', 'fenty']);
   });
 });

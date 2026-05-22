@@ -13717,10 +13717,22 @@ async function queryBeautyExternalSeedRowsFast({
   const appendScopeRows = (scopeResult, { requireTargetMarketAuthority = false } = {}) => {
     if (!scopeResult || typeof scopeResult !== 'object') return;
     if (scopeResult.variant) variantResults.push(scopeResult.variant);
+    const brandCategoryScopeRequiresBrand = Boolean(
+      intent?.brandBrowse &&
+        intent.brandBrowse.contract === 'brand_browse' &&
+        intent.brandBrowse.brand_only === false,
+    );
     for (const row of Array.isArray(scopeResult.rows) ? scopeResult.rows : []) {
       if (rawProducts.length >= rawProductCap) break;
       const product = buildBeautyExternalSeedMainlineProduct(row);
       if (!product) continue;
+      const candidateText = brandCategoryScopeRequiresBrand ? buildFallbackCandidateText(product) : '';
+      if (
+        brandCategoryScopeRequiresBrand &&
+        !searchProductMatchesBeautyBrandBrowse(product, intent.brandBrowse, candidateText)
+      ) {
+        continue;
+      }
       if (
         requireTargetMarketAuthority &&
         !beautyProductHasTargetMarketAuthority(product, safeMarket, { requirePurchase: false })
@@ -14596,6 +14608,25 @@ function projectSearchQualityContractForMetadata(contract = null) {
   };
 }
 
+function buildCanonicalBrandFilterForBeautyRecall(contract = null, brandBrowse = null) {
+  const out = [];
+  const hardBrand =
+    isBeautySearchQualityContractApplied(contract) &&
+    contract.hard_constraints &&
+    typeof contract.hard_constraints === 'object'
+      ? contract.hard_constraints.brand
+      : null;
+  if (hardBrand && typeof hardBrand === 'object') out.push(hardBrand);
+  if (brandBrowse && brandBrowse.contract === 'brand_browse') {
+    out.push({
+      canonical: brandBrowse.brand || null,
+      alias: brandBrowse.alias || null,
+      brand_key: brandBrowse.brand_key || null,
+    });
+  }
+  return out.length > 0 ? out : null;
+}
+
 function normalizeSearchQualityBrandNeedle(value) {
   return normalizeSearchTextForMatch(value).replace(/\bbeauty\b/g, ' ').replace(/\s+/g, ' ').trim();
 }
@@ -14980,6 +15011,10 @@ async function fetchCanonicalChainRecallForFindProductsMulti({ search = {} } = {
     searchQualityContract?.hard_constraints?.category_path_prefix ||
     resolveCanonicalCategoryPathPrefixForQuery(queryText) ||
     null;
+  const canonicalBrandFilter = buildCanonicalBrandFilterForBeautyRecall(
+    searchQualityContractApplied ? searchQualityContract : null,
+    beautyBrandBrowse.matched ? beautyBrandBrowse : null,
+  );
   // Market-aware recall: pass the user's market into canonicalCatalogSearch
   // so non-matching Path B rows are filtered. Falls back to env / 'US' to
   // preserve existing behaviour for callers that don't pass market.
@@ -15011,6 +15046,7 @@ async function fetchCanonicalChainRecallForFindProductsMulti({ search = {} } = {
       // (market=KR) products were leaking into US users' canonical_chain
       // results.
       marketId: safeMarket,
+      brandFilter: canonicalBrandFilter,
       deps: { query },
     });
     const products = (Array.isArray(rows) ? rows : [])
@@ -15023,6 +15059,7 @@ async function fetchCanonicalChainRecallForFindProductsMulti({ search = {} } = {
         canonical_raw_count: Array.isArray(rows) ? rows.length : 0,
         canonical_product_count: products.length,
         canonical_category_path_prefix: canonicalCategoryPathPrefix,
+        canonical_brand_filter_applied: Boolean(canonicalBrandFilter),
         canonical_duration_ms: Math.max(0, Date.now() - startedAt),
         query_text: queryText,
         requested_limit: safeLimit,
@@ -15046,6 +15083,7 @@ async function fetchCanonicalChainRecallForFindProductsMulti({ search = {} } = {
         canonical_raw_count: 0,
         canonical_product_count: 0,
         canonical_category_path_prefix: canonicalCategoryPathPrefix,
+        canonical_brand_filter_applied: Boolean(canonicalBrandFilter),
         canonical_duration_ms: Math.max(0, Date.now() - startedAt),
         canonical_error: String(err?.code || err?.message || err || 'canonical_query_failed').slice(0, 160),
         query_text: queryText,
@@ -17564,6 +17602,10 @@ async function searchBeautyExternalSeedProductsMainline({
     searchQualityContract?.hard_constraints?.category_path_prefix ||
     resolveBeautyCategoryPathPrefixForQuery(queryText) ||
     null;
+  const canonicalBrandFilter = buildCanonicalBrandFilterForBeautyRecall(
+    searchQualityContractApplied ? effectiveSearchQualityContract : null,
+    beautyIntent.brandBrowse,
+  );
   const canonicalLimit = searchQualityContractApplied
     ? Math.max(18, Math.min(48, safeLimit * 4))
     : Math.max(6, Math.min(12, Math.ceil(safeLimit / 2)));
@@ -17587,6 +17629,7 @@ async function searchBeautyExternalSeedProductsMainline({
     // chat shows $0 because the SQL returns NULL placeholders for
     // those columns when joinSkuOffers is false.
     includeSkuOffers: true,
+    brandFilter: canonicalBrandFilter,
     deps: { query },
   })
     .then((rows) => ({
@@ -17618,6 +17661,7 @@ async function searchBeautyExternalSeedProductsMainline({
     canonical_raw_count: Array.isArray(canonicalResult?.rows) ? canonicalResult.rows.length : 0,
     canonical_product_count: canonicalProducts.length,
     canonical_category_path_prefix: canonicalCategoryPathPrefix,
+    canonical_brand_filter_applied: Boolean(canonicalBrandFilter),
     canonical_duration_ms: Math.max(0, Number(canonicalResult?.duration_ms || 0) || 0),
     query_text: queryText,
     requested_limit: safeLimit,

@@ -68,6 +68,52 @@ function clampLimit(value, fallback, min, max) {
   return Math.min(max, Math.max(min, Math.floor(n)));
 }
 
+function normalizeBrandFilterTerm(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function collectBrandFilterValues(value, out = []) {
+  if (value == null) return out;
+  if (Array.isArray(value)) {
+    for (const item of value) collectBrandFilterValues(item, out);
+    return out;
+  }
+  if (typeof value === 'object') {
+    for (const key of ['canonical', 'brand', 'alias', 'name', 'label', 'merchant_name', 'brand_key']) {
+      if (value[key] == null) continue;
+      const raw = key === 'brand_key'
+        ? String(value[key]).replace(/_/g, ' ')
+        : value[key];
+      collectBrandFilterValues(raw, out);
+    }
+    return out;
+  }
+  out.push(value);
+  return out;
+}
+
+function buildBrandFilterTerms(brandFilter) {
+  const terms = [];
+  const seen = new Set();
+  const push = (value) => {
+    const normalized = normalizeBrandFilterTerm(value);
+    if (!normalized || normalized.length < 3 || seen.has(normalized)) return;
+    seen.add(normalized);
+    terms.push(normalized);
+  };
+  for (const value of collectBrandFilterValues(brandFilter, [])) {
+    push(value);
+  }
+  return terms.slice(0, 6);
+}
+
 /**
  * Core entrypoint. Returns an array of flattened canonical-chain rows
  * (one per `catalog_offers` row, joined with its product + sku + merchant).
@@ -84,6 +130,12 @@ function clampLimit(value, fallback, min, max) {
  *                                          downstream offer-aware callers.
  *                                          Default false keeps recall on the
  *                                          product-level indexed path.
+ * @param {string|object|Array} [args.brandFilter] Optional. Restrict recall to
+ *                                          a known brand/alias. Intended for
+ *                                          brand_browse and brand_category
+ *                                          contracts so category recall does
+ *                                          not degrade into generic category
+ *                                          browse.
  * @param {string} [args.marketId]         Optional. The user's market (e.g.
  *                                          'US', 'KR', 'JP'). When provided,
  *                                          Path B mirrored rows whose source
@@ -107,6 +159,7 @@ async function fetchCanonicalChainRows(args = {}) {
     categoryPathPrefix = null,
     verticalSearch = false,
     includeSkuOffers = false,
+    brandFilter = null,
     marketId = null,
     limit = DEFAULT_LIMIT,
     deps = {},
@@ -170,6 +223,61 @@ async function fetchCanonicalChainRows(args = {}) {
             AND eps.market = ${marketBind}
         )
       )`;
+  }
+
+  const brandFilterTerms = buildBrandFilterTerms(brandFilter);
+  const brandTextSql = `
+    lower(concat_ws(' ',
+      p.brand,
+      m.merchant_name,
+      p.product_payload #>> '{brand}',
+      p.product_payload #>> '{vendor}',
+      p.product_payload #>> '{brand_name}',
+      p.product_payload #>> '{merchant_name}',
+      p.product_payload #>> '{seed_data,brand}',
+      p.product_payload #>> '{seed_data,vendor}',
+      p.product_payload #>> '{seed_data,snapshot,brand}',
+      p.product_payload #>> '{seed_data,snapshot,vendor}',
+      p.product_payload #>> '{seed_data,derived,recall,brand_name}',
+      p.product_payload #>> '{external_seed,brand}',
+      p.product_payload #>> '{external_seed,vendor}'
+    ))`;
+  const compactBrandTextSql = `regexp_replace(${brandTextSql}, '[^a-z0-9]+', '', 'g')`;
+  const seedBrandTextSql = `
+    lower(concat_ws(' ',
+      eps_brand.domain,
+      eps_brand.title,
+      eps_brand.seed_data->>'brand',
+      eps_brand.seed_data->>'vendor',
+      eps_brand.seed_data->>'brand_name',
+      eps_brand.seed_data->'snapshot'->>'brand',
+      eps_brand.seed_data->'snapshot'->>'vendor',
+      eps_brand.seed_data->'derived'->'recall'->>'brand_name',
+      eps_brand.seed_data->'derived'->'recall'->>'brand'
+    ))`;
+  const compactSeedBrandTextSql = `regexp_replace(${seedBrandTextSql}, '[^a-z0-9]+', '', 'g')`;
+  let brandWhere = '';
+  if (brandFilterTerms.length > 0) {
+    const brandClauses = brandFilterTerms.map((term) => {
+      params.push(`%${term}%`);
+      const likeBind = `$${params.length}`;
+      params.push(`%${term.replace(/\s+/g, '')}%`);
+      const compactBind = `$${params.length}`;
+      return `(
+        ${brandTextSql} LIKE ${likeBind}
+        OR ${compactBrandTextSql} LIKE ${compactBind}
+        OR EXISTS (
+          SELECT 1
+          FROM external_product_seeds eps_brand
+          WHERE eps_brand.external_product_id = p.source_product_id
+            AND (
+              ${seedBrandTextSql} LIKE ${likeBind}
+              OR ${compactSeedBrandTextSql} LIKE ${compactBind}
+            )
+        )
+      )`;
+    });
+    brandWhere = `AND (${brandClauses.join('\n        OR ')})`;
   }
 
   let verticalWhere = '';
@@ -380,6 +488,7 @@ async function fetchCanonicalChainRows(args = {}) {
         ${externalSeedUnavailableWhere}
       ${merchantClause}
       ${marketWhere}
+      ${brandWhere}
       ORDER BY rank_score DESC, p.updated_at DESC
       LIMIT $3
     )
@@ -440,5 +549,7 @@ module.exports = {
     ROW_LIMIT_MAX,
     normalizeQuery,
     clampLimit,
+    normalizeBrandFilterTerm,
+    buildBrandFilterTerms,
   },
 };
