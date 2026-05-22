@@ -112,6 +112,11 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function isRetryableHttpStatus(status) {
+  const code = Number(status);
+  return code === 408 || code === 429 || (code >= 500 && code <= 599);
+}
+
 async function requestJson({ url, payload, headers = {}, timeoutMs = 30000, attempts = 2 }) {
   const startedAt = Date.now();
   let lastError = null;
@@ -135,6 +140,11 @@ async function requestJson({ url, payload, headers = {}, timeoutMs = 30000, atte
         body = text ? JSON.parse(text) : null;
       } catch {
         body = { parse_error: true, text };
+      }
+      if (isRetryableHttpStatus(response.status) && attempt < maxAttempts) {
+        lastError = new Error(`HTTP_${response.status}`);
+        await sleep(250 * attempt);
+        continue;
       }
       return {
         status: response.status,
@@ -422,7 +432,7 @@ function buildRequestFailureEvaluation(testCase, response = {}) {
   };
 }
 
-async function probePdpRefs(products, { baseUrl, headers, timeoutMs }) {
+async function probePdpRefs(products, { baseUrl, headers, timeoutMs, attempts }) {
   const refs = new Map();
   for (const product of products) {
     const ref = product.pdp_open?.product_ref || product.pdp_open?.canonical_product_ref || product.canonical_product_ref;
@@ -437,6 +447,7 @@ async function probePdpRefs(products, { baseUrl, headers, timeoutMs }) {
       url: joinUrl(baseUrl, '/agent/shop/v1/invoke'),
       headers,
       timeoutMs,
+      attempts,
       payload: {
         operation: 'get_pdp_v2',
         payload: {
@@ -455,7 +466,7 @@ async function probePdpRefs(products, { baseUrl, headers, timeoutMs }) {
   return out;
 }
 
-async function runEval({ cases, baseUrl, apiKey = '', limit = 6, market = 'US', timeoutMs = 30000, pdpProbe = false } = {}) {
+async function runEval({ cases, baseUrl, apiKey = '', limit = 6, market = 'US', timeoutMs = 30000, attempts = 3, pdpProbe = false } = {}) {
   const headers = {
     'X-Aurora-UID': `search-quality-eval-${Date.now()}`,
     ...authHeaders(apiKey),
@@ -466,6 +477,7 @@ async function runEval({ cases, baseUrl, apiKey = '', limit = 6, market = 'US', 
       url: joinUrl(baseUrl, '/agent/shop/v1/invoke'),
       headers,
       timeoutMs,
+      attempts,
       payload: buildFindProductsPayload(testCase, { limit, market }),
     });
     if (!response.ok || response.body?.status === 'error' || response.body?.error) {
@@ -474,7 +486,7 @@ async function runEval({ cases, baseUrl, apiKey = '', limit = 6, market = 'US', 
     }
     const products = extractProducts(response.body);
     const pdpProbeResults = pdpProbe
-      ? await probePdpRefs(products.slice(0, limit), { baseUrl, headers, timeoutMs })
+      ? await probePdpRefs(products.slice(0, limit), { baseUrl, headers, timeoutMs, attempts })
       : {};
     const evaluation = evaluateSearchResponse(testCase, response.body, { limit, pdpProbeResults });
     evaluation.http_status = response.status;
@@ -570,6 +582,7 @@ async function main() {
   const limit = Math.max(1, Math.min(Number(argValue('limit') || 6), 24));
   const market = asString(argValue('market', 'US')).toUpperCase() || 'US';
   const timeoutMs = Math.max(1000, Number(argValue('timeout-ms') || 30000));
+  const attempts = Math.max(1, Math.min(Number(argValue('attempts') || 3), 6));
   const report = await runEval({
     cases,
     baseUrl,
@@ -577,6 +590,7 @@ async function main() {
     limit,
     market,
     timeoutMs,
+    attempts,
     pdpProbe: hasFlag('pdp-probe'),
   });
   writeOutputs(report, {
@@ -601,6 +615,7 @@ module.exports = {
   evaluateSearchResponse,
   extractProducts,
   buildRequestFailureEvaluation,
+  isRetryableHttpStatus,
   loadCases,
   requestJson,
   renderMarkdownReport,

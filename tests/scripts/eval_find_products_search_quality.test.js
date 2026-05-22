@@ -1,6 +1,7 @@
 const {
   buildRequestFailureEvaluation,
   evaluateSearchResponse,
+  isRetryableHttpStatus,
   requestJson,
   summarizeResults,
 } = require('../../scripts/eval-find-products-search-quality.cjs');
@@ -177,6 +178,43 @@ describe('eval-find-products-search-quality', () => {
     } finally {
       global.fetch = originalFetch;
     }
+  });
+
+  test('retries transient 5xx responses before returning success', async () => {
+    const originalFetch = global.fetch;
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({
+        status: 502,
+        text: jest.fn().mockResolvedValue(JSON.stringify({ status: 'error', error: { code: 'BAD_GATEWAY' } })),
+      })
+      .mockResolvedValueOnce({
+        status: 200,
+        text: jest.fn().mockResolvedValue(JSON.stringify({ status: 'success', products: [] })),
+      });
+
+    try {
+      const result = await requestJson({
+        url: 'https://example.test/agent/shop/v1/invoke',
+        payload: { operation: 'get_pdp_v2' },
+        timeoutMs: 10,
+        attempts: 2,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(result.status).toBe(200);
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  test('classifies only transient http statuses as retryable', () => {
+    expect(isRetryableHttpStatus(408)).toBe(true);
+    expect(isRetryableHttpStatus(429)).toBe(true);
+    expect(isRetryableHttpStatus(502)).toBe(true);
+    expect(isRetryableHttpStatus(404)).toBe(false);
+    expect(isRetryableHttpStatus(200)).toBe(false);
   });
 
   test('builds request failure evaluations without fake hard constraint failures', () => {
