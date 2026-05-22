@@ -646,6 +646,7 @@ async function applyMirrors(mirrors, dryRun) {
     offer_upserts: 0,
     group_member_upserts: 0,
     group_member_preserved_existing_merges: 0,
+    seed_attachment_updates: 0,
   };
   if (dryRun) return totals;
   await withClient(async (client) => {
@@ -758,6 +759,21 @@ async function applyMirrors(mirrors, dryRun) {
           ],
         );
         totals.product_upserts += Number(productRes.rowCount || 0);
+
+        const seedAttachmentRes = await client.query(
+          `
+            UPDATE external_product_seeds
+            SET
+              attached_product_key = $1,
+              updated_at = now()
+            WHERE id = $2
+              AND status = 'active'
+              AND coalesce(attached_product_key, '') = ''
+            RETURNING id
+          `,
+          [p.product_key, mirror.row.id],
+        );
+        totals.seed_attachment_updates += Number(seedAttachmentRes.rowCount || 0);
 
         for (const skuMirror of mirror.skus) {
           const s = skuMirror.sku;
