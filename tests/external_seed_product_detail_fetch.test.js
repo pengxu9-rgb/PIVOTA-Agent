@@ -937,6 +937,7 @@ describe('external seed product detail hydration', () => {
       blocker_detail:
         'no external_product_seeds row and no agent_pdp_view title+description source document',
       content_quality_score: 28.6,
+      active_external_seed_source_match: false,
     };
 
     db.query.mockImplementation((sql) => {
@@ -989,6 +990,114 @@ describe('external seed product detail hydration', () => {
       },
     });
     expect(res.body.modules).toBeUndefined();
+  });
+
+  test('get_pdp_v2 serving_eligible_only ignores stale no_seed when external seed source row exists', async () => {
+    const { app, db } = loadServerWithDb({
+      PIVOTA_API_BASE: 'https://backend.test',
+      PIVOTA_API_KEY: 'test-token',
+    });
+
+    const signatureRow = {
+      content_key: 'ck_fenty_seed_source_match',
+      merchant_id: 'external_seed',
+      platform: 'external_seed',
+      source_system: 'external_product_seeds_mirror_v1',
+      source_product_id: 'ext_fenty_seed_source_match',
+      product_key: 'prod::external_seed::external_seed::ext_fenty_seed_source_match',
+      pivota_signature_id: 'sig_fenty_seed_source_match',
+      external_seed_id: 'eps_fenty_seed_source_match',
+      external_seed_external_product_id: 'ext_fenty_seed_source_match',
+      external_seed_status: 'active',
+    };
+    const statusRow = {
+      id: 'eps_fenty_seed_source_match',
+      external_product_id: 'ext_fenty_seed_source_match',
+      status: 'active',
+    };
+    const detailRow = {
+      ...statusRow,
+      canonical_url: 'https://fentybeauty.com/products/fenty-eau-de-parfum-travel-set',
+      destination_url: 'https://fentybeauty.com/products/fenty-eau-de-parfum-travel-set',
+      title: 'Fenty Eau De Parfum Travel Set + Refills',
+      image_url: 'https://cdn.example.com/fenty-travel-set.jpg',
+      price_amount: '42.00',
+      price_currency: 'USD',
+      availability: 'In Stock',
+      seed_data: {
+        brand: 'Fenty Beauty',
+        pdp_description_raw: 'A travel-ready fragrance set with refillable spray.',
+        seed_description_origin: 'pdp_product_description',
+        snapshot: {
+          variants: [
+            {
+              variant_id: 'ext_fenty_seed_source_match',
+              price: '42.00',
+              currency: 'USD',
+            },
+          ],
+        },
+      },
+    };
+    const servingEligibilityRow = {
+      content_key: 'ck_fenty_seed_source_match',
+      product_key: signatureRow.product_key,
+      source_system: 'external_product_seeds_mirror_v1',
+      source_product_id: 'ext_fenty_seed_source_match',
+      pivota_signature_id: 'sig_fenty_seed_source_match',
+      sync_status: 'live',
+      pdp_lifecycle_stage: 'candidate',
+      serving_eligible: false,
+      pipeline_stage: 'discovered',
+      blocker_code: 'no_seed',
+      blocker_detail: 'no external_product_seeds row attached to this product_key',
+      content_quality_score: 71.4,
+      active_external_seed_source_match: true,
+    };
+
+    db.query.mockImplementation((sql) => {
+      const text = String(sql || '');
+      if (text.includes('FROM catalog_products cp') && text.includes('LEFT JOIN index_pipeline_state ips')) {
+        return Promise.resolve({ rows: [servingEligibilityRow] });
+      }
+      if (text.includes('FROM catalog_products') && text.includes('pivota_signature_id = $1')) {
+        return Promise.resolve({ rows: [signatureRow] });
+      }
+      if (text.includes('FROM pdp_identity_listing pil') && text.includes('source_listing_ref = $1')) {
+        return Promise.resolve({ rows: [] });
+      }
+      if (text.includes('FROM external_product_seeds') && text.includes('destination_url')) {
+        return Promise.resolve({ rows: [detailRow] });
+      }
+      if (text.includes('FROM external_product_seeds') && text.includes('status')) {
+        return Promise.resolve({ rows: [statusRow] });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'get_pdp_v2',
+        payload: {
+          product_ref: {
+            merchant_id: 'external_seed',
+            product_id: 'sig_fenty_seed_source_match',
+          },
+          include: ['product_overview', 'offers'],
+          options: {
+            serving_eligible_only: true,
+          },
+        },
+      })
+      .expect(200);
+
+    const canonicalProduct = res.body.modules?.find((module) => module?.type === 'canonical')
+      ?.data?.pdp_payload?.product;
+    expect(canonicalProduct).toMatchObject({
+      title: 'Fenty Eau De Parfum Travel Set + Refills',
+    });
+    expect(res.body.error).toBeUndefined();
   });
 
   test('get_pdp_v2 reuses canonical catalog signature resolution for sig_* external_seed PDPs', async () => {

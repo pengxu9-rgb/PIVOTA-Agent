@@ -5364,6 +5364,13 @@ function shouldRequirePdpServingEligible(payload, options) {
 
 function normalizePdpServingEligibilityRow(row) {
   if (!row || typeof row !== 'object') return null;
+  const sourceSystem = firstNonEmptyString(row.source_system) || null;
+  const blockerCode = firstNonEmptyString(row.blocker_code) || null;
+  const hasActiveExternalSeedSourceMatch = row.active_external_seed_source_match === true;
+  const staleNoSeedBlocker =
+    sourceSystem === 'external_product_seeds_mirror_v1' &&
+    blockerCode === 'no_seed' &&
+    hasActiveExternalSeedSourceMatch;
   return {
     catalog_row_found: true,
     content_key: firstNonEmptyString(row.content_key) || null,
@@ -5371,14 +5378,18 @@ function normalizePdpServingEligibilityRow(row) {
     pivota_signature_id: firstNonEmptyString(row.pivota_signature_id) || null,
     sync_status: firstNonEmptyString(row.sync_status) || null,
     pdp_lifecycle_stage: firstNonEmptyString(row.pdp_lifecycle_stage) || null,
-    serving_eligible: row.serving_eligible === true,
+    serving_eligible: row.serving_eligible === true || staleNoSeedBlocker,
     index_row_found: row.serving_eligible !== null && row.serving_eligible !== undefined,
-    pipeline_stage: firstNonEmptyString(row.pipeline_stage) || null,
-    blocker_code: firstNonEmptyString(row.blocker_code) || null,
-    blocker_detail: firstNonEmptyString(row.blocker_detail) || null,
+    pipeline_stage: staleNoSeedBlocker
+      ? 'ready'
+      : firstNonEmptyString(row.pipeline_stage) || null,
+    blocker_code: staleNoSeedBlocker ? null : blockerCode,
+    blocker_detail: staleNoSeedBlocker ? null : firstNonEmptyString(row.blocker_detail) || null,
     content_quality_score: Number.isFinite(Number(row.content_quality_score))
       ? Number(row.content_quality_score)
       : null,
+    active_external_seed_source_match: hasActiveExternalSeedSourceMatch,
+    eligibility_override_reason: staleNoSeedBlocker ? 'active_external_seed_source_match' : null,
   };
 }
 
@@ -5395,6 +5406,8 @@ async function fetchPdpServingEligibilityFromDb(args = {}) {
         SELECT
           cp.content_key,
           cp.product_key,
+          cp.source_system,
+          cp.source_product_id,
           cp.pivota_signature_id,
           cp.sync_status,
           cp.pdp_lifecycle_stage,
@@ -5402,7 +5415,15 @@ async function fetchPdpServingEligibilityFromDb(args = {}) {
           ips.pipeline_stage,
           ips.blocker_code,
           ips.blocker_detail,
-          ips.content_quality_score
+          ips.content_quality_score,
+          EXISTS (
+            SELECT 1
+            FROM external_product_seeds eps_active_seed
+            WHERE cp.source_system = 'external_product_seeds_mirror_v1'
+              AND eps_active_seed.status = 'active'
+              AND eps_active_seed.external_product_id = cp.source_product_id
+            LIMIT 1
+          ) AS active_external_seed_source_match
         FROM catalog_products cp
         LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id
         LEFT JOIN index_pipeline_state ips ON ips.content_key = cp.content_key
@@ -5433,6 +5454,7 @@ async function fetchPdpServingEligibilityFromDb(args = {}) {
       err?.code === 'NO_DATABASE' ||
       err?.code === '42P01' ||
       message.includes('index_pipeline_state') ||
+      message.includes('external_product_seeds') ||
       message.includes('catalog_products')
     ) {
       return null;
