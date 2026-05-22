@@ -2493,12 +2493,18 @@ function buildVariantContext(seedData, row) {
     /\b(serum|essence|ampoule|moisturi[sz]er|cream|cleanser|toner|lotion|balm|mask|treatment|sunscreen|spf|sun protection|skin care|skincare|barrier|retinol|niacinamide|vitamin c|acid)\b/i.test(
       text,
     );
+  const scentLike =
+    !allowsShadeAxis &&
+    /\b(fragrance|scent|perfume|parfum|eau de|body\s+mist|hair\s+fragrance|body\s+(?:cream|butter|lotion|oil|wash|spray)|hand\s+cream|shower\s+gel|deodorant)\b/i.test(
+      text,
+    );
   const lipSurfaceLike =
     /\b(lip|lips|gloss|lipstick|topper|tinted)\b/i.test(text);
   return {
     text,
     allowsShadeAxis,
     skincareLike,
+    scentLike,
     lipSurfaceLike,
   };
 }
@@ -2632,6 +2638,9 @@ function inferVariantAxisKind(option, context = {}) {
     if (!context.allowsShadeAxis) {
       if (volume) return { axis_kind: 'volume', display_label: VARIANT_AXIS_LABELS.volume, normalized_value: optionValue };
       if (format) return { axis_kind: 'format', display_label: VARIANT_AXIS_LABELS.format, normalized_value: format };
+      if (context.scentLike && !localeLike) {
+        return { axis_kind: 'scent', display_label: VARIANT_AXIS_LABELS.scent, normalized_value: optionValue };
+      }
       if (localeLike) return { axis_kind: 'non_displayable', display_label: '', normalized_value: '' };
       return { axis_kind: 'non_displayable', display_label: '', normalized_value: '' };
     }

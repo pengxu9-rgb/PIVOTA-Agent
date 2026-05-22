@@ -493,6 +493,18 @@ function buildBrandFilterTokens(value) {
   };
 }
 
+function normalizeExternalProductIdList(value) {
+  const rawValues = Array.isArray(value) ? value : [value];
+  return Array.from(
+    new Set(
+      rawValues
+        .flatMap((item) => asString(item).split(','))
+        .map((item) => asString(item))
+        .filter(Boolean),
+    ),
+  );
+}
+
 function buildNormalizedBrandSqlExpression(expression) {
   return `trim(regexp_replace(regexp_replace(regexp_replace(lower(trim(${expression})), '[''’\`]+', '', 'g'), '[^[:alnum:]]+', ' ', 'g'), '\\s+', ' ', 'g'))`;
 }
@@ -4375,8 +4387,17 @@ async function runPdpIdentityCoverageLift({
   };
 }
 
-async function fetchBackfillProducts({ limit = 500, brandFilter = null, queryFn = query } = {}) {
+async function fetchBackfillProducts({
+  limit = 500,
+  brandFilter = null,
+  externalProductIds = [],
+  queryFn = query,
+} = {}) {
   const normalizedLimit = Math.max(1, Math.min(5000, Number(limit) || 500));
+  const exactExternalProductIds = normalizeExternalProductIdList(externalProductIds);
+  const sourceLimit = exactExternalProductIds.length
+    ? Math.max(normalizedLimit, exactExternalProductIds.length)
+    : normalizedLimit;
   const brandFilterTokens = buildBrandFilterTokens(brandFilter);
   const normalizedBrandFilter = brandFilterTokens.normalized;
   const normalizedBrandVariants = new Set(brandFilterTokens.normalizedVariants);
@@ -4385,71 +4406,77 @@ async function fetchBackfillProducts({ limit = 500, brandFilter = null, queryFn 
   const externalRows = [];
   const titleBrandPatterns = brandFilterTokens.titlePatterns;
 
-  const internalParams = [EXTERNAL_SEED_MERCHANT_ID];
-  const internalWhere = ['merchant_id <> $1'];
-  if (compactBrandVariants.length) {
-    internalParams.push(compactBrandVariants);
-    const brandParam = `$${internalParams.length}`;
-    internalParams.push(titleBrandPatterns);
-    const titleParam = `$${internalParams.length}`;
-    internalWhere.push(`
-      (
-        regexp_replace(lower(trim(coalesce(
-          product_data #>> '{brand,name}',
-          product_data->>'brand',
-          product_data->>'brand_name',
-          product_data->>'vendor',
-          product_data->>'vendor_name',
-          ''
-        ))), '[^[:alnum:]]+', '', 'g') = ANY(${brandParam}::text[])
-        OR regexp_replace(lower(coalesce(product_data->>'title', product_data->>'name', '')), '[^[:alnum:]]+', '', 'g') LIKE ANY(${titleParam}::text[])
-      )
-    `);
-  }
-  internalParams.push(normalizedLimit);
-  const internalLimitParam = `$${internalParams.length}`;
-
-  const internalRes = await queryFn(
-    `
-      SELECT merchant_id, platform_product_id, product_data, cached_at
-      FROM products_cache
-      WHERE ${internalWhere.join(' AND ')}
-        AND ${activeProductsCacheSourceWhere('products_cache')}
-      ORDER BY cached_at DESC NULLS LAST
-      LIMIT ${internalLimitParam}
-    `,
-    internalParams,
-  );
-  const seenInternal = new Set();
-  for (const row of internalRes?.rows || []) {
-    const product = asPlainObject(row?.product_data) || {};
-    const merchantId = asString(row?.merchant_id || product.merchant_id || product.merchantId);
-    const productId = asString(product.product_id || product.id || row?.platform_product_id);
-    const sourceListingRef = buildSourceListingRef({ merchantId, productId });
-    if (!sourceListingRef || seenInternal.has(sourceListingRef)) continue;
-    const brand = normalizeBrandToken(firstNonEmptyString(product.brand?.name, product.brand, product.vendor));
-    const compactBrand = normalizeCompactBrandToken(brand);
-    if (
-      normalizedBrandFilter &&
-      !normalizedBrandVariants.has(brand) &&
-      !compactBrandVariants.includes(compactBrand)
-    ) {
-      continue;
+  if (!exactExternalProductIds.length) {
+    const internalParams = [EXTERNAL_SEED_MERCHANT_ID];
+    const internalWhere = ['merchant_id <> $1'];
+    if (compactBrandVariants.length) {
+      internalParams.push(compactBrandVariants);
+      const brandParam = `$${internalParams.length}`;
+      internalParams.push(titleBrandPatterns);
+      const titleParam = `$${internalParams.length}`;
+      internalWhere.push(`
+        (
+          regexp_replace(lower(trim(coalesce(
+            product_data #>> '{brand,name}',
+            product_data->>'brand',
+            product_data->>'brand_name',
+            product_data->>'vendor',
+            product_data->>'vendor_name',
+            ''
+          ))), '[^[:alnum:]]+', '', 'g') = ANY(${brandParam}::text[])
+          OR regexp_replace(lower(coalesce(product_data->>'title', product_data->>'name', '')), '[^[:alnum:]]+', '', 'g') LIKE ANY(${titleParam}::text[])
+        )
+      `);
     }
-    seenInternal.add(sourceListingRef);
-    internalRows.push({
-      merchant_id: merchantId,
-      product_id: productId,
-      source_kind: 'internal',
-      product,
-      source_meta: {
-        cached_at: row?.cached_at || null,
-      },
-    });
+    internalParams.push(sourceLimit);
+    const internalLimitParam = `$${internalParams.length}`;
+
+    const internalRes = await queryFn(
+      `
+        SELECT merchant_id, platform_product_id, product_data, cached_at
+        FROM products_cache
+        WHERE ${internalWhere.join(' AND ')}
+          AND ${activeProductsCacheSourceWhere('products_cache')}
+        ORDER BY cached_at DESC NULLS LAST
+        LIMIT ${internalLimitParam}
+      `,
+      internalParams,
+    );
+    const seenInternal = new Set();
+    for (const row of internalRes?.rows || []) {
+      const product = asPlainObject(row?.product_data) || {};
+      const merchantId = asString(row?.merchant_id || product.merchant_id || product.merchantId);
+      const productId = asString(product.product_id || product.id || row?.platform_product_id);
+      const sourceListingRef = buildSourceListingRef({ merchantId, productId });
+      if (!sourceListingRef || seenInternal.has(sourceListingRef)) continue;
+      const brand = normalizeBrandToken(firstNonEmptyString(product.brand?.name, product.brand, product.vendor));
+      const compactBrand = normalizeCompactBrandToken(brand);
+      if (
+        normalizedBrandFilter &&
+        !normalizedBrandVariants.has(brand) &&
+        !compactBrandVariants.includes(compactBrand)
+      ) {
+        continue;
+      }
+      seenInternal.add(sourceListingRef);
+      internalRows.push({
+        merchant_id: merchantId,
+        product_id: productId,
+        source_kind: 'internal',
+        product,
+        source_meta: {
+          cached_at: row?.cached_at || null,
+        },
+      });
+    }
   }
 
   const externalParams = [];
   const externalWhere = [`status = 'active'`];
+  if (exactExternalProductIds.length) {
+    externalParams.push(exactExternalProductIds);
+    externalWhere.push(`external_product_id = ANY($${externalParams.length}::text[])`);
+  }
   if (compactBrandVariants.length) {
     externalParams.push(compactBrandVariants);
     const brandParam = `$${externalParams.length}`;
@@ -4470,7 +4497,7 @@ async function fetchBackfillProducts({ limit = 500, brandFilter = null, queryFn 
       )
     `);
   }
-  externalParams.push(normalizedLimit);
+  externalParams.push(sourceLimit);
   const externalLimitParam = `$${externalParams.length}`;
 
   const externalRes = await queryFn(
@@ -4802,6 +4829,7 @@ async function writeIdentityRows({ listings, reviewQueueEntries, dryRun = false,
 async function backfillPdpIdentityGraph({
   limit = 500,
   brand = null,
+  externalProductIds = [],
   dryRun = false,
   queryFn = query,
   withClientFn = withClient,
@@ -4809,6 +4837,7 @@ async function backfillPdpIdentityGraph({
   const sourceRows = await fetchBackfillProducts({
     limit,
     brandFilter: brand,
+    externalProductIds,
     queryFn,
   });
   const overrides = await loadIdentityOverrides({ queryFn }).catch((err) => {

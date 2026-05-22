@@ -13,6 +13,17 @@ function argValue(name) {
   return value && !value.startsWith('--') ? String(value).trim() : '';
 }
 
+function parseListValues(...values) {
+  return Array.from(
+    new Set(
+      values
+        .flatMap((value) => String(value || '').split(/[\n,]/g))
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
 function hasFlag(name) {
   return process.argv.includes(`--${name}`);
 }
@@ -23,13 +34,21 @@ function ensureParent(filePath) {
 
 async function main() {
   const brand = argValue('brand') || null;
-  const limit = Math.max(1, Math.min(5000, Number(argValue('limit') || 500) || 500));
+  const externalProductIdsFile = argValue('external-product-ids-file');
+  const externalProductIds = parseListValues(
+    argValue('external-product-id'),
+    argValue('external-product-ids'),
+    externalProductIdsFile ? fs.readFileSync(path.resolve(externalProductIdsFile), 'utf8') : '',
+  );
+  const limitFallback = externalProductIds.length || 500;
+  const limit = Math.max(1, Math.min(5000, Number(argValue('limit') || limitFallback) || limitFallback));
   const dryRun = hasFlag('dry-run') || hasFlag('dryRun');
   const out = argValue('out');
 
   const result = await backfillPdpIdentityGraph({
     brand,
     limit,
+    externalProductIds,
     dryRun,
   });
   const payload = {
@@ -38,6 +57,7 @@ async function main() {
     input: {
       brand,
       limit,
+      external_product_ids: externalProductIds,
       dry_run: dryRun,
     },
     result,

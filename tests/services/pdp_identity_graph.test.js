@@ -2823,6 +2823,49 @@ describe('pdpIdentityGraph', () => {
     expect(queries).toHaveLength(2);
   });
 
+  test('backfill product fetch can target exact external product ids without scanning internal cache', async () => {
+    const { _internals } = require('../../src/services/pdpIdentityGraph');
+    const queryFn = jest.fn(async (sql, params) => {
+      expect(String(sql)).not.toContain('FROM products_cache');
+      expect(String(sql)).toContain('FROM external_product_seeds');
+      expect(String(sql)).toContain('external_product_id = ANY($1::text[])');
+      expect(params).toEqual([['ulta:rare_lip_liner', 'ulta:rare_brow_gel'], 2]);
+      return {
+        rows: [
+          {
+            id: 'eps_rare_lip_liner',
+            external_product_id: 'ulta:rare_lip_liner',
+            title: 'Kind Words Matte Lip Liner - Humble',
+            seed_data: {
+              brand: 'Rare Beauty',
+              title: 'Kind Words Matte Lip Liner - Humble',
+            },
+          },
+          {
+            id: 'eps_rare_brow_gel',
+            external_product_id: 'ulta:rare_brow_gel',
+            title: 'Brow Harmony Flexible Lifting Gel - Clear',
+            seed_data: {
+              brand: 'Rare Beauty',
+              title: 'Brow Harmony Flexible Lifting Gel - Clear',
+            },
+          },
+        ],
+      };
+    });
+
+    const rows = await _internals.fetchBackfillProducts({
+      limit: 1,
+      externalProductIds: ['ulta:rare_lip_liner', 'ulta:rare_brow_gel'],
+      queryFn,
+    });
+
+    expect(rows).toHaveLength(2);
+    expect(rows.map((row) => row.product_id)).toEqual(['ulta:rare_lip_liner', 'ulta:rare_brow_gel']);
+    expect(rows.every((row) => row.source_kind === 'external_seed')).toBe(true);
+    expect(queryFn).toHaveBeenCalledTimes(1);
+  });
+
   test('backfill product fetch matches ampersand and plus brand aliases', async () => {
     const { _internals } = require('../../src/services/pdpIdentityGraph');
     expect(_internals.buildBrandFilterTokens('Fable & Mane')).toEqual({

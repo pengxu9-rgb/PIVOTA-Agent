@@ -1144,6 +1144,46 @@ describe('externalSeedProducts helper', () => {
     );
   });
 
+  test('remaps merchant shade labels to scent for scented body-care variants', () => {
+    const [variant] = normalizeSeedVariants(
+      {
+        snapshot: {
+          variants: [
+            {
+              variant_id: 'rare_body_cream_awaken_confidence',
+              title: 'Awaken Confidence',
+              option_name: 'Shade',
+              option_value: 'Awaken Confidence',
+              options: [{ name: 'Shade', value: 'Awaken Confidence', axis_kind: 'shade' }],
+              image_url: 'https://example.com/rare-body-cream-awaken-confidence.jpg',
+              axis_kind: 'shade',
+              source_quality_status: 'captured',
+            },
+          ],
+        },
+      },
+      {
+        title: 'Find Comfort Bouncy Body Cream - Awaken Confidence',
+        category: 'Body Care',
+        product_type: 'Body Cream',
+        canonical_url:
+          'https://www.ulta.com/p/find-comfort-bouncy-body-cream-awaken-confidence-pimprod2056038',
+      },
+    );
+
+    expect(variant.option_name).toBe('Scent');
+    expect(variant.option_value).toBe('Awaken Confidence');
+    expect(variant.axis_kind).toBe('scent');
+    expect(variant.options).toEqual([
+      expect.objectContaining({
+        name: 'Scent',
+        value: 'Awaken Confidence',
+        axis_kind: 'scent',
+      }),
+    ]);
+    expect(variant.display_label).toBe('Scent: Awaken Confidence');
+  });
+
   test('suppresses single Offer UPC variants from customer-facing options', () => {
     const [variant] = normalizeSeedVariants(
       {
