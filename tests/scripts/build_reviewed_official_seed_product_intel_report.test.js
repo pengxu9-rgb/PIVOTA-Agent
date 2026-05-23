@@ -14,9 +14,11 @@ const {
     brandFromUrl,
     buildBundle,
     inferKind,
+    isConservativeRewriteCandidate,
     sanitizeFormulaSummary,
     sanitizePublicSourceText,
     sanitizePublicTitleText,
+    selectInventoryRows,
   },
 } = require('../../scripts/build-reviewed-official-seed-product-intel-report.cjs');
 
@@ -376,6 +378,122 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     expect(maskBundle.shopping_card.highlight).toBe('Mask format detail');
     expect(peelBundle.shopping_card.highlight).toBe('Exfoliating treatment detail');
     expect(facialBundle.shopping_card.highlight).toBe('Facial treatment detail');
+  });
+
+  test('uses tool-specific Pixi sharpener copy instead of eye-makeup formula copy', () => {
+    const bundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_pixi_sharpener',
+        title: 'Sharpener',
+        canonical_url: 'https://pixibeauty.com/products/sharpener',
+        seed_data: {
+          brand: 'PIXI BEAUTY',
+          category: 'Makeup Sharpener',
+          description: 'Keep your favorite liners on point with our precision sharpener.',
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_pixi_sharpener',
+        sellable_item_group_id: 'sig_pixi_sharpener',
+      },
+      generatedAt: '2026-05-23T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+
+    expect(inferKind('Sharpener', 'Makeup Sharpener', '', 'Keep your favorite liners on point.')).toBe(
+      'makeup_sharpener',
+    );
+    expect(bundle.shopping_card.subtitle).toBe('Makeup Sharpener');
+    expect(bundle.shopping_card.highlight).toBe('Pencil sharpener tool');
+    expect(bundle.product_intel_core.what_it_is.body).toContain('makeup sharpener');
+  });
+
+  test('keeps Pixi tools and oil blends out of stale brush or sharpener categories', () => {
+    const faceClothBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_pixi_face_cloth',
+        title: 'Face Cloth',
+        canonical_url: 'https://pixibeauty.com/products/face-cloth',
+        seed_data: {
+          brand: 'PIXI BEAUTY',
+          category: 'Beauty Brush',
+          description: 'A soft cloth for cleansing routines.',
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_pixi_face_cloth',
+        sellable_item_group_id: 'sig_pixi_face_cloth',
+      },
+      generatedAt: '2026-05-23T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+    const eyePenBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_pixi_eye_pen',
+        title: 'Endless Silky Eye Pen',
+        canonical_url: 'https://pixibeauty.com/products/endless-silky-eye-pen',
+        seed_data: {
+          brand: 'PIXI BEAUTY',
+          category: 'Makeup Sharpener',
+          description: 'A silky eyeliner pencil. Use with a sharpener as needed.',
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_pixi_eye_pen',
+        sellable_item_group_id: 'sig_pixi_eye_pen',
+      },
+      generatedAt: '2026-05-23T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+    const oilBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_pixi_oil',
+        title: 'Jasmine Oil Blend',
+        canonical_url: 'https://pixibeauty.com/products/jasmine-oil-blend',
+        seed_data: {
+          brand: 'PIXI BEAUTY',
+          description: 'A jasmine oil blend for skin-care routines.',
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_pixi_oil',
+        sellable_item_group_id: 'sig_pixi_oil',
+      },
+      generatedAt: '2026-05-23T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+    const facePaletteBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_pixi_face_palette',
+        title: 'Own Your Glow Palette',
+        canonical_url: 'https://pixibeauty.com/products/own-your-glow-palette',
+        seed_data: {
+          brand: 'PIXI BEAUTY',
+          category: 'Face Palette',
+          description: 'A face palette for complexion glow.',
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_pixi_face_palette',
+        sellable_item_group_id: 'sig_pixi_face_palette',
+      },
+      generatedAt: '2026-05-23T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+
+    expect(faceClothBundle.shopping_card.subtitle).toBe('Skincare Tool');
+    expect(faceClothBundle.shopping_card.highlight).toBe('Cleansing cloth tool');
+    expect(eyePenBundle.shopping_card.subtitle).toBe('Eye Makeup');
+    expect(eyePenBundle.shopping_card.highlight).toBe('Eye-makeup formula detail');
+    expect(oilBundle.shopping_card.subtitle).toBe('Face Oil');
+    expect(oilBundle.shopping_card.highlight).toBe('Face oil formula detail');
+    expect(facePaletteBundle.shopping_card.subtitle).toBe('Face Palette');
+    expect(facePaletteBundle.shopping_card.highlight).toBe('Complexion palette detail');
   });
 
   test('classifies Kylie lip, cleanser, palette, mist, and set formats without generic fallback', () => {
@@ -1020,5 +1138,123 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     expect(brandFromUrl('https://pixibeauty.com/products/clarity-tonic-to-go')).toBe('Pixibeauty');
     expect(bundle.product_intel_core.what_it_is.body).toContain('Pixibeauty toner');
     expect(bundle.product_intel_core.what_it_is.body).not.toContain('Tom Ford');
+  });
+
+  test('conservative rewrite selection skips protected or non-public Pixi rows', () => {
+    const base = {
+      domain: 'pixibeauty.com',
+      recommended_lane: 'lane_3_kb_rewrite_review',
+      seed_missing_fields: '',
+      identity_status: 'approved',
+      identity_live_read_enabled: true,
+      kb_direct_high_quality_ready: false,
+      kb_direct_human_reviewed: true,
+      kb_direct_quality_state: 'limited',
+      kb_direct_evidence_profile: 'seller_only',
+      main_blocker: 'kb_displayable_limited',
+      catalog_attached: true,
+      index_serving_eligible: true,
+      commerce_doc_public: true,
+      terminal_hold: false,
+    };
+
+    expect(isConservativeRewriteCandidate({ ...base, title: 'Glow-y Lip Oil' })).toBe(true);
+    expect(
+      isConservativeRewriteCandidate({
+        ...base,
+        title: 'Mini Makeup Fixing Mist',
+        kb_direct_evidence_profile: 'community_supported',
+      }),
+    ).toBe(false);
+    expect(
+      isConservativeRewriteCandidate({
+        ...base,
+        title: 'Verified Insight',
+        kb_direct_high_quality_ready: true,
+      }),
+    ).toBe(false);
+    expect(isConservativeRewriteCandidate({ ...base, title: 'PixiPerfume Sample' })).toBe(false);
+    expect(
+      isConservativeRewriteCandidate(
+        { ...base, title: 'Daily Glow Duo' },
+        { singleItemOnly: true },
+      ),
+    ).toBe(false);
+    expect(isConservativeRewriteCandidate({ ...base, title: 'Pixi Rose Travel Bag' })).toBe(false);
+    expect(
+      isConservativeRewriteCandidate(
+        { ...base, title: 'Glow Mist', commerce_doc_public: false },
+        { requirePublicCommerceDoc: true },
+      ),
+    ).toBe(false);
+  });
+
+  test('selectInventoryRows keeps only safe public candidates when requested', () => {
+    const rows = [
+      {
+        external_product_id: 'safe',
+        domain: 'pixibeauty.com',
+        title: 'Glow-y Lip Oil',
+        recommended_lane: 'lane_3_kb_rewrite_review',
+        seed_missing_fields: '',
+        identity_status: 'approved',
+        identity_live_read_enabled: true,
+        kb_direct_high_quality_ready: false,
+        kb_direct_human_reviewed: true,
+        kb_direct_quality_state: 'limited',
+        kb_direct_evidence_profile: 'seller_only',
+        main_blocker: 'kb_displayable_limited',
+        catalog_attached: true,
+        index_serving_eligible: true,
+        commerce_doc_public: true,
+        terminal_hold: false,
+      },
+      {
+        external_product_id: 'protected',
+        domain: 'pixibeauty.com',
+        title: 'Mini Makeup Fixing Mist',
+        recommended_lane: 'lane_3_kb_rewrite_review',
+        seed_missing_fields: '',
+        identity_status: 'approved',
+        identity_live_read_enabled: true,
+        kb_direct_high_quality_ready: false,
+        kb_direct_human_reviewed: true,
+        kb_direct_quality_state: 'eligible',
+        kb_direct_evidence_profile: 'community_supported',
+        main_blocker: 'kb_blocked',
+        catalog_attached: true,
+        index_serving_eligible: true,
+        commerce_doc_public: true,
+        terminal_hold: false,
+      },
+      {
+        external_product_id: 'shadow',
+        domain: 'pixibeauty.com',
+        title: 'Rose Body Cleanser',
+        recommended_lane: 'lane_3_kb_rewrite_review',
+        seed_missing_fields: '',
+        identity_status: 'approved',
+        identity_live_read_enabled: true,
+        kb_direct_high_quality_ready: false,
+        kb_direct_human_reviewed: true,
+        kb_direct_quality_state: 'limited',
+        kb_direct_evidence_profile: 'seller_only',
+        main_blocker: 'kb_displayable_limited',
+        catalog_attached: true,
+        index_serving_eligible: false,
+        commerce_doc_public: false,
+        terminal_hold: false,
+      },
+    ];
+
+    expect(
+      selectInventoryRows(rows, {
+        domain: 'pixibeauty.com',
+        lane: 'lane_3_kb_rewrite_review',
+        limit: 10,
+        requirePublicCommerceDoc: true,
+        singleItemOnly: true,
+      }).map((row) => row.external_product_id),
+    ).toEqual(['safe']);
   });
 });
