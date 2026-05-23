@@ -573,6 +573,36 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     expect(bundle.product_intel_core.what_it_is.body).not.toMatch(/beauty beauty/i);
   });
 
+  test('classifies Sigma makeup blenders as applicator tools, not generic beauty products', () => {
+    expect(inferKind('3DHD™ Blender', '', '', 'A makeup blender for cream and liquid complexion products.')).toBe(
+      'makeup_applicator',
+    );
+
+    const bundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_sigma_blender',
+        title: '3DHD™ Blender',
+        canonical_url: 'https://sigmabeauty.com/products/3dhdtm-blender',
+        seed_data: {
+          brand: 'sigma beauty',
+          description: 'A makeup blender for applying liquid, cream, and powder formulas.',
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_sigma_blender',
+        sellable_item_group_id: 'sig_sigma_blender',
+      },
+      generatedAt: '2026-05-22T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+
+    expect(bundle.shopping_card.subtitle).toBe('Makeup Applicator');
+    expect(bundle.shopping_card.highlight).toBe('Makeup sponge format detail');
+    expect(bundle.product_intel_core.what_it_is.body).toContain('makeup applicator');
+    expect(bundle.product_intel_core.what_it_is.body).not.toMatch(/beauty product/i);
+  });
+
   test('classifies Sigma makeup brush cups as storage accessories, not brushes', () => {
     expect(inferKind('Makeup Brush Cup', '', '', 'A cup for storing makeup brushes.')).toBe('brush_storage');
     expect(inferKind('Travel-Sized Makeup Brush Cup', '', '', 'A travel cup for makeup brushes.')).toBe(
