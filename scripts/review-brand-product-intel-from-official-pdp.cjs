@@ -634,6 +634,101 @@ function firstUsefulDetail(details) {
   return '';
 }
 
+function isLipComboRole(facts, role) {
+  const title = asString(facts.title).toLowerCase();
+  return (
+    role.label === 'Lip combo' ||
+    (/\blip\b/.test(title) && (/\b(?:combo|kit|set|duo)\b/.test(title) || title.includes('&')))
+  );
+}
+
+function readLipComboComponents(facts) {
+  const title = stripHtml(facts.title)
+    .replace(/\s+/g, ' ')
+    .replace(/\b(?:combo|set|duo)\b$/i, '')
+    .trim();
+  if (!title.includes('&')) return [];
+  return uniq(
+    title
+      .split(/\s*&\s*/g)
+      .map((item) => item.replace(/\b(?:combo|set|duo)\b$/i, '').trim())
+      .filter((item) => item.length >= 4),
+  ).slice(0, 3);
+}
+
+function readLipComboFormat(facts) {
+  const labels = uniq([
+    ...asArray(facts.variants?.labels),
+    ...asArray(facts.details),
+    facts.description,
+  ]);
+  for (const raw of labels) {
+    const text = stripHtml(raw)
+      .replace(/^(?:format|pack|set|item):\s*/i, '')
+      .trim();
+    if (/\blip\s+(?:duo|set|kit|combo)\b/i.test(text) && text.length <= 90) return text;
+  }
+  return '';
+}
+
+function buildLipComboHighlight(facts) {
+  const comboFormat = readLipComboFormat(facts);
+  if (comboFormat) return comboFormat;
+  const components = readLipComboComponents(facts);
+  if (components.length >= 2) return compactText(components.join(' + '), 64);
+  return '';
+}
+
+function buildLipComboWhyItStandsOut(facts, role, anchors) {
+  const why = [];
+  const components = readLipComboComponents(facts);
+  const comboFormat = readLipComboFormat(facts);
+  const finishAnchors = anchors.filter((item) => /\b(?:matte|shine|satin)\s+finish\b/i.test(item));
+  const howTo = sourceInstructionsForRole(facts, role);
+  const componentText = components.length >= 2
+    ? `${components.slice(0, -1).join(', ')} and ${components[components.length - 1]}`
+    : '';
+
+  if (componentText || comboFormat) {
+    const subject = componentText
+      ? `the paired components as ${componentText}`
+      : `the format as ${comboFormat}`;
+    const formatClause = comboFormat && componentText ? ` The visible selector summarizes the pack as ${comboFormat}.` : '';
+    why.push({
+      headline: 'Component pairing is clear',
+      body: sentence(`The PDP identifies ${subject}, so a shopper can tell whether this is liner-plus-color, gloss-plus-liner, or a fuller lip set before leaving the page.${formatClause}`),
+      evidence_strength: 'official_pdp_reviewed',
+    });
+  }
+
+  if (finishAnchors.length) {
+    const finishText = finishAnchors.slice(0, 2).join(' and ');
+    why.push({
+      headline: 'Finish role is easy to compare',
+      body: sentence(`The stored product facts call out ${finishText}, which helps shoppers decide whether the set is better for a soft matte lip, a glossy top layer, or a layered look`),
+      evidence_strength: 'official_pdp_reviewed',
+    });
+  }
+
+  if (howTo.length) {
+    why.push({
+      headline: 'Application order is explicit',
+      body: sentence(`The reviewed directions explain the sequence: ${howTo[0]}`),
+      evidence_strength: 'official_pdp_reviewed',
+    });
+  }
+
+  if (facts.rawIngredients.length) {
+    why.push({
+      headline: 'Ingredient list is available',
+      body: sentence('Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing'),
+      evidence_strength: 'official_pdp_reviewed',
+    });
+  }
+
+  return why.slice(0, 3);
+}
+
 function buildWhatItIs(facts, role) {
   const description = firstUsefulSentence(facts.description, 240);
   const detail = firstUsefulDetail(facts.details);
@@ -651,6 +746,11 @@ function buildWhatItIs(facts, role) {
 }
 
 function buildWhyItStandsOut(facts, role, anchors) {
+  if (isLipComboRole(facts, role)) {
+    const lipComboWhy = buildLipComboWhyItStandsOut(facts, role, anchors);
+    if (lipComboWhy.length >= 2) return lipComboWhy;
+  }
+
   const why = [];
   const anchorText = anchors.filter((item) => !/^full inci/i.test(item)).slice(0, 4).join(', ');
   if (anchorText) {
@@ -780,7 +880,8 @@ function buildInsightBundle(row) {
   const bestFor = inferBestFor(facts, role, anchors);
   const whatItIs = buildWhatItIs(facts, role);
   const evidenceProfile = evidenceProfileFor(facts);
-  const highlight = buildCompleteHighlight(anchors.length ? anchors : bestFor.map((item) => item.label), role.label);
+  const lipComboHighlight = isLipComboRole(facts, role) ? buildLipComboHighlight(facts) : '';
+  const highlight = lipComboHighlight || buildCompleteHighlight(anchors.length ? anchors : bestFor.map((item) => item.label), role.label);
   const generatedAt = new Date().toISOString();
   return {
     contract_version: PRODUCT_INTEL_CONTRACT_VERSION,
