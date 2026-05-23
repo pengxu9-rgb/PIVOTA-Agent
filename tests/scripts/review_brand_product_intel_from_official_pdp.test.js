@@ -287,7 +287,15 @@ describe('official PDP manual insight review', () => {
     expect(plan.preview.headline).toBe('Lip combo');
     expect(plan.preview.what_it_is).toContain('Kylie Cosmetics');
     expect(plan.preview.what_it_is).not.toContain('Shop');
-    expect(plan.preview.why_it_stands_out.map((item) => item.headline)).toContain('Usage instructions available');
+    expect(plan.preview.why_it_stands_out.map((item) => item.headline)).toEqual(expect.arrayContaining([
+      'Component pairing is clear',
+      'Finish role is easy to compare',
+      'Application order is explicit',
+    ]));
+    expect(plan.preview.why_it_stands_out.map((item) => item.headline)).not.toContain('Concrete product cues');
+    expect(plan.preview.why_it_stands_out[0].body).toContain('Precision Pout Lip Liner');
+    expect(plan.preview.why_it_stands_out[1].body).not.toContain('Gloss Drip');
+    expect(plan.preview.shopping_highlight).toBe('Cocoa Precision Pout Lip Liner + Underestimated Gloss Drip');
   });
 
   test('keeps Kylie fragrance tray insights in accessory language', () => {
