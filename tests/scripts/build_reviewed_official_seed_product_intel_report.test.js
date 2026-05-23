@@ -608,6 +608,63 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     expect(lashesBundle.shopping_card.subtitle).toBe('Eye Makeup');
   });
 
+  test('preserves official Sigma brush-set product names while removing broad marketing claims', () => {
+    expect(sanitizePublicTitleText('Award-Winning Brush Set')).toBe('Award-Winning Brush Set');
+    expect(
+      sanitizePublicSourceText(
+        "Discover the ultimate brush collection that has captured beauty lovers' hearts worldwide. The Award-Winning Brush Set combines Sigma face and eye brushes with the Dry'n Shape Tower.",
+      ),
+    ).toBe("The Award-Winning Brush Set combines Sigma face and eye brushes with the Dry'n Shape Tower.");
+
+    const awardBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_sigma_award_brush_set',
+        title: 'Award-Winning Brush Set',
+        canonical_url: 'https://sigmabeauty.com/products/the-award-winning-brush-set',
+        seed_data: {
+          brand: 'sigma beauty',
+          category: 'Brush Set',
+          description:
+            "Discover the ultimate brush collection that has captured beauty lovers' hearts worldwide. The Award-Winning Brush Set combines Sigma's most beloved face and eye brushes with the innovative Dry'n Shape Tower for quick and easy drying and storage.",
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_sigma_award_brush_set',
+        sellable_item_group_id: 'sig_sigma_award_brush_set',
+      },
+      generatedAt: '2026-05-23T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+    const favoritesBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_sigma_favorites_brush_set',
+        title: 'An Knook Favorites Brush Set',
+        canonical_url: 'https://sigmabeauty.com/products/an-knook-favorites-brush-set',
+        seed_data: {
+          brand: 'sigma beauty',
+          category: 'Curated Set',
+          description:
+            "Enjoy this limited-edition Favorites Brush Set, created just for you, featuring a selection of An's brushes.",
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_sigma_favorites_brush_set',
+        sellable_item_group_id: 'sig_sigma_favorites_brush_set',
+      },
+      generatedAt: '2026-05-23T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+
+    expect(awardBundle.shopping_card.title).toBe('Award-Winning Brush Set');
+    expect(awardBundle.shopping_card.highlight).toBe('Brushes plus drying tower');
+    expect(awardBundle.product_intel_core.what_it_is.body).toContain('Award-Winning Brush Set');
+    expect(JSON.stringify(awardBundle)).not.toMatch(/captured beauty lovers|hearts worldwide|Brush Set as Brush Set/i);
+    expect(favoritesBundle.shopping_card.highlight).toBe('Curated favorites brush set');
+    expect(favoritesBundle.product_intel_core.what_it_is.body).toContain('An Knook Favorites Brush Set');
+  });
+
   test('uses clean Sigma brush prose without duplicated beauty wording', () => {
     const bundle = buildBundle({
       seed: {
