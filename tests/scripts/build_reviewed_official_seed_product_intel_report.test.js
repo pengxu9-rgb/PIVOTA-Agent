@@ -87,6 +87,132 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     ).toBe('moisturizer');
   });
 
+  test('prioritizes Wave3 hair and scalp title signals over stale skin or makeup categories', () => {
+    expect(
+      inferKind(
+        'BLOOMING ROOTS Botanical Scalp Treatment Oil',
+        'Foundation',
+        '',
+        'Healthy, vibrant hair begins where it grows, at the roots.',
+      ),
+    ).toBe('scalp_oil');
+    expect(
+      inferKind(
+        'Exploration 02 Ampoule Hydrating Conditioner',
+        'Skincare',
+        '',
+        'Active conditioner, reimagined. A waterless hair conditioning concentrate.',
+      ),
+    ).toBe('conditioner');
+    expect(
+      inferKind(
+        'Exploration 01 Ampoule Repair Shampoo',
+        'Skincare',
+        '',
+        'Active shampoo, reimagined. A waterless hair cleanse concentrate.',
+      ),
+    ).toBe('shampoo');
+    expect(inferKind('Lucid Leave-In Conditioning Hair Milk', 'Skincare', '', 'Leave-in conditioner.')).toBe(
+      'leave_in_conditioner',
+    );
+    expect(inferKind('Renaissance Nourishing Pre-Wash Hair Oil', 'Beauty Product', '', 'Hair oil.')).toBe(
+      'hair_oil',
+    );
+    expect(
+      inferKind(
+        'Antarctic ACV Hair Shine Glass Rinse for pH Balance',
+        'Beauty Product',
+        '',
+        'Apple Cider Vinegar rinse for hair.',
+      ),
+    ).toBe('hair_rinse');
+    expect(
+      inferKind(
+        'Atmosphere Multi-Peptide Hair Density & Scalp Serum',
+        'Skincare Treatment',
+        '',
+        'Scalp serum for hair density concerns.',
+      ),
+    ).toBe('scalp_serum');
+
+    const bundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_luna_scalp',
+        title: 'Atmosphere Multi-Peptide Hair Density & Scalp Serum',
+        canonical_url: 'https://lunanectar.com/products/atmosphere-hair-density-scalp-serum',
+        seed_data: {
+          brand: 'Luna Nectar',
+          category: 'Skincare Treatment',
+          description: 'Thinning hair density or excessive shedding?',
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_luna_scalp',
+        sellable_item_group_id: 'sig_luna_scalp',
+      },
+      generatedAt: '2026-05-23T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+
+    expect(bundle.shopping_card.subtitle).toBe('Scalp Serum');
+    expect(bundle.shopping_card.highlight).toBe('Scalp serum format detail');
+    expect(bundle.product_intel_core.what_it_is.body).toContain('A Luna Nectar scalp serum');
+    expect(JSON.stringify(bundle)).not.toMatch(/skincare treatment listed|excessive shedding/i);
+  });
+
+  test('softens Wave3 public source copy before it enters Product Intel fields', () => {
+    expect(
+      sanitizePublicSourceText(
+        'Our phytoactive house formula offers long-lasting moisture and relief of inflammatory skin conditions.',
+      ),
+    ).toBe('Our phytoactive house formula offers long-lasting moisture and calming skin-comfort positioning.');
+    expect(
+      sanitizePublicSourceText(
+        'Key benefits: By choosing this Calming Adaptogenic Facial Emulsion you help plant 1 m2 of biodiverse forest.',
+      ),
+    ).toBe('Key benefits: Calming Adaptogenic Facial Emulsion.');
+    expect(
+      sanitizePublicSourceText(
+        'Fragrance-free, creamy texture is suitable for all skin types, including sensitive skin.',
+      ),
+    ).toBe(
+      'Fragrance-free, creamy texture is positioned by the official page for broad routine use, including sensitive skin.',
+    );
+    expect(
+      sanitizePublicSourceText('Designed to reduce redness, tackle dark spots and target age spots.'),
+    ).toBe(
+      'Designed to support the look of calmer skin and address the look of uneven tone.',
+    );
+
+    const forestBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_oio_forest',
+        title: 'The Forest Retreat',
+        canonical_url: 'https://us.oiolab.co/products/the-forest-retreat',
+        seed_data: {
+          brand: 'Oio Lab',
+          category: 'Skincare',
+          description:
+            'Key benefits: By choosing this Calming Adaptogenic Facial Emulsion you help plant 1 m2 of biodiverse forest.',
+          ingredient_tokens: ['Aqua / Water, Linum Usitatissimum Seed Oil, Glycerin, Isomalt'],
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_oio_forest',
+        sellable_item_group_id: 'sig_oio_forest',
+      },
+      generatedAt: '2026-05-23T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+
+    expect(forestBundle.product_intel_core.what_it_is.body).toContain(
+      'Key benefits: Calming Adaptogenic Facial Emulsion.',
+    );
+    expect(JSON.stringify(forestBundle)).not.toMatch(/plant 1 m2|biodiverse forest/i);
+  });
+
   test('uses non-workout highlights unless the product is explicitly workout positioned', () => {
     expect(
       buildBundle({
