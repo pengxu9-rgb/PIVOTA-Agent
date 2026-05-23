@@ -558,6 +558,72 @@ Contains four types of peptides`,
     ]);
   });
 
+  test('preserves hidden quarantined variant state and blocks recall for non-surfaceable backfills', () => {
+    const row = {
+      id: 'eps_fenty_sample',
+      title: 'Fenty Eau de Parfum Sample Vial on Card',
+      canonical_url: 'https://fentybeauty.com/products/fenty-eau-de-parfum-sample-vial-on-card',
+      destination_url: 'https://fentybeauty.com/products/fenty-eau-de-parfum-sample-vial-on-card',
+      image_url: 'https://fentybeauty.com/cdn/shop/files/68378_1200x.jpg',
+      price_amount: 0,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        brand: 'Fenty Beauty',
+        title: 'Fenty Eau de Parfum Sample Vial on Card',
+        category: 'Fragrance',
+        snapshot: {},
+      },
+    };
+    const variant = {
+      id: '41739375673389',
+      sku: '68378',
+      url: row.canonical_url,
+      product_url: row.canonical_url,
+      option_name: 'Offer',
+      option_value: '68378',
+      price: '0.00',
+      currency: 'USD',
+      stock: 'In Stock',
+      image_url: row.image_url,
+      hidden_from_selector: true,
+      source_quality_status: 'quarantined',
+      source_origin: 'shopify_json',
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: row.title,
+            url: row.canonical_url,
+            description_raw: 'Warm floral fragrance sample.',
+            image_url: row.image_url,
+            image_urls: [row.image_url],
+            variants: [variant],
+          },
+        ],
+        variants: [variant],
+        diagnostics: {
+          discovery_strategy: 'shopify_json',
+          failure_category: null,
+        },
+      },
+      row.canonical_url,
+    );
+
+    const nextVariant = payload.nextRow.seed_data.snapshot.variants[0];
+    expect(nextVariant.hidden_from_selector).toBe(true);
+    expect(nextVariant.source_quality_status).toBe('quarantined');
+    expect(nextVariant.source_origin).toBe('shopify_json');
+    expect(payload.nextRow.availability).toBe('out_of_stock');
+    expect(payload.nextRow.seed_data.content_quality).toBe('blocked');
+    expect(payload.nextRow.seed_data.snapshot.content_quality).toBe('blocked');
+    expect(payload.nextRow.seed_data.derived.recall.quality_state).toBe('blocked');
+    expect(payload.nextRow.seed_data.derived.recall.suppression_flags.exclude_from_recall).toBe(true);
+  });
+
   test('extracts full ingredients from mixed PDP detail section bodies', () => {
     const raw = pickPdpIngredientsRaw('', [
       {

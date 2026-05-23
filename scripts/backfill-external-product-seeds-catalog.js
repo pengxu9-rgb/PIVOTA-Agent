@@ -3267,6 +3267,11 @@ function chooseRepresentativeProduct(response, targetUrl, row) {
 function mapSnapshotVariants(product, response, existingSeedData) {
   const responseVariants = Array.isArray(response?.variants) ? response.variants : [];
   const productDetailSections = normalizeDetailsSections(product?.details_sections || product?.pdp_details_sections);
+  const normalizeBooleanLike = (value) => (
+    value === true ||
+    normalizeNonEmptyString(value).toLowerCase() === 'true' ||
+    normalizeNonEmptyString(value).toLowerCase() === '1'
+  );
   const findResponseVariantMatch = (variant) => {
     const strongTokens = [
       variant?.id,
@@ -3334,6 +3339,21 @@ function mapSnapshotVariants(product, response, existingSeedData) {
           variant.product_url ||
           responseVariant.product_url,
       );
+      const sourceQualityStatus = normalizeNonEmptyString(
+        variant.source_quality_status ||
+          variant.sourceQualityStatus ||
+          responseVariant.source_quality_status ||
+          responseVariant.sourceQualityStatus,
+      ).toLowerCase();
+      const sourceOrigin = normalizeNonEmptyString(
+        variant.source_origin ||
+          variant.sourceOrigin ||
+          responseVariant.source_origin ||
+          responseVariant.sourceOrigin,
+      ).toLowerCase();
+      const hiddenFromSelector =
+        normalizeBooleanLike(variant.hidden_from_selector ?? variant.hiddenFromSelector) ||
+        normalizeBooleanLike(responseVariant.hidden_from_selector ?? responseVariant.hiddenFromSelector);
       return {
         sku,
         variant_id: normalizeNonEmptyString(variant.id || variant.variant_id || responseVariant.id || responseVariant.variant_id || sku),
@@ -3349,6 +3369,9 @@ function mapSnapshotVariants(product, response, existingSeedData) {
         price: normalizeNonEmptyString(variant.price || responseVariant.price),
         currency: normalizeNonEmptyString(variant.currency || responseVariant.currency),
         stock: normalizeNonEmptyString(variant.stock || responseVariant.stock),
+        ...(sourceQualityStatus ? { source_quality_status: sourceQualityStatus } : {}),
+        ...(sourceOrigin ? { source_origin: sourceOrigin } : {}),
+        ...(hiddenFromSelector ? { hidden_from_selector: true } : {}),
         image_url: imageUrls[0] || '',
         image_urls: imageUrls,
         description: cleanPdpDescriptionCandidate(
@@ -3366,6 +3389,25 @@ function mapSnapshotVariants(product, response, existingSeedData) {
     }));
   }
   return normalizeSeedVariants(existingSeedData, null);
+}
+
+function variantLooksHiddenOrQuarantined(variant = {}) {
+  if (!variant || typeof variant !== 'object') return false;
+  const status = normalizeNonEmptyString(variant.source_quality_status || variant.sourceQualityStatus).toLowerCase();
+  return (
+    variant.hidden_from_selector === true ||
+    normalizeNonEmptyString(variant.hidden_from_selector || variant.hiddenFromSelector).toLowerCase() === 'true' ||
+    status === 'blocked' ||
+    status === 'quarantined' ||
+    status.startsWith('force_filled')
+  );
+}
+
+function variantIsSurfaceableForCommerce(variant = {}) {
+  if (!variant || typeof variant !== 'object') return false;
+  if (variantLooksHiddenOrQuarantined(variant)) return false;
+  const normalized = normalizeSeedAvailability(variant.stock || variant.availability);
+  return normalized !== 'out_of_stock';
 }
 
 function comparableSeedData(value) {
@@ -3929,7 +3971,11 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   const variantPrices = variantsForPrice
     .map((variant) => parsePrice(variant.price))
     .filter((value) => typeof value === 'number' && value > 0);
+  const allExtractedVariantsHiddenOrQuarantined =
+    effectiveSnapshotVariants.length > 0 &&
+    effectiveSnapshotVariants.every((variant) => variantLooksHiddenOrQuarantined(variant));
   const anyInStock = effectiveSnapshotVariants.some((variant) => {
+    if (!variantIsSurfaceableForCommerce(variant)) return false;
     const normalized = normalizeSeedAvailability(variant.stock);
     return normalized !== 'out_of_stock';
   });
@@ -4747,6 +4793,8 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     ...(pdpFieldCaptureStatus ? { pdp_field_capture_status: pdpFieldCaptureStatus } : {}),
     ...(pdpFieldQualitySummary ? { pdp_field_quality_summary: pdpFieldQualitySummary } : {}),
     ...(nextReviewSummary ? { review_summary: nextReviewSummary } : {}),
+    ...(allExtractedVariantsHiddenOrQuarantined ? { content_quality: 'blocked' } : {}),
+    ...(allExtractedVariantsHiddenOrQuarantined ? { source_page_type: 'hidden_or_quarantined_variant' } : {}),
     pdp_content_asset_v1: nextPdpContentAsset || undefined,
     ...(snapshotQuarantine ? { snapshot_quarantine: snapshotQuarantine } : {}),
     image_url: imageUrl || normalizeNonEmptyString(snapshot.image_url),
@@ -4810,6 +4858,8 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     ...(pdpFieldCaptureStatus ? { pdp_field_capture_status: pdpFieldCaptureStatus } : {}),
     ...(pdpFieldQualitySummary ? { pdp_field_quality_summary: pdpFieldQualitySummary } : {}),
     ...(nextReviewSummary ? { review_summary: nextReviewSummary } : {}),
+    ...(allExtractedVariantsHiddenOrQuarantined ? { content_quality: 'blocked' } : {}),
+    ...(allExtractedVariantsHiddenOrQuarantined ? { source_page_type: 'hidden_or_quarantined_variant' } : {}),
     pdp_content_asset_v1: nextPdpContentAsset || undefined,
     ...(snapshotQuarantine ? { snapshot_quarantine: snapshotQuarantine } : {}),
     ...(imageUrl ? { image_url: imageUrl } : {}),
