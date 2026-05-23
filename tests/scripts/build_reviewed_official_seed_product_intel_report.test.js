@@ -410,6 +410,36 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     expect(bundle.product_intel_core.what_it_is.body).not.toMatch(/beauty beauty/i);
   });
 
+  test('classifies Sigma makeup brush cups as storage accessories, not brushes', () => {
+    expect(inferKind('Makeup Brush Cup', '', '', 'A cup for storing makeup brushes.')).toBe('brush_storage');
+    expect(inferKind('Travel-Sized Makeup Brush Cup', '', '', 'A travel cup for makeup brushes.')).toBe(
+      'brush_storage',
+    );
+
+    const bundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_sigma_brush_cup',
+        title: 'Makeup Brush Cup',
+        canonical_url: 'https://sigmabeauty.com/products/makeup-brush-cup',
+        seed_data: {
+          brand: 'sigma beauty',
+          description: 'Store your favorite brushes in a makeup brush cup.',
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_sigma_brush_cup',
+        sellable_item_group_id: 'sig_sigma_brush_cup',
+      },
+      generatedAt: '2026-05-22T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+
+    expect(bundle.shopping_card.subtitle).toBe('Brush Storage');
+    expect(bundle.shopping_card.highlight).toBe('Brush storage detail');
+    expect(bundle.product_intel_core.what_it_is.body).toContain('brush storage accessory');
+  });
+
   test('uses compact Kylie highlights that avoid beauty-product and source-backed fallbacks', () => {
     const lipBundle = buildBundle({
       seed: {

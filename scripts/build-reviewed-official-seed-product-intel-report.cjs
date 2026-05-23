@@ -160,6 +160,7 @@ function inferKind(title, category, categoryPath, description = '') {
   const descriptionText = `${description}`.toLowerCase();
   const haystack = `${titleCategoryText} ${descriptionText}`;
   if (/\b(?:grwm routine|look)\b/.test(titleCategoryText)) return 'makeup_set';
+  if (/\b(?:brush\s+cup|brush\s+holder|brush\s+case|brush\s+bag|brush\s+storage|makeup\s+brush\s+cup)\b/.test(titleCategoryText)) return 'brush_storage';
   if (/\b(?:brush\s+care|brush cleanser|brush cleaning|brush cleaner|brushampoo|sigmagic|travel\s+switch|switch\s+set|dry['’]?n\s+shape|brush\s+cleaning\s+mat|brush\s+cleaning\s+tool)\b|sigma\W*switch\b/.test(titleCategoryText)) return 'brush_care';
   if (
     /\bbrush(?:\s+[a-z0-9&'’.-]+){0,4}\s+(?:set|kit|duo|trio|quad|bundle|collection)\b/.test(titleCategoryText) ||
@@ -228,6 +229,7 @@ function kindLabel(kind, category) {
     blemish_patch: 'blemish patch',
     cleanser: 'cleanser',
     brush: 'brush',
+    brush_storage: 'brush storage accessory',
     brush_set: 'brush set',
     brush_care: 'brush-care product',
     skincare: 'skincare product',
@@ -262,6 +264,7 @@ function displayCategoryForKind(kind, category) {
     blemish_patch: 'Blemish Patch',
     cleanser: 'Cleanser',
     brush: 'Beauty Brush',
+    brush_storage: 'Brush Storage',
     brush_set: 'Brush Set',
     brush_care: 'Brush Care',
     skincare: 'Skincare',
@@ -273,7 +276,7 @@ function displayCategoryForKind(kind, category) {
     lip_set: 'Lip Set',
     beauty_product: 'Beauty Product',
   };
-  const controlledCategoryKinds = new Set(['brush', 'brush_set', 'brush_care']);
+  const controlledCategoryKinds = new Set(['brush', 'brush_storage', 'brush_set', 'brush_care']);
   if (controlledCategoryKinds.has(kind)) return labels[kind] || labels.beauty_product;
   const explicit = text(category);
   if (explicit && explicit.toLowerCase() !== 'beauty product') return explicit;
@@ -300,6 +303,7 @@ function routineStep(kind) {
     blemish_patch: 'spot_care',
     cleanser: 'cleanse',
     brush: 'tool',
+    brush_storage: 'tool',
     brush_set: 'tool',
     brush_care: 'tool_care',
     skincare: 'skin_care',
@@ -462,6 +466,7 @@ function buildHighlightPhrase(kind, category, description, title = '') {
   if (kind === 'blemish_patch') return 'Spot-care format detail';
   if (kind === 'cleanser') return /glycolic|retinol|mud|jasmine/.test(signalText) ? 'Active cleanser detail' : 'Cleanser formula detail';
   if (kind === 'brush') return 'Brush format detail';
+  if (kind === 'brush_storage') return 'Brush storage detail';
   if (kind === 'brush_set') return 'Brush set format detail';
   if (kind === 'brush_care') return 'Brush-care cleaning detail';
   if (kind === 'skincare') {
