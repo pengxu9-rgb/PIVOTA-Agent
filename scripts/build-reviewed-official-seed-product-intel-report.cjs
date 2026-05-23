@@ -97,6 +97,8 @@ function sanitizePublicSourceText(value) {
     .replace(/\bsave\s+\d{1,3}%\b/gi, '')
     .replace(/\b\d+(?:\.\d{2})?\s*(?:usd|eur|gbp|jpy|cny|rmb|value)\b/gi, '')
     .replace(/\bnot eligible for discounts?\.?/gi, '')
+    .replace(/\bMSRP\s+was\s+last\s+offered\s+\d{1,2}\/\d{1,2}\/\d{2,4}\.?\s*/gi, '')
+    .replace(/\bwas\s+last\s+offered\s+\d{1,2}\/\d{1,2}\/\d{2,4}\.?\s*/gi, '')
     .replace(/\b(?:ulta beauty|sephora|target|walmart|amazon)\s+exclusive\b/gi, '')
     .replace(/\b(?:an?|the)?\s*exclusive bundle available only at\s+[a-z0-9 .&'-]+\.?/gi, 'bundle')
     .replace(/\bavailable only at\s+[a-z0-9 .&'-]+\.?/gi, '')
@@ -105,6 +107,16 @@ function sanitizePublicSourceText(value) {
     .replace(/\bis your go-to for\b/gi, 'is designed for')
     .replace(/\bthis genius tool\b/gi, 'this tool')
     .replace(/\b(?:must-have|pro-favorite|ultimate|powerful)\b/gi, '')
+    .replace(/\bFeaturing\s+yet\s+gentle\s+formulas\b/gi, 'Featuring gentle formulas')
+    .replace(/\bpowerful\s+yet\s+gentle\s+formulas\b/gi, 'gentle formulas')
+    .replace(/\byet\s+gentle\s+formulas\b/gi, 'gentle formulas')
+    .replace(/\bworks\s+to\s+purify,\s*smooth\s+and\s+soothe\s+while\s+targeting\s+excess\s+oil\b/gi, 'supports a clarifying-looking, excess-oil routine')
+    .replace(/\bexcess-oil routine\s+and\s+visible\b[^.?!]*/gi, 'excess-oil routine')
+    .replace(/\.\s*With skin-loving\.?/gi, '.')
+    .replace(/\.\s*ingredients like\.?/gi, '.')
+    .replace(/\bInstantly\s+reduces\s+puffiness\s+and\s+under-eye\s+circles\b/gi, 'Positioned around the look of puffiness and under-eye circles')
+    .replace(/\breduces\s+puffiness\b/gi, 'addresses the look of puffiness')
+    .replace(/\breducing\s+puffiness\b/gi, 'addressing the look of puffiness')
     .replace(/\b(?:best[-\s]?selling|bestselling|viral|cult[-\s]?favorite)\b/gi, '')
     .replace(/\baward[-\s]?winning\b(?!\s+brush\s+set)/gi, '')
     .replace(/\beditor['’]?s choice,\s*beauty shortlist awards\s*\d{4}\b/gi, '')
@@ -247,11 +259,16 @@ function sanitizePublicTitleText(value) {
     .replace(/\s*[\[(]\s*[\])]\s*/g, ' ')
     .replace(/\s*[\[(]\s*(?:sale|clearance|promo|promotion|discount|free gift)\s*[\])]\s*/gi, ' ')
     .replace(/\b(?:sale|clearance|promo|promotion|discount)\s*$/gi, '')
-    .replace(/\.{2,}|…/g, '. ')
-    .replace(/\s{2,}/g, ' ')
-    .trim();
+      .replace(/\.{2,}|…/g, '. ')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
   const pipeParts = cleaned.split('|').map((part) => part.trim()).filter(Boolean);
-  const candidate = pipeParts.length > 1 ? pipeParts[pipeParts.length - 1] : cleaned;
+  const candidate =
+    pipeParts.length > 1 && /\b(?:set|kit|duo|trio|bundle|routine|palette|mist|tonic|serum|glow|blush|bronze)\b/i.test(pipeParts[0])
+      ? pipeParts[0]
+      : pipeParts.length > 1
+        ? pipeParts[pipeParts.length - 1]
+        : cleaned;
   return candidate
     .replace(/\s+[–-]\s+[A-Z0-9][A-Z0-9 .&'™®-]{2,}$/g, '')
     .replace(/\s{2,}/g, ' ')
@@ -262,6 +279,18 @@ function sanitizeFormulaSummary(value) {
   return text(value)
     .replace(/\bVitamin-C brightens\s*&\s*promotes collagen production\b/gi, 'Vitamin-C supports radiant-looking tone')
     .replace(/\bEvens skintone and improves the appearance of skin\b/gi, 'Supports the look of more even tone')
+    .replace(
+      /\b(Salicylic acid,\s*Glycolic acid,\s*Lactic acid)(?:\s+Salicylic acid,\s*Glycolic acid,\s*Lactic acid)+\b/gi,
+      '$1',
+    )
+    .replace(/\b(Salicylic acid,\s*Glycolic acid,\s*Lactic acid)\s+Clarity Cleanser\b/gi, '$1')
+    .replace(/\bsoothes\s*&\s*hydrates\b/gi, 'is listed for soothing and hydrating positioning')
+    .replace(/\bFeaturing\s+yet\s+gentle\s+formulas\b/gi, 'Featuring gentle formulas')
+    .replace(/\bpowerful\s+yet\s+gentle\s+formulas\b/gi, 'gentle formulas')
+    .replace(/\bworks\s+to\s+purify,\s*smooth\s+and\s+soothe\s+while\s+targeting\s+excess\s+oil\b/gi, 'is positioned around purifying-looking, smoothing, soothing, and excess-oil routine support')
+    .replace(/\bInstantly\s+reduces\s+puffiness\s+and\s+under-eye\s+circles\b/gi, 'Positioned around the look of puffiness and under-eye circles')
+    .replace(/\breduces\s+puffiness\b/gi, 'addresses the look of puffiness')
+    .replace(/\breducing\s+puffiness\b/gi, 'addressing the look of puffiness')
     .replace(/\b(?:see all|how to use|complete list)\b[\s:-]*/gi, ' ')
     .replace(/\b(?:wholesale|affiliate program|refer-a-friend|press|social|instagram|facebook|twitter|tiktok|pinterest|youtube)\b/gi, ' ')
     .replace(/\b(?:var\s+\w+|await)\b[^.!?;,]*/gi, ' ')
@@ -344,6 +373,8 @@ function inferSetKind(titleCategoryText, descriptionText) {
     /\b(?:look|makeup|lash|mascara|brow|blush|blush tint|lip\s*(?:&|and)\s*cheek|glow balm|bronze|bronzer|bronzing|complexion|colour|color|base|liquidglow|superglow|blur\s*(?:,|&|and)?\s*(?:colour|color)?\s*&?\s*set|foundation|conceal|correct|concealer|palette|eye pen|eye duo|eye trio|eye look|eye looks|eyeliner|eye liner|eye shadow|eyeshadow)\b/;
   const skincareSignal = /\b(?:skin|skincare|cleanse|cleanser|cleansing|tonic|toner|serum|mask|peel|clarity|rose|milky|mud)\b/;
   const strongSkincareSignal = /\b(?:cleanse|cleanser|cleansing|tonic|toner|serum|mask|peel|clarity|rose|milky|mud)\b/;
+  if (/\bvitamin[-\s]?c\b/.test(titleCategoryText) && /\bskincare\s+set\b/.test(joined)) return 'skincare_set';
+  if (/\bmisting\s+must[-\s]?haves?\b/.test(titleCategoryText)) return 'skincare_set';
   if (/\b(?:spot sticker|spot stickers|blemish sticker|blemish stickers|zit sticker|zit stickers)\b/.test(joined)) return 'blemish_patch_set';
   if (/\b(?:cleansing cloth|cleansing cloths|face cloth|face cloths|makeup melting cleansing cloths|wash cloth|wash cloths|muslin cloth|muslin cloths)\b/.test(joined)) {
     return 'skincare_tool_set';
@@ -396,7 +427,7 @@ function inferKind(title, category, categoryPath, description = '') {
   ) {
     return 'brush_set';
   }
-  if (/\b(?:set|kit|duo|trio|quad|sampler|bundle|vault|box|favourites|favorites|collection|routine|best of|holiday edition|choose your shades)\b/.test(titleCategoryText)) {
+  if (/\b(?:set|kit|duo|trio|quad|sampler|bundle|vault|box|must-haves?|favourites|favorites|collection|routine|best of|holiday edition|choose your shades)\b/.test(titleCategoryText)) {
     return inferSetKind(titleCategoryText, descriptionText);
   }
   if (brushCareDescriptionPattern.test(descriptionText)) return 'brush_care';
@@ -795,7 +826,7 @@ function ingredientSignals(seedData) {
   const flattened = candidates
     .map((item) => formulaCandidate(ingredientTextFromValue(item)))
     .filter(Boolean);
-  const joined = text(flattened.join(' '));
+  const joined = sanitizeFormulaSummary(text(flattened.join(' ')));
   const ingredientCount = asArray(seedData.ingredient_tokens || snapshot.ingredient_tokens).length;
   return {
     available: joined.length > 20,
@@ -963,9 +994,10 @@ function buildHighlightPhrase(kind, category, description, title = '') {
   }
   if (kind === 'skincare_set') {
     if (/cleanse|cleanser|cleansing/.test(signalText)) return 'Cleansing routine set';
+    if (/mist/.test(titleText)) return 'Mist routine set';
+    if (/glow|bright|radiance/.test(signalText)) return 'Glow routine set';
     if (/tonic|toner/.test(signalText)) return 'Tonic routine set';
     if (/mist/.test(signalText)) return 'Mist routine set';
-    if (/glow|bright|radiance/.test(signalText)) return 'Glow routine set';
     return 'Skincare routine set';
   }
   if (kind === 'makeup_set') {
