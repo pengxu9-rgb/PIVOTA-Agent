@@ -3123,9 +3123,9 @@ const OFFERS_RESOLVE_REASON_CODE_SET = new Set([
   'canonical_ref_direct',
   'stable_alias_ref',
   'no_candidates',
+  'no_offer_available',
   'db_timeout',
   'upstream_timeout',
-  'fallback_external',
 ]);
 
 // Resolve-product candidates cache (Phase 2 perf: avoid repeated slow scans).
@@ -29215,7 +29215,6 @@ function normalizeOffersResolveReasonCode(raw, fallback = 'no_candidates') {
   ) {
     return 'stable_alias_ref';
   }
-  if (token === 'external_fallback') return 'fallback_external';
   return fallback;
 }
 
@@ -29293,12 +29292,6 @@ function extractOffersResolveSubjectProductGroupId(input) {
   return offersResolvePickFirstTrimmed(subject.product_group_id, subject.productGroupId, id);
 }
 
-function buildOffersResolveExternalSearchUrl(query) {
-  const q = String(query || '').trim();
-  if (!q) return 'https://www.google.com/';
-  return `https://www.google.com/search?q=${encodeURIComponent(q)}`;
-}
-
 function buildOffersResolvePdpTargetGroup(productGroupId, canonicalProductRef = null) {
   const pgid = offersResolvePickFirstTrimmed(productGroupId);
   if (!pgid) return null;
@@ -29339,24 +29332,6 @@ function buildOffersResolvePdpTargetRef(canonicalProductRef, { path = 'ref' } = 
   };
 }
 
-function buildOffersResolvePdpTargetExternal(query, reasonCode = null) {
-  const normalizedReason = reasonCode
-    ? normalizeOffersResolveReasonCode(reasonCode, 'fallback_external')
-    : null;
-  return {
-    schema: 'pdp_target.v1',
-    type: 'external',
-    path: 'external',
-    external: {
-      provider: 'google',
-      target: '_blank',
-      url: buildOffersResolveExternalSearchUrl(query),
-      query: String(query || '').trim() || null,
-    },
-    ...(normalizedReason ? { reason_code: normalizedReason } : {}),
-  };
-}
-
 function normalizeOffersResolvePdpTargetV1(rawTarget, { fallbackQuery = '' } = {}) {
   const target = offersResolveIsRecord(rawTarget) ? rawTarget : null;
   if (!target) return null;
@@ -29380,15 +29355,6 @@ function normalizeOffersResolvePdpTargetV1(rawTarget, { fallbackQuery = '' } = {
   if ((rawPath === 'ref' || rawPath === 'resolve') && canonicalProductRef) {
     return buildOffersResolvePdpTargetRef(canonicalProductRef, { path: rawPath });
   }
-  if (rawPath === 'external') {
-    const query = offersResolvePickFirstTrimmed(
-      target?.external?.query,
-      target?.external?.search_query,
-      fallbackQuery,
-    );
-    return buildOffersResolvePdpTargetExternal(query, target.reason_code);
-  }
-
   if (subjectProductGroupId) {
     return buildOffersResolvePdpTargetGroup(subjectProductGroupId, canonicalProductRef || null);
   }
@@ -29833,6 +29799,17 @@ function shouldSkipOffersResolveCacheSearch(subjectResult, normalizedInput) {
     return !hasStrongOffersResolveLookupInput(normalizedInput);
   }
   return false;
+}
+
+function shouldSkipOffersResolveSubjectResolve(normalizedInput) {
+  const input = offersResolveIsRecord(normalizedInput) ? normalizedInput : {};
+  const rawProductId = offersResolvePickFirstTrimmed(input.raw_product_id);
+  const rawSkuId = offersResolvePickFirstTrimmed(input.raw_sku_id);
+  const hasDirectProductLookup =
+    (rawProductId && !offersResolveIsUuidLike(rawProductId)) ||
+    (rawSkuId && !offersResolveIsUuidLike(rawSkuId));
+  if (!hasDirectProductLookup) return false;
+  return !offersResolvePickFirstTrimmed(input.brand, input.name, input.display_name);
 }
 
 function normalizeCanonicalProductRefInput(value) {
@@ -30523,6 +30500,40 @@ function buildOffersResolveResponse({
   return response;
 }
 
+function buildOffersResolveNoOfferFailureResponse({
+  queryText = '',
+  sourceTrace = [],
+  startedAtMs,
+  failReasonCode = null,
+  input = {},
+} = {}) {
+  const query = String(queryText || '').trim();
+  const normalizedFailReason = failReasonCode
+    ? normalizeOffersResolveReasonCode(failReasonCode, 'no_candidates')
+    : 'no_candidates';
+  const totalLatencyMs = Math.max(0, Date.now() - Number(startedAtMs || Date.now()));
+  const normalizedInput = offersResolveIsRecord(input) ? input : {};
+  return {
+    status: 'failure',
+    reason: 'no_offer_available',
+    reason_code: 'no_offer_available',
+    query,
+    offers: [],
+    offers_count: 0,
+    ...(Object.keys(normalizedInput).length ? { input: normalizedInput } : {}),
+    metadata: {
+      source: 'offers.resolve',
+      query,
+      time_to_pdp_ms: totalLatencyMs,
+      sources: Array.isArray(sourceTrace) ? sourceTrace : [],
+      fail_reason: 'no_offer_available',
+      resolve_fail_reason: 'no_offer_available',
+      resolve_reason_code: 'no_offer_available',
+      upstream_reason_code: normalizedFailReason,
+    },
+  };
+}
+
 async function handleOffersResolveOperation({
   payload,
   metadata,
@@ -30712,15 +30723,30 @@ async function handleOffersResolveOperation({
     metadata: offersResolveIsRecord(metadata) ? metadata : {},
   };
 
-  const subjectResult = await callOffersResolveSourceWithRetry({
-    sourceKey: 'subject_resolve',
-    url: `${PIVOTA_API_BASE}/v1/subject/resolve`,
-    body: subjectResolvePayload,
-    checkoutToken,
-    timeoutMs: OFFERS_RESOLVE_SUBJECT_TIMEOUT_MS,
-    maxRetries: OFFERS_RESOLVE_SUBJECT_RETRY_MAX,
-    retryBackoffMs: OFFERS_RESOLVE_SUBJECT_RETRY_BACKOFF_MS,
-  });
+  let subjectResult;
+  if (shouldSkipOffersResolveSubjectResolve(normalizedInput)) {
+    subjectResult = {
+      ok: false,
+      reason: 'skipped_direct_lookup',
+      source_trace: {
+        source: 'subject_resolve',
+        ok: false,
+        attempts: 0,
+        latency_ms: 0,
+        reason: 'skipped_direct_lookup',
+      },
+    };
+  } else {
+    subjectResult = await callOffersResolveSourceWithRetry({
+      sourceKey: 'subject_resolve',
+      url: `${PIVOTA_API_BASE}/v1/subject/resolve`,
+      body: subjectResolvePayload,
+      checkoutToken,
+      timeoutMs: OFFERS_RESOLVE_SUBJECT_TIMEOUT_MS,
+      maxRetries: OFFERS_RESOLVE_SUBJECT_RETRY_MAX,
+      retryBackoffMs: OFFERS_RESOLVE_SUBJECT_RETRY_BACKOFF_MS,
+    });
+  }
   sourceTrace.push(subjectResult.source_trace);
 
   if (subjectResult.ok) {
@@ -30758,28 +30784,17 @@ async function handleOffersResolveOperation({
       subjectResult.reason,
       'upstream_timeout',
     );
-    const fallbackTarget = buildOffersResolvePdpTargetExternal(
-      normalizedInput.query_text,
-      failReasonCode,
-    );
     return {
       statusCode: 200,
-      response: buildOffersResolveResponse({
-        upstreamBody: {
-          status: 'success',
-          offers: [],
-          offers_count: 0,
-          input: {
-            product_id: normalizedInput.raw_product_id,
-            sku_id: normalizedInput.raw_sku_id,
-          },
-        },
-        reasonCode: failReasonCode,
-        pdpTargetV1: fallbackTarget,
-        sourceTrace,
+      response: buildOffersResolveNoOfferFailureResponse({
         queryText: normalizedInput.query_text,
+        sourceTrace,
         startedAtMs: startedAt,
         failReasonCode,
+        input: {
+          product_id: normalizedInput.raw_product_id,
+          sku_id: normalizedInput.raw_sku_id,
+        },
       }),
     };
   }
@@ -30803,10 +30818,9 @@ async function handleOffersResolveOperation({
 
   if (cacheSearchResult.ok) {
     const upstreamBody = cacheSearchResult.response_body;
-    const pdpTarget =
-      extractOffersResolvePdpTargetFromResponse(upstreamBody, {
-        fallbackQuery: normalizedInput.query_text,
-      }) || buildOffersResolvePdpTargetExternal(normalizedInput.query_text);
+    const pdpTarget = extractOffersResolvePdpTargetFromResponse(upstreamBody, {
+      fallbackQuery: normalizedInput.query_text,
+    });
 
     const offers = Array.isArray(upstreamBody?.offers)
       ? upstreamBody.offers
@@ -30820,20 +30834,34 @@ async function handleOffersResolveOperation({
         upstreamBody?.metadata?.resolve_reason_code,
       '',
     );
-    const inferredFailureCode =
-      pdpTarget.path === 'external'
-        ? inferOffersResolveFailureReasonCode({
-            responseBody: upstreamBody,
-            statusCode: cacheSearchResult.status,
-          })
-        : null;
+    if (!pdpTarget) {
+      const failReasonCode =
+        explicitReasonCode ||
+        inferOffersResolveFailureReasonCode({
+          responseBody: upstreamBody,
+          statusCode: cacheSearchResult.status,
+        });
+      return {
+        statusCode: 200,
+        response: buildOffersResolveNoOfferFailureResponse({
+          queryText: normalizedInput.query_text,
+          sourceTrace,
+          startedAtMs: startedAt,
+          failReasonCode,
+          input: {
+            product_id: normalizedInput.raw_product_id,
+            sku_id: normalizedInput.raw_sku_id,
+          },
+        }),
+      };
+    }
     const pdpPath = offersResolvePickFirstTrimmed(pdpTarget?.path).toLowerCase();
     const internalPdp = pdpPath === 'group' || pdpPath === 'ref' || pdpPath === 'resolve';
     const resolvedReasonCode = internalPdp
       ? explicitReasonCode && explicitReasonCode !== 'no_candidates'
         ? explicitReasonCode
         : 'mapped_hit'
-      : explicitReasonCode || inferredFailureCode || (offers.length ? 'mapped_hit' : 'no_candidates');
+      : explicitReasonCode || (offers.length ? 'mapped_hit' : 'no_candidates');
 
     return {
       statusCode: 200,
@@ -30844,7 +30872,6 @@ async function handleOffersResolveOperation({
         sourceTrace,
         queryText: normalizedInput.query_text,
         startedAtMs: startedAt,
-        failReasonCode: pdpTarget.path === 'external' ? inferredFailureCode : null,
       }),
     };
   }
@@ -30854,29 +30881,17 @@ async function handleOffersResolveOperation({
     statusCode: cacheSearchResult.status,
     error: cacheSearchResult.error,
   });
-  const fallbackTarget = buildOffersResolvePdpTargetExternal(
-    normalizedInput.query_text,
-    failReasonCode,
-  );
-
   return {
     statusCode: 200,
-    response: buildOffersResolveResponse({
-      upstreamBody: {
-        status: 'success',
-        offers: [],
-        offers_count: 0,
-        input: {
-          product_id: normalizedInput.raw_product_id,
-          sku_id: normalizedInput.raw_sku_id,
-        },
-      },
-      reasonCode: failReasonCode || 'fallback_external',
-      pdpTargetV1: fallbackTarget,
-      sourceTrace,
+    response: buildOffersResolveNoOfferFailureResponse({
       queryText: normalizedInput.query_text,
+      sourceTrace,
       startedAtMs: startedAt,
-      failReasonCode: failReasonCode || 'fallback_external',
+      failReasonCode,
+      input: {
+        product_id: normalizedInput.raw_product_id,
+        sku_id: normalizedInput.raw_sku_id,
+      },
     }),
   };
 }
@@ -35096,66 +35111,102 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   })
                 : null) ||
               `pg:pid:${String(canonicalProductRef.product_id || productId).trim()}`;
-            const fallbackOfferVariants = buildOfferVariantsForPayload(
-              canonicalProductForPdp,
-              canonicalProductForPdp.currency || 'USD',
-            );
-            offersData = {
-              status: 'success',
-              product_group_id: fallbackProductGroupId,
-              canonical_product_ref: canonicalProductRef,
-              offers_count: 1,
-              offers: [
+            if (hasOfferProductTransactionHold(canonicalProductForPdp)) {
+              const heldProductId =
+                firstNonEmptyString(
+                  canonicalProductForPdp.product_id,
+                  canonicalProductForPdp.productId,
+                  canonicalProductRef.product_id,
+                  productId,
+                ) || null;
+              const heldContentKey =
+                firstNonEmptyString(
+                  canonicalProductForPdp.content_key,
+                  canonicalProductForPdp.contentKey,
+                  canonicalProductRef.content_key,
+                  canonicalProductRef.contentKey,
+                ) || null;
+              logger.warn(
                 {
-                  offer_id: (() => {
-                    const mid = String(canonicalProductRef.merchant_id || '').trim();
-                    return (
-                      buildOfferId({
-                        merchant_id: mid,
-                        product_group_id: fallbackProductGroupId,
-                        fulfillment_type: canonicalProductForPdp.fulfillment_type || 'merchant',
-                        tier: 'default',
-                      }) ||
-                      `of:v1:${mid}:${fallbackProductGroupId}:${canonicalProductForPdp.fulfillment_type || 'merchant'}:default`
-                    );
-                  })(),
-                  product_group_id: fallbackProductGroupId,
-                  product_id: canonicalProductRef.product_id,
-                  merchant_id: canonicalProductRef.merchant_id,
-                  merchant_name:
-                    resolveOfferSellerDisplayName({
-                      product: canonicalProductForPdp,
-                      merchantId: canonicalProductRef.merchant_id,
-                    }) || undefined,
-                  ...(() => {
-                    const fallbackOfferPrice = normalizeOfferMoneyForProduct(
-                      canonicalProductForPdp.price,
-                      canonicalProductForPdp.currency || 'USD',
-                      canonicalProductForPdp,
-                    );
-                    return fallbackOfferPrice ? { price: fallbackOfferPrice } : {};
-                  })(),
-                  shipping: canonicalProductForPdp.shipping || undefined,
-                  returns: canonicalProductForPdp.returns || undefined,
-                  inventory: {
-                    in_stock:
-                      typeof canonicalProductForPdp.in_stock === 'boolean'
-                        ? canonicalProductForPdp.in_stock
-                        : undefined,
-                  },
-                  fulfillment_type: canonicalProductForPdp.fulfillment_type || undefined,
-                  ...(fallbackOfferVariants.length
-                    ? {
-                        variants: fallbackOfferVariants,
-                      }
-                    : {}),
-                  ...buildOfferPurchaseMetadataFromProduct(canonicalProductForPdp),
-                  risk_tier: 'standard',
+                  event: 'pdp_self_offer_fallback_suppressed',
+                  reason: 'transaction_hold',
+                  product_id: heldProductId,
+                  content_key: heldContentKey,
                 },
-              ],
-              default_offer_id: null,
-              best_price_offer_id: null,
-            };
+                'PDP self-offer fallback suppressed',
+              );
+              offersData = {
+                status: 'success',
+                product_group_id: fallbackProductGroupId,
+                canonical_product_ref: canonicalProductRef,
+                offers_count: 0,
+                offers: [],
+                default_offer_id: null,
+                best_price_offer_id: null,
+                quality_state: 'transaction_held_no_fallback',
+              };
+            } else {
+              const fallbackOfferVariants = buildOfferVariantsForPayload(
+                canonicalProductForPdp,
+                canonicalProductForPdp.currency || 'USD',
+              );
+              offersData = {
+                status: 'success',
+                product_group_id: fallbackProductGroupId,
+                canonical_product_ref: canonicalProductRef,
+                offers_count: 1,
+                offers: [
+                  {
+                    offer_id: (() => {
+                      const mid = String(canonicalProductRef.merchant_id || '').trim();
+                      return (
+                        buildOfferId({
+                          merchant_id: mid,
+                          product_group_id: fallbackProductGroupId,
+                          fulfillment_type: canonicalProductForPdp.fulfillment_type || 'merchant',
+                          tier: 'default',
+                        }) ||
+                        `of:v1:${mid}:${fallbackProductGroupId}:${canonicalProductForPdp.fulfillment_type || 'merchant'}:default`
+                      );
+                    })(),
+                    product_group_id: fallbackProductGroupId,
+                    product_id: canonicalProductRef.product_id,
+                    merchant_id: canonicalProductRef.merchant_id,
+                    merchant_name:
+                      resolveOfferSellerDisplayName({
+                        product: canonicalProductForPdp,
+                        merchantId: canonicalProductRef.merchant_id,
+                      }) || undefined,
+                    ...(() => {
+                      const fallbackOfferPrice = normalizeOfferMoneyForProduct(
+                        canonicalProductForPdp.price,
+                        canonicalProductForPdp.currency || 'USD',
+                        canonicalProductForPdp,
+                      );
+                      return fallbackOfferPrice ? { price: fallbackOfferPrice } : {};
+                    })(),
+                    shipping: canonicalProductForPdp.shipping || undefined,
+                    returns: canonicalProductForPdp.returns || undefined,
+                    inventory: {
+                      in_stock:
+                        typeof canonicalProductForPdp.in_stock === 'boolean'
+                          ? canonicalProductForPdp.in_stock
+                          : undefined,
+                    },
+                    fulfillment_type: canonicalProductForPdp.fulfillment_type || undefined,
+                    ...(fallbackOfferVariants.length
+                      ? {
+                          variants: fallbackOfferVariants,
+                        }
+                      : {}),
+                    ...buildOfferPurchaseMetadataFromProduct(canonicalProductForPdp),
+                    risk_tier: 'standard',
+                  },
+                ],
+                default_offer_id: null,
+                best_price_offer_id: null,
+              };
+            }
           }
         } catch {
           offersData = null;
@@ -36606,18 +36657,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const failReason = inferOffersResolveFailureReasonCode({ error: err });
       logger.warn(
         { err: err?.message || String(err), fail_reason: failReason },
-        'offers.resolve failed; returning explicit external fallback',
+        'offers.resolve failed; returning no-offer failure',
       );
-      const pdpTarget = buildOffersResolvePdpTargetExternal('', failReason);
       return res.status(200).json(
-        buildOffersResolveResponse({
-          upstreamBody: {
-            status: 'success',
-            offers: [],
-            offers_count: 0,
-          },
-          reasonCode: failReason,
-          pdpTargetV1: pdpTarget,
+        buildOffersResolveNoOfferFailureResponse({
+          queryText: '',
           sourceTrace: [
             {
               source: 'offers_resolve_handler',
@@ -36627,7 +36671,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               reason: failReason,
             },
           ],
-          queryText: '',
           startedAtMs: Date.now(),
           failReasonCode: failReason,
         }),

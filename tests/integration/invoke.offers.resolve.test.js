@@ -5,6 +5,10 @@ process.env.OFFERS_RESOLVE_CACHE_SEARCH_RETRY_MAX = '0';
 process.env.OFFERS_RESOLVE_SUBJECT_TIMEOUT_MS = '1200';
 process.env.OFFERS_RESOLVE_CACHE_SEARCH_TIMEOUT_MS = '1200';
 process.env.OFFERS_RESOLVE_CIRCUIT_FAILURE_THRESHOLD = '99';
+process.env.AURORA_PRODUCT_GROUNDING_STABLE_ALIAS_PATH = require('path').join(
+  __dirname,
+  '../fixtures/product_grounding_stable_aliases.test.json',
+);
 
 const request = require('supertest');
 const nock = require('nock');
@@ -170,7 +174,7 @@ describe('/agent/shop/v1/invoke offers.resolve hardening', () => {
     expect(res.body.metadata?.pdp_open_path).toBe('ref');
   });
 
-  it('no candidates keeps explicit reason_code=no_candidates and external pdp target', async () => {
+  it('no candidates returns failure without an external pdp target', async () => {
     const subjectScope = nock(process.env.PIVOTA_API_BASE)
       .post('/v1/subject/resolve')
       .reply(404, {
@@ -205,12 +209,16 @@ describe('/agent/shop/v1/invoke offers.resolve hardening', () => {
 
     expect(subjectScope.isDone()).toBe(true);
     expect(cacheScope.isDone()).toBe(true);
-    expect(res.body.status).toBe('success');
-    expect(res.body.reason_code).toBe('no_candidates');
+    expect(res.body.status).toBe('failure');
+    expect(res.body.reason).toBe('no_offer_available');
+    expect(res.body.reason_code).toBe('no_offer_available');
+    expect(res.body.query).toBe('Unknown Product');
     expect(Array.isArray(res.body.offers)).toBe(true);
     expect(res.body.offers.length).toBe(0);
-    expect(res.body.pdp_target?.v1?.path).toBe('external');
-    expect(res.body.metadata?.resolve_fail_reason).toBe('no_candidates');
+    expect(res.body.pdp_target?.v1 || null).toBeNull();
+    expect(JSON.stringify(res.body)).not.toContain('google.com');
+    expect(res.body.metadata?.resolve_fail_reason).toBe('no_offer_available');
+    expect(res.body.metadata?.upstream_reason_code).toBe('no_candidates');
   });
 
   it('subject no_candidates with weak UUID-only identifier short-circuits without cache search', async () => {
@@ -247,13 +255,16 @@ describe('/agent/shop/v1/invoke offers.resolve hardening', () => {
 
     expect(subjectScope.isDone()).toBe(true);
     expect(cacheScope.isDone()).toBe(false);
-    expect(res.body.status).toBe('success');
-    expect(res.body.reason_code).toBe('no_candidates');
-    expect(res.body.pdp_target?.v1?.path).toBe('external');
-    expect(res.body.metadata?.resolve_fail_reason).toBe('no_candidates');
+    expect(res.body.status).toBe('failure');
+    expect(res.body.reason).toBe('no_offer_available');
+    expect(res.body.reason_code).toBe('no_offer_available');
+    expect(res.body.pdp_target?.v1 || null).toBeNull();
+    expect(JSON.stringify(res.body)).not.toContain('google.com');
+    expect(res.body.metadata?.resolve_fail_reason).toBe('no_offer_available');
+    expect(res.body.metadata?.upstream_reason_code).toBe('no_candidates');
   });
 
-  it('db timeout keeps explicit reason_code=db_timeout and external pdp target', async () => {
+  it('db timeout returns failure without an external pdp target', async () => {
     const subjectScope = nock(process.env.PIVOTA_API_BASE)
       .post('/v1/subject/resolve')
       .reply(503, {
@@ -285,15 +296,18 @@ describe('/agent/shop/v1/invoke offers.resolve hardening', () => {
 
     expect(subjectScope.isDone()).toBe(true);
     expect(cacheScope.isDone()).toBe(true);
-    expect(res.body.status).toBe('success');
-    expect(res.body.reason_code).toBe('db_timeout');
-    expect(res.body.pdp_target?.v1?.path).toBe('external');
-    expect(res.body.metadata?.resolve_fail_reason).toBe('db_timeout');
+    expect(res.body.status).toBe('failure');
+    expect(res.body.reason).toBe('no_offer_available');
+    expect(res.body.reason_code).toBe('no_offer_available');
+    expect(res.body.pdp_target?.v1 || null).toBeNull();
+    expect(JSON.stringify(res.body)).not.toContain('google.com');
+    expect(res.body.metadata?.resolve_fail_reason).toBe('no_offer_available');
+    expect(res.body.metadata?.upstream_reason_code).toBe('db_timeout');
     expect(Array.isArray(res.body.metadata?.sources)).toBe(true);
     expect(res.body.metadata.sources.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('subject timeout short-circuits to external fallback without waiting cache search', async () => {
+  it('subject timeout short-circuits to failure without waiting cache search', async () => {
     const subjectScope = nock(process.env.PIVOTA_API_BASE)
       .post('/v1/subject/resolve')
       .reply(503, {
@@ -327,10 +341,13 @@ describe('/agent/shop/v1/invoke offers.resolve hardening', () => {
 
     expect(subjectScope.isDone()).toBe(true);
     expect(cacheScope.isDone()).toBe(false);
-    expect(res.body.status).toBe('success');
-    expect(res.body.reason_code).toBe('upstream_timeout');
-    expect(res.body.pdp_target?.v1?.path).toBe('external');
-    expect(res.body.metadata?.resolve_fail_reason).toBe('upstream_timeout');
+    expect(res.body.status).toBe('failure');
+    expect(res.body.reason).toBe('no_offer_available');
+    expect(res.body.reason_code).toBe('no_offer_available');
+    expect(res.body.pdp_target?.v1 || null).toBeNull();
+    expect(JSON.stringify(res.body)).not.toContain('google.com');
+    expect(res.body.metadata?.resolve_fail_reason).toBe('no_offer_available');
+    expect(res.body.metadata?.upstream_reason_code).toBe('upstream_timeout');
     expect(Array.isArray(res.body.metadata?.sources)).toBe(true);
     expect(res.body.metadata.sources.length).toBeGreaterThanOrEqual(1);
   });
@@ -501,12 +518,11 @@ describe('/agent/shop/v1/invoke offers.resolve hardening', () => {
 
     expect(subjectScope.isDone()).toBe(true);
     expect(cacheScope.isDone()).toBe(true);
-    expect(res.body.status).toBe('success');
-    expect(res.body.commerce_surface).toBe('agent_api');
-    expect(res.body.resolution_mode).toBe('not_servable');
-    expect(res.body.resolved_target).toBeNull();
+    expect(res.body.status).toBe('failure');
+    expect(res.body.reason).toBe('no_offer_available');
+    expect(res.body.reason_code).toBe('no_offer_available');
     expect(res.body.pdp_target?.v1 || null).toBeNull();
-    expect(res.body.metadata?.commerce_surface).toBe('agent_api');
-    expect(res.body.metadata?.servable_reason_codes).toContain('out_of_stock');
+    expect(JSON.stringify(res.body)).not.toContain('google.com');
+    expect(res.body.metadata?.resolve_fail_reason).toBe('no_offer_available');
   });
 });
