@@ -162,6 +162,18 @@ describe('pivota insights agent context and replacement guard', () => {
     expect(classifyPivotaInsightQualityLane(kbRow('ext_quality_case', bundle)).lane).toBe(
       QUALITY_LANES.REPAIR,
     );
+
+    expect(
+      hasCommerceTruthClaim(
+        reviewedBundle({
+          product_intel_core: {
+            what_it_is: {
+              body: 'A palette listed on the official source page as Rosy Eyeshadow Palette (100% off).',
+            },
+          },
+        }),
+      ),
+    ).toBe(true);
   });
 
   test('preserves existing agent context when present', () => {

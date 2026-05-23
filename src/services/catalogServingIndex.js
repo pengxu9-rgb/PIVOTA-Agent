@@ -24,6 +24,11 @@ function asNumber(value) {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
+function asPositiveNumber(value) {
+  const numeric = asNumber(value);
+  return numeric != null && numeric > 0 ? numeric : null;
+}
+
 function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
@@ -118,9 +123,12 @@ function canSearchCatalogServingIndex(env = process.env, { allowLocalShadow = fa
 
 function extractPriceAmount(source) {
   if (!source || typeof source !== 'object') return null;
-  if (typeof source.amount === 'number') return source.amount;
-  if (typeof source.price === 'number') return source.price;
-  if (typeof source.current?.amount === 'number') return source.current.amount;
+  const amount = asPositiveNumber(source.amount);
+  if (amount != null) return amount;
+  const price = asPositiveNumber(source.price);
+  if (price != null) return price;
+  const currentAmount = asPositiveNumber(source.current?.amount);
+  if (currentAmount != null) return currentAmount;
   return null;
 }
 
@@ -363,10 +371,12 @@ function buildCatalogServingDoc(input = {}, options = {}) {
   const categoryPaths = resolveCategoryPaths(input);
   const offers = Array.isArray(input.offers) ? input.offers : [];
   const offerAmounts = extractOfferAmounts(offers);
-  const productAmount = asNumber(input.price);
+  const productAmount = asPositiveNumber(input.price);
   const allAmounts = productAmount != null ? [productAmount, ...offerAmounts] : offerAmounts;
   const priceMin = allAmounts.length ? Math.min(...allAmounts) : null;
   const priceMax = allAmounts.length ? Math.max(...allAmounts) : null;
+  const requestedPublishState = resolvePublishState(input, options);
+  const publishState = requestedPublishState === 'public' && priceMin == null ? 'eligible' : requestedPublishState;
   const externalOfferExists =
     Boolean(asString(input.external_redirect_url || input.external_url || input.destination_url)) ||
     offers.some((offer) => Boolean(asString(offer?.external_redirect_url || offer?.redirect_url)));
@@ -402,7 +412,7 @@ function buildCatalogServingDoc(input = {}, options = {}) {
     category_paths: categoryPaths,
     market: asString(options.market || input.market || input.region || 'US') || 'US',
     availability_state: resolveAvailabilityState(input),
-    publish_state: resolvePublishState(input, options),
+    publish_state: publishState,
     title: asString(input.card_title || input.title || input.name || productId),
     subtitle: subtitle || null,
     variant_axes:
@@ -506,6 +516,7 @@ function mergeOffers(entries = []) {
   for (const entry of asArray(entries)) {
     for (const offer of asArray(entry?.product?.offers)) {
       const normalized = asPlainObject(offer);
+      if (extractPriceAmount(normalized.price || normalized.current_price || normalized) == null) continue;
       const key = normalizeOfferKey(normalized);
       if (!key || seen.has(key)) continue;
       seen.add(key);
@@ -704,7 +715,7 @@ function buildCatalogServingGroupInput(entries = [], { publishState = 'shadow', 
     ]),
   );
   const directPrices = sortedEntries
-    .map((entry) => asNumber(entry?.product?.price))
+    .map((entry) => asPositiveNumber(entry?.product?.price))
     .filter((value) => value != null);
 
   return {

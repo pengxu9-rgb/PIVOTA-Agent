@@ -64,7 +64,9 @@ function firstSentence(value, maxLength = 220) {
 
 function sanitizePublicSourceText(value) {
   return text(value)
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
     .replace(/[$€£¥]\s*\d+(?:\.\d{2})?\s*(?:value)?\b/gi, '')
+    .replace(/\b\d{1,3}%\s*off\b/gi, '')
     .replace(/\b\d+(?:\.\d{2})?\s*(?:usd|eur|gbp|jpy|cny|rmb|value)\b/gi, '')
     .replace(/\bnot eligible for discounts?\.?/gi, '')
     .replace(/\b(?:ulta beauty|sephora|target|walmart|amazon)\s+exclusive\b/gi, '')
@@ -73,10 +75,34 @@ function sanitizePublicSourceText(value) {
     .replace(/\b(?:must-have|pro-favorite|ultimate|powerful)\b/gi, '')
     .replace(/\b(?:best[-\s]?selling|bestselling|viral|cult[-\s]?favorite|award[-\s]?winning)\b/gi, '')
     .replace(/\b(?:everyone loves|widely loved)\b/gi, '')
-    .replace(/\.{2,}|…/g, '.')
+    .replace(/\.{2,}|…/g, '. ')
     .replace(/\s+([,.;:!?])/g, '$1')
     .replace(/\s{2,}/g, ' ')
     .trim();
+}
+
+function sanitizePublicTitleText(value) {
+  return sanitizePublicSourceText(value)
+    .replace(/\s*[\[(]\s*\d{1,3}%\s*off\s*[\])]\s*/gi, ' ')
+    .replace(/\s*[\[(]\s*[\])]\s*/g, ' ')
+    .replace(/\s*[\[(]\s*(?:sale|clearance|promo|promotion|discount|free gift)\s*[\])]\s*/gi, ' ')
+    .replace(/\b(?:sale|clearance|promo|promotion|discount)\s*$/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+function sanitizeFormulaSummary(value) {
+  return text(value)
+    .replace(/([A-Z]{2,})([A-Z][a-z])/g, '$1 $2')
+    .replace(/\s*;\s*\./g, ';')
+    .replace(/\s*,\s*\./g, '.')
+    .replace(/\s+([,.;:!?])/g, '$1')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+function sentenceFragment(value) {
+  return text(value).replace(/[.;:!?]+$/g, '').trim();
 }
 
 function titleCaseFromPath(value) {
@@ -376,7 +402,7 @@ function ingredientSignals(seedData) {
   return {
     available: joined.length > 20,
     ingredient_count: asArray(seedData.ingredient_tokens || snapshot.ingredient_tokens).length,
-    summary: firstSentence(joined, 160),
+    summary: sanitizeFormulaSummary(firstSentence(joined, 160)),
   };
 }
 
@@ -507,7 +533,8 @@ function buildBundle({ seed, inventoryRow, generatedAt, batchName, reviewer }) {
   const seedData = asObject(seed.seed_data);
   const snapshot = asObject(seedData.snapshot);
   const productId = text(seed.external_product_id);
-  const title = text(seed.title || seedData.title || inventoryRow.title);
+  const rawTitle = text(seed.title || seedData.title || inventoryRow.title);
+  const title = sanitizePublicTitleText(rawTitle);
   const sourceUrl = text(seed.canonical_url || seed.destination_url || inventoryRow.canonical_url);
   const brand = displayBrand(seedData.brand || snapshot.brand || inventoryRow.brand || brandFromUrl(sourceUrl));
   const brandPrefix = brand ? `${brand} ` : '';
@@ -525,7 +552,7 @@ function buildBundle({ seed, inventoryRow, generatedAt, batchName, reviewer }) {
     ? `A ${brandPrefix}${label} listed on the official source page as ${title}. The official description identifies: ${descriptionSentence}`
     : `A ${brandPrefix}${label} listed on the official source page as ${title}.`;
   const formulaBody = ingredient.available
-    ? `Captured formula fields include ${ingredient.summary || `${ingredient.ingredient_count} ingredient tokens`}; agents should keep composition claims within those source fields.`
+    ? `Captured formula fields include ${sentenceFragment(ingredient.summary) || `${ingredient.ingredient_count} ingredient tokens`}. Agents should keep composition claims within those source fields.`
     : `No complete ingredient list was captured for this review batch, so formula-level claims stay unavailable.`;
 
   const sourceCoverage = {
@@ -724,7 +751,7 @@ function buildReportRows({ seeds, inventoryById, generatedAt, batchName, reviewe
       reviewer,
       reviewer_kind: 'assistant',
       reviewed_at: generatedAt,
-      notes: `Approved official-PDP-seed rewrite for ${text(seed.title)}; evidence_profile=${bundle.evidence_profile}; source_url=${text(seed.canonical_url || seed.destination_url)}`,
+      notes: `Approved official-PDP-seed rewrite for ${bundle.shopping_card.title}; evidence_profile=${bundle.evidence_profile}; source_url=${text(seed.canonical_url || seed.destination_url)}`,
       owner_delegated_review: {
         contract_version: 'pivota.owner_delegated_review.v1',
         delegated_to: reviewer,
@@ -928,5 +955,7 @@ module.exports = {
     buildBundle,
     buildHighlightPhrase,
     inferKind,
+    sanitizeFormulaSummary,
+    sanitizePublicTitleText,
   },
 };

@@ -111,6 +111,65 @@ describe('catalog serving index', () => {
     );
   });
 
+  test('does not publish zero-price commerce docs as public-ready', () => {
+    const docs = buildCatalogServingBackfillDocs(
+      [
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ext_zero_price',
+          source_kind: 'external_seed',
+          product: {
+            product_id: 'ext_zero_price',
+            title: 'Promo Polluted Palette',
+            brand: 'Sigma Beauty',
+            category: 'Eye Makeup',
+            canonical_url: 'https://brand.example/products/palette',
+            destination_url: 'https://brand.example/products/palette',
+            image_url: 'https://images.example/palette.jpg',
+            price: 0,
+            offers: [
+              {
+                offer_id: 'offer_zero',
+                merchant_id: 'external_seed',
+                price: { amount: 0, currency: 'USD' },
+                external_redirect_url: 'https://brand.example/products/palette',
+              },
+            ],
+            pivota_insight_summary: 'Reviewed eye palette insight.',
+          },
+          source_meta: { market: 'US' },
+        },
+      ],
+      {
+        market: 'US',
+        includeNonPublic: true,
+        identityRows: [
+          {
+            source_listing_ref: 'external_seed:ext_zero_price',
+            sellable_item_group_id: 'sig_zero_price',
+            product_line_id: 'pl_zero_price',
+            review_family_id: 'rf_zero_price',
+            source_tier: 'brand',
+            identity_status: 'approved',
+            live_read_enabled: true,
+            review_required: false,
+          },
+        ],
+      },
+    );
+
+    expect(docs).toHaveLength(1);
+    expect(docs[0]).toEqual(
+      expect.objectContaining({
+        doc_id: 'sellable:sig_zero_price',
+        publish_state: 'eligible',
+        price_min: null,
+        price_max: null,
+        default_offer_id: null,
+      }),
+    );
+  });
+
   test('buildCatalogServingPivotaInsightFromKbRow accepts only high-quality reviewed KB summaries', () => {
     expect(
       buildCatalogServingPivotaInsightFromKbRow({
@@ -264,6 +323,7 @@ describe('catalog serving index', () => {
           category: 'Serum',
           canonical_url: 'https://brand.example/barrier-serum',
           image_url: 'https://images.example/barrier-serum.jpg',
+          price: 28,
           card_intro: 'Barrier repair insight',
         },
         source_meta: { market: 'US' },
@@ -279,6 +339,7 @@ describe('catalog serving index', () => {
           category: 'Moisturizer',
           canonical_url: 'https://brand.example/barrier-cream',
           image_url: 'https://images.example/barrier-cream.jpg',
+          price: 32,
         },
         source_meta: { market: 'US' },
       },
