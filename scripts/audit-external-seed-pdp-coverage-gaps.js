@@ -9,7 +9,9 @@ const { ensureJsonObject } = require('../src/services/externalSeedProducts');
 const FORMULA_RE =
   /\b(skincare|skin care|makeup|cosmetic|haircare|hair care|fragrance|perfume|parfum|cologne|cleanser|toner|essence|serum|ampoule|moisturi[sz]er|cream|lotion|balm|mask|peel|exfoliant|treatment|oil|sunscreen|spf|foundation|concealer|mascara|lip(?:stick| gloss| balm| oil)?|blush|bronzer|powder|highlighter|eyeshadow|eyeliner|brow|primer|setting spray|shampoo|conditioner|body wash|body lotion|deodorant)\b/i;
 const ACCESSORY_RE =
-  /\b(brush|sponge|puff|applicator|sharpener|tweezer|curler|scissors|comb|mirror|case|bag|pouch|holder|spatula|tool|tools|gua sha|roller|headband|scrunchie|scarf|hat|cap|tote|clip|clips|lash curler|refill case)\b/i;
+  /\b(brush|sponge|puff|applicator|sharpener|tweezer|curler|scissors|comb|mirror|case|bag|pouch|holder|spatula|tool|tools|gua sha|roller|headband|scrunchie|scarf|hat|cap|tote|clip|clips|lash curler|refill case|(?:body\s+)?lotion\s+pump|replacement\s+pump)\b/i;
+const PET_ACCESSORY_RE =
+  /\b(?:dog|cat|pet|puppy|kitten|pooch)\b(?:\s+\w+){0,5}\s+\b(?:toy|toys|collar|leash|bowl|bandana|bed)\b|\b(?:toy|toys|collar|leash|bowl|bandana|bed)\b(?:\s+\w+){0,5}\s+\b(?:dog|cat|pet|puppy|kitten|pooch)\b/i;
 const NON_MERCH_RE =
   /\b(?:e[-\s]?gift[-\s]?cards?|gift[-\s]?cards?|donat(?:e|ion)|sample service|appointment|booking|shipping protection|package protection|route protection|order protection)\b/i;
 const BUNDLE_RE = /\b(bundle|set|kit|duo|trio|routine|mini set|travel set|starter set|value set|collection set|collection kit|collection bundle)\b/i;
@@ -112,7 +114,7 @@ function classifyProductContext(row = {}) {
   const text = collectSeedText(row);
   const lowerUrl = [row.canonical_url, row.destination_url].map((value) => normalizeNonEmptyString(value)).join(' ');
   const nonMerchandise = NON_MERCH_RE.test(text);
-  const accessory = ACCESSORY_RE.test(text);
+  const accessory = ACCESSORY_RE.test(text) || PET_ACCESSORY_RE.test(text);
   const bundle = BUNDLE_RE.test(text);
   const fragrance = FRAGRANCE_RE.test(text);
   const hair = HAIR_RE.test(text);
