@@ -61,6 +61,25 @@ describe('audit-kb-commerce-index-readiness terminal holds', () => {
     expect(recommendedLane('terminal_hold')).toBe('terminal_hold_no_action');
   });
 
+  test('classifies content evidence holds as terminal holds without requiring transaction blockers', () => {
+    expect(
+      terminalHoldStatus({
+        title: 'Caramel Apple Eyeshadow Quad',
+        seed_data: {
+          content_evidence_hold_v1: {
+            contract_version: 'external_seed.content_evidence_hold.v1',
+            status: 'hold_for_evidence',
+            reason: 'official_source_missing_editorial_content',
+            public_serving_ready: false,
+          },
+        },
+      }),
+    ).toEqual({
+      held: true,
+      reason: 'official_source_missing_editorial_content',
+    });
+  });
+
   test('reports actionable readiness rate separately from terminal holds', () => {
     const summary = summarizeInventory(
       [
