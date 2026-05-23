@@ -13,6 +13,7 @@ const {
   DEFAULT_DETAILS_PDP_TIMEOUT_MS,
   DEFAULT_SIMILAR_TIMEOUT_MS,
   classifyBeautyServingQualityRow,
+  shouldRetryPdpQualityAudit,
   probeMerchantUrl,
 } = require('../../scripts/audit-external-seed-beauty-serving-quality.cjs');
 const axios = require('axios');
@@ -152,6 +153,18 @@ describe('audit-external-seed-beauty-serving-quality', () => {
     expect(DEFAULT_CORE_PDP_TIMEOUT_MS).toBeGreaterThanOrEqual(45000);
     expect(DEFAULT_DETAILS_PDP_TIMEOUT_MS).toBeGreaterThanOrEqual(60000);
     expect(DEFAULT_SIMILAR_TIMEOUT_MS).toBeGreaterThanOrEqual(30000);
+  });
+
+  test('retries transient PDP extractor failures in the serving audit wrapper', () => {
+    expect(shouldRetryPdpQualityAudit({ status: 'failed', failure_reasons: ['extractor_failure'] })).toBe(true);
+    expect(
+      shouldRetryPdpQualityAudit({
+        status: 'failed',
+        failure_reasons: ['extractor_failure', 'product_intel_module_empty_or_blocked'],
+      }),
+    ).toBe(true);
+    expect(shouldRetryPdpQualityAudit({ status: 'passed', failure_reasons: [] })).toBe(false);
+    expect(shouldRetryPdpQualityAudit({ status: 'failed', failure_reasons: ['missing_product_intel'] })).toBe(false);
   });
 
   test('falls back to GET when merchant HEAD probe is blocked', async () => {

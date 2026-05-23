@@ -217,6 +217,10 @@ function summarizePdpQualityFailure(pdpQuality = null) {
   return Array.isArray(pdpQuality.failure_reasons) ? pdpQuality.failure_reasons : [];
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(ms) || 0)));
+}
+
 function isActionableContentFinding(finding = {}) {
   const anomaly = asString(finding.anomaly_type || finding.reason || finding.severity);
   if (!anomaly) return false;
@@ -224,6 +228,38 @@ function isActionableContentFinding(finding = {}) {
   if (severity === 'info') return false;
   if (anomaly === 'gift_card_duplicate_sku') return false;
   return true;
+}
+
+function shouldRetryPdpQualityAudit(pdpQuality = null) {
+  const reasons = summarizePdpQualityFailure(pdpQuality);
+  if (!reasons.includes('extractor_failure')) return false;
+  const status = asString(pdpQuality?.status).toLowerCase();
+  return status !== 'passed';
+}
+
+function buildPdpQualityAuditOptions(options = {}) {
+  return {
+    catalogBaseUrl: options.catalogBaseUrl,
+    gatewayUrl: options.gatewayUrl,
+    imageHealthEnabled: !options.skipImageHealth,
+    imageHealthLimit: options.imageHealthLimit,
+    similarEnabled: options.similarEnabled,
+    catalogTimeoutMs: options.catalogTimeoutMs,
+    pdpTimeoutMs: options.pdpTimeoutMs,
+    detailsPdpTimeoutMs: options.detailsPdpTimeoutMs,
+    similarTimeoutMs: options.similarTimeoutMs,
+  };
+}
+
+async function auditPdpQualityRowWithTransientRetry(row, options = {}) {
+  const auditOptions = buildPdpQualityAuditOptions(options);
+  const first = await auditPdpQualityRow(row, auditOptions);
+  if (!shouldRetryPdpQualityAudit(first)) {
+    return { pdpQuality: first, retryCount: 0 };
+  }
+  await sleep(options.pdpQualityRetryDelayMs || 750);
+  const second = await auditPdpQualityRow(row, auditOptions);
+  return { pdpQuality: second, retryCount: 1 };
 }
 
 function classifyBeautyServingQualityRow({
@@ -398,19 +434,10 @@ async function runAudit(options = {}) {
     const merchantUrlHealth = options.skipMerchantUrlProbe
       ? { checked: false, ok: null }
       : await probeMerchantUrl(merchantUrl, { timeoutMs: options.urlTimeoutMs });
-    const pdpQuality = options.skipPdpQuality
-      ? null
-      : await auditPdpQualityRow(row, {
-          catalogBaseUrl: options.catalogBaseUrl,
-          gatewayUrl: options.gatewayUrl,
-          imageHealthEnabled: !options.skipImageHealth,
-          imageHealthLimit: options.imageHealthLimit,
-          similarEnabled: options.similarEnabled,
-          catalogTimeoutMs: options.catalogTimeoutMs,
-          pdpTimeoutMs: options.pdpTimeoutMs,
-          detailsPdpTimeoutMs: options.detailsPdpTimeoutMs,
-          similarTimeoutMs: options.similarTimeoutMs,
-        });
+    const pdpAuditResult = options.skipPdpQuality
+      ? { pdpQuality: null, retryCount: 0 }
+      : await auditPdpQualityRowWithTransientRetry(row, options);
+    const pdpQuality = pdpAuditResult.pdpQuality;
     const classification = classifyBeautyServingQualityRow({
       row,
       contentAudit,
@@ -432,6 +459,7 @@ async function runAudit(options = {}) {
       auto_fixable: classification.auto_fixable,
       content_findings_count: Array.isArray(contentAudit?.findings) ? contentAudit.findings.length : 0,
       pdp_failure_reasons: summarizePdpQualityFailure(pdpQuality),
+      pdp_quality_retry_count: pdpAuditResult.retryCount,
       merchant_url_health: merchantUrlHealth,
       image_url: classification.image_url,
       price_amount: classification.price_amount,
@@ -520,6 +548,7 @@ module.exports = {
   DEFAULT_DETAILS_PDP_TIMEOUT_MS,
   DEFAULT_SIMILAR_TIMEOUT_MS,
   classifyBeautyServingQualityRow,
+  shouldRetryPdpQualityAudit,
   probeMerchantUrl,
   renderMarkdownReport,
   runAudit,
