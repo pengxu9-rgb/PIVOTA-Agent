@@ -9,9 +9,18 @@ const { closePool, query, withClient } = require('../src/db');
 
 const CONFIRM_TOKEN = 'ALIGN_REVIEWED_EXTERNAL_SEED_IDENTITY_TO_CATALOG_SIG';
 const REVIEWED_PRODUCT_LINE_SINGLETON_REASON = 'reviewed_product_line_singleton_catalog_sig_alignment';
+const REVIEWED_OFFICIAL_URL_EXACT_CONFLICT_CLEANUP_REASON =
+  'reviewed_official_url_exact_conflict_cleanup_catalog_sig_alignment';
 const ALLOWED_PRODUCT_LINE_SINGLETON_REVIEW_REASON_CODES = new Set([
   'multi_variant_exact_item_unresolved',
   'insufficient_exact_item_evidence',
+]);
+const ALLOWED_OFFICIAL_URL_EXACT_CONFLICT_REVIEW_REASON_CODES = new Set([
+  'conflicting_official_url',
+]);
+const ALLOWED_OFFICIAL_URL_EXACT_CONFLICT_MATCHED_RULES = new Set([
+  'manual_reviewed_default_title_axis_cleanup',
+  'official_url_axes',
 ]);
 
 function argValue(name, fallback = '') {
@@ -144,6 +153,59 @@ function evaluateReviewedProductLineSingleton(row, { allowReviewedProductLineSin
   };
 }
 
+function evaluateReviewedOfficialUrlExactConflictCleanup(
+  row,
+  { allowOfficialUrlExactConflictCleanup = false } = {},
+) {
+  const blockers = [];
+  const reviewReasonCodes = uniqueStrings(asArray(row.review_reason_codes));
+  const unsupportedReviewReasonCodes = reviewReasonCodes.filter(
+    (code) => !ALLOWED_OFFICIAL_URL_EXACT_CONFLICT_REVIEW_REASON_CODES.has(code),
+  );
+  const catalogCanonicalUrl = normalizeUrlForCompare(row.canonical_url);
+  const seedCanonicalUrl = normalizeUrlForCompare(row.seed_canonical_url || row.destination_url);
+  const officialUrl = normalizeUrlForCompare(row.official_url);
+  const catalogTitleKey = normalizeTextKey(row.title);
+  const seedTitleKey = normalizeTextKey(row.seed_title || row.title);
+  const matchedByRule = asString(row.matched_by_rule);
+
+  if (!allowOfficialUrlExactConflictCleanup) blockers.push('flag_not_enabled');
+  if (asString(row.source_tier).toLowerCase() !== 'brand') blockers.push('source_tier_not_brand');
+  if (!ALLOWED_OFFICIAL_URL_EXACT_CONFLICT_MATCHED_RULES.has(matchedByRule)) {
+    blockers.push('unexpected_matched_by_rule');
+  }
+  if (!reviewReasonCodes.includes('conflicting_official_url')) {
+    blockers.push('missing_conflicting_official_url_review_reason');
+  }
+  if (unsupportedReviewReasonCodes.length) blockers.push('unsupported_review_reason_codes');
+  if (!officialUrl || !catalogCanonicalUrl || officialUrl !== catalogCanonicalUrl) {
+    blockers.push('official_url_mismatch');
+  }
+  if (seedCanonicalUrl && catalogCanonicalUrl && seedCanonicalUrl !== catalogCanonicalUrl) {
+    blockers.push('seed_canonical_url_mismatch');
+  }
+  if (!catalogTitleKey || !seedTitleKey || catalogTitleKey !== seedTitleKey) {
+    blockers.push('seed_title_mismatch');
+  }
+  if (hasTerminalHold(row.seed_data)) blockers.push('terminal_hold_present');
+
+  return {
+    eligible: blockers.length === 0,
+    blockers,
+    evidence: {
+      source_tier: asString(row.source_tier),
+      matched_by_rule: matchedByRule,
+      review_reason_codes: reviewReasonCodes,
+      variant_axes: asObject(row.variant_axes),
+      official_url: asString(row.official_url),
+      canonical_url: asString(row.canonical_url),
+      seed_canonical_url: asString(row.seed_canonical_url || row.destination_url),
+      title: asString(row.title),
+      seed_title: asString(row.seed_title || row.title),
+    },
+  };
+}
+
 async function fetchRows(externalProductIds) {
   const result = await query(
     `
@@ -206,19 +268,39 @@ function buildPlans(rows, options = {}) {
     const reviewedProductLineSingleton = reviewRequired
       ? evaluateReviewedProductLineSingleton(row, options)
       : { eligible: false, blockers: [], evidence: null };
+    const reviewedOfficialUrlExactConflictCleanup = reviewRequired
+      ? evaluateReviewedOfficialUrlExactConflictCleanup(row, options)
+      : { eligible: false, blockers: [], evidence: null };
     if (!asString(row.source_product_id)) blockers.push('missing_source_product_id');
     if (!asString(row.product_key)) blockers.push('missing_catalog_product');
     if (!asString(row.source_listing_ref)) blockers.push('missing_identity_listing');
     if (!isSig(catalogSig)) blockers.push('invalid_catalog_sig');
     if (reviewRequired) {
-      if (!options.allowReviewedProductLineSingletons) {
-        blockers.push('identity_review_required');
-      } else if (!reviewedProductLineSingleton.eligible) {
-        blockers.push(
-          ...reviewedProductLineSingleton.blockers.map(
-            (blocker) => `reviewed_product_line_singleton_${blocker}`,
-          ),
-        );
+      const allowedByReviewedProductLineSingleton =
+        options.allowReviewedProductLineSingletons && reviewedProductLineSingleton.eligible;
+      const allowedByOfficialUrlExactConflictCleanup =
+        options.allowOfficialUrlExactConflictCleanup && reviewedOfficialUrlExactConflictCleanup.eligible;
+      if (!allowedByReviewedProductLineSingleton && !allowedByOfficialUrlExactConflictCleanup) {
+        const hasReviewedGate =
+          options.allowReviewedProductLineSingletons || options.allowOfficialUrlExactConflictCleanup;
+        if (!hasReviewedGate) {
+          blockers.push('identity_review_required');
+        } else {
+          if (options.allowReviewedProductLineSingletons) {
+            blockers.push(
+              ...reviewedProductLineSingleton.blockers.map(
+                (blocker) => `reviewed_product_line_singleton_${blocker}`,
+              ),
+            );
+          }
+          if (options.allowOfficialUrlExactConflictCleanup) {
+            blockers.push(
+              ...reviewedOfficialUrlExactConflictCleanup.blockers.map(
+                (blocker) => `reviewed_official_url_exact_conflict_cleanup_${blocker}`,
+              ),
+            );
+          }
+        }
       }
     }
     const needsUpdate =
@@ -250,6 +332,7 @@ function buildPlans(rows, options = {}) {
       review_required_before: row.review_required === true,
       review_reason_codes_before: row.review_reason_codes || [],
       reviewed_product_line_singleton: reviewedProductLineSingleton,
+      reviewed_official_url_exact_conflict_cleanup: reviewedOfficialUrlExactConflictCleanup,
       needs_update: needsUpdate,
     };
   });
@@ -264,6 +347,16 @@ async function applyPlans(plans, reviewedBy) {
       await client.query(`SET LOCAL lock_timeout = '5s'`);
       await client.query(`SET LOCAL statement_timeout = '45s'`);
       for (const plan of ready) {
+        const reviewReason = plan.reviewed_product_line_singleton?.eligible
+          ? REVIEWED_PRODUCT_LINE_SINGLETON_REASON
+          : plan.reviewed_official_url_exact_conflict_cleanup?.eligible
+            ? REVIEWED_OFFICIAL_URL_EXACT_CONFLICT_CLEANUP_REASON
+            : 'reviewed_external_seed_identity_catalog_sig_alignment';
+        const reviewGateEvidence = plan.reviewed_product_line_singleton?.eligible
+          ? plan.reviewed_product_line_singleton.evidence
+          : plan.reviewed_official_url_exact_conflict_cleanup?.eligible
+            ? plan.reviewed_official_url_exact_conflict_cleanup.evidence
+            : null;
         const payload = {
           source_listing_ref: plan.source_listing_ref,
           source_sellable_item_group_id: plan.identity_sig_id_before || null,
@@ -273,10 +366,8 @@ async function applyPlans(plans, reviewedBy) {
           product_key: plan.product_key,
           canonical_url: plan.canonical_url,
           catalog_sig_url: plan.catalog_sig_url,
-          reason: plan.reviewed_product_line_singleton?.eligible
-            ? REVIEWED_PRODUCT_LINE_SINGLETON_REASON
-            : 'reviewed_external_seed_identity_catalog_sig_alignment',
-          review_gate_evidence: plan.reviewed_product_line_singleton?.evidence || null,
+          reason: reviewReason,
+          review_gate_evidence: reviewGateEvidence,
           reviewed_by: reviewedBy,
           reviewed_at: new Date().toISOString(),
         };
@@ -330,6 +421,9 @@ async function applyPlans(plans, reviewedBy) {
               ...(plan.reviewed_product_line_singleton?.eligible
                 ? [`${REVIEWED_PRODUCT_LINE_SINGLETON_REASON}:official_url_title_variant_guard`]
                 : []),
+              ...(plan.reviewed_official_url_exact_conflict_cleanup?.eligible
+                ? [`${REVIEWED_OFFICIAL_URL_EXACT_CONFLICT_CLEANUP_REASON}:official_url_title_guard`]
+                : []),
             ]),
             JSON.stringify({
               canonical_sig_id: plan.catalog_sig_id,
@@ -361,12 +455,16 @@ async function main() {
   const confirm = asString(argValue('confirm'));
   const reviewedBy = asString(argValue('reviewed-by')) || 'codex';
   const allowReviewedProductLineSingletons = hasFlag('allow-reviewed-product-line-singletons');
+  const allowOfficialUrlExactConflictCleanup = hasFlag('allow-official-url-exact-conflict-cleanup');
   if (!externalProductIds.length) throw new Error('Missing --external-product-ids');
   if (write && confirm !== CONFIRM_TOKEN) throw new Error(`Refusing write without --confirm ${CONFIRM_TOKEN}`);
   const rows = await fetchRows(externalProductIds);
   const seenIds = new Set(rows.map((row) => asString(row.source_product_id)));
   const missingIds = externalProductIds.filter((id) => !seenIds.has(id));
-  const plans = buildPlans(rows, { allowReviewedProductLineSingletons });
+  const plans = buildPlans(rows, {
+    allowReviewedProductLineSingletons,
+    allowOfficialUrlExactConflictCleanup,
+  });
   const held = plans.filter((plan) => plan.action === 'hold');
   const ready = plans.filter((plan) => plan.action === 'align_ready');
   const applied = write ? await applyPlans(plans, reviewedBy) : { override_upserts: 0, identity_rows_updated: 0 };
@@ -377,6 +475,7 @@ async function main() {
     external_product_ids: externalProductIds,
     options: {
       allow_reviewed_product_line_singletons: allowReviewedProductLineSingletons,
+      allow_official_url_exact_conflict_cleanup: allowOfficialUrlExactConflictCleanup,
     },
     rows_seen: rows.length,
     missing_ids: missingIds,
@@ -415,7 +514,9 @@ if (require.main === module) {
 module.exports = {
   CONFIRM_TOKEN,
   REVIEWED_PRODUCT_LINE_SINGLETON_REASON,
+  REVIEWED_OFFICIAL_URL_EXACT_CONFLICT_CLEANUP_REASON,
   buildPlans,
   evaluateReviewedProductLineSingleton,
+  evaluateReviewedOfficialUrlExactConflictCleanup,
   normalizeUrlForCompare,
 };
