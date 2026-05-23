@@ -1,5 +1,6 @@
 const {
   _internals: {
+    buildEligibleSourceKeys,
     buildInventoryRows,
     recommendedLane,
     summarizeInventory,
@@ -85,5 +86,30 @@ describe('audit-kb-commerce-index-readiness terminal holds', () => {
         { key: 'terminal_hold_no_action', count: 1 },
       ]),
     );
+  });
+
+  test('builds catalog-serving eligibility keys from attached catalog IPS state', () => {
+    const keys = buildEligibleSourceKeys({
+      seedRows: [
+        {
+          external_product_id: 'ext_ready',
+          attached_product_key: 'product_ready',
+        },
+        {
+          external_product_id: 'ext_shadow',
+          attached_product_key: 'product_shadow',
+        },
+      ],
+      catalogByProductKey: new Map([
+        ['product_ready', { content_key: 'ck_ready' }],
+        ['product_shadow', { content_key: 'ck_shadow' }],
+      ]),
+      indexByContentKey: new Map([
+        ['ck_ready', { serving_eligible: true }],
+        ['ck_shadow', { serving_eligible: false }],
+      ]),
+    });
+
+    expect(Array.from(keys)).toEqual(['external_seed::ext_ready']);
   });
 });
