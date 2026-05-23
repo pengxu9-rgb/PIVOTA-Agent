@@ -240,11 +240,40 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     ).toBe(
       'Vitamin-C Serum is positioned around a radiant-looking glow and smoother-looking complexion support.',
     );
+    expect(
+      sanitizePublicSourceText(
+        'Reset your complexion with the Clear Skin Reset Kit, a clarifying routine designed to balance and refresh. Featuring yet gentle formulas, this set works to purify, smooth and soothe while targeting excess oil and visible. With skin-loving. ingredients like.',
+      ),
+    ).toBe(
+      'Reset your complexion with the Clear Skin Reset Kit, a clarifying routine designed to balance and refresh. Featuring gentle formulas, this set supports a clarifying-looking, excess-oil routine.',
+    );
+    expect(
+      sanitizePublicSourceText('Instantly reduces puffiness and under-eye circles.'),
+    ).toBe('Positioned around the look of puffiness and under-eye circles.');
+    expect(
+      sanitizePublicSourceText(
+        'Two silky, coordinated shades to use together or solo. MSRP was last offered 12/10/25.',
+      ),
+    ).toBe('Two silky, coordinated shades to use together or solo.');
+    expect(
+      sanitizePublicTitleText('Pixi + Maryam Maquillage Dream-y Lit Kit | MaryamNYC Limited Edition'),
+    ).toBe('Pixi + Maryam Maquillage Dream-y Lit Kit');
     expect(sanitizeFormulaSummary('Vitamin-C brightens & promotes collagen production')).toBe(
       'Vitamin-C supports radiant-looking tone',
     );
     expect(sanitizeFormulaSummary('Vitamin C – Evens skintone and improves the appearance of skin')).toBe(
       'Vitamin C – Supports the look of more even tone',
+    );
+    expect(
+      sanitizeFormulaSummary(
+        'Salicylic acid, Glycolic acid, Lactic acid Salicylic acid, Glycolic acid, Lactic acid',
+      ),
+    ).toBe('Salicylic acid, Glycolic acid, Lactic acid');
+    expect(
+      sanitizeFormulaSummary('Salicylic acid, Glycolic acid, Lactic acid Clarity Cleanser'),
+    ).toBe('Salicylic acid, Glycolic acid, Lactic acid');
+    expect(sanitizeFormulaSummary('Rose Flower Oil soothes & hydrates')).toBe(
+      'Rose Flower Oil is listed for soothing and hydrating positioning',
     );
 
     const forestBundle = buildBundle({
@@ -631,6 +660,17 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
         'Glow Mud Cleanser is a deep pore cleansing face wash with Glycolic Acid for a brighter complexion.',
       ),
     ).toBe('skincare_set');
+    expect(inferKind('Misting Must-Haves', '', '', 'All-over glow mist for a luminous, dewy complexion.')).toBe(
+      'skincare_set',
+    );
+    expect(
+      inferKind(
+        'Vitamin-C Essentials Brightening Bundle',
+        '',
+        '',
+        'Brighten, smooth and refresh your skin with this Vitamin-C skincare set. Includes tonic, patches, serum capsules and eye patches.',
+      ),
+    ).toBe('skincare_set');
     expect(inferKind('LipTone Trio', '', '', 'Gloss works with lips pH level for a tint.')).toBe(
       'lip_set',
     );
@@ -690,6 +730,21 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
           'Glow Mud Cleanser • Deep pore cleansing face wash with Glycolic Acid • Gently exfoliates for a brighter complexion.',
       }).shopping_card,
     ).toMatchObject({ subtitle: 'Skincare Set', highlight: 'Cleansing routine set' });
+    expect(
+      buildPixiBundle({
+        id: 'misting_must_haves',
+        title: 'Misting Must-Haves',
+        description: 'All-over glow mist for a luminous, dewy complexion.',
+      }).shopping_card,
+    ).toMatchObject({ subtitle: 'Skincare Set', highlight: 'Mist routine set' });
+    expect(
+      buildPixiBundle({
+        id: 'vitamin_c_essentials',
+        title: 'Vitamin-C Essentials Brightening Bundle',
+        description:
+          'Brighten, smooth and refresh your skin with this Vitamin-C skincare set. Includes tonic, patches, serum capsules and eye patches.',
+      }).shopping_card,
+    ).toMatchObject({ subtitle: 'Skincare Set', highlight: 'Glow routine set' });
     expect(
       buildPixiBundle({
         id: 'liptone_trio',
