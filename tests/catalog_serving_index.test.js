@@ -685,6 +685,11 @@ describe('catalog serving index', () => {
       source: 'mock_index',
     }));
     const queryFn = jest.fn(async (sql) => {
+      if (String(sql).includes('index_pipeline_state')) {
+        return {
+          rows: [{ merchant_id: 'external_seed', source_product_id: 'ext_vitamin_c' }],
+        };
+      }
       if (String(sql).includes('aurora_product_intel_kb')) {
         return {
           rows: [
@@ -716,7 +721,6 @@ describe('catalog serving index', () => {
             merchant_id: 'external_seed',
             product_id: 'ext_vitamin_c',
             source_kind: 'external_seed',
-            serving_eligible: true,
             product: {
               product_id: 'ext_vitamin_c',
               title: 'Vitamin C Serum',
