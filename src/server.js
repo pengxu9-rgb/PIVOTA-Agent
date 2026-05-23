@@ -14715,6 +14715,35 @@ function isSearchQualityContractSafeEmptyResponse(response = null) {
   );
 }
 
+function shouldShortCircuitInvokeSearchQualitySafeEmpty({
+  contract = null,
+  payload = null,
+  metadata = null,
+  queryClass = null,
+} = {}) {
+  if (!isSearchQualityContractSafeEmptyContract(contract)) return false;
+  const search =
+    payload?.search && typeof payload.search === 'object' && !Array.isArray(payload.search)
+      ? payload.search
+      : payload && typeof payload === 'object' && !Array.isArray(payload)
+        ? payload
+        : {};
+  if (hasStrictInvokeCatalogSurface(search, metadata)) return true;
+
+  const normalizedQueryClass = String(queryClass || '').trim().toLowerCase();
+  if (normalizedQueryClass === 'non_shopping') return true;
+
+  const understanding =
+    contract?.query_understanding &&
+    typeof contract.query_understanding === 'object' &&
+    !Array.isArray(contract.query_understanding)
+      ? contract.query_understanding
+      : null;
+  if (understanding?.hard_negatives?.non_merchandise_query === true) return true;
+  const riskFlags = Array.isArray(understanding?.risk_flags) ? understanding.risk_flags : [];
+  return riskFlags.map((flag) => String(flag || '').trim()).includes('non_merchandise_query_guard');
+}
+
 function projectSearchQualityContractForMetadata(contract = null) {
   if (!contract || typeof contract !== 'object') return null;
   return {
@@ -32770,7 +32799,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       !Array.isArray(findProductsExpansionMeta.search_quality_contract)
         ? findProductsExpansionMeta.search_quality_contract
         : null;
-    if (operation === 'find_products_multi' && isSearchQualityContractSafeEmptyContract(findProductsSearchQualityContract)) {
+    if (
+      operation === 'find_products_multi' &&
+      shouldShortCircuitInvokeSearchQualitySafeEmpty({
+        contract: findProductsSearchQualityContract,
+        payload: effectivePayload,
+        metadata,
+        queryClass: traceQueryClass,
+      })
+    ) {
       const safeSearch =
         effectivePayload?.search && typeof effectivePayload.search === 'object' && !Array.isArray(effectivePayload.search)
           ? effectivePayload.search
