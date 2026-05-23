@@ -14691,6 +14691,30 @@ function isBeautySearchQualityContractApplied(contract = null) {
   );
 }
 
+function isSearchQualityContractSafeEmptyContract(contract = null) {
+  return Boolean(
+    SEARCH_QUALITY_CONTRACT_V1_ENABLED &&
+      contract &&
+      contract.contract_version === SEARCH_QUALITY_CONTRACT_VERSION &&
+      (
+        String(contract.target_domain || '').trim().toLowerCase() !== 'beauty' ||
+        String(contract.query_class || '').trim().toLowerCase() === 'ambiguous_or_non_shopping'
+      )
+  );
+}
+
+function isSearchQualityContractSafeEmptyResponse(response = null) {
+  if (!response || typeof response !== 'object' || Array.isArray(response)) return false;
+  const metadata = response.metadata && typeof response.metadata === 'object' ? response.metadata : {};
+  const decision = metadata.search_decision && typeof metadata.search_decision === 'object'
+    ? metadata.search_decision
+    : {};
+  return (
+    String(metadata.query_source || '') === 'search_quality_contract_v1_safe_empty' ||
+    String(decision.decision_lock_reason || '') === 'search_quality_contract_ambiguous_or_non_shopping'
+  );
+}
+
 function projectSearchQualityContractForMetadata(contract = null) {
   if (!contract || typeof contract !== 'object') return null;
   return {
@@ -15176,6 +15200,26 @@ async function fetchCanonicalChainRecallForFindProductsMulti({ search = {} } = {
       ? search.search_quality_contract
       : null;
   const searchQualityContractApplied = isBeautySearchQualityContractApplied(searchQualityContract);
+  if (isSearchQualityContractSafeEmptyContract(searchQualityContract)) {
+    return {
+      products: [],
+      telemetry: {
+        canonical_path_executed: false,
+        canonical_raw_count: 0,
+        canonical_product_count: 0,
+        canonical_category_path_prefix: null,
+        canonical_brand_filter_applied: false,
+        canonical_duration_ms: 0,
+        query_text: searchQualityContract.effective_query || extractSearchQueryText(search),
+        requested_limit: Math.max(
+          1,
+          Math.min(SEARCH_LIMIT_MAX, Math.floor(Number(search.limit || search.page_size || 20) || 20)),
+        ),
+        search_quality_contract: searchQualityContract,
+        search_quality_contract_safe_empty: true,
+      },
+    };
+  }
   const queryText =
     (searchQualityContractApplied && searchQualityContract?.effective_query) ||
     extractSearchQueryText(search);
@@ -17784,14 +17828,7 @@ async function searchBeautyExternalSeedProductsMainline({
       ? Math.floor(Number(search.offset))
       : (safePage - 1) * safeLimit,
   );
-  const contractSafeEmpty = Boolean(
-    SEARCH_QUALITY_CONTRACT_V1_ENABLED &&
-      searchQualityContract &&
-      (
-        String(searchQualityContract.target_domain || '').trim().toLowerCase() !== 'beauty' ||
-        String(searchQualityContract.query_class || '').trim().toLowerCase() === 'ambiguous_or_non_shopping'
-      )
-  );
+  const contractSafeEmpty = isSearchQualityContractSafeEmptyContract(searchQualityContract);
   if (contractSafeEmpty) {
     return {
       status: 'success',
@@ -32512,6 +32549,35 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           const directProducts = Array.isArray(directResponse?.products)
             ? directResponse.products
             : [];
+          if (isSearchQualityContractSafeEmptyResponse(directResponse)) {
+            return res.json({
+              ...directResponse,
+              metadata: {
+                ...(directResponse.metadata || {}),
+                service_version: completeServiceVersionMetadata(
+                  directResponse.metadata?.service_version,
+                ),
+                route_health: {
+                  ...((directResponse.metadata && directResponse.metadata.route_health) || {}),
+                  primary_latency_ms: Math.max(0, Date.now() - earlyDirectStartedAt),
+                  fallback_triggered: false,
+                  fallback_reason: null,
+                  final_returned_count: 0,
+                },
+                search_trace: {
+                  trace_id: gatewayRequestId,
+                  raw_query: earlyQueryText,
+                  upstream_stage: {
+                    called: false,
+                    timeout: false,
+                    status: null,
+                  },
+                  final_decision: 'search_quality_contract_safe_empty',
+                },
+                ...(earlyCreatorId ? { creator_id: earlyCreatorId } : {}),
+              },
+            });
+          }
           if (directProducts.length > 0) {
             return res.json({
               ...directResponse,
@@ -36737,6 +36803,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             : [];
           if (
             directProducts.length > 0 ||
+            isSearchQualityContractSafeEmptyResponse(directResponse) ||
             routeSearchQualityContractApplied ||
             String(directResponse?.status || '').toLowerCase() === 'failed'
           ) {
@@ -37168,7 +37235,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           const directProducts = Array.isArray(directResponse?.products)
             ? directResponse.products
             : [];
-          if (directProducts.length > 0 || routeSearchQualityContractApplied) {
+          if (
+            directProducts.length > 0 ||
+            routeSearchQualityContractApplied ||
+            isSearchQualityContractSafeEmptyResponse(directResponse)
+          ) {
             const promotions = await getActivePromotions(now, creatorId);
             const enriched = applyDealsToResponse(directResponse, promotions, now, creatorId);
             return res.json(enriched);
