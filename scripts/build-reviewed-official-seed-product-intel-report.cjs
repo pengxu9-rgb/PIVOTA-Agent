@@ -219,6 +219,14 @@ function sanitizePublicSourceText(value) {
       'Vitamin-C Lotion is positioned as a hydrating lotion step with a radiant-looking finish.',
     )
     .replace(
+      /\bcontains Vitamin-C,\s*a potent Antioxidant that is known to boost skin luminosity\b/gi,
+      'contains Vitamin-C and is positioned around luminous-looking skin',
+    )
+    .replace(
+      /\bDesigned to leave the complexion looking refreshed and Glowing,\s*these soft,\s*pre-soaked wipes are perfect\.?/gi,
+      'Designed to leave the complexion looking refreshed and glowing in a pre-soaked wipe format.',
+    )
+    .replace(
       /\bIf you['’]?re looking for a serum that provides a radiant glow\s*-\s*and so much more\s*-\s*you['’]?ll find it with Pixi Beauty Vitamin-C Serum\.\s*This enriching serum helps improve skin tone and creates a smoother complexion\.?/gi,
       'Vitamin-C Serum is positioned around a radiant-looking glow and smoother-looking complexion support.',
     )
@@ -238,6 +246,7 @@ function sanitizePublicSourceText(value) {
     .replace(/\s+to keep your glow-boosting ingredients feeling\.?/gi, '.')
     .replace(/\s+known for their abilities\.?/gi, '.')
     .replace(/\.\s*pick-me-up\.?/gi, '.')
+    .replace(/\.\s*for daily use\b/gi, ' for daily use')
     .replace(/\.{2,}|…/g, '. ')
     .replace(/\ba\s*,\s+(?=(?:firming|hydrating|brightening|calming|cleansing|moisturizing|moisturising|gentle|lightweight|nourishing)\b)/gi, 'a ')
     .replace(/\s+([,.;:!?])/g, '$1')
@@ -278,6 +287,8 @@ function sanitizePublicTitleText(value) {
 function sanitizeFormulaSummary(value) {
   return text(value)
     .replace(/\bVitamin-C brightens\s*&\s*promotes collagen production\b/gi, 'Vitamin-C supports radiant-looking tone')
+    .replace(/\bVitamin-C brightens\s*&\s*boosts luminosity\b/gi, 'Vitamin-C supports luminous-looking tone')
+    .replace(/\bVitamin C brightens and promotes a radiant complexion\b/gi, 'Vitamin C supports a radiant-looking complexion')
     .replace(/\bEvens skintone and improves the appearance of skin\b/gi, 'Supports the look of more even tone')
     .replace(
       /\b(Salicylic acid,\s*Glycolic acid,\s*Lactic acid)(?:\s+Salicylic acid,\s*Glycolic acid,\s*Lactic acid)+\b/gi,
@@ -1279,15 +1290,34 @@ function isConservativeRewriteCandidate(row, options = {}) {
   if (options.safeOnly === false) return true;
   const qualityState = text(row.kb_direct_quality_state).toLowerCase();
   const evidenceProfile = text(row.kb_direct_evidence_profile).toLowerCase();
+  const blockingIssues = new Set(
+    text(row.kb_direct_blocking_issues)
+      .split('|')
+      .map((item) => item.trim())
+      .filter(Boolean),
+  );
   if (row.terminal_hold) return false;
   if (row.kb_direct_high_quality_ready) return false;
-  if (row.kb_direct_human_reviewed !== true) return false;
   if (!SAFE_REWRITE_EVIDENCE_PROFILES.has(evidenceProfile)) return false;
   if (!SAFE_REWRITE_BLOCKERS.has(text(row.main_blocker))) return false;
   const reviewedSellerOnlyAllowed =
     options.includeReviewedSellerOnly === true &&
     qualityState === 'reviewed' &&
     evidenceProfile === 'seller_only';
+  const notReviewedOfficialSourceAllowed =
+    options.includeNotReviewedOfficialSource === true &&
+    row.kb_direct_human_reviewed !== true &&
+    qualityState === 'limited' &&
+    evidenceProfile === 'seller_only' &&
+    text(row.main_blocker) === 'kb_blocked' &&
+    row.catalog_attached === true &&
+    row.index_serving_eligible === true &&
+    row.commerce_doc_public === true &&
+    blockingIssues.size > 0 &&
+    Array.from(blockingIssues).every((issue) =>
+      issue === 'not_reviewed' || issue === 'not_displayable_gate',
+    );
+  if (row.kb_direct_human_reviewed !== true && !notReviewedOfficialSourceAllowed) return false;
   if (!SAFE_REWRITE_QUALITY_STATES.has(qualityState) && !reviewedSellerOnlyAllowed) return false;
   if (NON_CORE_PUBLIC_REWRITE_TITLE_RE.test(text(row.title))) return false;
   if (options.singleItemOnly && MULTI_ITEM_PUBLIC_REWRITE_TITLE_RE.test(text(row.title))) return false;
@@ -1308,6 +1338,7 @@ function selectInventoryRows(rows, options) {
   const requirePublicCommerceDoc = options.requirePublicCommerceDoc === true;
   const singleItemOnly = options.singleItemOnly === true;
   const includeReviewedSellerOnly = options.includeReviewedSellerOnly === true;
+  const includeNotReviewedOfficialSource = options.includeNotReviewedOfficialSource === true;
   return rows
     .filter((row) => !domain || text(row.domain).toLowerCase() === domain)
     .filter((row) => text(row.recommended_lane) === lane)
@@ -1320,6 +1351,7 @@ function selectInventoryRows(rows, options) {
         requirePublicCommerceDoc,
         singleItemOnly,
         includeReviewedSellerOnly,
+        includeNotReviewedOfficialSource,
       }),
     )
     .filter((row) => (requireDescription ? true : true))
@@ -1395,6 +1427,7 @@ async function main() {
     requirePublicCommerceDoc: hasFlag('require-public-commerce-doc'),
     singleItemOnly: hasFlag('single-item-only'),
     includeReviewedSellerOnly: hasFlag('include-reviewed-seller-only'),
+    includeNotReviewedOfficialSource: hasFlag('include-not-reviewed-official-source'),
   });
   const productIds = selectedInventory.map((row) => normalizeId(row.external_product_id)).filter(Boolean);
   const seeds = await fetchSeeds(productIds);
