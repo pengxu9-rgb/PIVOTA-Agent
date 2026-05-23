@@ -354,6 +354,7 @@ const EXTERNAL_SEED_HAIR_WASH_TEXT_RE = /\b(?:shampoo|conditioner)\b/i;
 const EXTERNAL_SEED_HAIR_TEXT_RE =
   /\b(?:hair|haircare|hair\s+care|scalp|hold|shine|texture|volume|frizz|curls?)\b/i;
 const EXTERNAL_SEED_HAIR_STRONG_CONTEXT_RE = /\b(?:hair|haircare|hair\s+care|scalp|frizz|curls?)\b/i;
+const EXTERNAL_SEED_SKIN_TONER_IDENTITY_RE = /\b(?:toner|tonic|tonik|toning\s+mist)\b/i;
 const EXTERNAL_SEED_BODY_WASH_TEXT_RE = /\b(?:body\s*wash|hand\s*(?:and|\+)\s*body\s*wash|shower\s*gel|foaming\s*shower\s*gel)\b/i;
 const EXTERNAL_SEED_BODY_BAR_TEXT_RE = /\b(?:body\s*bar|cleansing\s*bar|bar\s*cleanser)\b/i;
 const EXTERNAL_SEED_DEODORANT_TEXT_RE = /\b(?:deodorant|underarm\s+odor|underarm\s+odour|aluminum[-\s]*free)\b/i;
@@ -621,6 +622,15 @@ function inferExternalSeedRuntimeProductClass(product = {}) {
       reason: 'external_seed_non_formula_merch_title',
     };
   }
+  if (EXTERNAL_SEED_SKIN_TONER_IDENTITY_RE.test(identityText) && !/\bscalp\s+tonic\b/i.test(identityText)) {
+    return {
+      vertical: 'skincare',
+      category: 'Toner',
+      family: 'toner',
+      recommendable: true,
+      reason: 'external_seed_skin_toner_identity',
+    };
+  }
   if (
     EXTERNAL_SEED_HAIR_STYLING_TEXT_RE.test(normalized) ||
     (EXTERNAL_SEED_HAIR_STYLING_SECONDARY_RE.test(normalized) && EXTERNAL_SEED_HAIR_STRONG_CONTEXT_RE.test(normalized))
@@ -711,7 +721,10 @@ function applyExternalSeedRuntimeProductClass(product = {}) {
         ['fragrance', 'moisturizer', 'skincare'].includes(currentCategory))) ||
     (runtimeClass.vertical === 'bodycare' &&
       (['fragrance', 'haircare', 'skincare'].includes(currentVertical) ||
-        ['fragrance', 'hair styling', 'moisturizer', 'skincare'].includes(currentCategory)));
+        ['fragrance', 'hair styling', 'moisturizer', 'skincare'].includes(currentCategory))) ||
+    (runtimeClass.vertical === 'skincare' &&
+      (['fragrance', 'haircare'].includes(currentVertical) ||
+        ['tonic', 'tonik'].includes(currentCategory)));
 
   if (runtimeClass.vertical && runtimeClass.vertical !== UNKNOWN_VERTICAL) {
     next.semantic_vertical = runtimeClass.vertical;
