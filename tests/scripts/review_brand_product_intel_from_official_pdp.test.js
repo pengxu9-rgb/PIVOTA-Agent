@@ -138,6 +138,62 @@ describe('official PDP manual insight review', () => {
         description: 'A hydrating lotion for body care.',
       })).label,
     ).toBe('Body care treatment');
+    expect(
+      inferRole(facts({
+        title: 'Liquid Touch Foundation Brush',
+        productType: 'Foundation Brush',
+        categoryPath: 'beauty/tools/brushes',
+        description: 'A foundation brush packed with soft bristles.',
+      })).label,
+    ).toBe('Makeup brush');
+    expect(
+      inferRole(facts({
+        title: 'Soft Touch Powder Puff',
+        productType: 'Powder Puff',
+        categoryPath: 'beauty/tools/applicators',
+        description: 'A soft-touch velvet puff for pressed powder.',
+      })).label,
+    ).toBe('Makeup applicator');
+    expect(
+      inferRole(facts({
+        title: 'Find Comfort Mini Body Essentials - Awaken Confidence',
+        productType: 'Body Set',
+        categoryPath: 'beauty/body/body_set',
+        description: 'A mini body essentials set with body-care and scent formats.',
+      })).label,
+    ).toBe('Body care set');
+    expect(
+      inferRole(facts({
+        title: 'Find Comfort Stop & Soothe Aromatherapy Pen',
+        productType: 'Aromatherapy',
+        categoryPath: 'beauty/body/aromatherapy',
+        description: 'A click-up aromatherapy format for comfort.',
+      })).label,
+    ).toBe('Aromatherapy treatment');
+    expect(
+      inferRole(facts({
+        title: 'Rare Beauty T-Shirt',
+        productType: 'Apparel',
+        categoryPath: 'merch/apparel',
+        description: 'A soft cotton tee.',
+      })).label,
+    ).toBe('Branded apparel');
+    expect(
+      inferRole(facts({
+        title: 'Rare Beauty Enamel Stickers',
+        productType: 'Stickers',
+        categoryPath: 'merch/accessories',
+        description: 'Collectible stickers with metallic accents.',
+      })).label,
+    ).toBe('Beauty accessory');
+    expect(
+      inferRole(facts({
+        title: 'Soft Pooch Blush Dog Toy - Faith',
+        productType: 'Pet Toy',
+        categoryPath: 'merch/pet',
+        description: 'A Soft Pooch dog toy in a new color.',
+      })).label,
+    ).toBe('Pet accessory');
   });
 
   test('builds specific source-backed insight copy', () => {
