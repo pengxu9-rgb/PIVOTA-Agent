@@ -92,6 +92,108 @@ function isIngredientPolluted(value) {
   return isPolluted(normalized) || INGREDIENT_POLLUTION_RE.test(normalized);
 }
 
+function qualityForField(seedData, field) {
+  const snapshot = asObject(seedData.snapshot);
+  const quality = {
+    ...asObject(snapshot.pdp_field_quality_summary),
+    ...asObject(seedData.pdp_field_quality_summary),
+  };
+  if (field === 'description') return asObject(quality.description_raw);
+  if (field === 'pdp_how_to_use_raw') return asObject(quality.how_to_use_raw);
+  if (field === 'pdp_ingredients_raw') {
+    return {
+      ...asObject(quality.ingredients_inci),
+      ...asObject(quality.ingredients_raw),
+    };
+  }
+  if (field === 'pdp_details_sections') return asObject(quality.details_sections);
+  return asObject(quality[field]);
+}
+
+function sourceQualityStatus(summary) {
+  return text(summary.source_quality_status || summary.quality_status || summary.review_state).toLowerCase();
+}
+
+function isHighQualitySource(summary) {
+  const status = sourceQualityStatus(summary);
+  const sourceOrigin = text(summary.source_origin || summary.source || '').toLowerCase();
+  const sourceKinds = asArray(summary.source_kinds).map((item) => text(item).toLowerCase());
+  return (
+    status === 'high' ||
+    status === 'official_authoritative' ||
+    status === 'manual_reviewed' ||
+    sourceOrigin.includes('official_pdp') ||
+    sourceOrigin.includes('reviewed_source_backed') ||
+    sourceOrigin.includes('manual_review') ||
+    sourceKinds.some((kind) => kind.includes('official') || kind.includes('reviewed'))
+  );
+}
+
+function isWeakOrReplaceableSource(summary) {
+  const status = sourceQualityStatus(summary);
+  const sourceOrigin = text(summary.source_origin || summary.source || '').toLowerCase();
+  return (
+    !status ||
+    status === 'low' ||
+    status === 'medium' ||
+    status.includes('force_fill') ||
+    status.includes('generic') ||
+    status.includes('quarantined') ||
+    status.includes('pending_source') ||
+    sourceOrigin.includes('force_fill') ||
+    sourceOrigin === 'unknown'
+  );
+}
+
+function fieldExistingText(seedData, field) {
+  const snapshot = asObject(seedData.snapshot);
+  if (field === 'description') {
+    return text(seedData.description || seedData.pdp_description_raw || snapshot.description || snapshot.pdp_description_raw);
+  }
+  if (field === 'pdp_how_to_use_raw') {
+    return text(seedData.pdp_how_to_use_raw || snapshot.pdp_how_to_use_raw);
+  }
+  if (field === 'pdp_ingredients_raw') {
+    return text(
+      seedData.pdp_ingredients_raw ||
+        seedData.raw_ingredient_text_clean ||
+        seedData.inci_list ||
+        snapshot.pdp_ingredients_raw ||
+        snapshot.raw_ingredient_text_clean ||
+        snapshot.inci_list,
+    );
+  }
+  if (field === 'pdp_details_sections') {
+    return [
+      ...asArray(seedData.pdp_details_sections),
+      ...asArray(snapshot.pdp_details_sections),
+    ]
+      .map((section) => `${text(section.heading || section.title)} ${sectionBody(section)}`)
+      .join('\n');
+  }
+  return text(seedData[field] || snapshot[field]);
+}
+
+function shouldPatchField(seedData, field, nextValue, entry) {
+  const normalizedNext = text(nextValue);
+  if (!normalizedNext) return { patch: false, reason: 'empty_patch_value' };
+  const existing = fieldExistingText(seedData, field);
+  if (!existing) return { patch: true };
+  if (text(existing).toLowerCase() === normalizedNext.toLowerCase()) {
+    return { patch: false, reason: 'no_change_same_value' };
+  }
+  const existingQuality = qualityForField(seedData, field);
+  if (field === 'pdp_ingredients_raw' && isIngredientPolluted(existing)) return { patch: true };
+  if (field !== 'pdp_ingredients_raw' && isPolluted(existing)) return { patch: true };
+  if (entry.allow_overwrite_high_quality === true || entry.allow_high_quality_overwrite === true) {
+    return { patch: true };
+  }
+  if (isHighQualitySource(existingQuality) && !isWeakOrReplaceableSource(existingQuality)) {
+    return { patch: false, reason: `blocked_protect_high_quality_${field}` };
+  }
+  return { patch: true };
+}
+
 function cleanSections(seedData, manifest) {
   const snapshot = asObject(seedData.snapshot);
   const existing = [
@@ -242,12 +344,34 @@ function buildNextSeedData(row, entry, now) {
   const shouldPatchSections =
     asArray(entry.pdp_details_sections).length > 0 || entry.clean_existing_detail_sections === true;
   const fields = [];
-  if (cleanDescription) fields.push('description', 'pdp_description_raw');
-  if (cleanHowTo) fields.push('pdp_how_to_use_raw');
-  if (shouldPatchSections && sections.length) fields.push('pdp_details_sections');
-  if (cleanIngredients) fields.push('pdp_ingredients_raw', 'raw_ingredient_text_clean');
+  const skippedFields = [];
+  const descriptionPatchDecision = shouldPatchField(seedData, 'description', cleanDescription, entry);
+  const howToPatchDecision = shouldPatchField(seedData, 'pdp_how_to_use_raw', cleanHowTo, entry);
+  const ingredientsPatchDecision = shouldPatchField(seedData, 'pdp_ingredients_raw', cleanIngredients, entry);
+  const sectionsPatchDecision = shouldPatchSections
+    ? shouldPatchField(seedData, 'pdp_details_sections', sections.map(sectionBody).join('\n'), entry)
+    : { patch: false, reason: 'no_section_patch_requested' };
 
-  if (cleanDescription) {
+  if (cleanDescription && descriptionPatchDecision.patch) fields.push('description', 'pdp_description_raw');
+  else if (cleanDescription && descriptionPatchDecision.reason) skippedFields.push(descriptionPatchDecision.reason);
+  if (cleanHowTo && howToPatchDecision.patch) fields.push('pdp_how_to_use_raw');
+  else if (cleanHowTo && howToPatchDecision.reason) skippedFields.push(howToPatchDecision.reason);
+  if (shouldPatchSections && sections.length && sectionsPatchDecision.patch) fields.push('pdp_details_sections');
+  else if (shouldPatchSections && sections.length && sectionsPatchDecision.reason) skippedFields.push(sectionsPatchDecision.reason);
+  if (cleanIngredients && ingredientsPatchDecision.patch) fields.push('pdp_ingredients_raw', 'raw_ingredient_text_clean');
+  else if (cleanIngredients && ingredientsPatchDecision.reason) skippedFields.push(ingredientsPatchDecision.reason);
+
+  if (!fields.length) {
+    return {
+      blocked: skippedFields.some((reason) => reason.startsWith('blocked_')) ? skippedFields : [],
+      changed: false,
+      skipped_fields: skippedFields,
+      seedData,
+      fields,
+    };
+  }
+
+  if (fields.includes('description')) {
     seedData.description = cleanDescription;
     seedData.pdp_description_raw = cleanDescription;
     seedData.seed_description_origin = 'reviewed_source_backed_pdp_content_patch';
@@ -256,17 +380,17 @@ function buildNextSeedData(row, entry, now) {
     snapshot.seed_description_origin = 'reviewed_source_backed_pdp_content_patch';
   }
 
-  if (cleanHowTo) {
+  if (fields.includes('pdp_how_to_use_raw')) {
     seedData.pdp_how_to_use_raw = cleanHowTo;
     snapshot.pdp_how_to_use_raw = cleanHowTo;
   }
 
-  if (shouldPatchSections && sections.length) {
+  if (fields.includes('pdp_details_sections')) {
     seedData.pdp_details_sections = sections;
     snapshot.pdp_details_sections = sections;
   }
 
-  if (cleanIngredients) {
+  if (fields.includes('pdp_ingredients_raw')) {
     const patchIngredients = (target) => {
       if (!target || typeof target !== 'object') return;
       target.pdp_ingredients_raw = cleanIngredients;
@@ -308,6 +432,7 @@ function buildNextSeedData(row, entry, now) {
     changed: sanitizeJson(seedData) !== sanitizeJson(row.seed_data || {}),
     seedData,
     fields,
+    skipped_fields: skippedFields,
   };
 }
 
@@ -462,6 +587,7 @@ async function main() {
         status: next.blocked.length ? 'blocked' : 'ready',
         changed: next.changed,
         blockers: next.blocked,
+        skipped_fields: next.skipped_fields || [],
         patched_fields: next.fields || [],
         before: {
           description: text(row.seed_data?.description || row.seed_data?.snapshot?.description),

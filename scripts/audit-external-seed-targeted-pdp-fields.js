@@ -26,6 +26,10 @@ function argValue(name) {
   return String(value).trim();
 }
 
+function hasFlag(name) {
+  return process.argv.includes(`--${name}`);
+}
+
 function parseDelimitedIds(value) {
   return Array.from(
     new Set(
@@ -39,6 +43,26 @@ function parseDelimitedIds(value) {
 
 function normalizeText(value) {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function parsePositiveInt(value, fallback, min = 1, max = 120000) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < min) return fallback;
+  return Math.min(max, Math.floor(parsed));
+}
+
+function summarizeExtractError(error) {
+  return {
+    message: normalizeText(error?.message || String(error)).slice(0, 300),
+    code: normalizeText(error?.code),
+    status: error?.response?.status || null,
+    response_preview:
+      typeof error?.response?.data === 'string'
+        ? error.response.data.slice(0, 500)
+        : error?.response?.data
+          ? JSON.stringify(error.response.data).slice(0, 500)
+          : '',
+  };
 }
 
 function sectionTitles(value) {
@@ -217,10 +241,12 @@ async function main() {
   const market = normalizeText(argValue('market') || 'US').toUpperCase();
   const baseUrl = normalizeText(argValue('base-url') || argValue('baseUrl') || DEFAULT_BASE_URL);
   const outPath = normalizeText(argValue('out'));
+  const timeoutMs = parsePositiveInt(argValue('timeout-ms') || argValue('timeoutMs'), 60000, 1000, 120000);
 
   const rows = await fetchRows({
     externalProductIds,
     market,
+    includeAttached: hasFlag('include-attached'),
     limit: externalProductIds.length,
     offset: 0,
     concurrency: 1,
@@ -237,14 +263,23 @@ async function main() {
   for (const row of rows) {
     const targetUrl = pickSeedTargetUrl(row);
     const requestBody = buildExtractRequestBody(targetUrl, row);
-    const response = await axios.post(`${baseUrl}/api/extract`, requestBody, {
-      timeout: 60000,
-      headers: { 'content-type': 'application/json' },
-    });
-    const representativeProduct = chooseRepresentativeProduct(response.data, targetUrl, row);
-    const payload = representativeProduct
-      ? buildSeedUpdatePayload(row, response.data, targetUrl)
-      : null;
+    let responseData = null;
+    let representativeProduct = null;
+    let payload = null;
+    let extractError = null;
+    try {
+      const response = await axios.post(`${baseUrl}/api/extract`, requestBody, {
+        timeout: timeoutMs,
+        headers: { 'content-type': 'application/json' },
+      });
+      responseData = response.data;
+      representativeProduct = chooseRepresentativeProduct(responseData, targetUrl, row);
+      payload = representativeProduct
+        ? buildSeedUpdatePayload(row, responseData, targetUrl)
+        : null;
+    } catch (error) {
+      extractError = summarizeExtractError(error);
+    }
     const identityListing = await fetchIdentityListing(`external_seed:${row.external_product_id}`);
     const identityListingCandidates = await fetchIdentityListingCandidates(row.external_product_id);
     audit.push({
@@ -255,6 +290,7 @@ async function main() {
       representative_product: representativeProduct ? summarizeRepresentative(representativeProduct) : null,
       next_seed: payload?.nextRow ? summarizeNextRow(payload.nextRow) : null,
       changed: payload?.changed === true,
+      extract_error: extractError,
       identity_listing: identityListing,
       identity_listing_candidates: identityListingCandidates,
     });
@@ -263,6 +299,7 @@ async function main() {
   const output = {
     market,
     base_url: baseUrl,
+    timeout_ms: timeoutMs,
     external_product_ids: externalProductIds,
     rows: audit,
   };

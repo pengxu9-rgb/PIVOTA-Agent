@@ -53,6 +53,15 @@ function uniqueStrings(values) {
   return out;
 }
 
+function parseDelimitedValues(value) {
+  return uniqueStrings(
+    asString(value)
+      .split(/[\s,]+/)
+      .map((item) => item.trim())
+      .filter(Boolean),
+  );
+}
+
 function countTextLeaves(value) {
   if (!value) return 0;
   if (typeof value === 'string') return value.trim() ? 1 : 0;
@@ -88,11 +97,11 @@ function getHeaders() {
   return headers;
 }
 
-async function fetchRows({ market, domain, brand, externalProductId, includeAttached, limit, offset }) {
+async function fetchRows({ market, domain, brand, externalProductId, externalProductIds, includeAttached, limit, offset }) {
   const where = [
-    `status = 'active'`,
-    `market = $1`,
-    `(tool = '*' OR tool = 'creator_agents')`,
+    `eps.status = 'active'`,
+    `eps.market = $1`,
+    `(eps.tool = '*' OR eps.tool = 'creator_agents')`,
   ];
   const params = [market];
   const bind = (value) => {
@@ -100,12 +109,15 @@ async function fetchRows({ market, domain, brand, externalProductId, includeAtta
     return `$${params.length}`;
   };
 
-  if (domain) where.push(`domain = ${bind(domain)}`);
+  if (domain) where.push(`eps.domain = ${bind(domain)}`);
   if (brand) {
-    where.push(`lower(coalesce(seed_data->>'brand', seed_data->'snapshot'->>'brand', title, '')) = lower(${bind(brand)})`);
+    where.push(`lower(coalesce(eps.seed_data->>'brand', eps.seed_data->'snapshot'->>'brand', eps.title, '')) = lower(${bind(brand)})`);
   }
-  if (externalProductId) where.push(`external_product_id = ${bind(externalProductId)}`);
-  if (!includeAttached) where.push(`attached_product_key IS NULL`);
+  if (Array.isArray(externalProductIds) && externalProductIds.length > 0) {
+    where.push(`eps.external_product_id = ANY(${bind(externalProductIds)}::text[])`);
+  }
+  if (externalProductId) where.push(`eps.external_product_id = ${bind(externalProductId)}`);
+  if (!includeAttached) where.push(`eps.attached_product_key IS NULL`);
 
   params.push(limit);
   const limitBind = `$${params.length}`;
@@ -115,22 +127,27 @@ async function fetchRows({ market, domain, brand, externalProductId, includeAtta
   const result = await query(
     `
       SELECT
-        id,
-        external_product_id,
-        market,
-        domain,
-        canonical_url,
-        destination_url,
-        title,
-        price_amount,
-        price_currency,
-        availability,
-        seed_data,
-        updated_at,
-        created_at
-      FROM external_product_seeds
+        eps.id,
+        eps.external_product_id,
+        eps.market,
+        eps.domain,
+        eps.canonical_url,
+        eps.destination_url,
+        eps.title,
+        eps.price_amount,
+        eps.price_currency,
+        eps.availability,
+        eps.seed_data,
+        eps.updated_at,
+        eps.created_at,
+        cp.pivota_signature_id
+      FROM external_product_seeds eps
+      LEFT JOIN catalog_products cp
+        ON cp.merchant_id = 'external_seed'
+       AND cp.platform = 'external_seed'
+       AND cp.source_product_id = eps.external_product_id
       WHERE ${where.join('\n        AND ')}
-      ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+      ORDER BY eps.updated_at DESC NULLS LAST, eps.created_at DESC NULLS LAST
       LIMIT ${limitBind}
       OFFSET ${offsetBind}
     `,
@@ -372,7 +389,7 @@ function analyzeProductKind(row, pdp) {
   };
 }
 
-function buildRowAudit(row, probe) {
+function buildRowAudit(row, probe, probedProductId = '') {
   const pdp = probe.pdp || {};
   const seedData = asObject(row.seed_data);
   const snapshot = asObject(seedData.snapshot);
@@ -417,6 +434,9 @@ function buildRowAudit(row, probe) {
 
   return {
     external_product_id: row.external_product_id,
+    pivota_signature_id: asString(row.pivota_signature_id),
+    probed_product_id: asString(probedProductId || row.external_product_id),
+    probed_id_type: asString(probedProductId || row.external_product_id).startsWith('sig_') ? 'sig' : 'ext',
     seed_id: row.id,
     market: row.market,
     domain: row.domain,
@@ -497,11 +517,13 @@ function summarize(rows) {
 
 async function main() {
   const market = asString(argValue('market') || 'US').toUpperCase();
+  const externalProductIds = parseDelimitedValues(argValue('external-product-ids') || argValue('externalProductIds'));
   const rows = await fetchRows({
     market,
     domain: asString(argValue('domain')),
     brand: asString(argValue('brand')),
     externalProductId: asString(argValue('external-product-id')),
+    externalProductIds,
     includeAttached: hasArg('include-attached'),
     limit: parsePositiveInt(argValue('limit'), 50, 1, 500),
     offset: Math.max(0, Number(argValue('offset') || 0) || 0),
@@ -510,15 +532,23 @@ async function main() {
     gatewayUrl: asString(argValue('gateway-url') || argValue('gateway')) || DEFAULT_GATEWAY_URL,
     timeoutMs: parsePositiveInt(argValue('timeout-ms'), 25000, 1000, 120000),
     includeSimilar: !hasArg('skip-similar'),
+    useSig: hasArg('use-sig') || hasArg('use-sig-id') || hasArg('sig'),
   };
   const concurrency = parsePositiveInt(argValue('concurrency'), 4, 1, 12);
   const audits = await runWithConcurrency(rows, concurrency, async (row) => {
+    const probedProductId =
+      options.useSig && asString(row.pivota_signature_id)
+        ? asString(row.pivota_signature_id)
+        : row.external_product_id;
     try {
-      const probe = await invokePdp(row.external_product_id, options);
-      return buildRowAudit(row, probe);
+      const probe = await invokePdp(probedProductId, options);
+      return buildRowAudit(row, probe, probedProductId);
     } catch (error) {
       return {
         external_product_id: row.external_product_id,
+        pivota_signature_id: asString(row.pivota_signature_id),
+        probed_product_id: probedProductId,
+        probed_id_type: probedProductId.startsWith('sig_') ? 'sig' : 'ext',
         seed_id: row.id,
         market: row.market,
         domain: row.domain,
@@ -539,10 +569,12 @@ async function main() {
       domain: asString(argValue('domain')) || null,
       brand: asString(argValue('brand')) || null,
       external_product_id: asString(argValue('external-product-id')) || null,
+      external_product_ids: externalProductIds,
       include_attached: hasArg('include-attached'),
       limit: parsePositiveInt(argValue('limit'), 50, 1, 500),
       offset: Math.max(0, Number(argValue('offset') || 0) || 0),
       include_similar: options.includeSimilar,
+      use_sig: options.useSig,
     },
     summary: summarize(audits),
     rows: audits,

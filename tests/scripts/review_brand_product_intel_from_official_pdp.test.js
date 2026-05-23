@@ -298,6 +298,348 @@ describe('official PDP manual insight review', () => {
     expect(plan.preview.shopping_highlight).toBe('Cocoa Precision Pout Lip Liner + Underestimated Gloss Drip');
   });
 
+  test('keeps Kylie lip glaze samples in lip color language', () => {
+    const plan = buildPlan(
+      row({
+        external_product_id: 'ext_kylie_lip_glaze_sample',
+        title: 'Rose Bloom Supple Kiss Lip Glaze Deluxe Sample',
+        brand: 'Kylie Cosmetics',
+        canonical_url: 'https://kyliecosmetics.com/products/rose-bloom-supple-kiss-lip-glaze-deluxe-sample',
+        seed_data: {
+          brand: 'Kylie Cosmetics',
+          pdp_description_raw:
+            "Shop Kylie Cosmetics by Kylie Jenner, Kylie Jenner Fragrances and Kylie Skin featuring award-winning makeup, fragrance, and skincare that's clean, vegan, cruelty-free, and dermatologist-tested.",
+          pdp_ingredients_raw:
+            'POLYBUTENE, TRIDECYL TRIMELLITATE, OCTYLDODECYL STEAROYL STEARATE, ISOCETYL STEARATE, SILICA DIMETHYL SILYLATE, PARFUM/FRAGRANCE, VANILLIN, TITANIUM DIOXIDE (CI 77891).',
+          pdp_how_to_use_raw: 'apply to bare lips or over lipstick for a glowy wash of color and shine.',
+          variants: [
+            {
+              title: 'Single item',
+              options: [{ name: 'Format', value: 'Single item' }],
+            },
+          ],
+        },
+        product_key: 'pk_kylie_lip_glaze_sample',
+        pivota_signature_id: 'sig_kylie_lip_glaze_sample',
+      }),
+      { brand: 'Kylie Cosmetics', includeStrong: false },
+    );
+
+    expect(plan.blocked).toBe(false);
+    expect(plan.preview.headline).toBe('Lip color');
+    expect(plan.preview.what_it_is).not.toContain('Kylie Jenner Fragrances');
+    expect(plan.preview.why_it_stands_out.map((item) => item.headline)).toEqual(expect.arrayContaining([
+      'Ingredient list is available',
+      'Usage instructions available',
+    ]));
+    expect(plan.preview.why_it_stands_out.map((item) => item.headline)).not.toContain('Scent profile cues');
+    expect(plan.preview.shopping_highlight).toContain('shine finish');
+  });
+
+  test('uses sample-specific insight copy instead of generic cue copy', () => {
+    const plan = buildPlan(
+      row({
+        external_product_id: 'ext_kylie_sample',
+        title: 'Koko K Matte Liquid Lipstick Sample',
+        brand: 'Kylie Cosmetics',
+        canonical_url: 'https://kyliecosmetics.com/products/koko-k-matte-liquid-lipstick-sample',
+        seed_data: {
+          brand: 'Kylie Cosmetics',
+          pdp_description_raw:
+            'Kylie source marks this listing as a sample and excludes it from recommendation merchandising. No product PDP copy is available.',
+          pdp_ingredients_raw:
+            'Isododecane, Mica, Dicalcium Phosphate, Octyldodecanol, Hydrogenated Styrene/Isoprene Copolymer, Red 7 Lake (CI 15850), Titanium Dioxide (CI 77891).',
+          pdp_how_to_use_raw: 'using the doe foot applicator, define and coat lips with an even layer.',
+          variants: [
+            {
+              title: '0.03 fl oz',
+              options: [{ name: 'Size', value: '0.03 fl oz' }],
+            },
+          ],
+        },
+        product_key: 'pk_kylie_sample',
+        pivota_signature_id: 'sig_kylie_sample',
+      }),
+      { brand: 'Kylie Cosmetics', includeStrong: false },
+    );
+
+    expect(plan.blocked).toBe(false);
+    expect(plan.preview.headline).toBe('Lip color');
+    expect(plan.preview.what_it_is).not.toContain('excludes it from recommendation merchandising');
+    expect(JSON.stringify(plan.preview)).not.toContain('product data');
+    expect(plan.preview.why_it_stands_out.map((item) => item.headline)).toEqual(expect.arrayContaining([
+      'Sample format is explicit',
+      'Ingredient list is available',
+      'Usage instructions available',
+    ]));
+    expect(plan.preview.why_it_stands_out.map((item) => item.headline)).not.toContain('Concrete product cues');
+    expect(plan.preview.shopping_highlight).not.toContain('shade range');
+  });
+
+  test('keeps decimal sample sizes intact in reviewed sample insight copy', () => {
+    const plan = buildPlan(
+      row({
+        external_product_id: 'ext_kylie_sample_decimal',
+        title: 'Koko K Matte Liquid Lipstick Sample',
+        brand: 'Kylie Cosmetics',
+        canonical_url: 'https://kyliecosmetics.com/products/koko-k-matte-liquid-lipstick-sample',
+        seed_data: {
+          brand: 'Kylie Cosmetics',
+          pdp_description_raw:
+            'Koko K Matte Liquid Lipstick Sample is a 0.03 fl oz sample of the Kylie Matte Liquid Lipstick formula. The product-line PDP describes the formula as comfortable, smudge-resistant matte lip color.',
+          pdp_ingredients_raw:
+            'Isododecane, Mica, Dicalcium Phosphate, Octyldodecanol, Hydrogenated Styrene/Isoprene Copolymer, Red 7 Lake (CI 15850), Titanium Dioxide (CI 77891).',
+          pdp_how_to_use_raw: 'using the doe foot applicator, define and coat lips with an even layer.',
+          variants: [
+            {
+              title: '0.03 fl oz',
+              options: [{ name: 'Size', value: '0.03 fl oz' }],
+            },
+          ],
+        },
+        product_key: 'pk_kylie_sample_decimal',
+        pivota_signature_id: 'sig_kylie_sample_decimal',
+      }),
+      { brand: 'Kylie Cosmetics', includeStrong: false },
+    );
+
+    expect(plan.blocked).toBe(false);
+    expect(plan.preview.what_it_is).toContain('0.03 fl oz sample');
+    expect(plan.preview.what_it_is).not.toBe('Koko K Matte Liquid Lipstick Sample is a 0.');
+    expect(JSON.stringify(plan.preview)).not.toContain('product data');
+  });
+
+  test('blocks Fenty bronzer candidates when source copy is actually blush copy', () => {
+    const plan = buildPlan(
+      row({
+        external_product_id: 'ext_fenty_bronzer_bad_copy',
+        title: 'Cheeks Out Freestyle Cream Bronzer — Amber',
+        brand: 'FENTY BEAUTY',
+        canonical_url: 'https://fentybeauty.com/products/cheeks-out-freestyle-cream-bronzer-amber',
+        seed_data: {
+          brand: 'FENTY BEAUTY',
+          pdp_description_raw:
+            'A light-as-air, non-greasy cream blush that instantly melts into skin for an effortless wash of color, giving life to all skin tones.',
+          pdp_ingredients_raw: 'Water, Mica, Dimethicone, Silica, Phenoxyethanol.',
+          pdp_how_to_use_raw: 'Apply with fingertips or a face brush.',
+          variants: [{ title: 'Amber', options: [{ name: 'Shade', value: 'Amber' }] }],
+        },
+      }),
+      { brand: 'Fenty Beauty', includeStrong: false },
+    );
+
+    expect(plan.blocked).toBe(true);
+    expect(plan.skip_reason).toBe('candidate_failed_manual_quality_gate:source_role_mismatch_bronzer_blush');
+  });
+
+  test('blocks generic Fenty brand-story copy before it can publish', () => {
+    const plan = buildPlan(
+      row({
+        external_product_id: 'ext_fenty_brand_story',
+        title: 'Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill (EU) — 10',
+        brand: 'FENTY BEAUTY',
+        canonical_url: 'https://fentybeauty.com/products/hydra-vizor-huez-tinted-moisturizer-refill-intl-10',
+        seed_data: {
+          brand: 'FENTY BEAUTY',
+          pdp_description_raw:
+            'Rihanna was inspired to create the world of Fenty Beauty brands after years of partnering with the best of the best in the beauty industry - and still seeing a void.',
+          pdp_active_ingredients_raw: 'Zinc Oxide 15.5%',
+          pdp_how_to_use_raw: 'Apply generously as the last step of your morning skincare routine before sun exposure.',
+          variants: [{ title: '10', options: [{ name: 'Shade', value: '10' }] }],
+        },
+      }),
+      { brand: 'Fenty Beauty', includeStrong: false },
+    );
+
+    expect(plan.blocked).toBe(true);
+    expect(plan.skip_reason).toBe('candidate_failed_manual_quality_gate:brand_story_instead_of_product_copy');
+  });
+
+  test('blocks variant-only intros when no useful product copy exists', () => {
+    const plan = buildPlan(
+      row({
+        external_product_id: 'ext_fenty_variant_only',
+        title: 'Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill (EU) — 10',
+        brand: 'FENTY BEAUTY',
+        canonical_url: 'https://fentybeauty.com/products/hydra-vizor-huez-tinted-moisturizer-refill-intl-10',
+        seed_data: {
+          brand: 'FENTY BEAUTY',
+          pdp_active_ingredients_raw: 'Zinc Oxide 15.5%',
+          variants: [{ title: '10', options: [{ name: 'Shade', value: '10' }] }],
+        },
+      }),
+      { brand: 'Fenty Beauty', includeStrong: false },
+    );
+
+    expect(plan.blocked).toBe(true);
+    expect(plan.skip_reason).toBe('candidate_failed_manual_quality_gate:variant_only_intro_without_product_copy');
+  });
+
+  test('does not treat multi-size lip luminizer variants as samples', () => {
+    const plan = buildPlan(
+      row({
+        external_product_id: 'ext_fenty_lip_luminizer',
+        title: 'Gloss Bomb Universal Lip Luminizer — Glass Slipper',
+        brand: 'FENTY BEAUTY',
+        canonical_url: 'https://fentybeauty.com/products/gloss-bomb-universal-lip-luminizer-glass-slipper',
+        seed_data: {
+          brand: 'FENTY BEAUTY',
+          pdp_description_raw:
+            'Rihanna’s award-winning Gloss Bomb Universal Lip Luminizer is a lip gloss with explosive shine.',
+          pdp_ingredients_raw: 'Polybutene, Octyldodecanol, Butyrospermum Parkii (Shea) Butter, Silica, Flavor/Aroma.',
+          pdp_how_to_use_raw: 'Wear alone or layer over lipstick as a finishing touch.',
+          variants: [
+            {
+              title: 'Glass Slipper / Standard',
+              options: [{ name: 'Shade', value: 'Glass Slipper' }, { name: 'Size', value: 'Standard' }],
+            },
+            {
+              title: 'Glass Slipper / Mini',
+              options: [{ name: 'Shade', value: 'Glass Slipper' }, { name: 'Size', value: 'Mini' }],
+            },
+          ],
+        },
+      }),
+      { brand: 'Fenty Beauty', includeStrong: false },
+    );
+
+    expect(plan.blocked).toBe(false);
+    expect(plan.preview.headline).toBe('Lip color');
+    expect(plan.preview.why_it_stands_out.map((item) => item.headline)).not.toContain('Sample format is explicit');
+  });
+
+  test('rewrites Fenty lip liner insights without marketing intro copy', () => {
+    const plan = buildPlan(
+      row({
+        external_product_id: 'ext_fenty_lip_liner',
+        title: "Trace'd Out Longwear Waterproof Pencil Lip Liner — Rose Amber",
+        brand: 'FENTY BEAUTY',
+        canonical_url: 'https://fentybeauty.com/products/traced-out-longwear-waterproof-pencil-lip-liner-amber-rose',
+        seed_data: {
+          brand: 'FENTY BEAUTY',
+          pdp_description_raw:
+            "Finally - your ultimate lip liner has arrived. This longwear, creamy pencil is made with pure pigments. Lasts up to 8 hours and resists transfer, feathering and fading. Velvet-matte finish made with pure pigments.",
+          pdp_ingredients_raw:
+            'Dimethicone, Silica, Trimethylsiloxysilicate, Polyisobutene, Polyethylene, Ozokerite, Synthetic Fluorphlogopite, Disteardimonium Hectorite, Propylene Carbonate.',
+          pdp_how_to_use_raw:
+            'Trace the outline of your lips with the precision tip. Lay the liner on its side to fill in your lips. Press your lips together to set in place.',
+          variants: [
+            {
+              title: 'Rose Amber',
+              options: [{ name: 'Shade', value: 'Rose Amber' }],
+            },
+          ],
+        },
+      }),
+      { brand: 'Fenty Beauty', includeStrong: false },
+    );
+
+    expect(plan.blocked).toBe(false);
+    expect(plan.preview.headline).toBe('Lip liner');
+    expect(plan.preview.what_it_is).toContain('long-wear lip definition');
+    expect(plan.preview.what_it_is).toContain('This SKU is Rose Amber');
+    expect(plan.preview.what_it_is).not.toContain('Finally');
+    expect(plan.preview.why_it_stands_out.map((item) => item.headline)).toEqual(expect.arrayContaining([
+      'Wear claims are specific',
+      'Application sequence is explicit',
+      'Formula disclosure is available',
+    ]));
+    expect(plan.preview.why_it_stands_out.map((item) => item.headline)).not.toContain('Concrete product cues');
+  });
+
+  test('keeps Fenty Hair treatment duos out of fragrance classification', () => {
+    const plan = buildPlan(
+      row({
+        external_product_id: 'ext_fenty_hair_duo',
+        title: 'The Hydrated + Hot Ones Leave-in Conditioner + Heat Protectant Duo',
+        brand: 'FENTY BEAUTY',
+        canonical_url: 'https://fentybeauty.com/products/leave-in-conditioner-heat-protectant-duo',
+        seed_data: {
+          brand: 'FENTY BEAUTY',
+          pdp_description_raw:
+            'The ultimate hydration + heat protection duo. Fenty Hair leave-in conditioner and heat protectant are made for styling prep, frizz control, and hair hydration.',
+          pdp_active_ingredients_raw: 'Hyaluronic acid, amino acids.',
+          pdp_how_to_use_raw: 'Apply leave-in conditioner to damp or dry hair, then use heat protectant before hot tools.',
+          variants: [{ title: 'Duo', options: [{ name: 'Set', value: 'Duo' }] }],
+        },
+      }),
+      { brand: 'Fenty Beauty', includeStrong: false },
+    );
+
+    expect(plan.blocked).toBe(false);
+    expect(plan.preview.headline).toBe('Hair treatment');
+    expect(plan.preview.what_it_is).not.toContain('Fine fragrance');
+    expect(plan.preview.shopping_highlight).toContain('frizz control');
+  });
+
+  test('does not treat ampersand shade names as lip combos', () => {
+    const plan = buildPlan(
+      row({
+        external_product_id: 'ext_fenty_slip_shine',
+        title: 'Slip Shine Sheer Shiny Lipstick — Cookies & Cocoa',
+        brand: 'FENTY BEAUTY',
+        canonical_url: 'https://fentybeauty.com/products/slip-shine-cookies-cocoa',
+        seed_data: {
+          brand: 'FENTY BEAUTY',
+          pdp_description_raw:
+            'An ultra comfortable sheer lipstick with nourishing color and shine in universal, easy-to-wear shades.',
+          pdp_ingredients_raw:
+            'Polybutene, Octyldodecanol, Synthetic Wax, Shea Butter, Squalane, Silica, Titanium Dioxide (CI 77891).',
+          pdp_how_to_use_raw: 'Apply directly to lips for sheer color and shine.',
+          variants: [{ title: 'Cookies & Cocoa', options: [{ name: 'Shade', value: 'Cookies & Cocoa' }] }],
+        },
+      }),
+      { brand: 'Fenty Beauty', includeStrong: false },
+    );
+
+    expect(plan.blocked).toBe(false);
+    expect(plan.preview.headline).toBe('Lip color');
+    expect(plan.preview.what_it_is).not.toContain('lip set');
+    expect(plan.preview.why_it_stands_out.map((item) => item.headline)).not.toContain('Component pairing is clear');
+  });
+
+  test('keeps formula sets with an included case in the formula category', () => {
+    const plan = buildPlan(
+      row({
+        external_product_id: 'ext_fenty_sunscreen_case_set',
+        title: "Arcane Hydra Vizor Mystery Box Moisturizer Sunscreen + Collector's Case, Mineral SPF",
+        brand: 'FENTY BEAUTY',
+        canonical_url: 'https://fentybeauty.com/products/arcane-hydra-vizor-set-mineral-spf-eu',
+        seed_data: {
+          brand: 'FENTY BEAUTY',
+          pdp_description_raw: 'Shield your skin and defend your glow with an Arcane-inspired Hydra Vizor mineral SPF set.',
+          pdp_ingredients_raw: 'Water, Zinc Oxide, Glycerin, Niacinamide, Butyrospermum Parkii (Shea) Butter.',
+          pdp_how_to_use_raw: 'Apply generously as the last step of your morning skincare routine before sun exposure.',
+          variants: [{ title: 'Set', options: [{ name: 'Format', value: 'Set' }] }],
+        },
+      }),
+      { brand: 'Fenty Beauty', includeStrong: false },
+    );
+
+    expect(plan.blocked).toBe(false);
+    expect(plan.preview.headline).toBe('Daily sunscreen');
+    expect(plan.preview.what_it_is).not.toContain('beauty accessory');
+  });
+
+  test('blocks generic accessory insight copy when source evidence is too thin', () => {
+    const plan = buildPlan(
+      row({
+        external_product_id: 'ext_fenty_mesh_tote',
+        title: 'Fenty Beauty Mesh Tote',
+        brand: 'FENTY BEAUTY',
+        canonical_url: 'https://fentybeauty.com/products/fenty-beauty-mesh-tote',
+        seed_data: {
+          brand: 'FENTY BEAUTY',
+          variants: [{ title: '6.7 oz', options: [{ name: 'Size', value: '6.7 oz' }] }],
+        },
+      }),
+      { brand: 'Fenty Beauty', includeStrong: false },
+    );
+
+    expect(plan.blocked).toBe(true);
+    expect(plan.skip_reason).toBe('candidate_failed_manual_quality_gate:generic_accessory_copy');
+  });
+
   test('keeps Kylie fragrance tray insights in accessory language', () => {
     const plan = buildPlan(
       row({
