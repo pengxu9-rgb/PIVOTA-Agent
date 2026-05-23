@@ -186,6 +186,66 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     ).toBe(
       'Designed to support the look of calmer skin and address the look of uneven tone.',
     );
+    expect(
+      sanitizePublicSourceText(
+        'These glow-boosting sheet masks are soaked in a serum concentrate that instantly revitalizes tired skin. Whit antioxidant-rich Vitamin C and de-puffing Caffeine, this face mask is designed for restoring radiance.',
+      ),
+    ).toContain('With antioxidant-rich Vitamin C');
+    expect(
+      sanitizePublicSourceText(
+        'This Vitamin-C Lotion provides the finishing, radiant touch your skin deserves. Not only is your skin treated to rich hydration, but you’ll also enjoy the benefits of key ingredients known for their abilities.',
+      ),
+    ).toBe(
+      'Vitamin-C Lotion is positioned as a hydrating lotion step with a radiant-looking finish.',
+    );
+    expect(
+      sanitizePublicSourceText(
+        "If you're looking for a serum that provides a radiant glow - and so much more - you'll find it with Pixi Beauty Vitamin-C Serum. This enriching serum helps improve skin tone and creates a smoother complexion.",
+      ),
+    ).toBe(
+      'Vitamin-C Serum is positioned around a radiant-looking glow and smoother-looking complexion support.',
+    );
+    expect(
+      sanitizePublicSourceText(
+        'Vitamin C CremeSerum combines a luxurious hyaluronic serum-gel with encapsulated Vitamin C moisture beads to keep your glow-boosting ingredients feeling.',
+      ),
+    ).toBe(
+      'Vitamin C CremeSerum combines a luxurious hyaluronic serum-gel with encapsulated Vitamin C moisture beads.',
+    );
+    expect(
+      sanitizePublicSourceText(
+        'Vitamin C CremeSerum combines a luxurious hyaluronic serum-gel with encapsulated Vitamin C moisture beads to keep your glow-boosting ingredients feeling fresh from the first pump to the last. Why you’ll love it.',
+      ),
+    ).toBe(
+      'Vitamin C CremeSerum combines a luxurious hyaluronic serum-gel with encapsulated Vitamin C moisture beads.',
+    );
+    expect(
+      sanitizePublicSourceText(
+        'Vitamin-C Lotion is positioned as a hydrating lotion step with a radiant-looking finish. to revive, protect and revitalize the skin. Use the Vitamin-C Lotion daily as your go-to moisturizer or as needed for a skincare.',
+      ),
+    ).toBe(
+      'Vitamin-C Lotion is positioned as a hydrating lotion step with a radiant-looking finish.',
+    );
+    expect(
+      sanitizePublicSourceText(
+        'Vitamin-C Lotion is positioned as a hydrating lotion step with a radiant-looking finish. pick-me-up.',
+      ),
+    ).toBe(
+      'Vitamin-C Lotion is positioned as a hydrating lotion step with a radiant-looking finish.',
+    );
+    expect(
+      sanitizePublicSourceText(
+        'Vitamin-C Serum is positioned around a radiant-looking glow and smoother-looking complexion support. while reducing the effects of sun damage and free radicals. Enjoy our multi-use Vitamin-C Serum daily or as needed.',
+      ),
+    ).toBe(
+      'Vitamin-C Serum is positioned around a radiant-looking glow and smoother-looking complexion support.',
+    );
+    expect(sanitizeFormulaSummary('Vitamin-C brightens & promotes collagen production')).toBe(
+      'Vitamin-C supports radiant-looking tone',
+    );
+    expect(sanitizeFormulaSummary('Vitamin C – Evens skintone and improves the appearance of skin')).toBe(
+      'Vitamin C – Supports the look of more even tone',
+    );
 
     const forestBundle = buildBundle({
       seed: {
@@ -1346,6 +1406,27 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     expect(
       isConservativeRewriteCandidate({
         ...base,
+        title: 'Vitamin-C Serum',
+        kb_direct_quality_state: 'reviewed',
+        kb_direct_evidence_profile: 'seller_only',
+        main_blocker: 'kb_blocked',
+      }),
+    ).toBe(false);
+    expect(
+      isConservativeRewriteCandidate(
+        {
+          ...base,
+          title: 'Vitamin-C Serum',
+          kb_direct_quality_state: 'reviewed',
+          kb_direct_evidence_profile: 'seller_only',
+          main_blocker: 'kb_blocked',
+        },
+        { includeReviewedSellerOnly: true },
+      ),
+    ).toBe(true);
+    expect(
+      isConservativeRewriteCandidate({
+        ...base,
         title: 'Mini Makeup Fixing Mist',
         kb_direct_evidence_profile: 'community_supported',
       }),
@@ -1361,6 +1442,12 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     expect(
       isConservativeRewriteCandidate(
         { ...base, title: 'Daily Glow Duo' },
+        { singleItemOnly: true },
+      ),
+    ).toBe(false);
+    expect(
+      isConservativeRewriteCandidate(
+        { ...base, title: 'Misting Must-Haves' },
         { singleItemOnly: true },
       ),
     ).toBe(false);
@@ -1412,6 +1499,24 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
         terminal_hold: false,
       },
       {
+        external_product_id: 'reviewed_seller_only',
+        domain: 'pixibeauty.com',
+        title: 'Vitamin-C Serum',
+        recommended_lane: 'lane_3_kb_rewrite_review',
+        seed_missing_fields: '',
+        identity_status: 'approved',
+        identity_live_read_enabled: true,
+        kb_direct_high_quality_ready: false,
+        kb_direct_human_reviewed: true,
+        kb_direct_quality_state: 'reviewed',
+        kb_direct_evidence_profile: 'seller_only',
+        main_blocker: 'kb_blocked',
+        catalog_attached: true,
+        index_serving_eligible: true,
+        commerce_doc_public: true,
+        terminal_hold: false,
+      },
+      {
         external_product_id: 'shadow',
         domain: 'pixibeauty.com',
         title: 'Rose Body Cleanser',
@@ -1440,5 +1545,16 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
         singleItemOnly: true,
       }).map((row) => row.external_product_id),
     ).toEqual(['safe']);
+
+    expect(
+      selectInventoryRows(rows, {
+        domain: 'pixibeauty.com',
+        lane: 'lane_3_kb_rewrite_review',
+        limit: 10,
+        requirePublicCommerceDoc: true,
+        singleItemOnly: true,
+        includeReviewedSellerOnly: true,
+      }).map((row) => row.external_product_id),
+    ).toEqual(['safe', 'reviewed_seller_only']);
   });
 });

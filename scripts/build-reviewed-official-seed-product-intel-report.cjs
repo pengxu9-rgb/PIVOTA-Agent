@@ -31,7 +31,7 @@ const SAFE_REWRITE_QUALITY_STATES = new Set(['limited', 'eligible']);
 const SAFE_REWRITE_EVIDENCE_PROFILES = new Set(['seller_only', 'seller_plus_formula']);
 const SAFE_REWRITE_BLOCKERS = new Set(['kb_blocked', 'kb_displayable_limited']);
 const NON_CORE_PUBLIC_REWRITE_TITLE_RE = /\b(?:sample|e-gift|gift card|hoodie|hat|tote|bucket|bag)\b/i;
-const MULTI_ITEM_PUBLIC_REWRITE_TITLE_RE = /\b(?:set|kit|duo|trio|bundle|routine|collection|choose your|gift set|gift trio)\b/i;
+const MULTI_ITEM_PUBLIC_REWRITE_TITLE_RE = /\b(?:set|kit|duo|trio|bundle|routine|collection|must-haves?|choose your|gift set|gift trio)\b/i;
 
 function text(value) {
   if (typeof value === 'string') return value.replace(/\s+/g, ' ').trim();
@@ -201,6 +201,31 @@ function sanitizePublicSourceText(value) {
     .replace(/\b(?:winner of|voted one of|voted as one of)[^.?!]*[.!]?/gi, '')
     .replace(/\b(?:an?|the)\s+(designed|made|created)\b/gi, '$1')
     .replace(/\b(?:everyone loves|widely loved)\b/gi, '')
+    .replace(/\bWhit antioxidant-rich\b/gi, 'With antioxidant-rich')
+    .replace(
+      /\bThis Vitamin-C Lotion provides the finishing,\s*radiant touch your skin deserves\.\s*Not only is your skin treated to rich hydration,\s*but you['’]?ll also enjoy the benefits of key ingredients known for their abilities\.?/gi,
+      'Vitamin-C Lotion is positioned as a hydrating lotion step with a radiant-looking finish.',
+    )
+    .replace(
+      /\bIf you['’]?re looking for a serum that provides a radiant glow\s*-\s*and so much more\s*-\s*you['’]?ll find it with Pixi Beauty Vitamin-C Serum\.\s*This enriching serum helps improve skin tone and creates a smoother complexion\.?/gi,
+      'Vitamin-C Serum is positioned around a radiant-looking glow and smoother-looking complexion support.',
+    )
+    .replace(/\.\s*fresh from the first pump to the last\.?\s*why you['’]?ll love it\.?/gi, '.')
+    .replace(
+      /\.\s*to revive,\s*protect and revitalize the skin\.?\s*Use the Vitamin-C Lotion daily as your go-to moisturizer or as needed for a skincare\.?/gi,
+      '.',
+    )
+    .replace(
+      /\.\s*while reducing the effects of sun damage and free radicals\.?\s*Enjoy our multi-use Vitamin-C Serum daily or as needed\.?/gi,
+      '.',
+    )
+    .replace(
+      /\s+to keep your glow-boosting ingredients feeling\s+fresh from the first pump to the last\.?\s*why you['’]?ll love it\.?/gi,
+      '.',
+    )
+    .replace(/\s+to keep your glow-boosting ingredients feeling\.?/gi, '.')
+    .replace(/\s+known for their abilities\.?/gi, '.')
+    .replace(/\.\s*pick-me-up\.?/gi, '.')
     .replace(/\.{2,}|…/g, '. ')
     .replace(/\ba\s*,\s+(?=(?:firming|hydrating|brightening|calming|cleansing|moisturizing|moisturising|gentle|lightweight|nourishing)\b)/gi, 'a ')
     .replace(/\s+([,.;:!?])/g, '$1')
@@ -235,6 +260,8 @@ function sanitizePublicTitleText(value) {
 
 function sanitizeFormulaSummary(value) {
   return text(value)
+    .replace(/\bVitamin-C brightens\s*&\s*promotes collagen production\b/gi, 'Vitamin-C supports radiant-looking tone')
+    .replace(/\bEvens skintone and improves the appearance of skin\b/gi, 'Supports the look of more even tone')
     .replace(/\b(?:see all|how to use|complete list)\b[\s:-]*/gi, ' ')
     .replace(/\b(?:wholesale|affiliate program|refer-a-friend|press|social|instagram|facebook|twitter|tiktok|pinterest|youtube)\b/gi, ' ')
     .replace(/\b(?:var\s+\w+|await)\b[^.!?;,]*/gi, ' ')
@@ -1221,9 +1248,13 @@ function isConservativeRewriteCandidate(row, options = {}) {
   if (row.terminal_hold) return false;
   if (row.kb_direct_high_quality_ready) return false;
   if (row.kb_direct_human_reviewed !== true) return false;
-  if (!SAFE_REWRITE_QUALITY_STATES.has(qualityState)) return false;
   if (!SAFE_REWRITE_EVIDENCE_PROFILES.has(evidenceProfile)) return false;
   if (!SAFE_REWRITE_BLOCKERS.has(text(row.main_blocker))) return false;
+  const reviewedSellerOnlyAllowed =
+    options.includeReviewedSellerOnly === true &&
+    qualityState === 'reviewed' &&
+    evidenceProfile === 'seller_only';
+  if (!SAFE_REWRITE_QUALITY_STATES.has(qualityState) && !reviewedSellerOnlyAllowed) return false;
   if (NON_CORE_PUBLIC_REWRITE_TITLE_RE.test(text(row.title))) return false;
   if (options.singleItemOnly && MULTI_ITEM_PUBLIC_REWRITE_TITLE_RE.test(text(row.title))) return false;
   if (options.requirePublicCommerceDoc) {
@@ -1242,13 +1273,21 @@ function selectInventoryRows(rows, options) {
   const safeOnly = options.safeOnly !== false;
   const requirePublicCommerceDoc = options.requirePublicCommerceDoc === true;
   const singleItemOnly = options.singleItemOnly === true;
+  const includeReviewedSellerOnly = options.includeReviewedSellerOnly === true;
   return rows
     .filter((row) => !domain || text(row.domain).toLowerCase() === domain)
     .filter((row) => text(row.recommended_lane) === lane)
     .filter((row) => !text(row.seed_missing_fields))
     .filter((row) => text(row.identity_status) === 'approved' && row.identity_live_read_enabled !== false)
     .filter((row) => !row.kb_direct_high_quality_ready)
-    .filter((row) => isConservativeRewriteCandidate(row, { safeOnly, requirePublicCommerceDoc, singleItemOnly }))
+    .filter((row) =>
+      isConservativeRewriteCandidate(row, {
+        safeOnly,
+        requirePublicCommerceDoc,
+        singleItemOnly,
+        includeReviewedSellerOnly,
+      }),
+    )
     .filter((row) => (requireDescription ? true : true))
     .slice(0, limit);
 }
@@ -1321,6 +1360,7 @@ async function main() {
     safeOnly: !hasFlag('include-protected-existing'),
     requirePublicCommerceDoc: hasFlag('require-public-commerce-doc'),
     singleItemOnly: hasFlag('single-item-only'),
+    includeReviewedSellerOnly: hasFlag('include-reviewed-seller-only'),
   });
   const productIds = selectedInventory.map((row) => normalizeId(row.external_product_id)).filter(Boolean);
   const seeds = await fetchSeeds(productIds);
