@@ -564,10 +564,14 @@ function buildMirror(row) {
   const description = pickDescription(row);
   const categoryShape = inferCatalogMirrorCategory(row);
   const identity = asObject(row.identity_listing);
-  const sigId = isSig(identity.sellable_item_group_id)
+  const existingSigId = isSig(row.existing_pivota_signature_id)
+    ? asString(row.existing_pivota_signature_id)
+    : '';
+  const identitySigId = isSig(identity.sellable_item_group_id)
     ? asString(identity.sellable_item_group_id)
-    : stableHash('sig', ['external_seed_catalog_sig', externalProductId], 32);
-  const productGroupId = sigId;
+    : '';
+  const sigId = existingSigId || identitySigId || stableHash('sig', ['external_seed_catalog_sig', externalProductId], 32);
+  const productGroupId = identitySigId || sigId;
   const productKey = `prod::external_seed::external_seed::${externalProductId}`;
   const facts = readCommerceFactsV1(row);
   const agentSafeCommerceFacts = buildAgentSafeCommerceFacts(row);
@@ -576,7 +580,9 @@ function buildMirror(row) {
   const sourceTier = asString(identity.source_tier).toLowerCase() || 'brand';
   const sourceRole = sourceTier === 'brand' ? 'official_brand_dtc' : 'retailer_offer';
   const sellerName = sourceRole === 'official_brand_dtc' ? brand : asString(seedData.seller_or_retailer_name || snapshot.seller_or_retailer_name || extractHostname(canonicalUrl));
-  const contentKey = stableHash('ck', [normalizeText(brand), normalizeText(title), normalizeText(canonicalUrl)], 32);
+  const contentKey =
+    asString(row.existing_content_key) ||
+    stableHash('ck', [normalizeText(brand), normalizeText(title), normalizeText(canonicalUrl)], 32);
   const freshness = {
     source: SOURCE_SYSTEM,
     mirrored_at: new Date().toISOString(),
@@ -782,8 +788,14 @@ async function fetchRows(ids, market) {
         e.seed_data,
         e.status,
         e.updated_at,
+        cp.pivota_signature_id AS existing_pivota_signature_id,
+        cp.content_key AS existing_content_key,
         to_jsonb(pil.*) AS identity_listing
       FROM external_product_seeds e
+      LEFT JOIN catalog_products cp
+        ON cp.merchant_id = $3
+       AND cp.platform = $4
+       AND cp.source_product_id = e.external_product_id
       LEFT JOIN pdp_identity_listing pil
         ON pil.merchant_id = $3
        AND pil.product_id = e.external_product_id
@@ -791,7 +803,7 @@ async function fetchRows(ids, market) {
         AND ($2::text = '' OR upper(e.market) = upper($2::text))
       ORDER BY array_position($1::text[], e.external_product_id::text)
     `,
-    [ids, market || '', MERCHANT_ID],
+    [ids, market || '', MERCHANT_ID, PLATFORM],
   );
   return res.rows || [];
 }
@@ -1322,5 +1334,6 @@ module.exports = {
     inferCatalogMirrorCategory,
     normalizeCategoryToken,
     titleCategoryText,
+    buildMirror,
   },
 };

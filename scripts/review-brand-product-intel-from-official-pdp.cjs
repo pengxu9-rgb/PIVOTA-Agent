@@ -107,7 +107,25 @@ function isLowSignalMarketingSentence(value) {
   return (
     /\b(add to bag|shop now|discover|limited time|free shipping|subscribe|sign up)\b/i.test(current) ||
     /\b(anything but ordinary|far from innocent|you won't want to|must-have|iconic|indulge in)\b/i.test(current) ||
+    /\bfinally\b[^.!?]{0,80}\byour ultimate\b/i.test(current) ||
+    /\btake it to bed\s*[-–—]?\s*wake up transformed\b/i.test(current) ||
+    /\b(?:our\s+)?bestselling,\s*award-winning\b/i.test(current) ||
+    /\bcatch you in a poppin'? lip look\b/i.test(current) ||
+    /\bthe ultimate hydration\s*\+\s*heat protection duo\b/i.test(current) ||
+    /\buniversal must-haves that repair, strengthen and nourish\b/i.test(current) ||
+    /\bthe award-winning foundation that forever changed the game\b/i.test(current) ||
+    /\bthe best overnighter you(?:'|’)?ve ever had\b/i.test(current) ||
     /\b(inspired packaging|wardrobe of lip and face cosmetics|sensuous beauty|afterglow)\b/i.test(current) ||
+    /\bthis exudes everything i feel\b/i.test(current) ||
+    /\bit'?s my essence captured in a bottle\b/i.test(current) ||
+    /\b-\s*rihanna\b/i.test(current) ||
+    /\bone is sold every\s+\d+\s+seconds\b/i.test(current) ||
+    /\baward-winning and bestselling\b/i.test(current) ||
+    /\brihanna was inspired to create the world of fenty beauty brands\b/i.test(current) ||
+    /\bpartnering with the best of the best in the beauty industry\b/i.test(current) ||
+    /\bstill seeing a void\b/i.test(current) ||
+    /\bshop kylie cosmetics by kylie jenner\b/i.test(current) ||
+    /\bexcludes it from recommendation merchandising\b/i.test(current) ||
     /^(?:shop\b|your done-in-one|straight up|the lowdown|made with|what else|the #?'?s don't lie|already have|click here|want the full scoop)\b/i.test(current)
   );
 }
@@ -137,7 +155,10 @@ function firstUsefulSentence(value, limit = 260) {
   }
   if (!text) return '';
   if (/^[A-Z0-9\s&'’.,-]+$/.test(text) && text.length < 70) return '';
-  const sentences = text.match(/[^.!?]+[.!?]?/g) || [];
+  const decimalSafeText = text.replace(/(\d)\.(\d)/g, '$1<DECIMAL>$2');
+  const sentences = (decimalSafeText.match(/[^.!?]+[.!?]?/g) || []).map((item) =>
+    item.replace(/<DECIMAL>/g, '.'),
+  );
   for (const raw of sentences) {
     const current = stripHtml(raw);
     if (current.length < 32) continue;
@@ -350,6 +371,7 @@ function combinedText(facts) {
 function inferRole(facts) {
   const text = combinedText(facts).toLowerCase();
   const titleText = `${facts.title} ${facts.productType} ${facts.categoryPath}`.toLowerCase();
+  const titleOnly = facts.title.toLowerCase();
   if (/\bcandle\b/.test(text)) return { label: 'Scented candle', step: 'home fragrance', amPm: ['as_needed'] };
   if (/\b(?:dog|cat|pet|puppy|kitten|pooch)\b(?:\s+\w+){0,5}\s+\b(?:toy|toys|collar|leash|bowl|bandana|bed)\b|\b(?:toy|toys|collar|leash|bowl|bandana|bed)\b(?:\s+\w+){0,5}\s+\b(?:dog|cat|pet|puppy|kitten|pooch)\b/.test(titleText)) {
     return { label: 'Pet accessory', step: 'pet accessory', amPm: ['as_needed'] };
@@ -365,7 +387,9 @@ function inferRole(facts) {
   }
   if (/\b(?:puff|sponge|applicator)\b/.test(titleText)) return { label: 'Makeup applicator', step: 'application tool', amPm: ['as_needed'] };
   if (/\bbrush\b/.test(titleText)) return { label: 'Makeup brush', step: 'application tool', amPm: ['as_needed'] };
-  if (/\b(?:stickers?|decals?|claw clip|head\s*band|headband|pouch|bag|organizer|mirror|sharpener|tool|tray|keychain|key chain|tote|clutch|backpack)\b/.test(titleText)) {
+  const accessoryCue = /\b(?:stickers?|decals?|claw clip|head\s*band|headband|pouch|bag|organizer|mirror|sharpener|tool|tray|keychain|key chain|tote|clutch|backpack|wash\s*cloth|washcloth|cuffs?|scrunchie|sleeve|case)\b/.test(titleText);
+  const formulaCue = /\b(?:spf|sunscreen|moisturizer|serum|cream|lotion|body milk|lipstick|lip gloss|lip glaze|lip luminizer|lip liner|mascara|eyeshadow|eyeliner|foundation|concealer|bronzer|blush|highlighter|toner)\b/.test(titleText);
+  if (accessoryCue && !formulaCue) {
     return { label: 'Beauty accessory', step: 'beauty routine', amPm: ['as_needed'] };
   }
   if (/\b(?:body\s+spray|body\s*&\s*hair\s+fragrance|body\s+and\s+hair\s+fragrance|fragrance\s+mist|hair\s+fragrance\s+mist)\b/.test(titleText)) {
@@ -374,12 +398,17 @@ function inferRole(facts) {
   if (/\b(?:parfum|eau de parfum|eau de toilette|fragrance|perfume|cologne|layering balm)\b/.test(titleText)) {
     return { label: 'Fine fragrance', step: 'fragrance', amPm: ['as_needed'] };
   }
-  if (/\blip\b/.test(titleText) && (/\b(?:combo|kit|set|duo)\b/.test(titleText) || titleText.includes('&'))) {
+  if (/\b(?:hair|leave[-\s]?in|conditioner|heat protectant|dry shampoo|shampoo|styling cream|styler|frizz|scalp)\b/.test(titleText)) {
+    return { label: 'Hair treatment', step: 'hair care', amPm: ['as_needed'] };
+  }
+  const explicitLipPair =
+    /\b(?:liner|lip\s+liner|gloss|lip\s+gloss|lipstick|lip\s+color|lip\s+luminizer)\b.{0,80}(?:&|\+).{0,80}\b(?:liner|lip\s+liner|gloss|lip\s+gloss|lipstick|lip\s+color|lip\s+luminizer)\b/.test(titleOnly);
+  if (/\blip\b/.test(titleOnly) && (/\b(?:combo|kit|set|duo|bundle)\b/.test(titleOnly) || explicitLipPair)) {
     return { label: 'Lip combo', step: 'lip color', amPm: ['as_needed'] };
   }
   if (/\bbrow\s+pencil|eyebrow|brow\b/.test(titleText)) return { label: 'Brow product', step: 'brow definition', amPm: ['as_needed'] };
   if (/\blip\s+pencil|lip liner|contour\s+g\b/.test(titleText)) return { label: 'Lip liner', step: 'lip definition', amPm: ['as_needed'] };
-  if (/\blipstick|lip color|lip colour|lip\s+gloss|rouge g|kisskiss\b/.test(titleText)) return { label: 'Lip color', step: 'lip color', amPm: ['as_needed'] };
+  if (/\blipstick|lip color|lip colour|lip\s+gloss|lip\s+glaze|lip\s+luminizer|rouge g|kisskiss\b/.test(titleText)) return { label: 'Lip color', step: 'lip color', amPm: ['as_needed'] };
   if (/\blip\s+balm|lip\s+butter|lip\s+oil|lip\s+serum|lip\s+treatment|glossy\s+lip\b/.test(titleText)) return { label: 'Lip treatment', step: 'lip treatment', amPm: ['as_needed'] };
   if (/\bmascara|eyeshadow|eye shadow|eye color|eye colour|eyeliner\b/.test(titleText)) return { label: 'Eye makeup', step: 'eye makeup', amPm: ['as_needed'] };
   if (/\b(?:spf|sunscreen|broad\s+spectrum)\b/.test(titleText) && !/\bfoundation|concealer\b/.test(titleText)) {
@@ -389,6 +418,9 @@ function inferRole(facts) {
   if (/\b(?:setting spray|4-in-1 mist|4 in 1 mist|face mist)\b/.test(titleText)) return { label: 'Setting mist', step: 'complexion', amPm: ['as_needed'] };
   if (/\b(?:setting powder|finishing powder|powder|bronzer|blush|highlighter|luminizer)\b/.test(titleText)) return { label: 'Face color makeup', step: 'face color', amPm: ['as_needed'] };
   if (/\bprimer|base perfecting|pore prep\b/.test(titleText)) return { label: 'Makeup primer', step: 'primer', amPm: ['as_needed'] };
+  if (/\b(?:cleanser\s*\+\s*toner|toner serum duo)\b/.test(titleText)) {
+    return { label: 'Skincare set', step: 'skincare', amPm: ['am', 'pm'] };
+  }
   if (/\bbody\s+wash|cleanser|cleansing\b/.test(titleText)) return { label: 'Body cleanser', step: 'cleanser', amPm: ['am', 'pm'] };
   if (/\bbody\s+lotion|body\s+cream|body\s+mousse|hand\s+cream|moisturizer|spf|sunscreen|serum|cream|lotion|mask|treatment\b/.test(titleText)) {
     if (/\bspf|sunscreen\b/.test(titleText)) return { label: 'Daily sunscreen', step: 'sunscreen', amPm: ['am'] };
@@ -396,11 +428,14 @@ function inferRole(facts) {
     if (/\bmask\b/.test(titleText)) return { label: 'Treatment mask', step: 'mask', amPm: ['as_needed'] };
     return { label: 'Body care treatment', step: 'skincare', amPm: ['am', 'pm'] };
   }
+  if (/\b(?:fenty hair|leave[-\s]?in|conditioner|heat protectant|dry shampoo|shampoo|styling cream|styler|frizz|scalp)\b/.test(text)) {
+    return { label: 'Hair treatment', step: 'hair care', amPm: ['as_needed'] };
+  }
   if (/\bparfum|eau de parfum|eau de toilette|fragrance|perfume|cologne\b/.test(text)) {
     return { label: 'Fine fragrance', step: 'fragrance', amPm: ['as_needed'] };
   }
   if (/\bbrow\s+pencil|eyebrow|brow\b/.test(text)) return { label: 'Brow product', step: 'brow definition', amPm: ['as_needed'] };
-  if (/\blip\s+gloss|lipstick|lip color|lip colour\b/.test(text)) return { label: 'Lip color', step: 'lip color', amPm: ['as_needed'] };
+  if (/\blip\s+gloss|lip\s+glaze|lip\s+luminizer|lipstick|lip color|lip colour\b/.test(text)) return { label: 'Lip color', step: 'lip color', amPm: ['as_needed'] };
   if (/\blip\s+balm|lip\s+butter|lip\s+oil|lip\s+serum|lip\s+treatment\b/.test(text)) return { label: 'Lip treatment', step: 'lip treatment', amPm: ['as_needed'] };
   if (/\bbrush\b/.test(text) && /\bbrush\b/.test(titleText)) return { label: 'Makeup brush', step: 'application tool', amPm: ['as_needed'] };
   if (/\bpowder|bronzer|blush|highlighter|luminizer\b/.test(text)) return { label: 'Face color makeup', step: 'face color', amPm: ['as_needed'] };
@@ -452,7 +487,7 @@ function inferAnchors(facts, role) {
     ['SPF', /\bspf\b/],
     ['matte finish', /\bmatte\b/],
     ['satin finish', /\bsatin\b/],
-    ['shine finish', /\bshine|gloss|glossy\b/],
+    ['shine finish', /\bshine|gloss|glossy|glaze\b/],
     ['refillable format', /\brefill|case\b/],
     ['shade range', /\bshade|color|colour\b/],
   ]);
@@ -464,6 +499,22 @@ function inferAnchors(facts, role) {
       ['synthetic bristles', /\bsynthetic\s+hair|synthetic\s+bristles\b/],
       ['precision application', /\bprecise|precision|contour|concealer|eyeshadow|cheek|foundation|brush\b/],
       ['face blending', /\bblend|blending|buff|diffuse|seamless\b/],
+    ]);
+  } else if (role.step === 'complexion') {
+    productAnchors = findTokens(text, [
+      ['longwear coverage', /\b(?:longwear|long-wear)\b/],
+      ['soft-matte finish', /\bsoft[-\s]?matte|matte\b/],
+      ['coverage control', /\b(?:medium to full|light to full|buildable|coverage)\b/],
+      ['shade range', /\bshade|color|colour\b/],
+    ]);
+  } else if (role.step === 'lip definition') {
+    productAnchors = findTokens(text, [
+      ['longwear lip definition', /\b(?:lasts?\s+up\s+to\s+\d+\s+hours?|longwear|long-wear)\b/],
+      ['transfer-resistant wear', /\btransfer\b/],
+      ['feather-resistant edge', /\bfeathering|feather\b/],
+      ['velvet-matte finish', /\bvelvet[-\s]?matte|matte\b/],
+      ['sharpenable pencil', /\bsharpenable|sharpener|pencil\b/],
+      ['shade clarity', /\bshade|color|colour\b/],
     ]);
   } else if (role.step === 'beauty routine') {
     productAnchors = findTokens(text, [
@@ -483,6 +534,14 @@ function inferAnchors(facts, role) {
     productAnchors = findTokens(text, [
       ['pet toy', /\bdog toy|pet toy|pooch\b/],
       ['brand collectible', /\bsoft pooch|rare beauty|collectible\b/],
+    ]);
+  } else if (role.step === 'hair care') {
+    productAnchors = findTokens(text, [
+      ['frizz control', /\bfrizz\b/],
+      ['heat protection', /\bheat protect|heat protection\b/],
+      ['leave-in care', /\bleave[-\s]?in|conditioner\b/],
+      ['oil control', /\boil[-\s]?control|dry shampoo\b/],
+      ['scalp or style refresh', /\bscalp|refresh|style|styling\b/],
     ]);
   }
   const normalizeAnchorLabel = (value) =>
@@ -546,6 +605,14 @@ function inferBestFor(facts, role, anchors) {
       ['collecting', /\bsticker|decal|collectible|keychain|key chain\b/],
       ['travel', /\btravel|on the go|carryall\b/],
     ]);
+  } else if (role.step === 'hair care') {
+    labels = findTokens(text, [
+      ['frizz control', /\bfrizz\b/],
+      ['heat styling prep', /\bheat protect|heat protection\b/],
+      ['hair hydration', /\bhydrat|conditioner|leave[-\s]?in\b/],
+      ['oil control', /\boil[-\s]?control|dry shampoo\b/],
+      ['style refresh', /\brefresh|style|styling\b/],
+    ]);
   } else if (role.step === 'branded apparel') {
     labels = findTokens(text, [
       ['casual wear', /\bhoodie|sweatshirt|sweatpants|t-shirt|tee|apparel\b/],
@@ -604,6 +671,7 @@ function buildPairingNotes(facts, role) {
   if (role.step === 'home fragrance') return ['Use as a home scent item and follow the brand safety directions for burn time and placement.'];
   if (role.step === 'lip definition') return ['Use before lip color to define the lip line and support a cleaner edge.'];
   if (role.step === 'lip color') return ['Apply directly to lips; pair with liner if you want more definition.'];
+  if (role.step === 'hair care') return ['Apply to hair as directed for the specific treatment or styling step.'];
   if (role.step === 'primer') return ['Apply before complexion makeup where you want smoother makeup laydown.'];
   if (role.step === 'application tool') return ['Use with the product textures the brush is designed to apply.'];
   return ['Use in the routine step implied by the official product directions.'];
@@ -620,6 +688,17 @@ function buildCompleteHighlight(values, fallback) {
     out = next;
   }
   return out || compactText(fallback, 40);
+}
+
+function buildSampleHighlight(facts, anchors, fallback) {
+  if (!isSampleProduct(facts)) return '';
+  const sampleValues = [
+    ...anchors.filter((item) => item !== 'shade range' && !/^full inci/i.test(item)),
+    ...asArray(facts.variants?.labels)
+      .map((label) => asString(label).replace(/^(?:size|format|shade|color|colour):\s*/i, '').trim())
+      .filter((label) => label && !/^single item$/i.test(label)),
+  ];
+  return buildCompleteHighlight(sampleValues, fallback);
 }
 
 function firstUsefulDetail(details) {
@@ -729,9 +808,158 @@ function buildLipComboWhyItStandsOut(facts, role, anchors) {
   return why.slice(0, 3);
 }
 
+function isSampleProduct(facts) {
+  const text = facts.title.toLowerCase();
+  return /\b(?:sample|deluxe sample|travel size|trial size)\b/.test(text);
+}
+
+function firstVariantValue(facts, axisRe) {
+  const labels = asArray(facts?.variants?.labels);
+  const match = labels.find((label) => axisRe.test(label));
+  return match ? asString(match).replace(/^[^:]+:\s*/, '').trim() : '';
+}
+
+function joinClaims(claims) {
+  const items = uniq(claims.filter(Boolean));
+  if (!items.length) return '';
+  if (items.length === 1) return items[0];
+  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+}
+
+function buildEvidenceAnchoredWhatItIs(facts, role) {
+  const text = combinedText(facts);
+  const lowerTitle = facts.title.toLowerCase();
+  const shade = firstVariantValue(facts, /^(?:shade|color|colour):/i);
+  const size = firstVariantValue(facts, /^(?:size|format|set):/i);
+
+  if (role.step === 'complexion') {
+    const format = /\bconcealer\b/.test(lowerTitle)
+      ? 'concealer'
+      : /\bpowder foundation\b/.test(lowerTitle)
+        ? 'powder foundation'
+        : /\bfoundation\b/.test(lowerTitle)
+          ? 'foundation'
+          : 'complexion product';
+    const claims = joinClaims([
+      /\blongwear|long-wear\b/i.test(text) ? 'long-wear coverage' : '',
+      /\bsoft[-\s]?matte|matte\b/i.test(text) ? 'a soft-matte finish' : '',
+      /\bmedium to full|light to full|buildable|coverage\b/i.test(text) ? 'coverage control' : '',
+    ]);
+    const sku = shade || size;
+    return sentence(`${facts.title} is a ${format} from ${facts.brand}${sku ? ` in ${sku}` : ''}${claims ? `, with source-backed cues around ${claims}` : ''}`);
+  }
+
+  if (role.step === 'face color') {
+    const format = /\bhighlighter\b/.test(lowerTitle)
+      ? 'highlighter'
+      : /\bblush\b/.test(lowerTitle)
+        ? 'blush'
+        : /\bbronzer\b/.test(lowerTitle)
+          ? 'bronzer'
+          : 'face color product';
+    const claims = joinClaims([
+      /\blongwear|long-wear\b/i.test(text) ? 'long-wear color' : '',
+      /\bcream[-\s]?powder|powder\b/i.test(text) ? 'a cream-powder texture' : '',
+      /\bglow|dayglow|highlight|luminous\b/i.test(text) ? 'glow payoff' : '',
+    ]);
+    return sentence(`${facts.title} is a ${format} from ${facts.brand}${shade ? ` in shade ${shade}` : ''}${claims ? `, with source-backed cues around ${claims}` : ''}`);
+  }
+
+  if (role.step === 'eye makeup') {
+    const claims = joinClaims([
+      /\blongwear|long-wear\b/i.test(text) ? 'long-wear color' : '',
+      /\bcreamy|cream\b/i.test(text) ? 'a creamy stick format' : '',
+      /\bhigh[-\s]?impact|single swipe|color intensity\b/i.test(text) ? 'high-impact payoff' : '',
+    ]);
+    return sentence(`${facts.title} is an eye makeup product from ${facts.brand}${shade ? ` in ${shade}` : ''}${claims ? `, with source-backed cues around ${claims}` : ''}`);
+  }
+
+  if (role.step === 'hair care') {
+    const claims = joinClaims([
+      /\bheat protect|heat protection\b/i.test(text) ? 'heat-styling prep' : '',
+      /\bleave[-\s]?in|conditioner\b/i.test(text) ? 'leave-in care' : '',
+      /\bfrizz\b/i.test(text) ? 'frizz control' : '',
+      /\bdry shampoo|oil[-\s]?control\b/i.test(text) ? 'oil control' : '',
+    ]);
+    return sentence(`${facts.title} is a hair-care item from ${facts.brand}${size ? ` in ${size}` : ''}${claims ? `, with source-backed cues around ${claims}` : ''}`);
+  }
+
+  if (role.step === 'body fragrance' || role.step === 'fragrance' || role.step === 'home fragrance') {
+    const scentCues = findTokens(text, [
+      ['rose', /\brose\b/],
+      ['vanilla', /\bvanilla\b/],
+      ['amber', /\bamber\b/],
+      ['sandalwood', /\bsandalwood\b/],
+      ['citrus', /\bcitrus|bergamot|mandarin|orange|lemon\b/],
+      ['leather', /\bleather\b/],
+      ['oud', /\boud\b/],
+      ['jasmine', /\bjasmine\b/],
+    ]);
+    const format = role.step === 'body fragrance'
+      ? 'body fragrance spray'
+      : role.step === 'home fragrance'
+        ? 'home fragrance item'
+        : 'fine fragrance';
+    return sentence(`${facts.title} is a ${format} from ${facts.brand}${size ? ` in ${size}` : ''}${scentCues.length ? `, with source-backed scent cues including ${joinClaims(scentCues.slice(0, 4))}` : ''}`);
+  }
+
+  if (role.step === 'sunscreen') {
+    const tinted = /\btinted|shade|coverage\b/i.test(text);
+    const mineral = /\bzinc oxide\b/i.test(text);
+    const format = tinted || mineral
+      ? `${tinted ? 'tinted ' : ''}${mineral ? 'mineral ' : ''}SPF moisturizer`
+      : 'daily SPF moisturizer';
+    const claims = joinClaims([
+      mineral ? 'zinc oxide mineral SPF' : '',
+      /\bniacinamide\b/i.test(text) ? 'niacinamide' : '',
+      /\bhyaluronic|aloe\b/i.test(text) ? 'hydrating ingredients' : '',
+      tinted ? 'tinted coverage' : '',
+      /\brefill\b/i.test(text) ? 'a refill format' : '',
+    ]);
+    return sentence(`${facts.title} is a ${format} from ${facts.brand}${shade ? ` in shade ${shade}` : ''}${claims ? `, with source-backed cues around ${claims}` : ''}`);
+  }
+
+  if (role.step === 'skincare' || role.step === 'body care' || role.step === 'cleanser') {
+    const claims = joinClaims([
+      /\bcleanse|cleanser|cleansing\b/i.test(text) ? 'cleansing' : '',
+      /\btoner|tone\b/i.test(text) ? 'toning' : '',
+      /\bhydrat|moistur|shea|hyaluronic\b/i.test(text) ? 'hydration' : '',
+      /\bbright|dark spots|niacinamide\b/i.test(text) ? 'brightening support' : '',
+    ]);
+    return sentence(`${facts.title} is a ${role.label.toLowerCase()} from ${facts.brand}${size ? ` in ${size}` : ''}${claims ? `, with source-backed cues around ${claims}` : ''}`);
+  }
+
+  return '';
+}
+
 function buildWhatItIs(facts, role) {
   const description = firstUsefulSentence(facts.description, 240);
   const detail = firstUsefulDetail(facts.details);
+  if (isSampleProduct(facts)) {
+    if (description) return sentence(description.replace(/\.$/, ''));
+    if (detail) return sentence(compactText(detail, 180).replace(/\.$/, ''));
+  }
+  if (isLipComboRole(facts, role)) {
+    const combo = buildLipComboHighlight(facts);
+    return sentence(`${facts.title} is a lip set from ${facts.brand}${combo ? ` built around ${combo}` : ''}`);
+  }
+  if (role.step === 'lip definition') {
+    const claims = [];
+    const sourceText = combinedText(facts);
+    if (/\b(?:lasts?\s+up\s+to\s+\d+\s+hours?|longwear|long-wear)\b/i.test(sourceText)) claims.push('long-wear lip definition');
+    if (/\btransfer\b/i.test(sourceText) && /\bfeather/i.test(sourceText)) claims.push('transfer- and feather-resistant wear');
+    if (/\bvelvet[-\s]?matte|matte\b/i.test(sourceText)) claims.push('a matte pencil finish');
+    const shade = facts.variants.shadeLike[0]
+      ? facts.variants.shadeLike[0].replace(/^shade:\s*/i, '').trim()
+      : '';
+    const claimClause = claims.length ? ` It is positioned around ${claims.slice(0, 2).join(' and ')}.` : '';
+    const shadeClause = shade ? ` This SKU is ${shade}.` : '';
+    return sentence(`${facts.title} is a lip liner from ${facts.brand} for defining the lip edge and supporting cleaner lipstick or gloss wear`) +
+      claimClause +
+      shadeClause;
+  }
+  const evidenceAnchored = buildEvidenceAnchoredWhatItIs(facts, role);
+  if (evidenceAnchored) return evidenceAnchored;
   const intro = `${facts.title} is ${articleFor(role.label)} ${role.label.toLowerCase()} from ${facts.brand}`;
   const pieces = [intro];
   if (description) pieces.push(description.replace(/\.$/, ''));
@@ -751,6 +979,70 @@ function buildWhyItStandsOut(facts, role, anchors) {
     if (lipComboWhy.length >= 2) return lipComboWhy;
   }
 
+  if (isSampleProduct(facts)) {
+    const why = [];
+    const meaningfulVariantLabels = facts.variants.labels.filter((label) => !/^format:\s*one piece$|^one piece$|^format:\s*single item$|^single item$/i.test(label));
+    if (meaningfulVariantLabels.length) {
+      why.push({
+        headline: 'Sample format is explicit',
+        body: sentence(`The reviewed SKU fields identify ${meaningfulVariantLabels.slice(0, 3).join(', ')}, so shoppers can tell this is a sample or mini-size SKU rather than a hidden default variant`),
+        evidence_strength: 'official_pdp_reviewed',
+      });
+    }
+    if (facts.rawIngredients.length && role.step !== 'home fragrance') {
+      why.push({
+        headline: 'Ingredient list is available',
+        body: sentence('Full INCI is present for formula-sensitive review, which makes this sample safer to evaluate than a claim-only listing'),
+        evidence_strength: 'official_pdp_reviewed',
+      });
+    }
+    const howTo = sourceInstructionsForRole(facts, role);
+    if (howTo.length) {
+      why.push({
+        headline: 'Usage instructions available',
+        body: sentence(`Reviewed usage context is present, including: ${howTo[0]}`),
+        evidence_strength: 'official_pdp_reviewed',
+      });
+    }
+    if (why.length >= 2) return why.slice(0, 3);
+  }
+
+  if (role.step === 'lip definition') {
+    const why = [];
+    const sourceText = combinedText(facts);
+    if (/\b(?:lasts?\s+up\s+to\s+\d+\s+hours?|longwear|long-wear|transfer|feather|fading)\b/i.test(sourceText)) {
+      why.push({
+        headline: 'Wear claims are specific',
+        body: sentence('The reviewed PDP supports concrete lip-liner claims around long wear and resistance to transfer, feathering, or fading, which is more useful than generic color-copy'),
+        evidence_strength: 'official_pdp_reviewed',
+      });
+    }
+    const howTo = sourceInstructionsForRole(facts, role);
+    if (howTo.length) {
+      why.push({
+        headline: 'Application sequence is explicit',
+        body: sentence(`The reviewed directions explain how to use the pencil in sequence: ${howTo[0]}`),
+        evidence_strength: 'official_pdp_reviewed',
+      });
+    }
+    if (facts.rawIngredients.length) {
+      why.push({
+        headline: 'Formula disclosure is available',
+        body: sentence('A full INCI list is attached, so shoppers can screen the liner formula before leaving Pivota'),
+        evidence_strength: 'official_pdp_reviewed',
+      });
+    }
+    const meaningfulVariantLabels = facts.variants.labels.filter((label) => !/^format:\s*one piece$|^one piece$/i.test(label));
+    if (meaningfulVariantLabels.length) {
+      why.push({
+        headline: 'Shade selection is unambiguous',
+        body: sentence(`The visible SKU data identifies ${meaningfulVariantLabels.slice(0, 3).join(', ')}, so the Rose Amber row does not read like a generic default variant`),
+        evidence_strength: 'official_pdp_reviewed',
+      });
+    }
+    if (why.length >= 2) return why.slice(0, 3);
+  }
+
   const why = [];
   const anchorText = anchors.filter((item) => !/^full inci/i.test(item)).slice(0, 4).join(', ');
   if (anchorText) {
@@ -758,7 +1050,7 @@ function buildWhyItStandsOut(facts, role, anchors) {
       headline: role.step === 'fragrance' || role.step === 'body fragrance' || role.step === 'home fragrance'
         ? 'Scent profile cues'
         : 'Concrete product cues',
-      body: sentence(`Cues such as ${anchorText} give shoppers specific comparison points within ${facts.brand}, instead of relying on generic category copy`),
+      body: sentence(`Cues such as ${anchorText} give shoppers specific comparison points within ${facts.brand}, rather than category-only copy`),
       evidence_strength: 'official_pdp_reviewed',
     });
   }
@@ -881,7 +1173,8 @@ function buildInsightBundle(row) {
   const whatItIs = buildWhatItIs(facts, role);
   const evidenceProfile = evidenceProfileFor(facts);
   const lipComboHighlight = isLipComboRole(facts, role) ? buildLipComboHighlight(facts) : '';
-  const highlight = lipComboHighlight || buildCompleteHighlight(anchors.length ? anchors : bestFor.map((item) => item.label), role.label);
+  const sampleHighlight = buildSampleHighlight(facts, anchors, role.label);
+  const highlight = lipComboHighlight || sampleHighlight || buildCompleteHighlight(anchors.length ? anchors : bestFor.map((item) => item.label), role.label);
   const generatedAt = new Date().toISOString();
   return {
     contract_version: PRODUCT_INTEL_CONTRACT_VERSION,
@@ -1016,6 +1309,78 @@ function readTextFromBundle(bundle) {
   ].map(asString).join(' ');
 }
 
+function manualCandidateQualityIssue(facts, role, bundle) {
+  const title = stripHtml(facts.title).toLowerCase();
+  const rawDescription = stripHtml(facts.description).toLowerCase();
+  const description = firstUsefulSentence(facts.description, 260).toLowerCase();
+  const howTo = facts.howTo.join(' ').toLowerCase();
+  const details = facts.details.join(' ').toLowerCase();
+  const bundleText = stripHtml(readTextFromBundle(bundle)).toLowerCase();
+  const whatItIs = stripHtml(asObject(asObject(bundle.product_intel_core).what_it_is).body).toLowerCase();
+
+  if (/\bdonate\b|\bclara lionel foundation\b/.test(title)) {
+    return 'non_product_donation_row';
+  }
+
+  if (
+    /\brihanna was inspired to create the world of fenty beauty brands\b/.test(bundleText) ||
+    /\brihanna was inspired to create the world of fenty beauty brands\b/.test(rawDescription) ||
+    /\bpartnering with the best of the best in the beauty industry\b/.test(bundleText) ||
+    /\bpartnering with the best of the best in the beauty industry\b/.test(rawDescription) ||
+    /\bstill seeing a void\b/.test(bundleText)
+    || /\bstill seeing a void\b/.test(rawDescription)
+  ) {
+    return 'brand_story_instead_of_product_copy';
+  }
+
+  if (/\bbronzer\b/.test(title) && /\bblush\b/.test(description) && !/\bbronzer\b/.test(description)) {
+    return 'source_role_mismatch_bronzer_blush';
+  }
+  if (/\bblush\b/.test(title) && /\bbronzer\b/.test(description) && !/\bblush\b/.test(description)) {
+    return 'source_role_mismatch_blush_bronzer';
+  }
+  if (/\b(?:lipstick|lip gloss|lip glaze|lip luminizer|lip liner)\b/.test(title) && !/\blip\b/.test(role.step)) {
+    return 'source_role_mismatch_lip_product';
+  }
+
+  const accessoryTitle = /\b(?:wash\s*cloth|washcloth|cuffs?|scrunchie|sleeve|case|tote|bag|mirror|pouch|tray|keychain|clutch|backpack)\b/.test(title);
+  if (accessoryTitle && /\b(?:massage|rinse|apply (?:to|onto)|coat lips|bare lips|skin concern)\b/.test(howTo)) {
+    return 'accessory_formula_instruction_mismatch';
+  }
+  if (
+    role.label === 'Beauty accessory' &&
+    /\bis a beauty accessory from\b/.test(whatItIs) &&
+    (!facts.description || /\bavailable variants clarify\b/.test(whatItIs))
+  ) {
+    return 'generic_accessory_copy';
+  }
+  if (role.label === 'Beauty accessory' && !facts.description && !facts.details.length && !facts.howTo.length) {
+    return 'insufficient_accessory_source_evidence';
+  }
+
+  if (/\bavailable variants clarify\b/.test(whatItIs)) {
+    return 'variant_only_intro_without_product_copy';
+  }
+  if (
+    role.step === 'sunscreen' &&
+    !facts.description &&
+    !facts.details.length &&
+    !facts.howTo.length &&
+    !facts.rawIngredients.length
+  ) {
+    return 'variant_only_intro_without_product_copy';
+  }
+
+  if (role.label === 'Beauty product' && (!whatItIs || whatItIs.length < 90 || !facts.description)) {
+    return 'generic_beauty_product_copy';
+  }
+  if (/\bis a beauty product from\b/.test(whatItIs) && !details && facts.variants.labels.length <= 1) {
+    return 'generic_beauty_product_copy';
+  }
+
+  return '';
+}
+
 function readQualityState(entry) {
   const bundle = readBundle(entry);
   const core = asObject(bundle.product_intel_core);
@@ -1116,6 +1481,7 @@ function existingEntryForKey(row, kbKey) {
 
 function buildPlan(row, args) {
   const facts = readSeedFacts(row);
+  const role = inferRole(facts);
   const bundle = buildInsightBundle(row);
   const canonicalProductRef = {
     merchant_id: 'external_seed',
@@ -1152,6 +1518,12 @@ function buildPlan(row, args) {
   if (!SUPPORTED_BRANDS.has(facts.brandKey) && !SUPPORTED_BRANDS.has(asString(args.brand).toLowerCase())) {
     plan.blocked = true;
     plan.skip_reason = 'unsupported_brand_for_manual_template';
+    return plan;
+  }
+  const manualQualityIssue = manualCandidateQualityIssue(facts, role, bundle);
+  if (manualQualityIssue) {
+    plan.blocked = true;
+    plan.skip_reason = `candidate_failed_manual_quality_gate:${manualQualityIssue}`;
     return plan;
   }
   if (!hasOfficialPdpEvidence(row)) {
