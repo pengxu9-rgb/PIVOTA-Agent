@@ -34383,13 +34383,22 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	          productGroupAliasId && canonicalProductRef?.product_id
 	            ? canonicalProductRef.product_id
 	            : entryProductId || productId || canonicalProductRef?.product_id;
-	        const shouldHydrateIdentityLineMemberPayloads = shouldHydratePdpIdentityLineMemberPayloads({
+        const shouldHydrateIdentityLineMemberPayloads = shouldHydratePdpIdentityLineMemberPayloads({
           entryProductIsExternalSeed,
           entryProductId,
           productId,
           canonicalProductRef,
           requestedMerchantId,
         });
+        const directExternalSeedGroupMembers = Array.isArray(groupMembers) ? groupMembers : [];
+        const directExternalSeedHasRichPdpContent = hasExternalSeedRichPdpContent(canonicalProduct);
+        const directExternalSeedGroupHasExternalMerchant = directExternalSeedGroupMembers.some((member) => {
+          const memberMerchantId = String(member?.merchant_id || member?.merchantId || '').trim();
+          return memberMerchantId && memberMerchantId !== EXTERNAL_SEED_MERCHANT_ID;
+        });
+        const directExternalSeedGroupCanSkipIdentityGraph =
+          directExternalSeedGroupMembers.length === 0 ||
+          (!directExternalSeedGroupHasExternalMerchant && directExternalSeedHasRichPdpContent);
         const shouldSkipDirectExternalSeedIdentityGraph =
           entryProductIsExternalSeed &&
           canonicalProductRef?.merchant_id === EXTERNAL_SEED_MERCHANT_ID &&
@@ -34401,7 +34410,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           !offerProductGroupId &&
           !productGroupAliasId &&
           !canonicalizationApplied &&
-          !(Array.isArray(groupMembers) && groupMembers.length > 1);
+          directExternalSeedGroupCanSkipIdentityGraph;
         const shouldSkipSigExternalSeedIdentityGraph =
           Boolean(requestedPivotaSignatureId) &&
           canonicalizationApplied &&
@@ -34435,7 +34444,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           } else {
             pdpV2IdentityGraphLiveMode = shouldSkipSigExternalSeedIdentityGraph
               ? 'skipped_sig_external_seed_catalog_identity'
-              : 'skipped_direct_external_seed_no_group';
+              : directExternalSeedGroupMembers.length > 1
+                ? 'skipped_direct_external_seed_same_merchant_group'
+                : 'skipped_direct_external_seed_no_group';
           }
 	      markPdpV2Phase('identity_graph_live', identityGraphLiveStartedAt);
 	      if (identityGraphLive?.synthetic_product && wantsProductIntel) {
