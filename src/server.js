@@ -32763,6 +32763,112 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     if (req.body && typeof req.body === 'object' && !Array.isArray(req.body)) {
       req.body.metadata = metadata;
     }
+    const findProductsSearchQualityContract =
+      operation === 'find_products_multi' &&
+      findProductsExpansionMeta?.search_quality_contract &&
+      typeof findProductsExpansionMeta.search_quality_contract === 'object' &&
+      !Array.isArray(findProductsExpansionMeta.search_quality_contract)
+        ? findProductsExpansionMeta.search_quality_contract
+        : null;
+    if (operation === 'find_products_multi' && isSearchQualityContractSafeEmptyContract(findProductsSearchQualityContract)) {
+      const safeSearch =
+        effectivePayload?.search && typeof effectivePayload.search === 'object' && !Array.isArray(effectivePayload.search)
+          ? effectivePayload.search
+          : effectivePayload && typeof effectivePayload === 'object' && !Array.isArray(effectivePayload)
+            ? effectivePayload
+            : {};
+      const safeLimit = Math.max(
+        1,
+        Math.min(SEARCH_LIMIT_MAX, Math.floor(Number(safeSearch.limit || safeSearch.page_size || 20) || 20)),
+      );
+      const safePage = Math.max(1, Math.floor(Number(safeSearch.page || 1) || 1));
+      const safeEmpty = normalizeAgentProductsListResponse(
+        {
+          status: 'success',
+          success: true,
+          products: [],
+          total: 0,
+          page: safePage,
+          page_size: 0,
+          reply: findProductsSearchQualityContract.clarification_allowed
+            ? 'Please search for a product, brand, category, or skin concern.'
+            : null,
+          metadata: {
+            ...metadata,
+            ...buildInvokeSearchRailMetadata('authoritative_shopping'),
+            query_source: 'search_quality_contract_v1_safe_empty',
+            fetched_at: new Date().toISOString(),
+            search_quality_contract: projectSearchQualityContractForMetadata(findProductsSearchQualityContract),
+            search_quality_contract_applied: false,
+            search_quality_contract_mode: SEARCH_QUALITY_CONTRACT_V1_MODE,
+            search_quality_failure_reasons: {},
+            search_quality_tier_counts: {
+              input_count: 0,
+              canonical_chain_count: 0,
+              external_seed_count: 0,
+              hard_constraint_pass_count: 0,
+              hard_constraint_reject_count: 0,
+              serving_eligible_count: 0,
+              missing_image_count: 0,
+              invalid_price_count: 0,
+              missing_or_unresolved_pdp_count: 0,
+              polluted_or_unavailable_count: 0,
+            },
+            source_breakdown: {
+              internal_count: 0,
+              external_seed_count: 0,
+              canonical_chain_count: 0,
+              canonical_chain_candidate_count: 0,
+              stale_cache_used: false,
+              strategy_applied: 'search_quality_contract_v1_safe_empty',
+            },
+            route_health: {
+              primary_path_used: 'search_quality_contract_v1_safe_empty',
+              primary_latency_ms: Math.max(0, Date.now() - invokeStartedAtMs),
+              fallback_triggered: false,
+              fallback_reason: null,
+              canonical_path_executed: false,
+              final_returned_count: 0,
+              search_quality_contract_applied: false,
+              search_quality_contract_mode: SEARCH_QUALITY_CONTRACT_V1_MODE,
+            },
+            search_trace: {
+              trace_id: gatewayRequestId,
+              raw_query: rawUserQuery,
+              expanded_query: rawUserQuery,
+              query_class: 'ambiguous_or_non_shopping',
+              upstream_stage: {
+                called: false,
+                timeout: false,
+                status: null,
+                latency_ms: 0,
+              },
+              final_decision: 'search_quality_contract_safe_empty',
+            },
+            search_decision: {
+              final_decision: findProductsSearchQualityContract.clarification_allowed ? 'clarify' : 'strict_empty',
+              decision_authority: 'search_quality_contract_v1',
+              query_target_domain: findProductsSearchQualityContract.target_domain || null,
+              decision_locked: true,
+              decision_lock_reason: 'search_quality_contract_ambiguous_or_non_shopping',
+            },
+            proxy_search_fallback: {
+              applied: false,
+              reason: null,
+            },
+            contract_bridge: {
+              legacy_fallback: false,
+            },
+            service_version: completeServiceVersionMetadata(metadata?.service_version),
+          },
+        },
+        {
+          limit: safeLimit,
+          offset: safeSearch.offset,
+        },
+      );
+      return res.json(safeEmpty);
+    }
     const invokeSearchRail =
       operation === 'find_products' || operation === 'find_products_multi'
         ? resolveInvokeSearchRailFromMetadata(metadata)
