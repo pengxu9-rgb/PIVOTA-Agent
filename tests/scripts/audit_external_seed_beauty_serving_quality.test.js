@@ -9,10 +9,12 @@ jest.mock('axios', () => ({
 
 const {
   CLASSIFICATIONS,
+  DEFAULT_CATALOG_TIMEOUT_MS,
   DEFAULT_CORE_PDP_TIMEOUT_MS,
   DEFAULT_DETAILS_PDP_TIMEOUT_MS,
   DEFAULT_SIMILAR_TIMEOUT_MS,
   classifyBeautyServingQualityRow,
+  resolveDefaultCatalogTimeoutMs,
   shouldRetryPdpQualityAudit,
   probeMerchantUrl,
 } = require('../../scripts/audit-external-seed-beauty-serving-quality.cjs');
@@ -150,6 +152,10 @@ describe('audit-external-seed-beauty-serving-quality', () => {
   });
 
   test('uses production-safe PDP probe timeout defaults for beauty serving audits', () => {
+    expect(resolveDefaultCatalogTimeoutMs({})).toBeGreaterThanOrEqual(90000);
+    expect(resolveDefaultCatalogTimeoutMs({ CATALOG_INTELLIGENCE_TIMEOUT_MS: 'not-a-number' })).toBe(90000);
+    expect(resolveDefaultCatalogTimeoutMs({ EXTERNAL_SEED_BEAUTY_SERVING_CATALOG_TIMEOUT_MS: '120000' })).toBe(120000);
+    expect(DEFAULT_CATALOG_TIMEOUT_MS).toBeGreaterThan(0);
     expect(DEFAULT_CORE_PDP_TIMEOUT_MS).toBeGreaterThanOrEqual(45000);
     expect(DEFAULT_DETAILS_PDP_TIMEOUT_MS).toBeGreaterThanOrEqual(60000);
     expect(DEFAULT_SIMILAR_TIMEOUT_MS).toBeGreaterThanOrEqual(30000);
