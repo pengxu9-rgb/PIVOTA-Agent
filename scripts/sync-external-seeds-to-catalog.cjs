@@ -14,7 +14,7 @@ const {
 
 const MERCHANT_ID = 'external_seed';
 const PLATFORM = 'external_seed';
-const SOURCE_SYSTEM = 'external_seed_catalog_mirror_v1';
+const SOURCE_SYSTEM = 'external_product_seeds_mirror_v1';
 const CONFIRM_TOKEN = 'SYNC_REVIEWED_EXTERNAL_SEEDS_TO_CATALOG';
 
 function argValue(name, fallback = '') {
@@ -250,17 +250,82 @@ function pickVariantTitle(variant, fallbackTitle) {
   return asString(variant.title || variant.name || variant.variant_title || fallbackTitle);
 }
 
-function pickVariantPrice(variant, row) {
+function pickReviewedRegionalPrice(row) {
+  return (
+    normalizeAmount(readCommerceFactsV1(row)?.regional_price?.amount) ??
+    normalizeAmount(row.price_amount) ??
+    normalizeAmount(pickSeedData(row).price_amount) ??
+    normalizeAmount(pickSnapshot(row).price_amount)
+  );
+}
+
+function pickRawVariantPrice(variant) {
   return (
     normalizeAmount(asObject(variant.price).current?.amount) ??
     normalizeAmount(asObject(variant.price).amount) ??
     normalizeAmount(variant.price_amount) ??
-    normalizeAmount(variant.price) ??
-    normalizeAmount(row.price_amount) ??
-    normalizeAmount(pickSeedData(row).price_amount) ??
-    normalizeAmount(pickSnapshot(row).price_amount) ??
-    normalizeAmount(readCommerceFactsV1(row)?.regional_price?.amount)
+    normalizeAmount(variant.price)
   );
+}
+
+function hasSuspiciousVariantPriceDrift(rawVariantPrice, reviewedRegionalPrice) {
+  if (!Number.isFinite(rawVariantPrice) || !Number.isFinite(reviewedRegionalPrice)) return false;
+  if (rawVariantPrice <= 0 || reviewedRegionalPrice <= 0) return false;
+  const high = Math.max(rawVariantPrice, reviewedRegionalPrice);
+  const low = Math.min(rawVariantPrice, reviewedRegionalPrice);
+  return high / low >= 3;
+}
+
+function scoreMirrorServingQuality(mirror) {
+  const product = mirror?.product || {};
+  const skus = Array.isArray(mirror?.skus) ? mirror.skus : [];
+  const title = asString(product.title);
+  const brand = asString(product.brand);
+  const canonicalUrl = normalizeUrl(product.canonical_url);
+  const imageUrl = normalizeUrl(product.image_url);
+  const description = asString(product.description);
+  const hasPrice = skus.some((item) => Number(item?.offer?.list_price) > 0 && asString(item?.offer?.currency));
+  const identity = asObject(mirror?.row?.identity_listing);
+  const identityResolved =
+    asString(identity.identity_status).toLowerCase() === 'approved' &&
+    identity.live_read_enabled === true &&
+    identity.review_required !== true;
+
+  const missing = [];
+  if (!title) missing.push('missing_title');
+  if (!brand) missing.push('missing_brand');
+  if (!canonicalUrl) missing.push('missing_canonical_url');
+  if (!imageUrl) missing.push('missing_image');
+  if (!hasPrice) missing.push('missing_price');
+  if (!identityResolved) missing.push('identity_not_live_approved');
+
+  let score = 50;
+  if (!missing.length) score = 70;
+  if (description.length >= 40) score += 8;
+  if (description.length >= 140) score += 7;
+  if (skus.length > 0) score += 5;
+  score = Math.max(0, Math.min(100, score));
+
+  const servingEligible = missing.length === 0 && score >= 60;
+  return {
+    servingEligible,
+    contentQualityScore: score,
+    blockerCode: servingEligible ? 'none' : (missing[0] || 'low_quality'),
+    blockerDetail: servingEligible ? null : missing.join(',') || 'content_quality_score below serving threshold',
+    identityResolved,
+    hasImage: Boolean(imageUrl),
+    hasPrice,
+    descriptionLength: description.length,
+  };
+}
+
+function pickVariantPrice(variant, row) {
+  const rawVariantPrice = pickRawVariantPrice(variant);
+  const reviewedRegionalPrice = pickReviewedRegionalPrice(row);
+  if (hasSuspiciousVariantPriceDrift(rawVariantPrice, reviewedRegionalPrice)) {
+    return reviewedRegionalPrice;
+  }
+  return rawVariantPrice ?? reviewedRegionalPrice;
 }
 
 function pickVariantCurrency(variant, row) {
@@ -636,7 +701,7 @@ async function existingCounts(mirrors) {
   };
 }
 
-async function applyMirrors(mirrors, dryRun) {
+async function applyMirrors(mirrors, dryRun, { upsertServingState = false } = {}) {
   const existingBefore = await existingCounts(mirrors);
   const totals = {
     mode: dryRun ? 'dry_run' : 'apply',
@@ -647,6 +712,7 @@ async function applyMirrors(mirrors, dryRun) {
     group_member_upserts: 0,
     group_member_preserved_existing_merges: 0,
     seed_attachment_updates: 0,
+    index_state_upserts: 0,
   };
   if (dryRun) return totals;
   await withClient(async (client) => {
@@ -774,6 +840,74 @@ async function applyMirrors(mirrors, dryRun) {
           [p.product_key, mirror.row.id],
         );
         totals.seed_attachment_updates += Number(seedAttachmentRes.rowCount || 0);
+
+        if (upsertServingState) {
+          const readiness = scoreMirrorServingQuality(mirror);
+          const indexRes = await client.query(
+            `
+              INSERT INTO index_pipeline_state (
+                content_key,
+                pivota_signature_id,
+                merchant_id,
+                pipeline_stage,
+                blocker_code,
+                blocker_detail,
+                serving_eligible,
+                content_quality_score,
+                quality_rules_version,
+                quality_scored_at,
+                seed_audit_status,
+                identity_resolved,
+                product_group_id,
+                has_image,
+                has_price,
+                description_length,
+                consolidation_version,
+                last_consolidated_at,
+                created_at
+              ) VALUES (
+                $1,$2,$3,$4,$5,$6,$7,$8,$9,now(),$10,$11,$12,$13,$14,$15,$16,now(),now()
+              )
+              ON CONFLICT (content_key) DO UPDATE SET
+                pivota_signature_id = EXCLUDED.pivota_signature_id,
+                merchant_id = EXCLUDED.merchant_id,
+                pipeline_stage = EXCLUDED.pipeline_stage,
+                blocker_code = EXCLUDED.blocker_code,
+                blocker_detail = EXCLUDED.blocker_detail,
+                serving_eligible = EXCLUDED.serving_eligible,
+                content_quality_score = EXCLUDED.content_quality_score,
+                quality_rules_version = EXCLUDED.quality_rules_version,
+                quality_scored_at = now(),
+                seed_audit_status = EXCLUDED.seed_audit_status,
+                identity_resolved = EXCLUDED.identity_resolved,
+                product_group_id = EXCLUDED.product_group_id,
+                has_image = EXCLUDED.has_image,
+                has_price = EXCLUDED.has_price,
+                description_length = EXCLUDED.description_length,
+                consolidation_version = EXCLUDED.consolidation_version,
+                last_consolidated_at = now()
+            `,
+            [
+              p.content_key,
+              p.pivota_signature_id,
+              p.merchant_id,
+              readiness.servingEligible ? 'shadow_indexed' : 'extracted',
+              readiness.blockerCode,
+              readiness.blockerDetail,
+              readiness.servingEligible,
+              readiness.contentQualityScore,
+              'external_product_seeds_mirror.v1',
+              'passed',
+              readiness.identityResolved,
+              mirror.productGroupId,
+              readiness.hasImage,
+              readiness.hasPrice,
+              readiness.descriptionLength,
+              'external_product_seeds_mirror.v1',
+            ],
+          );
+          totals.index_state_upserts += Number(indexRes.rowCount || 0);
+        }
 
         for (const skuMirror of mirror.skus) {
           const s = skuMirror.sku;
@@ -965,6 +1099,7 @@ async function run() {
   const out = resolveOutPath(argValue('out'));
   const allowRandom = hasFlag('allow-random');
   const allowDuplicateCanonical = hasFlag('allow-duplicate-canonical');
+  const upsertServingState = hasFlag('upsert-serving-state') || hasFlag('upsertServingState');
   if (!ids.length) throw new Error('missing_external_product_ids');
   const rows = await fetchRows(ids, market);
   const missingIds = ids.filter((id) => !rows.some((row) => asString(row.external_product_id) === id));
@@ -1012,7 +1147,7 @@ async function run() {
     }
     mirrors.push(mirror);
   }
-  const applied = await applyMirrors(mirrors, dryRun);
+  const applied = await applyMirrors(mirrors, dryRun, { upsertServingState });
   const report = {
     generated_at: new Date().toISOString(),
     mode: dryRun ? 'dry_run' : 'apply',
@@ -1021,6 +1156,7 @@ async function run() {
     mirror_rows: mirrors.length,
     planned_sku_rows: mirrors.reduce((sum, item) => sum + item.skus.length, 0),
     planned_offer_rows: mirrors.reduce((sum, item) => sum + item.skus.length, 0),
+    planned_index_state_rows: upsertServingState ? mirrors.length : 0,
     missing_ids: missingIds,
     skipped,
     applied,
@@ -1035,6 +1171,7 @@ async function run() {
       sku_rows: mirror.skus.length,
       first_sku: mirror.skus[0]?.sku,
       first_offer: mirror.skus[0]?.offer,
+      serving_readiness: scoreMirrorServingQuality(mirror),
     })),
   };
   const serialized = `${JSON.stringify(report, null, 2)}\n`;

@@ -2840,9 +2840,9 @@ describe('pdpIdentityGraph', () => {
         };
       }
       if (String(sql).includes('FROM external_product_seeds')) {
-        expect(String(sql)).toContain("seed_data->>'vendor'");
-        expect(String(sql)).toContain("regexp_replace(lower(coalesce(title, seed_data->>'title'");
-        expect(params).toEqual([['kravebeauty'], ['%kravebeauty%'], 10]);
+        expect(String(sql)).toContain("e.seed_data->>'vendor'");
+        expect(String(sql)).toContain("regexp_replace(lower(coalesce(e.title, e.seed_data->>'title'");
+        expect(params).toEqual(['external_seed', ['kravebeauty'], ['%kravebeauty%'], 10]);
         return { rows: [] };
       }
       throw new Error(`unexpected query: ${sql}`);
@@ -2878,8 +2878,8 @@ describe('pdpIdentityGraph', () => {
       }
       if (String(sql).includes('FROM external_product_seeds')) {
         expect(String(sql)).toContain('regexp_replace(lower(trim(coalesce(');
-        expect(String(sql)).toContain("regexp_replace(lower(coalesce(title, seed_data->>'title'");
-        expect(params).toEqual([['paulaschoice'], ['%paulaschoice%'], 10]);
+        expect(String(sql)).toContain("regexp_replace(lower(coalesce(e.title, e.seed_data->>'title'");
+        expect(params).toEqual(['external_seed', ['paulaschoice'], ['%paulaschoice%'], 10]);
         return {
           rows: [
             {
@@ -2919,8 +2919,8 @@ describe('pdpIdentityGraph', () => {
     const queryFn = jest.fn(async (sql, params) => {
       expect(String(sql)).not.toContain('FROM products_cache');
       expect(String(sql)).toContain('FROM external_product_seeds');
-      expect(String(sql)).toContain('external_product_id = ANY($1::text[])');
-      expect(params).toEqual([['ulta:rare_lip_liner', 'ulta:rare_brow_gel'], 2]);
+      expect(String(sql)).toContain('e.external_product_id = ANY($2::text[])');
+      expect(params).toEqual(['external_seed', ['ulta:rare_lip_liner', 'ulta:rare_brow_gel'], 2]);
       return {
         rows: [
           {
@@ -3018,7 +3018,7 @@ describe('pdpIdentityGraph', () => {
         return { rows: [] };
       }
       if (String(sql).includes('FROM external_product_seeds')) {
-        expect(params).toEqual([['drjartplus', 'drjart'], ['%drjartplus%', '%drjart%'], 10]);
+        expect(params).toEqual(['external_seed', ['drjartplus', 'drjart'], ['%drjartplus%', '%drjart%'], 10]);
         return {
           rows: [
             {
