@@ -479,6 +479,66 @@ function missingSeedFields(row) {
   return { facts, missing };
 }
 
+function terminalHoldContract(value) {
+  const contract = asObject(value);
+  const contractVersion = lower(contract.contract_version || contract.contractVersion);
+  const status = lower(contract.status);
+  const reason = asString(contract.reason || asArray(contract.reason_codes)[0] || status || contractVersion);
+  if (contractVersion === 'external_seed.source_unavailable.v1' || status === 'source_unavailable') {
+    return { held: true, reason: reason || 'source_unavailable' };
+  }
+  if (
+    contractVersion === 'external_seed.transaction_readiness_blocker.v1' &&
+    (contract.transaction_ready === false || contract.transactionReady === false)
+  ) {
+    return { held: true, reason: reason || 'transaction_readiness_blocker' };
+  }
+  if (
+    contractVersion === 'external_seed.non_merch_terminal_hold.v1' ||
+    [
+      'non_merch_terminal_hold',
+      'sample_terminal_hold',
+      'source_unavailable',
+      'terminal_hold',
+      'transaction_blocked',
+    ].includes(status)
+  ) {
+    return { held: true, reason: reason || status || 'terminal_hold' };
+  }
+  return { held: false, reason: '' };
+}
+
+function terminalHoldStatus(row) {
+  const seedData = asObject(row?.seed_data);
+  const snapshot = asObject(seedData.snapshot);
+  const family = lower(
+    firstString(
+      row?.product_family,
+      row?.external_seed_product_family,
+      seedData.product_family,
+      seedData.external_seed_product_family,
+      snapshot.product_family,
+      snapshot.external_seed_product_family,
+    ),
+  );
+  if (family === 'non_merch' || family === 'non_merchandise') {
+    return { held: true, reason: 'non_merch_product_family' };
+  }
+  const contracts = [
+    seedData.source_unavailable_v1,
+    snapshot.source_unavailable_v1,
+    seedData.non_merch_terminal_hold_v1,
+    snapshot.non_merch_terminal_hold_v1,
+    seedData.transaction_readiness_blocker_v1,
+    snapshot.transaction_readiness_blocker_v1,
+  ];
+  for (const contract of contracts) {
+    const status = terminalHoldContract(contract);
+    if (status.held) return status;
+  }
+  return { held: false, reason: '' };
+}
+
 function identityStatus(identity) {
   if (!identity) return { ok: false, issues: ['missing_identity'] };
   const issues = [];
@@ -521,6 +581,7 @@ function kbMainStatus(readiness) {
 
 function recommendedLane(blocker) {
   if (blocker === 'db_serving_ready' || blocker === 'public_index_ready') return 'ready_no_action';
+  if (blocker === 'terminal_hold') return 'terminal_hold_no_action';
   if (blocker === 'identity_blocked' || blocker === 'index_doc_shadow_only') return 'lane_1_identity_index';
   if (blocker === 'seed_content_blocked') return 'lane_2_seed_commerce_facts';
   if (blocker === 'kb_missing' || blocker === 'kb_blocked' || blocker === 'kb_displayable_limited') {
@@ -586,6 +647,7 @@ function buildInventoryRows({
     const indexState = catalog?.content_key ? indexByContentKey.get(catalog.content_key) : null;
     const doc = sourceRef ? docBySourceRef.get(sourceRef) : null;
     const seedFacts = missingSeedFields(seed);
+    const terminalHold = terminalHoldStatus(seed);
     const identityGate = identityStatus(identity);
     const kbGate = kbMainStatus(readiness);
     const hasPublicDoc = Boolean(doc && asString(doc.publish_state) === 'public');
@@ -594,7 +656,10 @@ function buildInventoryRows({
 
     let mainBlocker = 'db_serving_ready';
     let blockerDetail = '';
-    if (seedFacts.missing.length) {
+    if (terminalHold.held) {
+      mainBlocker = 'terminal_hold';
+      blockerDetail = terminalHold.reason;
+    } else if (seedFacts.missing.length) {
       mainBlocker = 'seed_content_blocked';
       blockerDetail = `missing:${seedFacts.missing.join('|')}`;
     } else if (!identityGate.ok) {
@@ -665,6 +730,8 @@ function buildInventoryRows({
       commerce_doc_price_min: doc?.price_min ?? '',
       commerce_doc_price_max: doc?.price_max ?? '',
       commerce_doc_external_offer_exists: doc?.external_offer_exists === true,
+      terminal_hold: terminalHold.held,
+      terminal_hold_reason: terminalHold.reason,
       main_blocker: mainBlocker,
       blocker_detail: blockerDetail,
       recommended_lane: recommendedLane(mainBlocker),
@@ -689,6 +756,7 @@ function buildDomainRollup(inventoryRows, docsByDomain) {
         direct_kb_high_quality_ready: 0,
         direct_kb_displayable: 0,
         identity_ready: 0,
+        terminal_hold: 0,
         seed_content_blocked: 0,
         identity_blocked: 0,
         kb_missing: 0,
@@ -726,9 +794,14 @@ function buildDomainRollup(inventoryRows, docsByDomain) {
       kb_blocked: item.kb_blocked,
       kb_displayable_limited: item.kb_displayable_limited,
       index_doc_shadow_only: item.index_doc_shadow_only,
+      terminal_hold: item.terminal_hold,
     };
     item.commerce_public_doc_groups = docsByDomain.get(item.domain) || 0;
+    item.actionable_seed_rows = Math.max(0, item.seed_rows - item.terminal_hold);
     item.db_serving_ready_rate = item.seed_rows ? Number((item.db_serving_ready / item.seed_rows).toFixed(4)) : 0;
+    item.actionable_db_serving_ready_rate = item.actionable_seed_rows
+      ? Number((item.db_serving_ready / item.actionable_seed_rows).toFixed(4))
+      : 0;
     item.public_index_ready_rate = item.db_serving_ready_rate;
     item.top_blocker = topEntries(blockers, 1).find((entry) => entry.count > 0)?.key || 'ready_no_action';
   }
@@ -741,6 +814,7 @@ function sortBacklogRows(rows, domainRollup) {
     lane_2_seed_commerce_facts: 2,
     lane_3_kb_rewrite_review: 3,
     triage: 9,
+    terminal_hold_no_action: 90,
     ready_no_action: 99,
   };
   const domainImpact = new Map(domainRollup.map((row) => [row.domain, row.seed_rows]));
@@ -759,13 +833,17 @@ function sortBacklogRows(rows, domainRollup) {
 
 function summarizeInventory(inventoryRows, publicDocs, sourceBuildFailures, warnings, marketCounts) {
   const blockers = countBy(inventoryRows, 'main_blocker');
-  const lanes = countBy(inventoryRows, 'recommended_lane');
+  const lanes = countBy(inventoryRows, (row) => row.recommended_lane || recommendedLane(row.main_blocker));
   const dbServingReadyRows = inventoryRows.filter((row) => isDbServingReadyBlocker(row.main_blocker)).length;
+  const terminalHoldRows = inventoryRows.filter((row) => row.main_blocker === 'terminal_hold').length;
+  const actionableRows = Math.max(0, inventoryRows.length - terminalHoldRows);
   const externalIndexConfig = getCatalogServingIndexConfig(process.env);
   return {
     generated_at: new Date().toISOString(),
     market_counts: marketCounts,
     scanned_rows: inventoryRows.length,
+    terminal_hold_rows: terminalHoldRows,
+    action_required_rows: inventoryRows.length - dbServingReadyRows - terminalHoldRows,
     db_serving_ready_rows: dbServingReadyRows,
     db_serving_ready_rate: inventoryRows.length
       ? Number((dbServingReadyRows / inventoryRows.length).toFixed(4))
@@ -773,6 +851,12 @@ function summarizeInventory(inventoryRows, publicDocs, sourceBuildFailures, warn
     public_index_ready_rows: dbServingReadyRows,
     public_index_ready_rate: inventoryRows.length
       ? Number((dbServingReadyRows / inventoryRows.length).toFixed(4))
+      : 0,
+    db_serving_ready_rate_excluding_terminal_holds: actionableRows
+      ? Number((dbServingReadyRows / actionableRows).toFixed(4))
+      : 0,
+    public_index_ready_rate_excluding_terminal_holds: actionableRows
+      ? Number((dbServingReadyRows / actionableRows).toFixed(4))
       : 0,
     blocker_breakdown: topEntries(blockers, 20),
     lane_breakdown: topEntries(lanes, 20),
@@ -812,7 +896,7 @@ function renderExecSummary({ summary, domainRollup, readinessSummary, reportDir,
     .slice(0, 20)
     .map(
       (row) =>
-        `| ${row.domain} | ${row.seed_rows} | ${row.db_serving_ready} | ${row.db_serving_ready_rate} | ${row.external_index_published} | ${row.top_blocker} |`,
+        `| ${row.domain} | ${row.seed_rows} | ${row.terminal_hold} | ${row.db_serving_ready} | ${row.db_serving_ready_rate} | ${row.actionable_db_serving_ready_rate} | ${row.external_index_published} | ${row.top_blocker} |`,
     )
     .join('\n');
   const marketLines = summary.market_counts
@@ -829,7 +913,10 @@ Report directory: ${reportDir}
 ## Executive Numbers
 
 - Rows scanned: ${summary.scanned_rows}
+- Terminal hold rows: ${summary.terminal_hold_rows}
+- Action-required rows: ${summary.action_required_rows}
 - DB Serving Ready rows: ${summary.db_serving_ready_rows} (${summary.db_serving_ready_rate})
+- DB Serving Ready rows excluding terminal holds: ${summary.db_serving_ready_rows} (${summary.db_serving_ready_rate_excluding_terminal_holds})
 - External index published rows: ${summary.commerce_index.external_index_published_rows}
 - Direct KB displayable rows: ${summary.kb.direct_displayable}
 - Direct KB high-quality-ready rows: ${summary.kb.direct_high_quality_ready}
@@ -853,8 +940,8 @@ ${blockerLines}
 
 ## Top Domains
 
-| Domain | Seed rows | DB serving ready | Ready rate | External index published | Top blocker |
-| --- | ---: | ---: | ---: | ---: | --- |
+| Domain | Seed rows | Terminal holds | DB serving ready | Ready rate | Actionable ready rate | External index published | Top blocker |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
 ${domainLines}
 
 ## Existing PDP/KB Readiness Summary
@@ -1098,6 +1185,8 @@ async function main() {
     'commerce_doc_price_min',
     'commerce_doc_price_max',
     'commerce_doc_external_offer_exists',
+    'terminal_hold',
+    'terminal_hold_reason',
     'main_blocker',
     'blocker_detail',
     'recommended_lane',
@@ -1106,8 +1195,10 @@ async function main() {
   const rollupColumns = [
     'domain',
     'seed_rows',
+    'actionable_seed_rows',
     'db_serving_ready',
     'db_serving_ready_rate',
+    'actionable_db_serving_ready_rate',
     'public_index_ready',
     'public_index_ready_rate',
     'external_index_published',
@@ -1116,6 +1207,7 @@ async function main() {
     'direct_kb_high_quality_ready',
     'direct_kb_displayable',
     'identity_ready',
+    'terminal_hold',
     'seed_content_blocked',
     'identity_blocked',
     'kb_missing',
@@ -1181,13 +1273,26 @@ async function main() {
   process.stdout.write(`${JSON.stringify({ ok: true, out_dir: outDir, summary }, null, 2)}\n`);
 }
 
-main()
-  .catch((error) => {
-    process.stderr.write(`${error?.stack || error?.message || String(error)}\n`);
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    try {
-      await getPool()?.end();
-    } catch {}
-  });
+if (require.main === module) {
+  main()
+    .catch((error) => {
+      process.stderr.write(`${error?.stack || error?.message || String(error)}\n`);
+      process.exitCode = 1;
+    })
+    .finally(async () => {
+      try {
+        await getPool()?.end();
+      } catch {}
+    });
+}
+
+module.exports = {
+  _internals: {
+    buildInventoryRows,
+    missingSeedFields,
+    recommendedLane,
+    summarizeInventory,
+    terminalHoldContract,
+    terminalHoldStatus,
+  },
+};
