@@ -330,6 +330,22 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     ).toBe('brush_care');
     expect(
       inferKind(
+        'Sigma Palmat®',
+        '',
+        '',
+        'The Palmat® is a 2-in-1 brush cleaning tool that deep cleans your brushes.',
+      ),
+    ).toBe('brush_care');
+    expect(
+      inferKind(
+        'Soft Blend™ 60 Brush',
+        '',
+        '',
+        'A tapered face brush that outlasts all product formulas and frequent brush care.',
+      ),
+    ).toBe('brush');
+    expect(
+      inferKind(
         'Nina Ubhi Favorites Set',
         '',
         '',
@@ -400,6 +416,24 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
       batchName: 'test_batch',
       reviewer: 'codex_test',
     });
+    const palmatBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_sigma_palmat',
+        title: 'Sigma Palmat®',
+        canonical_url: 'https://sigmabeauty.com/products/sigma-palmat',
+        seed_data: {
+          description:
+            '<!----> Say goodbye to dirty makeup brushes! The Palmat® is a 2-in-1 brush cleaning tool that deep cleans your brushes.',
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_sigma_palmat',
+        sellable_item_group_id: 'sig_sigma_palmat',
+      },
+      generatedAt: '2026-05-22T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
     const makeupSetBundle = buildBundle({
       seed: {
         external_product_id: 'ext_sigma_makeup_set',
@@ -445,6 +479,9 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     expect(switchBundle.shopping_card.highlight).toBe('Brush-care cleaning detail');
     expect(switchBundle.evidence_profile).toBe('official_pdp_seed');
     expect(JSON.stringify(switchBundle)).not.toMatch(/inci_applicability|Formula context captured/i);
+    expect(palmatBundle.shopping_card.subtitle).toBe('Brush Care');
+    expect(palmatBundle.shopping_card.highlight).toBe('Brush-care cleaning detail');
+    expect(JSON.stringify(palmatBundle)).not.toMatch(/<!|-->|beauty product/i);
     expect(makeupSetBundle.shopping_card.subtitle).toBe('Makeup Set');
     expect(makeupSetBundle.shopping_card.highlight).toBe('Makeup routine set');
     expect(lashesBundle.shopping_card.subtitle).toBe('Eye Makeup');
