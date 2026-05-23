@@ -516,6 +516,167 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     expect(facePaletteBundle.shopping_card.highlight).toBe('Complexion palette detail');
   });
 
+  test('classifies Pixi multi-item sets without generic or stale category leakage', () => {
+    const buildPixiBundle = ({ id, title, category = '', description }) =>
+      buildBundle({
+        seed: {
+          external_product_id: id,
+          title,
+          canonical_url: `https://pixibeauty.com/products/${id}`,
+          seed_data: {
+            brand: 'PIXI BEAUTY',
+            category,
+            description,
+          },
+        },
+        inventoryRow: {
+          external_product_id: id,
+          sellable_item_group_id: `sig_${id}`,
+        },
+        generatedAt: '2026-05-23T00:00:00.000Z',
+        batchName: 'test_batch',
+        reviewer: 'codex_test',
+      });
+
+    expect(inferKind('Spot Stickers Trio', '', '', 'Bright-C Sticker and blemish sticker set.')).toBe(
+      'blemish_patch_set',
+    );
+    expect(
+      inferKind(
+        'Choose Your Endless Silky Eye Trio',
+        '',
+        '',
+        'Customizable trio bundle of Endless Silky Eye Pen eyeliner shades.',
+      ),
+    ).toBe('makeup_set');
+    expect(inferKind('Rose Glow Routine', '', '', 'Rose Cream Cleanser and rose skin-care steps.')).toBe(
+      'skincare_set',
+    );
+    expect(
+      inferKind('Double Cleanse Duo', '', '', 'EOD Cleansing Oil and cleanser duo. Fragrance-free.'),
+    ).toBe('skincare_set');
+    expect(
+      inferKind(
+        'Choose Your Glow Trio',
+        'Skincare Set',
+        '',
+        'On-the-Glow BLUSH and On-the-Glow Bronze cheek color sticks.',
+      ),
+    ).toBe('makeup_set');
+    expect(
+      inferKind(
+        'Mini Spa Trio',
+        '',
+        '',
+        'Glow Mud Cleanser is a deep pore cleansing face wash with Glycolic Acid for a brighter complexion.',
+      ),
+    ).toBe('skincare_set');
+    expect(inferKind('LipTone Trio', '', '', 'Gloss works with lips pH level for a tint.')).toBe(
+      'lip_set',
+    );
+    expect(inferKind('Glow & Go Trio', '', '', 'LipTone gloss trio with pH adaptive pigment.')).toBe(
+      'lip_set',
+    );
+    expect(
+      inferKind(
+        'Makeup Melting Cleansing Cloths Set of 5',
+        '',
+        '',
+        'Reusable cleansing cloths gently remove makeup.',
+      ),
+    ).toBe('skincare_tool_set');
+
+    expect(
+      buildPixiBundle({
+        id: 'spot_stickers_trio',
+        title: 'Spot Stickers Trio',
+        description: 'Bright-C Sticker and blemish sticker set.',
+      }).shopping_card,
+    ).toMatchObject({ subtitle: 'Blemish Patch Set', highlight: 'Spot-care sticker set' });
+    expect(
+      buildPixiBundle({
+        id: 'endless_silky_eye_trio',
+        title: 'Choose Your Endless Silky Eye Trio',
+        description: 'Customizable trio bundle of Endless Silky Eye Pen eyeliner shades.',
+      }).shopping_card,
+    ).toMatchObject({ subtitle: 'Makeup Set', highlight: 'Eye-makeup routine set' });
+    expect(
+      buildPixiBundle({
+        id: 'rose_glow_routine',
+        title: 'Rose Glow Routine',
+        description: 'Rose Cream Cleanser and rose skin-care steps.',
+      }).shopping_card,
+    ).toMatchObject({ subtitle: 'Skincare Set', highlight: 'Cleansing routine set' });
+    expect(
+      buildPixiBundle({
+        id: 'double_cleanse_duo',
+        title: 'Double Cleanse Duo',
+        description: 'EOD Cleansing Oil and cleanser duo. Fragrance-free.',
+      }).shopping_card,
+    ).toMatchObject({ subtitle: 'Skincare Set', highlight: 'Cleansing routine set' });
+    expect(
+      buildPixiBundle({
+        id: 'choose_glow_trio',
+        title: 'Choose Your Glow Trio',
+        category: 'Skincare Set',
+        description: 'On-the-Glow BLUSH and On-the-Glow Bronze cheek color sticks.',
+      }).shopping_card,
+    ).toMatchObject({ subtitle: 'Makeup Set', highlight: 'Cheek color set' });
+    expect(
+      buildPixiBundle({
+        id: 'mini_spa_trio',
+        title: 'Mini Spa Trio',
+        description:
+          'Glow Mud Cleanser • Deep pore cleansing face wash with Glycolic Acid • Gently exfoliates for a brighter complexion.',
+      }).shopping_card,
+    ).toMatchObject({ subtitle: 'Skincare Set', highlight: 'Cleansing routine set' });
+    expect(
+      buildPixiBundle({
+        id: 'liptone_trio',
+        title: 'LipTone Trio',
+        description: 'Gloss works with lips pH level for a tint.',
+      }).shopping_card,
+    ).toMatchObject({ subtitle: 'Lip Set', highlight: 'Lip-care routine set' });
+    expect(
+      buildPixiBundle({
+        id: 'glow_go_trio',
+        title: 'Glow & Go Trio',
+        description: 'LipTone gloss trio with pH adaptive pigment.',
+      }).shopping_card,
+    ).toMatchObject({ subtitle: 'Lip Set', highlight: 'Lip-care routine set' });
+    expect(
+      buildPixiBundle({
+        id: 'cleansing_cloths_set',
+        title: 'Makeup Melting Cleansing Cloths Set of 5',
+        description: 'Reusable cleansing cloths gently remove makeup.',
+      }).shopping_card,
+    ).toMatchObject({ subtitle: 'Skincare Tool Set', highlight: 'Cleansing cloth set' });
+    expect(
+      buildPixiBundle({
+        id: 'glow_mist_duo',
+        title: 'Glow Mist Duo',
+        category: 'Toner',
+        description: 'Glow Mist and Hydrating Milky Mist in a duo.',
+      }).shopping_card,
+    ).toMatchObject({ subtitle: 'Skincare Set', highlight: 'Mist routine set' });
+    expect(
+      buildPixiBundle({
+        id: 'eye_patch_duo',
+        title: 'Day & Night Eye Patch Duo',
+        description:
+          'DetoxifEYE • \"You can achieve that awake look\" - Petra • Hydrates and plumps with hyaluronic acid.',
+      }).product_intel_core.what_it_is.body,
+    ).toContain('Hydrates and plumps with hyaluronic acid.');
+    expect(
+      buildPixiBundle({
+        id: 'blush_set',
+        title: 'On-the-Glow BLUSH New Shades Set',
+        description:
+          'Hydrating solid tints for cheeks and lips enriched with Ginseng, Aloe Vera and Fruit Extracts that deliver a tint.',
+      }).product_intel_core.what_it_is.body,
+    ).not.toMatch(/that deliver\./);
+  });
+
   test('classifies Kylie lip, cleanser, palette, mist, and set formats without generic fallback', () => {
     expect(inferKind('Foaming Face Wash', '', '', 'Foaming face wash with glycerin.')).toBe('cleanser');
     expect(inferKind('Supple Kiss Lip Glaze', '', '', 'Glazing lip color with emollient shine.')).toBe('lip');
