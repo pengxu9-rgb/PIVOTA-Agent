@@ -188,6 +188,42 @@ describe('external seed product kind classification', () => {
     );
   });
 
+  test('keeps reviewed lip component pair products as sets, not stale single-formula variants', () => {
+    expect(
+      classifyExternalSeedProductKind({
+        title: 'A Moment Matte Liquid Lipstick & Always and Forever Lip Liner',
+        canonical_url: 'https://kyliecosmetics.com/products/a-moment-matte-liquid-lipstick-always-and-forever-lip-liner',
+        seed_data: {
+          product_family: 'set_or_collection',
+          product_type: 'Matte Liquid Lipstick',
+          snapshot: {
+            product_family: 'set_or_collection',
+            product_type: 'Matte Liquid Lipstick',
+          },
+        },
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        family: 'set_or_collection',
+        reasons: expect.arrayContaining(['formula_component_pair_signal']),
+      }),
+    );
+
+    expect(
+      classifyExternalSeedProductKind({
+        title: 'Match My Energy Gloss Drip & Iced Latte Lip Liner',
+        seed_data: {
+          product_type: 'Lip Gloss',
+        },
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        family: 'set_or_collection',
+        reasons: expect.arrayContaining(['formula_component_pair_signal']),
+      }),
+    );
+  });
+
   test('overrides stale accessory product kind for formula makeup PDPs', () => {
     expect(
       classifyExternalSeedProductKind({
