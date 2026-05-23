@@ -72,6 +72,25 @@ async function runExternalSeedBrandMainlineFastpath({
       )
     )
   `;
+  const servingEligibleSeedExistsClause = `
+    EXISTS (
+      SELECT 1
+      FROM catalog_products cp
+      INNER JOIN index_pipeline_state ips
+        ON ips.content_key = cp.content_key
+       AND ips.serving_eligible = TRUE
+      WHERE cp.product_key = external_product_seeds.attached_product_key
+         OR (
+          cp.merchant_id = 'external_seed'
+          AND cp.platform = 'external_seed'
+          AND cp.source_product_id = coalesce(
+            nullif(external_product_seeds.external_product_id, ''),
+            nullif(external_product_seeds.seed_data->>'external_product_id', ''),
+            nullif(external_product_seeds.seed_data->>'product_id', '')
+          )
+        )
+    )
+  `;
   const brandFastpathSelect = `
     id,
     external_product_id,
@@ -202,6 +221,7 @@ async function runExternalSeedBrandMainlineFastpath({
     const exactPageStartedAt = Date.now();
     const exactWhereClause = `
       status = 'active'
+        AND ${servingEligibleSeedExistsClause}
         ${attachedFilter}
         AND market = $1
         ${exactToolScopeClause}
@@ -308,6 +328,7 @@ async function runExternalSeedBrandMainlineFastpath({
             END AS brand_match_rank
           FROM external_product_seeds
           WHERE status = 'active'
+            AND ${servingEligibleSeedExistsClause}
             ${attachedFilter}
             AND market = $1
             ${broadToolScopeClause}

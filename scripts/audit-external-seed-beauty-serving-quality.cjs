@@ -16,16 +16,7 @@ const {
 const DEFAULT_CATALOG_BASE_URL =
   process.env.CATALOG_INTELLIGENCE_BASE_URL ||
   'https://pivota-catalog-intelligence-production.up.railway.app';
-function resolveDefaultCatalogTimeoutMs(env = process.env) {
-  const value = Number(
-    env.EXTERNAL_SEED_BEAUTY_SERVING_CATALOG_TIMEOUT_MS ||
-      env.CATALOG_INTELLIGENCE_TIMEOUT_MS ||
-      90000,
-  );
-  return Number.isFinite(value) && value > 0 ? value : 90000;
-}
-
-const DEFAULT_CATALOG_TIMEOUT_MS = resolveDefaultCatalogTimeoutMs();
+const DEFAULT_CATALOG_TIMEOUT_MS = 15000;
 const DEFAULT_CORE_PDP_TIMEOUT_MS = 45000;
 const DEFAULT_DETAILS_PDP_TIMEOUT_MS = 60000;
 const DEFAULT_SIMILAR_TIMEOUT_MS = 30000;
@@ -557,7 +548,6 @@ module.exports = {
   DEFAULT_DETAILS_PDP_TIMEOUT_MS,
   DEFAULT_SIMILAR_TIMEOUT_MS,
   classifyBeautyServingQualityRow,
-  resolveDefaultCatalogTimeoutMs,
   shouldRetryPdpQualityAudit,
   probeMerchantUrl,
   renderMarkdownReport,

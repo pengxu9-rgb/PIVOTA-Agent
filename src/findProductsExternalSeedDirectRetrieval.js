@@ -143,6 +143,23 @@ async function retrieveExternalSeedDirectCandidates({
               created_at
             FROM external_product_seeds
             WHERE status = 'active'
+              AND EXISTS (
+                SELECT 1
+                FROM catalog_products cp
+                INNER JOIN index_pipeline_state ips
+                  ON ips.content_key = cp.content_key
+                 AND ips.serving_eligible = TRUE
+                WHERE cp.product_key = external_product_seeds.attached_product_key
+                   OR (
+                    cp.merchant_id = 'external_seed'
+                    AND cp.platform = 'external_seed'
+                    AND cp.source_product_id = coalesce(
+                      nullif(external_product_seeds.external_product_id, ''),
+                      nullif(external_product_seeds.seed_data->>'external_product_id', ''),
+                      nullif(external_product_seeds.seed_data->>'product_id', '')
+                    )
+                  )
+              )
               AND market = $1
               AND (
                 -- Standard recall: unattached seeds matching the requested tool.

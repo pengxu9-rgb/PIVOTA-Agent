@@ -1,4 +1,5 @@
 const axios = require('axios');
+const logger = require('../logger');
 const { query: defaultQuery } = require('../db');
 const {
   buildIdentityListingFromProduct,
@@ -17,6 +18,19 @@ const {
 function asString(value) {
   const normalized = String(value || '').trim();
   return normalized || '';
+}
+
+function isTruthyEnvFlag(value) {
+  const normalized = asString(value).toLowerCase();
+  return normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on';
+}
+
+function catalogServingPublicDocRequiresEligibility(env = process.env) {
+  return asString(env.CATALOG_SERVING_PUBLIC_DOC_REQUIRES_ELIGIBILITY).toLowerCase() !== 'false';
+}
+
+function catalogServingFailOpenOnIpsMiss(env = process.env) {
+  return isTruthyEnvFlag(env.CATALOG_SERVING_FAIL_OPEN_ON_IPS_MISS);
 }
 
 function asNumber(value) {
@@ -629,6 +643,13 @@ function buildCatalogServingBackfillEntries(sourceRows = [], { identityRows = []
       });
       const effectiveIdentity = liveIdentity || computedIdentity;
       if (!effectiveIdentity) return null;
+      const servingEligible =
+        row?.serving_eligible === true ||
+        row?.pipeline_state?.serving_eligible === true ||
+        row?.index_pipeline_state?.serving_eligible === true ||
+        product?.serving_eligible === true;
+      const isApprovedPublicIdentity =
+        asString(liveIdentity?.identity_status) === 'approved' && liveIdentity?.live_read_enabled === true;
       return {
         merchant_id: merchantId,
         product_id: productId,
@@ -639,8 +660,10 @@ function buildCatalogServingBackfillEntries(sourceRows = [], { identityRows = []
         live_identity: liveIdentity,
         computed_identity: computedIdentity,
         effective_identity: effectiveIdentity,
+        serving_eligible: servingEligible,
         is_public:
-          asString(liveIdentity?.identity_status) === 'approved' && liveIdentity?.live_read_enabled === true,
+          isApprovedPublicIdentity &&
+          (catalogServingPublicDocRequiresEligibility() ? servingEligible === true : true),
       };
     })
     .filter(Boolean);
@@ -1143,8 +1166,19 @@ async function searchCatalogServingIndex(params = {}, {
         // Overwrite sourceRows reference; use filtered for all downstream steps
         sourceRows.length = 0;
         for (const row of filtered) sourceRows.push(row);
-      } catch (_err) {
-        // index_pipeline_state may not exist yet — fail open and serve all products
+      } catch (err) {
+        const failOpen = catalogServingFailOpenOnIpsMiss(env);
+        logger.error(
+          {
+            event: 'catalog_serving_index_pipeline_state_query_failed',
+            error: err?.message || String(err),
+            fail_open: failOpen,
+          },
+          'catalog serving index pipeline state query failed',
+        );
+        if (!failOpen) {
+          sourceRows.length = 0;
+        }
       }
     }
     const effectiveSourceRows = await hydrateCatalogServingSourceRowsWithProductIntel(sourceRows, {
@@ -1313,6 +1347,8 @@ module.exports = {
     filterLocalCatalogServingDocs,
     getCatalogServingLocalSortTuple,
     hydrateCatalogServingSourceRowsWithProductIntel,
+    catalogServingFailOpenOnIpsMiss,
+    catalogServingPublicDocRequiresEligibility,
     resolveBackfillPublishState,
     sortCatalogServingEntries,
   },

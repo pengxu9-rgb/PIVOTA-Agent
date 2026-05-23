@@ -47,7 +47,7 @@ describe('catalog serving gateway', () => {
     expect(resolveCatalogServingGatewayShadowMode('local')).toBe('external_only');
   });
 
-  test('searchCatalogServingGateway keeps local shadow disabled by default', async () => {
+  test('searchCatalogServingGateway defaults auto mode to strict serving-eligible local serving', async () => {
     const searchCatalogServingIndexFn = jest.fn(async () => ({
       items: [],
       cursor_info: {
@@ -74,26 +74,28 @@ describe('catalog serving gateway', () => {
         market: 'US',
       }),
       expect.objectContaining({
-        allowLocalShadow: false,
+        allowLocalShadow: true,
         env: {},
+        servingEligibleOnly: true,
       }),
     );
     expect(result).toEqual(
       expect.objectContaining({
         contract_version: CATALOG_SERVING_GATEWAY_CONTRACT_VERSION,
         gateway_mode: 'disabled',
-        serving_mode: 'external_only',
+        serving_mode: 'serving_eligible_only',
         requested_serving_mode: 'auto',
-        shadow_mode: 'external_only',
+        shadow_mode: 'serving_eligible_only',
         source: 'disabled',
         debug_metadata: expect.objectContaining({
           external_index_enabled: false,
-          db_serving_requested: false,
+          db_serving_requested: true,
           db_serving_available: false,
           db_serving_used: false,
-          local_shadow_requested: false,
+          local_shadow_requested: true,
           local_shadow_available: false,
           local_shadow_used: false,
+          serving_eligible_filter: true,
         }),
       }),
     );
@@ -158,7 +160,7 @@ describe('catalog serving gateway', () => {
     );
   });
 
-  test('searchCatalogServingGateway auto-promotes to DB serving when external index is not configured', async () => {
+  test('searchCatalogServingGateway auto-promotes to serving-eligible DB serving when external index is not configured', async () => {
     const searchCatalogServingIndexFn = jest.fn(async () => ({
       items: [{ doc_id: 'sellable:sig_2', title: 'Barrier Cream' }],
       cursor_info: {
@@ -187,15 +189,15 @@ describe('catalog serving gateway', () => {
       }),
       expect.objectContaining({
         allowLocalShadow: true,
-        servingEligibleOnly: false,
+        servingEligibleOnly: true,
       }),
     );
     expect(result).toEqual(
       expect.objectContaining({
         gateway_mode: 'db_serving',
-        serving_mode: 'db_serving',
+        serving_mode: 'serving_eligible_only',
         requested_serving_mode: 'auto',
-        shadow_mode: 'allow_local_shadow',
+        shadow_mode: 'serving_eligible_only',
         source: 'db_serving',
       }),
     );

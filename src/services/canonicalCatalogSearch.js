@@ -486,6 +486,9 @@ async function fetchCanonicalChainRows(args = {}) {
           ${verticalScore}
         ) AS rank_score
       FROM catalog_products p
+      INNER JOIN index_pipeline_state ips
+        ON ips.content_key = p.content_key
+       AND ips.serving_eligible = TRUE
       LEFT JOIN catalog_merchants m ON m.merchant_id = p.merchant_id
       WHERE ${whereClause}
         AND ${activeCatalogProductSourceWhere('p', 'm')}
