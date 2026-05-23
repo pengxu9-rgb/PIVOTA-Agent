@@ -61,6 +61,28 @@ describe('audit-external-seed-beauty-serving-quality', () => {
     expect(result.failure_reasons).toEqual(expect.arrayContaining(['non_merchandise_surface']));
   });
 
+  test('classifies donation pages as non merchandise', () => {
+    const result = classifyBeautyServingQualityRow({
+      row: {
+        id: 'eps_donation',
+        external_product_id: 'ext_donation',
+        title: 'Donate To The Clara Lionel Foundation',
+        category: 'Donation',
+        price_amount: 5,
+        image_url: 'https://cdn.example.com/donate.jpg',
+        seed_data: {
+          snapshot: {
+            canonical_url: 'https://fentybeauty.com/products/donate-to-the-clara-lionel-foundation',
+            description: '100% of your donation supports the Clara Lionel Foundation.',
+          },
+        },
+      },
+    });
+
+    expect(result.classification).toBe(CLASSIFICATIONS.NON_MERCHANDISE);
+    expect(result.failure_reasons).toEqual(expect.arrayContaining(['non_merchandise_surface']));
+  });
+
   test('classifies stale but identifiable product rows as repairable backfill', () => {
     const result = classifyBeautyServingQualityRow({
       row: {

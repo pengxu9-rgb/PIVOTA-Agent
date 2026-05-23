@@ -164,7 +164,7 @@ describe('externalSeedPdpQuality', () => {
             type: 'product_details',
             data: {
               sections: [
-                { heading: 'Overview', content: 'THE LOWDOWN: Clean description.' },
+                { heading: 'Overview', content: 'OFFICIAL: Clean description.' },
               ],
             },
           },
@@ -210,6 +210,40 @@ describe('externalSeedPdpQuality', () => {
     });
 
     expect(livePdpGate.failure_reasons).not.toContain('polluted_product_description');
+    expect(livePdpGate.failure_reasons).not.toContain('polluted_product_details');
+  });
+
+  test('does not flag Fenty house-style product detail headings as pollution', () => {
+    const livePdpGate = buildLivePdpGate({
+      extractorProduct: {
+        description_raw: 'Hydrating lip oil that strengthens the lips moisture barrier.',
+        variants: [{ price: '25.00' }],
+      },
+      livePayload: {
+        product: {
+          description: 'Hydrating lip oil that strengthens the lips moisture barrier.',
+        },
+        modules: [
+          {
+            type: 'price_promo',
+            data: { price: { amount: 25, currency: 'USD' } },
+          },
+          {
+            type: 'product_details',
+            data: {
+              sections: [
+                {
+                  heading: 'Details',
+                  content:
+                    'STRAIGHT UP: Hydrates and strengthens the lips moisture barrier. THE LOWDOWN: Antioxidant-rich formula defends lips against environmental stressors.',
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+
     expect(livePdpGate.failure_reasons).not.toContain('polluted_product_details');
   });
 

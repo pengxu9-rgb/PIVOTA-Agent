@@ -162,7 +162,7 @@ function buildRowSurfaceText(row = {}) {
 
 function isNonMerchandiseRow(row = {}) {
   const text = buildRowSurfaceText(row);
-  return /\b(shipping|delivery|route|package)\s+protection\b|\border\s+protection\b|\breturns?\s+policy\b|\bprivacy\s+policy\b|\bterms\s+of\s+service\b|\bgift\s+card\b|\bwarranty\b/.test(text);
+  return /\b(shipping|delivery|route|package)\s+protection\b|\border\s+protection\b|\breturns?\s+policy\b|\bprivacy\s+policy\b|\bterms\s+of\s+service\b|\bgift\s+card\b|\bwarranty\b|\bdonat(?:e|ion|ions)\b|\bclara\s+lionel\s+foundation\b/.test(text);
 }
 
 async function probeMerchantUrl(url, { timeoutMs = 8000 } = {}) {
