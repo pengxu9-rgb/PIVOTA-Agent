@@ -74,6 +74,10 @@ function sanitizePublicSourceText(value) {
     .replace(/\b(?:ulta beauty|sephora|target|walmart|amazon)\s+exclusive\b/gi, '')
     .replace(/\b(?:an?|the)?\s*exclusive bundle available only at\s+[a-z0-9 .&'-]+\.?/gi, 'bundle')
     .replace(/\bavailable only at\s+[a-z0-9 .&'-]+\.?/gi, '')
+    .replace(/\byour new favorite for ([^,.;:!?]+),\s*use this\b/gi, 'Use this')
+    .replace(/\byour new favorite(?:\s+for)?\b/gi, '')
+    .replace(/\bis your go-to for\b/gi, 'is designed for')
+    .replace(/\bthis genius tool\b/gi, 'this tool')
     .replace(/\b(?:must-have|pro-favorite|ultimate|powerful)\b/gi, '')
     .replace(/\b(?:best[-\s]?selling|bestselling|viral|cult[-\s]?favorite|award[-\s]?winning)\b/gi, '')
     .replace(/\b(?:winner of|voted one of|voted as one of)[^.?!]*[.!]?/gi, '')
@@ -966,6 +970,7 @@ module.exports = {
     buildHighlightPhrase,
     inferKind,
     sanitizeFormulaSummary,
+    sanitizePublicSourceText,
     sanitizePublicTitleText,
   },
 };

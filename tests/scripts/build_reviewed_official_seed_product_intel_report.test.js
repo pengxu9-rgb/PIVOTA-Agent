@@ -10,7 +10,14 @@ jest.mock('../../scripts/publish_product_intel_pilot_to_kb', () => ({
 }));
 
 const {
-  _internals: { brandFromUrl, buildBundle, inferKind, sanitizeFormulaSummary, sanitizePublicTitleText },
+  _internals: {
+    brandFromUrl,
+    buildBundle,
+    inferKind,
+    sanitizeFormulaSummary,
+    sanitizePublicSourceText,
+    sanitizePublicTitleText,
+  },
 } = require('../../scripts/build-reviewed-official-seed-product-intel-report.cjs');
 
 describe('build-reviewed-official-seed-product-intel-report', () => {
@@ -233,6 +240,13 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     );
     expect(sanitizeFormulaSummary('MATTESDemure: Mica, Nylon-12; Bis-Diglyceryl.')).toBe(
       'MATTES Demure: Mica, Nylon-12; Bis-Diglyceryl.',
+    );
+    expect(
+      sanitizePublicSourceText(
+        'Your new favorite for blending, use this soft brush. This set is your go-to for fresh coverage. Dry brushes with this genius tool.',
+      ),
+    ).toBe(
+      'Use this soft brush. This set is designed for fresh coverage. Dry brushes with this tool.',
     );
 
     const lipDuoBundle = buildBundle({
