@@ -274,6 +274,14 @@ function hasBeautySearchSignal(text) {
   );
 }
 
+function hasNonMerchandiseQuerySignal(text) {
+  const normalized = normalizeQueryTextForUnderstanding(text);
+  if (!normalized) return false;
+  return /\b(?:donat(?:e|ion|ions)|clara\s+lionel\s+foundation|gift\s+cards?|e\s+gift\s+cards?|shipping\s+protection|package\s+protection|route\s+protection|order\s+protection|returns?\s+policy|privacy\s+policy|terms\s+of\s+service|warranty|contact\s+us|customer\s+service|support\s+center)\b/.test(
+    normalized,
+  );
+}
+
 function stripBrandTokensFromNormalizedQuery(normalizedQuery, brandBrowse) {
   const normalized = normalizeQueryTextForUnderstanding(normalizedQuery);
   if (!normalized || !brandBrowse?.matched) return normalized;
@@ -347,26 +355,31 @@ function buildSearchQualityContract({
   const categoryPathPrefix = exactProductAnchor ? null : inferredCategoryPathPrefix;
   const hasKnownBeautyBrand = Boolean(beautyBrandBrowse.matched);
   const hasStaticNonBeautyBrand = Boolean(brandCandidates.length && !hasKnownBeautyBrand);
+  const hasNonMerchandiseSignal = hasNonMerchandiseQuerySignal(effectiveQuery);
+  const effectiveBrand = hasNonMerchandiseSignal ? null : brand;
+  const effectiveExactProductAnchor = hasNonMerchandiseSignal ? null : exactProductAnchor;
+  const effectiveCategoryPathPrefix = hasNonMerchandiseSignal ? null : categoryPathPrefix;
   const targetDomain =
-    hasKnownBeautyBrand || inferredCategoryPathPrefix || concernSignals?.has_concern_signal || constraints.length || hasBeautySearchSignal(effectiveQuery)
+    !hasNonMerchandiseSignal &&
+    (hasKnownBeautyBrand || inferredCategoryPathPrefix || concernSignals?.has_concern_signal || constraints.length || hasBeautySearchSignal(effectiveQuery))
       ? 'beauty'
       : 'other';
 
   let queryClass = 'ambiguous_or_non_shopping';
   if (targetDomain === 'beauty') {
-    if (exactProductAnchor) {
+    if (effectiveExactProductAnchor) {
       queryClass = 'exact_product';
-    } else if (hasKnownBeautyBrand && categoryPathPrefix) {
+    } else if (hasKnownBeautyBrand && effectiveCategoryPathPrefix) {
       queryClass = 'brand_category';
     } else if (hasKnownBeautyBrand && constraints.length) {
       queryClass = 'constraint_search';
-    } else if (hasKnownBeautyBrand && !categoryPathPrefix && beautyBrandBrowse.brand_only) {
+    } else if (hasKnownBeautyBrand && !effectiveCategoryPathPrefix && beautyBrandBrowse.brand_only) {
       queryClass = 'brand_browse';
     } else if (constraints.length) {
       queryClass = 'constraint_search';
     } else if (concernSignals?.has_concern_signal) {
       queryClass = 'need_solution';
-    } else if (categoryPathPrefix) {
+    } else if (effectiveCategoryPathPrefix) {
       queryClass = 'category_browse';
     } else if (hasKnownBeautyBrand) {
       queryClass = 'brand_browse';
@@ -387,11 +400,11 @@ function buildSearchQualityContract({
     effective_query: effectiveQuery,
     clarification_allowed: queryClass === 'ambiguous_or_non_shopping',
     hard_constraints: {
-      brand,
-      category_path_prefix: categoryPathPrefix,
+      brand: effectiveBrand,
+      category_path_prefix: effectiveCategoryPathPrefix,
       market: market ? String(market).trim().toUpperCase() : null,
       exclusions,
-      exact_product_anchor: exactProductAnchor,
+      exact_product_anchor: effectiveExactProductAnchor,
       strict_lipstick: Boolean(understanding.hard_negatives?.strict_lipstick),
       fragrance_free_skincare: Boolean(understanding.hard_negatives?.fragrance_free_skincare),
     },
@@ -676,11 +689,13 @@ function understandShoppingQuery({
   const correctionResult = applyDeterministicCorrections(raw);
   const correctedQuery = correctionResult.corrected_query || raw;
   const correctedNormalized = normalizeQueryTextForUnderstanding(correctedQuery);
-  const categoryPathPrefix = resolveBeautyCategoryPathPrefixFromText(correctedQuery);
+  const nonMerchandiseQuery = hasNonMerchandiseQuerySignal(correctedQuery);
+  const categoryPathPrefix = nonMerchandiseQuery ? '' : resolveBeautyCategoryPathPrefixFromText(correctedQuery);
   const brandCandidates = buildBrandCandidates(correctedQuery);
   const currentProfileSignals = extractBeautyProfileSignals(correctedQuery);
   const currentConcernSignals = extractBeautyConcernSignals(correctedQuery);
   const riskFlags = [];
+  if (nonMerchandiseQuery) riskFlags.push('non_merchandise_query_guard');
   if (hasFragranceFreeSkincareSignal(correctedQuery)) riskFlags.push('fragrance_free_skincare_guard');
   if (Array.isArray(sessionRecentQueries) && sessionRecentQueries.length) {
     riskFlags.push('session_recent_queries_ignored_for_context');
@@ -709,10 +724,12 @@ function understandShoppingQuery({
     : null;
   const effectiveQuery = contextBinding?.contextual_query || correctedQuery || raw;
   const effectiveCategoryPathPrefix =
-    contextBinding?.category_path_prefix ||
-    resolveBeautyCategoryPathPrefixFromText(effectiveQuery) ||
-    categoryPathPrefix ||
-    null;
+    nonMerchandiseQuery
+      ? null
+      : contextBinding?.category_path_prefix ||
+        resolveBeautyCategoryPathPrefixFromText(effectiveQuery) ||
+        categoryPathPrefix ||
+        null;
   const effectiveProfileSignals = extractBeautyProfileSignals(effectiveQuery);
   const effectiveConcernSignals = extractBeautyConcernSignals(effectiveQuery);
   if (contextBinding?.reason === 'beauty_slot_followup_conversation_context') {
@@ -749,6 +766,7 @@ function understandShoppingQuery({
     hard_negatives: {
       fragrance_free_skincare: hasFragranceFreeSkincareSignal(correctedQuery),
       strict_lipstick: isStrictLipstickQuery(correctedQuery),
+      non_merchandise_query: nonMerchandiseQuery,
     },
     ...(market ? { market: String(market).trim().toUpperCase() } : {}),
     ...(source ? { source: String(source).trim() } : {}),

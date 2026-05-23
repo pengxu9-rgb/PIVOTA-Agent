@@ -83,6 +83,23 @@ describe('find_products_multi query understanding', () => {
     );
   });
 
+  test('does not route donation foundation wording as makeup foundation', () => {
+    const out = understandShoppingQuery({ rawQuery: 'donate to the clara lionel foundation' });
+    const contract = buildSearchQualityContract({
+      rawQuery: 'donate to the clara lionel foundation',
+      market: 'US',
+    });
+
+    expect(out.category_path_prefix).toBeNull();
+    expect(out.risk_flags).toEqual(expect.arrayContaining(['non_merchandise_query_guard']));
+    expect(out.hard_negatives.non_merchandise_query).toBe(true);
+    expect(contract.target_domain).toBe('other');
+    expect(contract.query_class).toBe('ambiguous_or_non_shopping');
+    expect(contract.clarification_allowed).toBe(true);
+    expect(contract.hard_constraints.brand).toBeNull();
+    expect(contract.hard_constraints.category_path_prefix).toBeNull();
+  });
+
   test('flags strict lipstick intent separately from lip oil or balm', () => {
     expect(understandShoppingQuery({ rawQuery: 'fenty beauty lipsticks' }).hard_negatives.strict_lipstick).toBe(true);
     expect(understandShoppingQuery({ rawQuery: 'fenty lip oil' }).hard_negatives.strict_lipstick).toBe(false);
@@ -142,6 +159,8 @@ describe('find_products_multi query understanding', () => {
     ['acne oily skin serum', 'need_solution', 'beauty', null, 'beauty/skincare/treat/'],
     ['fragrance-free sunscreen', 'constraint_search', 'beauty', null, 'beauty/skincare/sun/'],
     ['pregnancy safe cleanser', 'constraint_search', 'beauty', null, 'beauty/skincare/cleanse/'],
+    ['foundation', 'category_browse', 'beauty', null, 'beauty/makeup/face/'],
+    ['fenty donate to the clara lionel foundation', 'ambiguous_or_non_shopping', 'other', null, null],
     ['zara', 'ambiguous_or_non_shopping', 'other', null, null],
     ['nike shoes', 'ambiguous_or_non_shopping', 'other', null, null],
     ['wireless earbuds', 'ambiguous_or_non_shopping', 'other', null, null],
