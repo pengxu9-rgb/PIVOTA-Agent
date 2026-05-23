@@ -1145,6 +1145,121 @@ describe('external seed product detail hydration', () => {
     expect(res.body.error).toBeUndefined();
   });
 
+  test('get_pdp_v2 serving_eligible_only allows active external seed direct PDPs blocked only by missing price', async () => {
+    const { app, db } = loadServerWithDb({
+      PIVOTA_API_BASE: 'https://backend.test',
+      PIVOTA_API_KEY: 'test-token',
+    });
+
+    const signatureRow = {
+      content_key: 'ck_fenty_missing_price_sample',
+      merchant_id: 'external_seed',
+      platform: 'external_seed',
+      source_system: 'external_product_seeds_mirror_v1',
+      source_product_id: 'ext_fenty_missing_price_sample',
+      product_key: 'prod::external_seed::external_seed::ext_fenty_missing_price_sample',
+      pivota_signature_id: 'sig_fenty_missing_price_sample',
+      external_seed_id: 'eps_fenty_missing_price_sample',
+      external_seed_external_product_id: 'ext_fenty_missing_price_sample',
+      external_seed_status: 'active',
+    };
+    const statusRow = {
+      id: 'eps_fenty_missing_price_sample',
+      external_product_id: 'ext_fenty_missing_price_sample',
+      status: 'active',
+    };
+    const detailRow = {
+      ...statusRow,
+      canonical_url: 'https://fentybeauty.com/products/fenty-eau-de-parfum-sample-vial-on-card',
+      destination_url: 'https://fentybeauty.com/products/fenty-eau-de-parfum-sample-vial-on-card',
+      title: 'Fenty Eau de Parfum Sample Vial on Card',
+      image_url: 'https://cdn.example.com/fenty-sample.jpg',
+      price_amount: null,
+      price_currency: null,
+      availability: 'out_of_stock',
+      seed_data: {
+        brand: 'Fenty Beauty',
+        pdp_description_raw: 'A sample vial card for Fenty Eau de Parfum.',
+        seed_description_origin: 'pdp_product_description',
+        image_urls: ['https://cdn.example.com/fenty-sample.jpg'],
+        snapshot: {
+          image_urls: ['https://cdn.example.com/fenty-sample.jpg'],
+          variants: [
+            {
+              variant_id: 'ext_fenty_missing_price_sample',
+              title: 'Sample vial',
+              price: null,
+              currency: 'USD',
+            },
+          ],
+        },
+      },
+    };
+    const servingEligibilityRow = {
+      content_key: 'ck_fenty_missing_price_sample',
+      product_key: signatureRow.product_key,
+      source_system: 'external_product_seeds_mirror_v1',
+      source_product_id: 'ext_fenty_missing_price_sample',
+      pivota_signature_id: 'sig_fenty_missing_price_sample',
+      catalog_image_url: 'https://cdn.example.com/fenty-sample.jpg',
+      catalog_description: 'A sample vial card for Fenty Eau de Parfum.',
+      catalog_image_urls_count: 1,
+      sync_status: 'live',
+      pdp_lifecycle_stage: 'candidate',
+      serving_eligible: false,
+      pipeline_stage: 'extracted',
+      blocker_code: 'missing_price',
+      blocker_detail: 'missing_price',
+      content_quality_score: 63,
+      active_external_seed_source_match: true,
+    };
+
+    db.query.mockImplementation((sql) => {
+      const text = String(sql || '');
+      if (text.includes('FROM catalog_products cp') && text.includes('LEFT JOIN index_pipeline_state ips')) {
+        return Promise.resolve({ rows: [servingEligibilityRow] });
+      }
+      if (text.includes('FROM catalog_products') && text.includes('pivota_signature_id = $1')) {
+        return Promise.resolve({ rows: [signatureRow] });
+      }
+      if (text.includes('FROM pdp_identity_listing pil') && text.includes('source_listing_ref = $1')) {
+        return Promise.resolve({ rows: [] });
+      }
+      if (text.includes('FROM external_product_seeds') && text.includes('destination_url')) {
+        return Promise.resolve({ rows: [detailRow] });
+      }
+      if (text.includes('FROM external_product_seeds') && text.includes('status')) {
+        return Promise.resolve({ rows: [statusRow] });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'get_pdp_v2',
+        payload: {
+          product_ref: {
+            merchant_id: 'external_seed',
+            product_id: 'sig_fenty_missing_price_sample',
+          },
+          include: ['canonical', 'product_overview', 'offers'],
+          options: {
+            serving_eligible_only: true,
+          },
+        },
+      })
+      .expect(200);
+
+    const canonicalProduct = res.body.modules?.find((module) => module?.type === 'canonical')
+      ?.data?.pdp_payload?.product;
+    expect(canonicalProduct).toMatchObject({
+      title: 'Fenty Eau de Parfum Sample Vial on Card',
+      image_url: 'https://cdn.example.com/fenty-sample.jpg',
+    });
+    expect(res.body.error).toBeUndefined();
+  });
+
   test('get_pdp_v2 reuses canonical catalog signature resolution for sig_* external_seed PDPs', async () => {
     const { app, db } = loadServerWithDb({
       PIVOTA_API_BASE: 'https://backend.test',

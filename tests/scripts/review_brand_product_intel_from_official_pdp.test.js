@@ -572,6 +572,99 @@ describe('official PDP manual insight review', () => {
     expect(plan.preview.shopping_highlight).toContain('frizz control');
   });
 
+  test('writes specific copy for Fenty dry shampoo powder', () => {
+    const plan = buildPlan(
+      row({
+        external_product_id: 'ext_fenty_dry_shampoo',
+        title: 'The Imposter Invisi-Boost Volumizing Dry Shampoo Powder',
+        brand: 'FENTY BEAUTY',
+        canonical_url: 'https://fentybeauty.com/products/the-imposter-invisi-boost-volumizing-dry-shampoo',
+        seed_data: {
+          brand: 'FENTY BEAUTY',
+          pdp_description_raw:
+            'A non-aerosol dry shampoo that stretches washdays, instantly boosts volume + texture and absorbs excess oil without a white cast.',
+          pdp_ingredients_raw:
+            'Zea Mays (Corn) Starch, Maranta Arundinacea Root Extract, Tapioca Starch, Aqua, Silica, Silica Silylate, Glycerin, Oryza Sativa (Rice) Starch, Panthenol.',
+          pdp_how_to_use_raw:
+            'Before applying, gently shake the bottle. Hold 6 inches from roots, puff onto oily areas, wait a few seconds, then massage or brush through.',
+          variants: [{ title: 'Standard', options: [{ name: 'Size', value: 'Standard bottle' }] }],
+        },
+      }),
+      { brand: 'Fenty Beauty', includeStrong: false },
+    );
+
+    expect(plan.blocked).toBe(false);
+    expect(plan.preview.headline).toBe('Dry shampoo powder');
+    expect(plan.preview.what_it_is).toContain('dry shampoo powder');
+    expect(plan.preview.what_it_is).toContain('non-aerosol format');
+    expect(plan.preview.what_it_is).toContain('excess-oil absorption');
+    expect(plan.preview.what_it_is).toContain('volume-texture boost');
+    expect(plan.preview.what_it_is).not.toContain('hair-care item');
+  });
+
+  test('uses face-cleanser language for Fenty Total Cleansr sample', () => {
+    const plan = buildPlan(
+      row({
+        external_product_id: 'ext_fenty_total_cleansr_sample',
+        title: "Total Cleans'r Remove-It-All Cleanser Deluxe Sample",
+        brand: 'FENTY BEAUTY',
+        canonical_url: 'https://fentybeauty.com/products/total-cleansr-deluxe-sample',
+        seed_data: {
+          brand: 'FENTY BEAUTY',
+          pdp_description_raw:
+            "Get that fresh, clean feeling with a plush creamy cleanser that refines the look of pores and washes away dirt, oil and impurities without leaving skin feeling tight.",
+          pdp_ingredients_raw:
+            'Aqua/Water/Eau, Sodium Cocoyl Glycinate, Glycerin, Acrylates Copolymer, Malpighia Glabra (Acerola) Fruit Extract, Ginkgo Biloba Leaf Extract, Cocos Nucifera (Coconut) Acid, Phenoxyethanol.',
+          pdp_how_to_use_raw:
+            'Use day and night. Wet skin, lather, rinse, pat dry. Avoid eye area.',
+          variants: [{ title: 'Deluxe sample', options: [{ name: 'Size', value: 'Deluxe sample' }] }],
+        },
+      }),
+      { brand: 'Fenty Beauty', includeStrong: false },
+    );
+
+    expect(plan.blocked).toBe(false);
+    expect(plan.preview.headline).toBe('Face cleanser');
+    expect(plan.preview.what_it_is).toContain('face cleanser');
+    expect(plan.preview.what_it_is).toContain('dirt, oil, and impurity removal');
+    expect(plan.preview.what_it_is).not.toContain('toning');
+    expect(plan.preview.shopping_highlight).not.toContain('shine finish');
+    expect(plan.preview.shopping_highlight).toContain('daily cleansing');
+    expect(plan.preview.best_for.map((item) => item.tag)).toEqual(
+      expect.arrayContaining(['daily_cleansing', 'pore_cleansing']),
+    );
+    expect(plan.preview.best_for.map((item) => item.tag)).not.toContain('shine_finish');
+  });
+
+  test('does not use opening quotes as what-it-is for Fenty fragrance samples', () => {
+    const plan = buildPlan(
+      row({
+        external_product_id: 'ext_fenty_edp_sample',
+        title: 'Fenty Eau de Parfum Sample Vial on Card',
+        brand: 'FENTY BEAUTY',
+        canonical_url: 'https://fentybeauty.com/products/fenty-eau-de-parfum-sample-vial-on-card',
+        seed_data: {
+          brand: 'FENTY BEAUTY',
+          pdp_description_raw:
+            '"This exudes everything I feel." SCENT TYPE Warm Floral. KEY NOTES Magnolia, Musk, Tangerine, Bulgarian Rose. THE SCENT A deeply intimate fragrance that is complex, vibrant, raw, spicy and sweet.',
+          pdp_ingredients_raw:
+            'Alcohol, Parfum, Fragrance, Aqua, Limonene, Citronellol, Linalool, Geraniol, Benzyl Alcohol, Eugenol.',
+          pdp_how_to_use_raw:
+            'Spritz on pulse points, such as wrists, neck, and behind ears.',
+          variants: [{ title: 'Sample vial', options: [{ name: 'Format', value: 'Sample vial' }] }],
+        },
+      }),
+      { brand: 'Fenty Beauty', includeStrong: false },
+    );
+
+    expect(plan.blocked).toBe(false);
+    expect(plan.preview.headline).toBe('Fine fragrance');
+    expect(plan.preview.what_it_is).toContain('fine fragrance');
+    expect(plan.preview.what_it_is).toContain('rose');
+    expect(plan.preview.what_it_is).not.toMatch(/^"/);
+    expect(plan.preview.what_it_is).not.toContain('This exudes');
+  });
+
   test('does not treat ampersand shade names as lip combos', () => {
     const plan = buildPlan(
       row({

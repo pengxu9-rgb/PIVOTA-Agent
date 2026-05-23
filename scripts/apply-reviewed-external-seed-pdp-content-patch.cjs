@@ -297,6 +297,7 @@ function readManifestEntries(raw) {
     pdp_ingredients_raw: text(
       entry.pdp_ingredients_raw || entry.raw_ingredient_text_clean || entry.ingredients_raw,
     ),
+    pdp_details_sections: asArray(entry.pdp_details_sections),
   }));
 }
 

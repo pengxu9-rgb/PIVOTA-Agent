@@ -110,6 +110,45 @@ describe('apply-reviewed-external-seed-pdp-content-patch', () => {
     );
   });
 
+  test('preserves reviewed detail sections from manifest entries', () => {
+    const [entry] = readManifestEntries({
+      reviewed_by: 'codex',
+      evidence: 'Brand PDP details were reviewed and rewritten.',
+      source_url: 'https://brand.example/products/sample',
+      source_kind: 'official_component_source_pdp',
+      entries: [
+        {
+          external_product_id: 'ext_reviewed_sections',
+          pdp_details_sections: [
+            {
+              heading: 'Formula cues',
+              body: 'Brand source highlights a cream-to-lather cleanser format with non-stripping cleansing context.',
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(validateEntry(entry)).toEqual([]);
+
+    const result = buildNextSeedData(
+      { external_product_id: 'ext_reviewed_sections', seed_data: { snapshot: {} } },
+      entry,
+      '2026-05-24T00:00:00.000Z',
+    );
+
+    expect(result.blocked).toEqual([]);
+    expect(result.fields).toEqual(['pdp_details_sections']);
+    expect(result.seedData.pdp_details_sections).toEqual([
+      expect.objectContaining({
+        heading: 'Formula cues',
+        body: 'Brand source highlights a cream-to-lather cleanser format with non-stripping cleansing context.',
+        source_origin: 'reviewed_source_backed_pdp_content_patch',
+        source_quality_status: 'high',
+      }),
+    ]);
+  });
+
   test('protects existing high-quality description while filling missing ingredients', () => {
     const [entry] = readManifestEntries({
       reviewed_by: 'codex',

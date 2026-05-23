@@ -398,7 +398,10 @@ function inferRole(facts) {
   if (/\b(?:parfum|eau de parfum|eau de toilette|fragrance|perfume|cologne|layering balm)\b/.test(titleText)) {
     return { label: 'Fine fragrance', step: 'fragrance', amPm: ['as_needed'] };
   }
-  if (/\b(?:hair|leave[-\s]?in|conditioner|heat protectant|dry shampoo|shampoo|styling cream|styler|frizz|scalp)\b/.test(titleText)) {
+  if (/\bdry\s+shampoo\b/.test(titleText)) {
+    return { label: /\bpowder\b/.test(titleText) ? 'Dry shampoo powder' : 'Dry shampoo', step: 'hair care', amPm: ['as_needed'] };
+  }
+  if (/\b(?:hair|leave[-\s]?in|conditioner|heat protectant|shampoo|styling cream|styler|frizz|scalp)\b/.test(titleText)) {
     return { label: 'Hair treatment', step: 'hair care', amPm: ['as_needed'] };
   }
   const explicitLipPair =
@@ -421,14 +424,18 @@ function inferRole(facts) {
   if (/\b(?:cleanser\s*\+\s*toner|toner serum duo)\b/.test(titleText)) {
     return { label: 'Skincare set', step: 'skincare', amPm: ['am', 'pm'] };
   }
-  if (/\bbody\s+wash|cleanser|cleansing\b/.test(titleText)) return { label: 'Body cleanser', step: 'cleanser', amPm: ['am', 'pm'] };
+  if (/\bbody\s+wash\b/.test(titleText)) return { label: 'Body cleanser', step: 'cleanser', amPm: ['am', 'pm'] };
+  if (/\bcleanser|cleansing\b/.test(titleText)) return { label: 'Face cleanser', step: 'cleanser', amPm: ['am', 'pm'] };
   if (/\bbody\s+lotion|body\s+cream|body\s+mousse|hand\s+cream|moisturizer|spf|sunscreen|serum|cream|lotion|mask|treatment\b/.test(titleText)) {
     if (/\bspf|sunscreen\b/.test(titleText)) return { label: 'Daily sunscreen', step: 'sunscreen', amPm: ['am'] };
     if (/\bserum\b/.test(titleText)) return { label: 'Treatment serum', step: 'serum', amPm: ['am', 'pm'] };
     if (/\bmask\b/.test(titleText)) return { label: 'Treatment mask', step: 'mask', amPm: ['as_needed'] };
     return { label: 'Body care treatment', step: 'skincare', amPm: ['am', 'pm'] };
   }
-  if (/\b(?:fenty hair|leave[-\s]?in|conditioner|heat protectant|dry shampoo|shampoo|styling cream|styler|frizz|scalp)\b/.test(text)) {
+  if (/\bdry\s+shampoo\b/.test(text)) {
+    return { label: /\bpowder\b/.test(text) ? 'Dry shampoo powder' : 'Dry shampoo', step: 'hair care', amPm: ['as_needed'] };
+  }
+  if (/\b(?:fenty hair|leave[-\s]?in|conditioner|heat protectant|shampoo|styling cream|styler|frizz|scalp)\b/.test(text)) {
     return { label: 'Hair treatment', step: 'hair care', amPm: ['as_needed'] };
   }
   if (/\bparfum|eau de parfum|eau de toilette|fragrance|perfume|cologne\b/.test(text)) {
@@ -441,7 +448,8 @@ function inferRole(facts) {
   if (/\bpowder|bronzer|blush|highlighter|luminizer\b/.test(text)) return { label: 'Face color makeup', step: 'face color', amPm: ['as_needed'] };
   if (/\bmascara|eyeshadow|eye color|eyeliner\b/.test(text)) return { label: 'Eye makeup', step: 'eye makeup', amPm: ['as_needed'] };
   if (/\bserum|cream|moisturizer|lotion|cleanser|mask|spf|sunscreen|treatment\b/.test(text)) {
-    if (/\bcleanser|body wash\b/.test(text)) return { label: 'Body cleanser', step: 'cleanser', amPm: ['am', 'pm'] };
+    if (/\bbody\s+wash\b/.test(text)) return { label: 'Body cleanser', step: 'cleanser', amPm: ['am', 'pm'] };
+    if (/\bcleanser|cleansing\b/.test(text)) return { label: 'Face cleanser', step: 'cleanser', amPm: ['am', 'pm'] };
     if (/\bspf|sunscreen\b/.test(text)) return { label: 'Daily sunscreen', step: 'sunscreen', amPm: ['am'] };
     if (/\bserum\b/.test(text)) return { label: 'Treatment serum', step: 'serum', amPm: ['am', 'pm'] };
     if (/\bmask\b/.test(text)) return { label: 'Treatment mask', step: 'mask', amPm: ['as_needed'] };
@@ -543,6 +551,13 @@ function inferAnchors(facts, role) {
       ['oil control', /\boil[-\s]?control|dry shampoo\b/],
       ['scalp or style refresh', /\bscalp|refresh|style|styling\b/],
     ]);
+  } else if (role.step === 'cleanser') {
+    productAnchors = findTokens(text, [
+      ['daily cleansing', /\bcleanse|cleanser|cleansing|wash(?:es)? away\b/],
+      ['pore cleansing', /\bpores?|dirt|oil|impurities\b/],
+      ['non-stripping cleanse', /\bwithout leaving skin feeling tight|non[-\s]?stripping|stripping|drying\b/],
+      ['makeup removal', /\bmakeup\b/],
+    ]);
   }
   const normalizeAnchorLabel = (value) =>
     asString(value).replace(/^(?:size|shade|format|scent|jar):\s*/i, '').trim();
@@ -586,6 +601,13 @@ function inferBestFor(facts, role, anchors) {
       ['brow definition', /\bbrow|eyebrow|definition|define\b/],
       ['precision application', /\bprecision|pencil|clear-cut\b/],
       ['shade matching', /\bshade|taupe|blonde|brown|chestnut\b/],
+    ]);
+  } else if (role.step === 'cleanser') {
+    labels = findTokens(text, [
+      ['daily cleansing', /\bcleanse|cleanser|cleansing|wash(?:es)? away\b/],
+      ['pore cleansing', /\bpores?|dirt|oil|impurities\b/],
+      ['non-stripping cleanse', /\bwithout leaving skin feeling tight|non[-\s]?stripping|stripping|drying\b/],
+      ['makeup removal', /\bmakeup\b/],
     ]);
   } else if (role.step === 'skincare' || role.step === 'serum' || role.step === 'sunscreen' || role.step === 'body care' || role.step === 'body care set') {
     labels = findTokens(text, [
@@ -875,13 +897,23 @@ function buildEvidenceAnchoredWhatItIs(facts, role) {
   }
 
   if (role.step === 'hair care') {
+    const format = /\bdry\s+shampoo\b/i.test(text)
+      ? (/\bpowder\b/i.test(text) ? 'dry shampoo powder' : 'dry shampoo')
+      : /\bheat protect|heat protection\b/i.test(text)
+        ? 'heat protectant styling product'
+        : /\bleave[-\s]?in|conditioner\b/i.test(text)
+          ? 'leave-in hair treatment'
+          : 'hair treatment';
     const claims = joinClaims([
+      /\bnon[-\s]?aerosol\b/i.test(text) ? 'a non-aerosol format' : '',
+      /\babsorbs?\s+excess\s+oil|oil[-\s]?control|oiliness\b/i.test(text) ? 'excess-oil absorption' : '',
+      /\bvolume|volumizing|fullness|texture\b/i.test(text) ? 'volume-texture boost' : '',
+      /\brefresh|washdays?|between\s+wash|quick\s+refresh\b/i.test(text) ? 'between-wash refresh' : '',
       /\bheat protect|heat protection\b/i.test(text) ? 'heat-styling prep' : '',
       /\bleave[-\s]?in|conditioner\b/i.test(text) ? 'leave-in care' : '',
       /\bfrizz\b/i.test(text) ? 'frizz control' : '',
-      /\bdry shampoo|oil[-\s]?control\b/i.test(text) ? 'oil control' : '',
     ]);
-    return sentence(`${facts.title} is a hair-care item from ${facts.brand}${size ? ` in ${size}` : ''}${claims ? `, with source-backed cues around ${claims}` : ''}`);
+    return sentence(`${facts.title} is a ${format} from ${facts.brand}${size ? ` in ${size}` : ''}${claims ? `, with source-backed cues around ${claims}` : ''}`);
   }
 
   if (role.step === 'body fragrance' || role.step === 'fragrance' || role.step === 'home fragrance') {
@@ -919,7 +951,17 @@ function buildEvidenceAnchoredWhatItIs(facts, role) {
     return sentence(`${facts.title} is a ${format} from ${facts.brand}${shade ? ` in shade ${shade}` : ''}${claims ? `, with source-backed cues around ${claims}` : ''}`);
   }
 
-  if (role.step === 'skincare' || role.step === 'body care' || role.step === 'cleanser') {
+  if (role.step === 'cleanser') {
+    const claims = joinClaims([
+      /\bcleanse|cleanser|cleansing\b/i.test(text) ? 'cleansing' : '',
+      /\bmakeup\b/i.test(text) ? 'makeup removal' : '',
+      /\bwithout leaving skin feeling tight|non[-\s]?stripping|stripping|drying\b/i.test(text) ? 'a non-stripping feel' : '',
+      /\bpores?|dirt|oil|impurities\b/i.test(text) ? 'dirt, oil, and impurity removal' : '',
+    ]);
+    return sentence(`${facts.title} is a ${role.label.toLowerCase()} from ${facts.brand}${size ? ` in ${size}` : ''}${claims ? `, with source-backed cues around ${claims}` : ''}`);
+  }
+
+  if (role.step === 'skincare' || role.step === 'body care') {
     const claims = joinClaims([
       /\bcleanse|cleanser|cleansing\b/i.test(text) ? 'cleansing' : '',
       /\btoner|tone\b/i.test(text) ? 'toning' : '',
@@ -936,6 +978,10 @@ function buildWhatItIs(facts, role) {
   const description = firstUsefulSentence(facts.description, 240);
   const detail = firstUsefulDetail(facts.details);
   if (isSampleProduct(facts)) {
+    const sampleRoleAwareWhatItIs = ['fragrance', 'body fragrance', 'home fragrance', 'hair care', 'cleanser'].includes(role.step)
+      ? buildEvidenceAnchoredWhatItIs(facts, role)
+      : '';
+    if (sampleRoleAwareWhatItIs) return sampleRoleAwareWhatItIs;
     if (description) return sentence(description.replace(/\.$/, ''));
     if (detail) return sentence(compactText(detail, 180).replace(/\.$/, ''));
   }

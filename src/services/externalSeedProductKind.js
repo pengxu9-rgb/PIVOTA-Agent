@@ -177,6 +177,43 @@ function resolveExplicitProductFamily(input = {}) {
   return null;
 }
 
+function hasReviewedIngredientNotApplicable(input = {}) {
+  const seedData = asPlainObject(input.seed_data);
+  const snapshot = asPlainObject(seedData.snapshot);
+  const intel = {
+    ...asPlainObject(snapshot.ingredient_intel),
+    ...asPlainObject(seedData.ingredient_intel),
+  };
+  const applicability = asPlainObject(intel.inci_applicability);
+  const remediation = {
+    ...asPlainObject(snapshot.ingredient_remediation_v1),
+    ...asPlainObject(seedData.ingredient_remediation_v1),
+  };
+  const quality = {
+    ...asPlainObject(snapshot.pdp_field_quality_summary),
+    ...asPlainObject(seedData.pdp_field_quality_summary),
+  };
+  const ingredientQuality = {
+    ...asPlainObject(quality.ingredients_raw),
+    ...asPlainObject(quality.ingredients_inci),
+  };
+  const status = [
+    applicability.status,
+    remediation.action,
+    remediation.source_quality_status,
+    ingredientQuality.source_quality_status,
+  ]
+    .map(asString)
+    .join(' ')
+    .toLowerCase();
+  return (
+    intel.not_applicable === true ||
+    status.includes('not_applicable') ||
+    status.includes('mark_inci_not_applicable') ||
+    status.includes('reviewed_not_applicable')
+  );
+}
+
 function collectCategoryPathCandidates(input = {}) {
   const seedData = asPlainObject(input.seed_data);
   const snapshot = asPlainObject(seedData.snapshot);
@@ -243,6 +280,12 @@ function classifyExternalSeedProductKind(input = {}) {
     return { family: 'non_merch', reasons };
   }
   const explicitFamily = resolveExplicitProductFamily(input);
+  if (explicitFamily?.family === 'accessory' && hasReviewedIngredientNotApplicable(input)) {
+    return {
+      family: 'accessory',
+      reasons: [explicitFamily.reason, 'reviewed_ingredient_not_applicable_signal'],
+    };
+  }
   const sampleLike = SAMPLE_LIKE_RE.test(text);
   if (sampleLike && (!explicitFamily || ['sample', 'single_formula'].includes(explicitFamily.family))) {
     reasons.push('sample_like_signal');
