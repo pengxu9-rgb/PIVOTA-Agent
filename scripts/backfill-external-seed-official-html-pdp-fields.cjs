@@ -14,6 +14,7 @@ const SHOPIFY_PRODUCT_JSON_VARIANT_HOSTS = new Set([
   'skin1004.com',
   'tirtir.global',
   'us.laneige.com',
+  'kyliecosmetics.com',
   'tomfordbeauty.com',
 ]);
 const REVIEW_SUMMARY_ONLY_OKENDO_HOSTS = new Set(['beautyofjoseon.com', 'kravebeauty.com']);
@@ -188,6 +189,8 @@ function isDisplayableShopifyVariantOption(option) {
   if (!name || !value) return false;
   if (/^(?:default|default title|title|single|single item|one size|standard|regular|n\/a)$/i.test(value)) return false;
   if (/^(?:default|default title|title)$/i.test(name) && /^(?:default|default title|title)$/i.test(value)) return false;
+  if (/^auto-[0-9a-f]{8,}$/i.test(value)) return false;
+  if (/^offer$/i.test(name) && /^auto-/i.test(value)) return false;
   return true;
 }
 
@@ -355,7 +358,7 @@ function looksLikeHowToUse(value) {
   const text = normalizeText(value);
   if (text.length < 45 || text.length > 1600) return false;
   if (/\b(?:checkout|shop all|ambassador|find your routine|mega menu|header menu)\b/i.test(text)) return false;
-  return /\b(?:apply|use|massage|rinse|spray|sweep|wipe|shake|dispense|after cleansing|after completing|before|daily|morning|evening|night|leave on|pat)\b/i.test(text);
+  return /\b(?:apply|use|massage|rinse|spray|sweep|wipe|shake|dispense|pull|brush|after cleansing|after completing|before|daily|morning|evening|night|leave on|pat)\b/i.test(text);
 }
 
 function looksLikeActiveIngredientList(value) {
@@ -693,6 +696,251 @@ function extractLaneigeFields(html, options = {}) {
   if (formulatedWithout.length) details.push({ heading: 'Formulated Without', body: formulatedWithout.join(', ') });
   if (looksLikeHowToUse(howTo)) details.push({ heading: 'How To Use', body: howTo });
   if (details.length) fields.pdp_details_sections = details.slice(0, 8);
+
+  return fields;
+}
+
+function normalizeKylieTitleTokens(value) {
+  return normalizeTitleTokens(value).filter((token) => !['kylie', 'cosmetics', 'cosmetic', 'jenner'].includes(token));
+}
+
+function scoreKylieProductTitleMatch(sourceTitle, productTitle) {
+  const sourceTokens = normalizeKylieTitleTokens(sourceTitle);
+  const productTokens = new Set(normalizeKylieTitleTokens(productTitle));
+  if (!sourceTokens.length || !productTokens.size) return 0;
+  const shared = sourceTokens.filter((token) => productTokens.has(token)).length;
+  return shared / Math.max(1, sourceTokens.length);
+}
+
+function extractKylieCurrentProduct(html, options = {}) {
+  const source = String(html || '');
+  const productTitle = normalizeText(options.productTitle);
+  const candidates = [
+    extractBalancedJsonObject(source, 'theme.product ='),
+    extractBalancedJsonObject(source, 'window.SwymProductInfo.product'),
+  ].filter(Boolean);
+
+  const usable = candidates.filter((candidate) => normalizeText(candidate?.title) && normalizeText(candidate?.handle));
+  if (!productTitle) return usable[0] || null;
+  return (
+    usable.find((candidate) => scoreKylieProductTitleMatch(productTitle, candidate.title) >= 0.65) ||
+    usable.find((candidate) => scoreProductTitleMatch(productTitle, candidate.title) >= 0.75) ||
+    null
+  );
+}
+
+function cleanKylieDetailText(value) {
+  return cleanSectionText(value)
+    .replace(/\bbuild a routine\b[\s\S]*$/i, '')
+    .replace(/\bProduct Tip\b[\s\S]*$/i, '')
+    .replace(/\bShop the look\b[\s\S]*$/i, '')
+    .trim();
+}
+
+function extractKylieTagValues(tags, prefix) {
+  const pattern = new RegExp(`^${escapeRegExp(prefix)}:+(.+)$`, 'i');
+  return Array.from(
+    new Set(
+      asArray(tags)
+        .map((tag) => normalizeText(tag))
+        .map((tag) => {
+          const match = tag.match(pattern);
+          return match ? normalizeText(match[1]) : '';
+        })
+        .filter(Boolean),
+    ),
+  );
+}
+
+function titleCaseDisplayValue(value) {
+  return normalizeText(value)
+    .split(/\s+/)
+    .map((part) => (/^[A-Z0-9]+$/.test(part) ? part : part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()))
+    .join(' ')
+    .replace(/\bFree\b/g, 'free')
+    .trim();
+}
+
+function axisKindForKylieOption(name, value) {
+  const label = `${normalizeText(name)} ${normalizeText(value)}`;
+  if (/\b(?:ml|mL|g|oz|fl\s*oz)\b/i.test(label)) return 'volume';
+  if (/\b(?:count|ct|pcs?|pieces?|set|kit|pack)\b/i.test(label)) return 'pack';
+  if (/\bshade\b/i.test(label)) return 'shade';
+  if (/\bcolor|colour\b/i.test(label)) return 'color';
+  return '';
+}
+
+function extractKylieVariantDataById(html) {
+  const source = String(html || '');
+  const start = source.indexOf('theme.product.variant_data =');
+  if (start < 0) return new Map();
+  const end = source.indexOf('theme.product.options', start);
+  const slice = source.slice(start, end > start ? end : start + 50000);
+  const chunks = slice.split(/\n\s*\},\s*\{\s*\n/g);
+  const byId = new Map();
+
+  for (const chunk of chunks) {
+    const id = normalizeText((chunk.match(/"variant_id"\s*:\s*"?([0-9A-Za-z_-]+)"?/i) || [])[1]);
+    if (!id) continue;
+    const readString = (key) => {
+      const match = new RegExp(`"${escapeRegExp(key)}"\\s*:\\s*(?:"((?:\\\\.|[^"\\\\])*)"|null)`, 'i').exec(chunk);
+      return match && match[1] ? cleanKylieDetailText(decodeJsonStringFragment(match[1])) : '';
+    };
+    byId.set(id, {
+      volume_value: readString('volume_value'),
+      measurement_override: readString('measurement_override'),
+      shade_short_description: readString('shade_short_description'),
+      shade_grouping: readString('shade_grouping'),
+      shade_color: readString('shade_color'),
+      multiple_shade_color: readString('multiple_shade_color'),
+      ingredient_detail: readString('ingredient_detail'),
+      variant_level_description: readString('variant_level_description'),
+    });
+  }
+  return byId;
+}
+
+function extractKylieParagraphAfterHeading(html, headingPattern) {
+  const source = String(html || '');
+  const headingRe = new RegExp(`<h[1-6]\\b[^>]*>\\s*${headingPattern}\\s*<\\/h[1-6]>`, 'i');
+  const heading = headingRe.exec(source);
+  if (!heading) return '';
+  const rest = source.slice(heading.index + heading[0].length, heading.index + heading[0].length + 2500);
+  const paragraph = /<p\b[^>]*>([\s\S]*?)<\/p>/i.exec(rest);
+  return paragraph ? cleanKylieDetailText(paragraph[1]) : '';
+}
+
+function extractKylieHeadingPairs(html, headingPattern) {
+  const source = String(html || '');
+  const headingRe = new RegExp(`<h[1-6]\\b[^>]*>\\s*${headingPattern}\\s*<\\/h[1-6]>`, 'i');
+  const heading = headingRe.exec(source);
+  if (!heading) return [];
+  const rest = source.slice(heading.index + heading[0].length);
+  const nextBlock = rest.search(/<div\b[^>]*class=["'][^"']*\bcontent-blocks__item\b/i);
+  const block = rest.slice(0, nextBlock >= 0 ? nextBlock : 5000);
+  const pairs = [];
+  for (const match of block.matchAll(/<h[45]\b[^>]*>([\s\S]*?)<\/h[45]>\s*<p\b[^>]*>([\s\S]*?)<\/p>/gi)) {
+    const headingText = cleanKylieDetailText(match[1]);
+    const body = cleanKylieDetailText(match[2]);
+    if (headingText && body.length >= 12) pairs.push({ heading: headingText, body });
+  }
+  return pairs;
+}
+
+function extractKylieFullIngredients(html, product, variantDataById) {
+  const candidates = [
+    product?.accordion_ingredient_details,
+    product?.ingredient_details,
+    product?.ingredients,
+    extractKylieParagraphAfterHeading(html, '(?:full\\s+)?ingredients?'),
+    ...Array.from(variantDataById.values()).map((item) => item.ingredient_detail),
+  ]
+    .map((item) => cleanKylieDetailText(item))
+    .filter(Boolean);
+  return candidates.find((item) => looksLikeFullInci(item) || looksLikeShortOfficialInci(item)) || '';
+}
+
+function buildKylieVariants(product, html, options = {}) {
+  const rawVariants = asArray(product?.variants);
+  if (!rawVariants.length) return [];
+  const productTitle = normalizeText(options.productTitle);
+  if (productTitle && scoreKylieProductTitleMatch(productTitle, product.title) < 0.65 && scoreProductTitleMatch(productTitle, product.title) < 0.75) {
+    return [];
+  }
+
+  const productOptions = asArray(product.options).map((option) => (typeof option === 'string' ? { name: option } : option));
+  const imageUrls = asArray(product.images).map((image) => normalizeProtocolRelativeUrl(image, 'https://kyliecosmetics.com')).filter(Boolean);
+  const variantDataById = extractKylieVariantDataById(html);
+  const shadeGroups = extractKylieTagValues(product.tags, 'shade_group');
+  const productUrl = normalizeText(options.productUrl) || `https://kyliecosmetics.com/products/${normalizeText(product.handle)}`;
+
+  return rawVariants
+    .map((variant) => {
+      if (!variant || typeof variant !== 'object') return null;
+      const variantId = normalizeText(variant.id || variant.variant_id);
+      if (!variantId) return null;
+      const variantData = variantDataById.get(variantId) || {};
+      let optionEntries = [variant.option1, variant.option2, variant.option3]
+        .map((value, index) => ({
+          name: normalizeText(productOptions[index]?.name || `Option ${index + 1}`),
+          value: normalizeText(value),
+        }))
+        .filter(isDisplayableShopifyVariantOption);
+
+      let sourceOrigin = 'official_kylie_theme_product';
+      if (!optionEntries.length && rawVariants.length === 1) {
+        const size = normalizeSpecLabel(variantData.measurement_override || variantData.volume_value);
+        if (size) {
+          optionEntries = [{ name: 'Size', value: size, axis_kind: axisKindForKylieOption('Size', size) || 'volume' }];
+          sourceOrigin = 'official_kylie_variant_data_singleton_spec';
+        } else if (shadeGroups.length === 1) {
+          optionEntries = [{ name: 'Color', value: titleCaseDisplayValue(shadeGroups[0]), axis_kind: 'color' }];
+          sourceOrigin = 'official_kylie_product_tags_singleton_color';
+        }
+      }
+      optionEntries = optionEntries.map((entry) => ({
+        ...entry,
+        axis_kind: entry.axis_kind || axisKindForKylieOption(entry.name, entry.value) || undefined,
+      }));
+      if (!optionEntries.length) return null;
+
+      const price = normalizeShopifyProductJsonPrice(variant.price || product.price);
+      const imageUrl = normalizeProtocolRelativeUrl(
+        variant.featured_image?.src || variant.featured_image?.url || variant.image || imageUrls[0],
+        'https://kyliecosmetics.com',
+      );
+      const swatchColor = normalizeText(variantData.shade_color || variantData.multiple_shade_color);
+      return {
+        id: variantId,
+        variant_id: variantId,
+        sku: normalizeText(variant.sku) || variantId,
+        title: normalizeText(variant.title) || optionEntries.map((entry) => entry.value).join(' / '),
+        options: optionEntries,
+        option_name: optionEntries.length === 1 ? optionEntries[0].name : undefined,
+        option_value: optionEntries.length === 1 ? optionEntries[0].value : undefined,
+        axis_kind: optionEntries.length === 1 ? optionEntries[0].axis_kind : undefined,
+        ...(price != null ? { price, price_amount: price, currency: 'USD' } : {}),
+        ...(typeof variant.available === 'boolean' ? { available: variant.available, in_stock: variant.available } : {}),
+        ...(variant.inventory_quantity != null ? { inventory_quantity: variant.inventory_quantity } : {}),
+        ...(imageUrl ? { image_url: imageUrl, image_urls: [imageUrl], images: [imageUrl] } : {}),
+        ...(swatchColor ? { swatch_color: swatchColor, color_hex: swatchColor } : {}),
+        ...(variantData.shade_short_description ? { shade_short_description: variantData.shade_short_description } : {}),
+        ...(productUrl ? { product_url: productUrl, deep_link: `${productUrl}${productUrl.includes('?') ? '&' : '?'}variant=${variantId}` } : {}),
+        source_origin: sourceOrigin,
+        source_quality_status: 'high',
+      };
+    })
+    .filter(Boolean);
+}
+
+function extractKylieFields(html, options = {}) {
+  const fields = {};
+  const product = extractKylieCurrentProduct(html, options);
+  if (!product) return fields;
+
+  const variantDataById = extractKylieVariantDataById(html);
+  const description = cleanKylieDetailText(product.description || product.content);
+  const howTo = normalizeHowToUseCandidate(extractKylieParagraphAfterHeading(html, 'how\\s+to\\s+use'));
+  const benefits = extractKylieTagValues(product.tags, 'benefit');
+  const brandPrinciples = extractKylieTagValues(product.tags, 'Brand_Principles');
+  const keyIngredients = extractKylieTagValues(product.tags, 'key_ingredient');
+  const whyWeLoveIt = extractKylieHeadingPairs(html, 'why\\s+we\\s+love\\s+it');
+  const fullIngredients = extractKylieFullIngredients(html, product, variantDataById);
+  const variants = buildKylieVariants(product, html, options);
+
+  if (description.length >= 60) fields.pdp_description_raw = description;
+  if (looksLikeFullInci(fullIngredients) || looksLikeShortOfficialInci(fullIngredients)) fields.pdp_ingredients_raw = fullIngredients;
+  if (keyIngredients.length) fields.pdp_active_ingredients_raw = keyIngredients.join(', ');
+  if (looksLikeHowToUse(howTo)) fields.pdp_how_to_use_raw = howTo;
+  if (variants.length) fields.variants = variants;
+
+  const details = [];
+  if (description.length >= 60) details.push({ heading: 'Summary', body: description });
+  if (benefits.length) details.push({ heading: 'Benefits', body: benefits.map(titleCaseDisplayValue).join(', ') });
+  if (brandPrinciples.length) details.push({ heading: 'Brand Principles', body: brandPrinciples.map(titleCaseDisplayValue).join(', ') });
+  for (const pair of whyWeLoveIt.slice(0, 6)) details.push(pair);
+  if (looksLikeHowToUse(howTo)) details.push({ heading: 'How To Use', body: howTo });
+  if (details.length) fields.pdp_details_sections = mergeDetails([], details);
 
   return fields;
 }
@@ -2161,6 +2409,7 @@ async function extractOfficialHtmlFields(host, html, options = {}) {
   else if (host === 'torriden.us') fields = extractTorridenFields(html);
   else if (host === 'haruharuwonder.com') fields = extractHaruharuFields(html);
   else if (host === 'us.laneige.com') fields = extractLaneigeFields(html, options);
+  else if (host === 'kyliecosmetics.com') fields = extractKylieFields(html, options);
   else if (host === 'tirtir.global') fields = await extractTirtirFields(html, options);
   else if (host === 'theordinary.com') fields = {};
   else if (host === 'fentybeauty.com') fields = extractFentyFields(html, options);
@@ -2859,6 +3108,10 @@ module.exports = {
     extractSkin1004Fields,
     extractMedicubeFields,
     extractLaneigeFields,
+    extractKylieFields,
+    extractKylieCurrentProduct,
+    extractKylieVariantDataById,
+    buildKylieVariants,
     extractFentyFields,
     extractFentyFullIngredients,
     extractGuerlainFields,

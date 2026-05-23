@@ -9,6 +9,7 @@ const {
     extractSkin1004Fields,
     extractMedicubeFields,
     extractLaneigeFields,
+    extractKylieFields,
     extractFentyFields,
     extractFentyFullIngredients,
     extractGuerlainFields,
@@ -511,6 +512,82 @@ describe('backfill-external-seed-official-html-pdp-fields TIRTIR sheet matching'
       expect.arrayContaining([
         expect.objectContaining({ heading: 'Benefits', body: expect.stringContaining('bouncy-looking skin') }),
         expect.objectContaining({ heading: 'Formulated Without', body: 'Parabens' }),
+      ]),
+    );
+  });
+
+  test('extracts Kylie official theme fields, singleton size variant, and source-backed how-to', () => {
+    const product = {
+      id: 8096711868658,
+      title: 'Wisp Lash Mascara',
+      handle: 'wisp-lash-kylie-jenner-mascara',
+      description:
+        '<p>get long, lifted, and fanned-out lashes with my wisp lash mascara. featuring a clean and vegan formula, this mascara weightlessly builds and provides feathery, wispy lashes.</p>',
+      tags: [
+        'benefit:lengthening',
+        'benefit:lightweight',
+        'Brand_Principles:clean',
+        'Brand_Principles:cruelty free',
+        'Brand_Principles:vegan',
+        'shade_group:black',
+      ],
+      price: 2500,
+      variants: [
+        {
+          id: 45167939354866,
+          title: 'Default Title',
+          option1: 'Default Title',
+          sku: 'KC756',
+          available: true,
+          price: 2500,
+        },
+      ],
+      options: ['Title'],
+      images: ['//kyliecosmetics.com/cdn/shop/files/KJC_WLM_23_12ml_Stylized.jpg?v=1'],
+    };
+    const html = `
+      <script>theme.product = ${JSON.stringify(product)};</script>
+      <script>
+        theme.product.variant_data = [{
+          "variant_id":45167939354866,
+          "volume_value":"0.4 fl oz",
+          "shade_color":"#101010",
+          "ingredient_detail":"WATER, EUPHORBIA CERIFERA WAX, GLYCERIN, BUTYLENE GLYCOL, ACRYLATES COPOLYMER, STEARIC ACID, PALMITIC ACID, AMINOMETHYL PROPANEDIOL, PHENOXYETHANOL, HYDROXYETHYLCELLULOSE, PANTHENOL, TOCOPHEROL, SODIUM DEHYDROACETATE, IRON OXIDES (CI 77499)."
+        }],
+        theme.product.options = [{"name":"Title","position":1,"values":["Default Title"]}];
+      </script>
+      <div class="content-blocks__item content-blocks__item--two-row-img-text">
+        <h3>how to use</h3>
+        <p>Starting at the base of the lashes, pull the mascara brush through from root to tip for length and curl.</p>
+      </div>
+      <div class="content-blocks__item content-blocks__item--two-col-text">
+        <h3 class="two-col-text-block__title">why we love it</h3>
+        <h5>up to 24 hours of length, lift, and curl</h5>
+        <p>great for all lash types and suitable for sensitive eyes.</p>
+      </div>
+    `;
+
+    const fields = extractKylieFields(html, { productTitle: 'Kylie Cosmetics Wisp Lash Mascara' });
+
+    expect(fields.pdp_description_raw).toContain('long, lifted');
+    expect(fields.pdp_ingredients_raw).toContain('EUPHORBIA CERIFERA WAX');
+    expect(fields.pdp_how_to_use_raw).toContain('pull the mascara brush through');
+    expect(fields.variants).toHaveLength(1);
+    expect(fields.variants[0]).toEqual(
+      expect.objectContaining({
+        option_name: 'Size',
+        option_value: '0.4 fl oz',
+        axis_kind: 'volume',
+        swatch_color: '#101010',
+        source_origin: 'official_kylie_variant_data_singleton_spec',
+      }),
+    );
+    expect(fields.variants[0].option_value).not.toMatch(/default/i);
+    expect(fields.pdp_details_sections).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ heading: 'Benefits', body: expect.stringContaining('Lengthening') }),
+        expect.objectContaining({ heading: 'Brand Principles', body: expect.stringContaining('Cruelty free') }),
+        expect.objectContaining({ heading: 'up to 24 hours of length, lift, and curl' }),
       ]),
     );
   });
@@ -1145,6 +1222,11 @@ describe('backfill-external-seed-official-html-pdp-fields TIRTIR sheet matching'
             variant_id: 'legacy-default',
             title: 'Single item',
             options: [{ name: 'Format', value: 'Single item' }],
+          },
+          {
+            variant_id: 'legacy-auto-offer',
+            title: 'AUTO-9e1c20fecc70',
+            options: [{ name: 'Offer', value: 'AUTO-9e1c20fecc70' }],
           },
         ],
         snapshot: {},
