@@ -64,6 +64,8 @@ function firstSentence(value, maxLength = 220) {
 
 function sanitizePublicSourceText(value) {
   return text(value)
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<\/?[^>]+>/g, ' ')
     .replace(/[\u200B-\u200D\uFEFF]/g, '')
     .replace(/[$€£¥]\s*\d+(?:\.\d{2})?\s*(?:value)?\b/gi, '')
     .replace(/\b\d{1,3}%\s*off\b/gi, '')
@@ -187,9 +189,13 @@ function inferKind(title, category, categoryPath, description = '') {
   const titleCategoryText = `${title} ${category} ${categoryPath}`.toLowerCase();
   const descriptionText = `${description}`.toLowerCase();
   const haystack = `${titleCategoryText} ${descriptionText}`;
+  const brushCareTitlePattern =
+    /\b(?:palmat|brush\s+care|brush cleanser|brush cleaning|brush cleaner|brushampoo|sigmagic|travel\s+switch|switch\s+set|dry['’]?n\s+shape|brush\s+cleaning\s+mat|brush\s+cleaning\s+tool)\b|sigma\W*switch\b/;
+  const brushCareDescriptionPattern =
+    /\b(?:palmat|brush cleanser|brush cleaning|brush cleaner|brushampoo|sigmagic|travel\s+switch|switch\s+set|dry['’]?n\s+shape|brush\s+cleaning\s+mat|brush\s+cleaning\s+tool|deep cleans? your brushes)\b|sigma\W*switch\b/;
   if (/\b(?:grwm routine|look)\b/.test(titleCategoryText)) return 'makeup_set';
   if (/\b(?:brush\s+cup|brush\s+holder|brush\s+case|brush\s+bag|brush\s+storage|makeup\s+brush\s+cup)\b/.test(titleCategoryText)) return 'brush_storage';
-  if (/\b(?:brush\s+care|brush cleanser|brush cleaning|brush cleaner|brushampoo|sigmagic|travel\s+switch|switch\s+set|dry['’]?n\s+shape|brush\s+cleaning\s+mat|brush\s+cleaning\s+tool)\b|sigma\W*switch\b/.test(titleCategoryText)) return 'brush_care';
+  if (brushCareTitlePattern.test(titleCategoryText)) return 'brush_care';
   if (
     /\bbrush(?:\s+[a-z0-9&'’.-]+){0,4}\s+(?:set|kit|duo|trio|quad|bundle|collection)\b/.test(titleCategoryText) ||
     /\b(?:set|kit|duo|trio|quad|bundle|collection)\b.*\bbrush(?:es)?\b/.test(titleCategoryText) ||
@@ -201,6 +207,7 @@ function inferKind(title, category, categoryPath, description = '') {
   if (/\b(?:set|kit|duo|trio|quad|sampler|bundle|vault|box|favourites|favorites|collection|best of|holiday edition|choose your shades)\b/.test(titleCategoryText)) {
     return inferSetKind(titleCategoryText, descriptionText);
   }
+  if (brushCareDescriptionPattern.test(descriptionText)) return 'brush_care';
   if (
     /\b(?:brush|beauty tool|makeup brush)\b/.test(titleCategoryText) &&
     !/\bbrush cleanser\b/.test(titleCategoryText)
