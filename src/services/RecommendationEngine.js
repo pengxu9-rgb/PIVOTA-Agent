@@ -407,6 +407,11 @@ const SIMILAR_INTENT_FAMILY_RULES = Object.freeze([
     sql: '\\m(face\\s+oil|facial\\s+oil)\\M',
   },
   {
+    id: 'toner',
+    js: /\b(?:toner|tonic|tonik|toning\s+mist|face\s+mist|facial\s+mist|toner\s+pad|toning\s+pad)\b/i,
+    sql: '\\m(toner|tonic|tonik|toning\\s+mist|face\\s+mist|facial\\s+mist|toner\\s+pad|toning\\s+pad)\\M',
+  },
+  {
     id: 'body_oil',
     js: /\b(?:body\s+(?:oil|lotion|cream|balm|moisturi[sz]er)|massage\s+oil)\b/i,
     sql: '\\m(body\\s+(oil|lotion|cream|balm|moisturi[sz]er)|massage\\s+oil)\\M',
@@ -2548,6 +2553,18 @@ function getSimilarIntentFamilySqlLikePatterns(intentFamily) {
     ];
   }
   if (id === 'face_oil') return ['%face oil%', '%facial oil%'];
+  if (id === 'toner') {
+    return [
+      '%toner%',
+      '%tonic%',
+      '%tonik%',
+      '%toning mist%',
+      '%face mist%',
+      '%facial mist%',
+      '%toner pad%',
+      '%toning pad%',
+    ];
+  }
   if (id === 'body_oil') {
     return [
       '%body oil%',
