@@ -134,10 +134,10 @@ function firstArray(...values) {
   return [];
 }
 
-function firstNumber(...values) {
+function firstPositiveNumber(...values) {
   for (const value of values) {
     const numeric = Number(value);
-    if (Number.isFinite(numeric)) return numeric;
+    if (Number.isFinite(numeric) && numeric > 0) return numeric;
   }
   return null;
 }
@@ -434,7 +434,7 @@ function resolveSeedFacts(row) {
   );
   const variants = firstArray(seedData.variants, snapshot.variants);
   const firstVariant = asObject(variants[0]);
-  const price = firstNumber(
+  const price = firstPositiveNumber(
     row.price_amount,
     seedData.price_amount,
     seedData.price,

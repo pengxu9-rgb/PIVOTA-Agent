@@ -10,7 +10,7 @@ jest.mock('../../scripts/publish_product_intel_pilot_to_kb', () => ({
 }));
 
 const {
-  _internals: { brandFromUrl, buildBundle, inferKind },
+  _internals: { brandFromUrl, buildBundle, inferKind, sanitizeFormulaSummary, sanitizePublicTitleText },
 } = require('../../scripts/build-reviewed-official-seed-product-intel-report.cjs');
 
 describe('build-reviewed-official-seed-product-intel-report', () => {
@@ -228,6 +228,12 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     expect(inferKind('Brush Cleanser Trio', '', '', 'Give your brushes a deep, gentle clean.')).toBe(
       'brush_care',
     );
+    expect(sanitizePublicTitleText('\u200dROSY EYESHADOW PALETTE (100% off)')).toBe(
+      'ROSY EYESHADOW PALETTE',
+    );
+    expect(sanitizeFormulaSummary('MATTESDemure: Mica, Nylon-12; Bis-Diglyceryl.')).toBe(
+      'MATTES Demure: Mica, Nylon-12; Bis-Diglyceryl.',
+    );
 
     const lipDuoBundle = buildBundle({
       seed: {
@@ -251,10 +257,11 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     const paletteBundle = buildBundle({
       seed: {
         external_product_id: 'ext_sigma_palette',
-        title: 'Sigma x Angela Bright Eyeshadow Palette',
+        title: '\u200dROSY EYESHADOW PALETTE (100% off)',
         canonical_url: 'https://sigmabeauty.com/products/sigma-x-angela-bright-eyeshadow-palette',
         seed_data: {
           description: '"It finally happened...the Sigma x Angela Bright Eyeshadow Palette. Not eligible for discounts.',
+          ingredient_tokens: ['MATTESDemure: Mica, Nylon-12; Bis-Diglyceryl.'],
         },
       },
       inventoryRow: {
@@ -288,7 +295,8 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     expect(JSON.stringify(lipDuoBundle)).not.toMatch(/\$\d|available only|Ulta Beauty|price or availability/i);
     expect(paletteBundle.shopping_card.subtitle).toBe('Eye Makeup');
     expect(paletteBundle.shopping_card.highlight).toBe('Eye-makeup formula detail');
-    expect(JSON.stringify(paletteBundle)).not.toMatch(/\.{2,}|discount/i);
+    expect(paletteBundle.shopping_card.title).toBe('ROSY EYESHADOW PALETTE');
+    expect(JSON.stringify(paletteBundle)).not.toMatch(/\.{2,}|discount|100% off|MATTESDemure|;\./i);
     expect(brushCareBundle.shopping_card.subtitle).toBe('Brush Care');
     expect(brushCareBundle.shopping_card.highlight).toBe('Brush-care cleaning detail');
     expect(JSON.stringify(brushCareBundle)).not.toMatch(/community-backed/i);
