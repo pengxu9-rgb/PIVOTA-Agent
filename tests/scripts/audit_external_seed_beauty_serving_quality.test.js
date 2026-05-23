@@ -120,6 +120,34 @@ describe('audit-external-seed-beauty-serving-quality', () => {
     expect(result.failure_reasons).toEqual([]);
   });
 
+  test('does not classify informational duplicate SKU findings as repairable serving debt', () => {
+    const result = classifyBeautyServingQualityRow({
+      row: {
+        id: 'eps_info_duplicate_sku',
+        external_product_id: 'ext_info_duplicate_sku',
+        title: "Pro Filt'r Instant Retouch Concealer — #210",
+        price_amount: 29,
+        image_url: 'https://cdn.example.com/concealer.jpg',
+        seed_data: { snapshot: {} },
+      },
+      contentAudit: {
+        findings: [
+          {
+            anomaly_type: 'gift_card_duplicate_sku',
+            severity: 'info',
+          },
+        ],
+      },
+      pdpQuality: {
+        failure_reasons: [],
+      },
+      merchantUrlHealth: { checked: true, ok: true, status: 200 },
+    });
+
+    expect(result.classification).toBe(CLASSIFICATIONS.PASS);
+    expect(result.failure_reasons).toEqual([]);
+  });
+
   test('uses production-safe PDP probe timeout defaults for beauty serving audits', () => {
     expect(DEFAULT_CORE_PDP_TIMEOUT_MS).toBeGreaterThanOrEqual(45000);
     expect(DEFAULT_DETAILS_PDP_TIMEOUT_MS).toBeGreaterThanOrEqual(60000);
