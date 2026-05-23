@@ -260,7 +260,8 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
         title: '\u200dROSY EYESHADOW PALETTE (100% off)',
         canonical_url: 'https://sigmabeauty.com/products/sigma-x-angela-bright-eyeshadow-palette',
         seed_data: {
-          description: '"It finally happened...the Sigma x Angela Bright Eyeshadow Palette. Not eligible for discounts.',
+          description:
+            '"It finally happened...the Sigma x Angela Bright Eyeshadow Palette. Voted one of the best palettes in 2020. Not eligible for discounts.',
           ingredient_tokens: ['MATTESDemure: Mica, Nylon-12; Bis-Diglyceryl.'],
         },
       },
@@ -296,7 +297,7 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     expect(paletteBundle.shopping_card.subtitle).toBe('Eye Makeup');
     expect(paletteBundle.shopping_card.highlight).toBe('Eye-makeup formula detail');
     expect(paletteBundle.shopping_card.title).toBe('ROSY EYESHADOW PALETTE');
-    expect(JSON.stringify(paletteBundle)).not.toMatch(/\.{2,}|discount|100% off|MATTESDemure|;\./i);
+    expect(JSON.stringify(paletteBundle)).not.toMatch(/\.{2,}|discount|100% off|MATTESDemure|;\.|voted one of/i);
     expect(brushCareBundle.shopping_card.subtitle).toBe('Brush Care');
     expect(brushCareBundle.shopping_card.highlight).toBe('Brush-care cleaning detail');
     expect(JSON.stringify(brushCareBundle)).not.toMatch(/community-backed/i);
@@ -335,6 +336,22 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
         'This is the only brush set you need. Brushes Included: Sigma Switch, E06 Winged Liner Brush.',
       ),
     ).toBe('brush_set');
+    expect(
+      inferKind(
+        'Samantha March Favorites Set',
+        '',
+        '',
+        'Perfect products for quick makeup looks. Products Included: Detail Blending brush, Eyeshadow Quad, Tint Renew Lip Oil, and Sigma Switch. HIGHEST-QUALITY FIBERS: synthetic fibers to protect skin.',
+      ),
+    ).toBe('makeup_set');
+    expect(
+      inferKind(
+        'Paramour False Lashes',
+        '',
+        '',
+        'Add dramatic volume to your lash look with gorgeous falsies designed to blend with your real lashes.',
+      ),
+    ).toBe('eye_makeup');
 
     const brushSetBundle = buildBundle({
       seed: {
@@ -383,6 +400,42 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
       batchName: 'test_batch',
       reviewer: 'codex_test',
     });
+    const makeupSetBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_sigma_makeup_set',
+        title: 'Samantha March Favorites Set',
+        canonical_url: 'https://sigmabeauty.com/products/samantha-march-favorites-set',
+        seed_data: {
+          description:
+            'Enjoy this Favorites Set featuring products for quick makeup looks. Products Included: Detail Blending brush, Eyeshadow Quad, Tint Renew Lip Oil, and Sigma Switch. HIGHEST-QUALITY FIBERS: synthetic fibers to protect skin.',
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_sigma_makeup_set',
+        sellable_item_group_id: 'sig_sigma_makeup_set',
+      },
+      generatedAt: '2026-05-22T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+    const lashesBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_sigma_lashes',
+        title: 'Paramour False Lashes',
+        canonical_url: 'https://sigmabeauty.com/products/paramour-false-lashes',
+        seed_data: {
+          description:
+            'Add dramatic volume to your lash look with these gorgeous falsies designed to blend seamlessly with your real lashes.',
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_sigma_lashes',
+        sellable_item_group_id: 'sig_sigma_lashes',
+      },
+      generatedAt: '2026-05-22T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
 
     expect(brushSetBundle.shopping_card.subtitle).toBe('Brush Set');
     expect(brushSetBundle.shopping_card.highlight).toBe('Brush set format detail');
@@ -392,6 +445,9 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     expect(switchBundle.shopping_card.highlight).toBe('Brush-care cleaning detail');
     expect(switchBundle.evidence_profile).toBe('official_pdp_seed');
     expect(JSON.stringify(switchBundle)).not.toMatch(/inci_applicability|Formula context captured/i);
+    expect(makeupSetBundle.shopping_card.subtitle).toBe('Makeup Set');
+    expect(makeupSetBundle.shopping_card.highlight).toBe('Makeup routine set');
+    expect(lashesBundle.shopping_card.subtitle).toBe('Eye Makeup');
   });
 
   test('uses clean Sigma brush prose without duplicated beauty wording', () => {

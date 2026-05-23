@@ -74,6 +74,8 @@ function sanitizePublicSourceText(value) {
     .replace(/\bavailable only at\s+[a-z0-9 .&'-]+\.?/gi, '')
     .replace(/\b(?:must-have|pro-favorite|ultimate|powerful)\b/gi, '')
     .replace(/\b(?:best[-\s]?selling|bestselling|viral|cult[-\s]?favorite|award[-\s]?winning)\b/gi, '')
+    .replace(/\b(?:winner of|voted one of|voted as one of)[^.?!]*[.!]?/gi, '')
+    .replace(/\b(?:an?|the)\s+(designed|made|created)\b/gi, '$1')
     .replace(/\b(?:everyone loves|widely loved)\b/gi, '')
     .replace(/\.{2,}|…/g, '. ')
     .replace(/\s+([,.;:!?])/g, '$1')
@@ -170,13 +172,13 @@ function inferSetKind(titleCategoryText, descriptionText) {
   if (/\b(?:skin|skincare|cleanse|cleanser|cleansing|tonic|toner|serum|mask|peel|clarity|glow)\b/.test(titleCategoryText)) {
     return 'skincare_set';
   }
-  if (/\b(?:cleanse|cleanser|cleansing|tonic|toner|serum|skin|skincare|mask|peel|clarity|glow|rose)\b/.test(joined)) {
-    return 'skincare_set';
-  }
   if (/\b(?:eye patch|eye patches|eye kit|eye set|eye trio)\b/.test(joined)) return 'eye_care_set';
-  if (/\b(?:lip treat|liptreat|lip butter|lip combo|lip oil|lip glaze|high gloss|lip kit|lip set|lip duo|lip trio|lip favourites|lip favorites)\b/.test(joined)) return 'lip_set';
   if (/\b(?:look|makeup|lash|mascara|brow|blush|bronzer|bronzing|foundation|conceal|correct|concealer|palette|eye|eye shadow|eyeshadow)\b/.test(joined)) {
     return 'makeup_set';
+  }
+  if (/\b(?:lip treat|liptreat|lip butter|lip combo|lip oil|lip glaze|high gloss|lip kit|lip set|lip duo|lip trio|lip favourites|lip favorites)\b/.test(joined)) return 'lip_set';
+  if (/\b(?:cleanse|cleanser|cleansing|tonic|toner|serum|skin|skincare|mask|peel|clarity|glow|rose)\b/.test(joined)) {
+    return 'skincare_set';
   }
   return 'beauty_set';
 }
@@ -218,7 +220,7 @@ function inferKind(title, category, categoryPath, description = '') {
   }
   if (/\b(?:brow|eyebrow)\b/.test(haystack)) return 'brow';
   if (/\b(?:eye repair|eye cream|eye treatment|eye serum|eye patch|eye patches|antioxifeye|beautifeye|detoxifeye|fortifeye|dream-yeye|dream-yeye|eye-surrounds)\b/.test(haystack)) return 'eye_treatment';
-  if (/\b(?:eyeliner|mascara|eye color|eyeshadow|eye primer|palette)\b/.test(haystack)) return 'eye_makeup';
+  if (/\b(?:eyeliner|mascara|false lashes|falsies|eyelashes|lashes|lash|eye color|eyeshadow|eye primer|palette)\b/.test(haystack)) return 'eye_makeup';
   if (/\b(?:blush)\b/.test(haystack)) return 'blush';
   if (/\b(?:bronzer|bronze|bronzing)\b/.test(haystack)) return 'bronzer';
   if (/\b(?:highlighting|highlighter|illuminate)\b/.test(haystack)) return 'highlighter';
@@ -520,6 +522,7 @@ function buildHighlightPhrase(kind, category, description, title = '') {
     return 'Skincare routine set';
   }
   if (kind === 'makeup_set') {
+    if (/\b(?:favorites|favourites|routine|bundle|set)\b/.test(titleText) && /\b(?:eye|eyeshadow|palette|lip|brush)\b/.test(signalText)) return 'Makeup routine set';
     if (/complexion|base|foundation|conceal|blur|bronze/.test(signalText)) return 'Complexion routine set';
     if (/eye|eyeshadow|palette|lash|mascara/.test(signalText)) return 'Eye-makeup routine set';
     return 'Makeup routine set';
