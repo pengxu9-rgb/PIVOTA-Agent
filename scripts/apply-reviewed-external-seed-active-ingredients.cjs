@@ -264,6 +264,25 @@ function clearActiveIngredientFields(seedData, metadata) {
   return next;
 }
 
+function buildServingPayloadPatch(seedData) {
+  const snapshot = asObject(seedData.snapshot);
+  return {
+    active_ingredients: asArray(seedData.active_ingredients).length
+      ? seedData.active_ingredients
+      : snapshot.active_ingredients,
+    ingredient_intel: seedData.ingredient_intel || snapshot.ingredient_intel,
+    reviewed_active_ingredients_v1:
+      seedData.reviewed_active_ingredients_v1 || snapshot.reviewed_active_ingredients_v1,
+    pdp_field_quality_summary: seedData.pdp_field_quality_summary || snapshot.pdp_field_quality_summary,
+    ...(seedData.structured_ingredient_remediation_v1 || snapshot.structured_ingredient_remediation_v1
+      ? {
+          structured_ingredient_remediation_v1:
+            seedData.structured_ingredient_remediation_v1 || snapshot.structured_ingredient_remediation_v1,
+        }
+      : {}),
+  };
+}
+
 async function fetchRows(externalProductIds, market) {
   const res = await query(
     `
@@ -281,8 +300,10 @@ async function fetchRows(externalProductIds, market) {
 }
 
 async function applyUpdates(items) {
-  if (!items.length) return { updated_rows: 0 };
+  if (!items.length) return { updated_rows: 0, catalog_product_updates: 0, identity_updates: 0 };
   let updatedRows = 0;
+  let catalogProductUpdates = 0;
+  let identityUpdates = 0;
   await withClient(async (client) => {
     await client.query('BEGIN');
     try {
@@ -300,6 +321,34 @@ async function applyUpdates(items) {
           [item.seed_id, JSON.stringify(item.after_seed_data)],
         );
         updatedRows += Number(res.rowCount || 0);
+        const servingPatch = buildServingPayloadPatch(item.after_seed_data);
+        const servingPatchJson = JSON.stringify(servingPatch);
+        const catalogRes = await client.query(
+          `
+            UPDATE catalog_products
+            SET product_payload = COALESCE(product_payload, '{}'::jsonb) || $2::jsonb,
+                updated_at = now()
+            WHERE merchant_id = 'external_seed'
+              AND platform = 'external_seed'
+              AND source_product_id = $1
+          `,
+          [item.external_product_id, servingPatchJson],
+        );
+        catalogProductUpdates += Number(catalogRes.rowCount || 0);
+        const identityRes = await client.query(
+          `
+            UPDATE pdp_identity_listing
+            SET source_payload = COALESCE(source_payload, '{}'::jsonb) || $2::jsonb,
+                updated_at = now()
+            WHERE merchant_id = 'external_seed'
+              AND (
+                source_listing_ref = $3
+                OR product_id = $1
+              )
+          `,
+          [item.external_product_id, servingPatchJson, `external_seed:${item.external_product_id}`],
+        );
+        identityUpdates += Number(identityRes.rowCount || 0);
       }
       await client.query('COMMIT');
     } catch (err) {
@@ -307,7 +356,11 @@ async function applyUpdates(items) {
       throw err;
     }
   });
-  return { updated_rows: updatedRows };
+  return {
+    updated_rows: updatedRows,
+    catalog_product_updates: catalogProductUpdates,
+    identity_updates: identityUpdates,
+  };
 }
 
 async function run(options) {
@@ -400,6 +453,8 @@ async function run(options) {
       blocked_missing_source_evidence: results.filter((item) => item.status === 'blocked_missing_source_evidence').length,
       change_candidates: updates.length,
       updated_rows: applyResult.updated_rows || 0,
+      catalog_product_updates: applyResult.catalog_product_updates || 0,
+      identity_updates: applyResult.identity_updates || 0,
     },
     results,
   };
@@ -449,6 +504,7 @@ module.exports = {
   activeEvidenceStatus,
   clearStaleStructuredIngredientFields,
   clearActiveIngredientFields,
+  buildServingPayloadPatch,
   parseActiveIngredients,
   patchSeedData,
   run,

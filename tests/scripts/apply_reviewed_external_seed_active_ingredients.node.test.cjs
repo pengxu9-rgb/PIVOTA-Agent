@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 
 const {
   activeEvidenceStatus,
+  buildServingPayloadPatch,
   clearActiveIngredientFields,
   parseActiveIngredients,
   patchSeedData,
@@ -138,4 +139,34 @@ test('clearActiveIngredientFields records reviewed no-active decision and remove
     patched.pdp_field_quality_summary.active_ingredients_raw.source_quality_status,
     'reviewed_not_applicable',
   );
+});
+
+test('buildServingPayloadPatch mirrors reviewed active ingredients into catalog payload shape', () => {
+  const patch = buildServingPayloadPatch({
+    active_ingredients: ['Ensulizole 2.7%', 'Octinoxate 6.5%'],
+    ingredient_intel: {
+      active_ingredients: ['Ensulizole 2.7%', 'Octinoxate 6.5%'],
+    },
+    reviewed_active_ingredients_v1: {
+      contract_version: 'external_seed.reviewed_active_ingredients.v1',
+      status: 'approved',
+    },
+    pdp_field_quality_summary: {
+      active_ingredients: {
+        source_quality_status: 'high',
+      },
+    },
+    snapshot: {},
+  });
+
+  assert.deepEqual(patch.active_ingredients, ['Ensulizole 2.7%', 'Octinoxate 6.5%']);
+  assert.deepEqual(patch.ingredient_intel.active_ingredients, [
+    'Ensulizole 2.7%',
+    'Octinoxate 6.5%',
+  ]);
+  assert.equal(
+    patch.reviewed_active_ingredients_v1.contract_version,
+    'external_seed.reviewed_active_ingredients.v1',
+  );
+  assert.equal(patch.pdp_field_quality_summary.active_ingredients.source_quality_status, 'high');
 });
