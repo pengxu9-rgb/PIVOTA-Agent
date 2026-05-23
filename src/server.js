@@ -17776,6 +17776,100 @@ async function searchBeautyExternalSeedProductsMainline({
   const searchQualityContractApplied = isBeautySearchQualityContractApplied(searchQualityContract);
   const searchQualityEnforced =
     searchQualityContractApplied && SEARCH_QUALITY_CONTRACT_V1_MODE === 'enforce';
+  const safeLimit = Math.max(1, Math.min(SEARCH_LIMIT_MAX, Math.floor(Number(search.limit || 20) || 20)));
+  const safePage = Math.max(1, Math.floor(Number(search.page || 1) || 1));
+  const safeOffset = Math.max(
+    0,
+    Number.isFinite(Number(search.offset))
+      ? Math.floor(Number(search.offset))
+      : (safePage - 1) * safeLimit,
+  );
+  const contractSafeEmpty = Boolean(
+    SEARCH_QUALITY_CONTRACT_V1_ENABLED &&
+      searchQualityContract &&
+      (
+        String(searchQualityContract.target_domain || '').trim().toLowerCase() !== 'beauty' ||
+        String(searchQualityContract.query_class || '').trim().toLowerCase() === 'ambiguous_or_non_shopping'
+      )
+  );
+  if (contractSafeEmpty) {
+    return {
+      status: 'success',
+      success: true,
+      products: [],
+      total: 0,
+      page: safePage,
+      page_size: 0,
+      reply: searchQualityContract?.clarification_allowed
+        ? 'Please search for a product, brand, category, or skin concern.'
+        : null,
+      metadata: {
+        ...buildInvokeSearchRailMetadata('authoritative_shopping'),
+        query_source: 'search_quality_contract_v1_safe_empty',
+        fetched_at: new Date().toISOString(),
+        ...(queryUnderstanding
+          ? {
+              query_understanding: queryUnderstanding,
+              query_understanding_executed: true,
+              query_understanding_decision: queryUnderstanding.decision || null,
+            }
+          : {}),
+        search_quality_contract: projectSearchQualityContractForMetadata(searchQualityContract),
+        search_quality_contract_applied: false,
+        search_quality_contract_mode: SEARCH_QUALITY_CONTRACT_V1_MODE,
+        search_quality_failure_reasons: {},
+        search_quality_tier_counts: {
+          input_count: 0,
+          canonical_chain_count: 0,
+          external_seed_count: 0,
+          hard_constraint_pass_count: 0,
+          hard_constraint_reject_count: 0,
+          serving_eligible_count: 0,
+          missing_image_count: 0,
+          invalid_price_count: 0,
+          missing_or_unresolved_pdp_count: 0,
+          polluted_or_unavailable_count: 0,
+        },
+        source_breakdown: {
+          internal_count: 0,
+          external_seed_count: 0,
+          canonical_chain_count: 0,
+          canonical_chain_candidate_count: 0,
+          stale_cache_used: false,
+          strategy_applied: 'search_quality_contract_v1_safe_empty',
+        },
+        search_decision: {
+          final_decision: searchQualityContract?.clarification_allowed ? 'clarify' : 'strict_empty',
+          decision_authority: 'search_quality_contract_v1',
+          query_target_domain: searchQualityContract.target_domain || null,
+          decision_locked: true,
+          decision_lock_reason: 'search_quality_contract_ambiguous_or_non_shopping',
+        },
+        route_health: {
+          primary_path_used: 'search_quality_contract_v1_safe_empty',
+          fallback_triggered: false,
+          fallback_reason: null,
+          canonical_path_executed: false,
+          final_returned_count: 0,
+          search_quality_contract_applied: false,
+          search_quality_contract_mode: SEARCH_QUALITY_CONTRACT_V1_MODE,
+        },
+        route_debug: {
+          beauty_external_seed_mainline: {
+            attempted: false,
+            skipped_reason: 'search_quality_contract_ambiguous_or_non_shopping',
+          },
+        },
+        proxy_search_fallback: {
+          applied: false,
+          reason: null,
+        },
+        contract_bridge: {
+          legacy_fallback: false,
+        },
+      },
+    };
+  }
   const queryText =
     (searchQualityContractApplied && searchQualityContract?.effective_query) ||
     rawQueryText;
@@ -17796,14 +17890,6 @@ async function searchBeautyExternalSeedProductsMainline({
     return null;
   }
 
-  const safeLimit = Math.max(1, Math.min(SEARCH_LIMIT_MAX, Math.floor(Number(search.limit || 20) || 20)));
-  const safePage = Math.max(1, Math.floor(Number(search.page || 1) || 1));
-  const safeOffset = Math.max(
-    0,
-    Number.isFinite(Number(search.offset))
-      ? Math.floor(Number(search.offset))
-      : (safePage - 1) * safeLimit,
-  );
   const inStockOnly = parseQueryBoolean(search.in_stock_only ?? search.inStockOnly) !== false;
   const retrievalQueries = buildBeautyMainlineRetrievalQueries(queryText, beautyIntent);
   const perQueryLimit = searchQualityContractApplied
