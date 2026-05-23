@@ -93,6 +93,43 @@ describe('audit-external-seed-pdp-coverage-gaps helpers', () => {
     expect(result.field_status.faq).toBe('source_optional_or_needs_truth_check');
   });
 
+  test('does not count reviewed component-linked sets as actionable INCI gaps', () => {
+    const result = classifyRow(
+      row({
+        title: 'Lip Liner & Gloss Duo',
+        seed_data: {
+          pdp_description_raw: 'A reviewed lip set that includes a lip liner and gloss component.',
+          product_family: 'set_or_collection',
+          bundle_component_refs: [
+            {
+              external_product_id: 'ext_liner',
+              review_state: 'reviewed',
+              inheritance_scope: ['ingredients_inci', 'how_to_use'],
+            },
+            {
+              external_product_id: 'ext_gloss',
+              review_state: 'reviewed',
+              inheritance_scope: ['ingredients_inci', 'how_to_use'],
+            },
+          ],
+          ingredient_intel: {
+            source_review_queue: {
+              status: 'component_refs_linked',
+            },
+          },
+          ingredient_remediation_v1: {
+            action: 'component_refs_linked',
+            source_origin: 'pivota_manual_component_repair',
+          },
+          snapshot: {},
+        },
+      }),
+    );
+
+    expect(result.field_status.inci).toBe('component_refs_linked');
+    expect(result.actionable_fields).not.toContain('inci');
+  });
+
   test('blocks KB generation candidates when identity is missing', () => {
     const result = classifyRow(
       row({

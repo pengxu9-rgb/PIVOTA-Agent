@@ -73,4 +73,40 @@ describe('apply-reviewed-external-seed-pdp-content-patch', () => {
 
     expect(validateEntry(entry)).toEqual(expect.arrayContaining(['missing_review_evidence']));
   });
+
+  test('propagates root source metadata into entry quality summaries', () => {
+    const [entry] = readManifestEntries({
+      reviewed_by: 'codex',
+      reason: 'verified_retailer_source_backed_inci',
+      evidence: 'Ingredients were reviewed from a verified retailer PDP and cross-checked.',
+      source_url: 'https://www.ulta.com/p/king-kylie-collection-loose-powder-highlighter-pimprod2055671',
+      source_kind: 'verified_retailer_pdp_ingredients_cross_checked',
+      entries: [
+        {
+          external_product_id: 'ext_king_highlighter',
+          pdp_ingredients_raw:
+            'Synthetic Fluorphlogopite, Mica, Silica, Octyldodecyl Stearoyl Stearate, Caprylyl Glycol, Ethylhexylglycerin.',
+        },
+      ],
+    });
+
+    const result = buildNextSeedData(
+      { external_product_id: 'ext_king_highlighter', seed_data: { snapshot: {} } },
+      entry,
+      '2026-05-23T00:00:00.000Z',
+    );
+
+    expect(result.blocked).toEqual([]);
+    expect(result.seedData.pdp_field_quality_summary.ingredients_raw).toEqual(
+      expect.objectContaining({
+        source_url: 'https://www.ulta.com/p/king-kylie-collection-loose-powder-highlighter-pimprod2055671',
+        source_kinds: ['verified_retailer_pdp_ingredients_cross_checked'],
+      }),
+    );
+    expect(result.seedData.reviewed_pdp_content_patch_v1).toEqual(
+      expect.objectContaining({
+        source_kind: 'verified_retailer_pdp_ingredients_cross_checked',
+      }),
+    );
+  });
 });

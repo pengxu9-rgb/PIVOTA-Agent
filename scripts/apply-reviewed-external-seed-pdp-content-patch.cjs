@@ -187,7 +187,9 @@ function readManifestEntries(raw) {
     reviewed_by: text(entry.reviewed_by || root.reviewed_by || 'codex_review'),
     reason: text(entry.reason || root.reason || 'reviewed_source_backed_pdp_content_patch'),
     evidence: text(entry.evidence || root.evidence),
-    source_url: text(entry.source_url || entry.canonical_url),
+    source_url: text(entry.source_url || entry.canonical_url || root.source_url || root.canonical_url),
+    source_kind: text(entry.source_kind || root.source_kind || 'official_pdp_structured_section'),
+    description_source_kind: text(entry.description_source_kind || root.description_source_kind),
     description: text(entry.description || entry.pdp_description_raw),
     pdp_how_to_use_raw: text(entry.pdp_how_to_use_raw || entry.how_to_use_raw || entry.how_to_use),
     pdp_ingredients_raw: text(

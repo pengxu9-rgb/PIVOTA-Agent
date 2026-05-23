@@ -23,6 +23,7 @@ const SUPPORTED_BRANDS = new Set([
   'fenty beauty',
   'fenty skin',
   'guerlain',
+  'kylie cosmetics',
   'rare beauty',
   'tom ford',
   'tom ford beauty',
@@ -107,7 +108,7 @@ function isLowSignalMarketingSentence(value) {
     /\b(add to bag|shop now|discover|limited time|free shipping|subscribe|sign up)\b/i.test(current) ||
     /\b(anything but ordinary|far from innocent|you won't want to|must-have|iconic|indulge in)\b/i.test(current) ||
     /\b(inspired packaging|wardrobe of lip and face cosmetics|sensuous beauty|afterglow)\b/i.test(current) ||
-    /^(?:your done-in-one|straight up|the lowdown|made with|what else|the #?'?s don't lie|already have|click here|want the full scoop)\b/i.test(current)
+    /^(?:shop\b|your done-in-one|straight up|the lowdown|made with|what else|the #?'?s don't lie|already have|click here|want the full scoop)\b/i.test(current)
   );
 }
 
@@ -237,6 +238,7 @@ function displayBrand(raw) {
   if (/^fenty/i.test(brand)) return 'Fenty Beauty';
   if (/^tom\s*ford/i.test(brand)) return 'Tom Ford Beauty';
   if (/^guerlain/i.test(brand)) return 'Guerlain';
+  if (/^kylie/i.test(brand)) return 'Kylie Cosmetics';
   return brand || 'the brand';
 }
 
@@ -363,7 +365,7 @@ function inferRole(facts) {
   }
   if (/\b(?:puff|sponge|applicator)\b/.test(titleText)) return { label: 'Makeup applicator', step: 'application tool', amPm: ['as_needed'] };
   if (/\bbrush\b/.test(titleText)) return { label: 'Makeup brush', step: 'application tool', amPm: ['as_needed'] };
-  if (/\b(?:stickers?|decals?|claw clip|head\s*band|headband|pouch|bag|organizer|mirror|sharpener|tool|keychain|key chain|tote|clutch|backpack)\b/.test(titleText)) {
+  if (/\b(?:stickers?|decals?|claw clip|head\s*band|headband|pouch|bag|organizer|mirror|sharpener|tool|tray|keychain|key chain|tote|clutch|backpack)\b/.test(titleText)) {
     return { label: 'Beauty accessory', step: 'beauty routine', amPm: ['as_needed'] };
   }
   if (/\b(?:body\s+spray|body\s*&\s*hair\s+fragrance|body\s+and\s+hair\s+fragrance|fragrance\s+mist|hair\s+fragrance\s+mist)\b/.test(titleText)) {
@@ -371,6 +373,9 @@ function inferRole(facts) {
   }
   if (/\b(?:parfum|eau de parfum|eau de toilette|fragrance|perfume|cologne|layering balm)\b/.test(titleText)) {
     return { label: 'Fine fragrance', step: 'fragrance', amPm: ['as_needed'] };
+  }
+  if (/\blip\b/.test(titleText) && (/\b(?:combo|kit|set|duo)\b/.test(titleText) || titleText.includes('&'))) {
+    return { label: 'Lip combo', step: 'lip color', amPm: ['as_needed'] };
   }
   if (/\bbrow\s+pencil|eyebrow|brow\b/.test(titleText)) return { label: 'Brow product', step: 'brow definition', amPm: ['as_needed'] };
   if (/\blip\s+pencil|lip liner|contour\s+g\b/.test(titleText)) return { label: 'Lip liner', step: 'lip definition', amPm: ['as_needed'] };
@@ -463,6 +468,7 @@ function inferAnchors(facts, role) {
   } else if (role.step === 'beauty routine') {
     productAnchors = findTokens(text, [
       ['travel organization', /\btravel|organize|organizer|toiletry|pouch|bag|tote|backpack|clutch|carryall\b/],
+      ['fragrance display', /\bfragrance\s+tray|vanity|display|tray\b/],
       ['hair control', /\bhair|headband|claw clip|clip\b/],
       ['collectible format', /\bsticker|decal|collectible|enamel\b/],
       ['compact accessory', /\bkeychain|key chain|mini|pouch|compact\b/],
@@ -534,7 +540,8 @@ function inferBestFor(facts, role, anchors) {
     ]);
   } else if (role.step === 'beauty routine') {
     labels = findTokens(text, [
-      ['makeup organization', /\bmakeup|toiletry|pouch|bag|organize|organizer|tote|clutch|backpack\b/],
+      ['makeup organization', /\btoiletry|pouch|bag|organize|organizer|tote|clutch|backpack\b/],
+      ['fragrance display', /\bfragrance\s+tray|vanity|display|tray\b/],
       ['hair hold', /\bhair|headband|claw clip|clip\b/],
       ['collecting', /\bsticker|decal|collectible|keychain|key chain\b/],
       ['travel', /\btravel|on the go|carryall\b/],
@@ -675,9 +682,14 @@ function buildWhyItStandsOut(facts, role, anchors) {
     meaningfulVariantLabels.length > 0 &&
     (role.step !== 'application tool' || meaningfulVariantLabels.some((label) => /\b(size|shade|color|colour|scent|jar|ml|oz|g)\b/i.test(label)));
   if (facts.variants.count > 0 && shouldExplainVariants) {
+    const variantHeadline = role.step === 'home fragrance'
+      ? 'Configuration is explicit'
+      : role.step === 'beauty routine' || role.step === 'pet accessory' || role.step === 'application tool'
+        ? 'Accessory format is explicit'
+        : 'Shade and size are explicit';
     why.push({
-      headline: role.step === 'home fragrance' ? 'Configuration is explicit' : 'Shade and size are explicit',
-      body: sentence(`Variant labels such as ${meaningfulVariantLabels.slice(0, 4).join(', ')} are visible, reducing ambiguity around shade, size, scent, or format before a shopper clicks through`),
+      headline: variantHeadline,
+      body: sentence(`Variant labels such as ${meaningfulVariantLabels.slice(0, 4).join(', ')} are visible, reducing ambiguity around the product format before a shopper clicks through`),
       evidence_strength: 'official_pdp_reviewed',
     });
   }
@@ -685,7 +697,7 @@ function buildWhyItStandsOut(facts, role, anchors) {
   if (howTo.length) {
     why.push({
       headline: 'Usage instructions available',
-      body: sentence(`Official directions are present, including: ${howTo[0]}`),
+      body: sentence(`Reviewed usage context is present, including: ${howTo[0]}`),
       evidence_strength: 'official_pdp_reviewed',
     });
   }

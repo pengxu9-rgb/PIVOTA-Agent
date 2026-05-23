@@ -254,8 +254,32 @@ function inferCatalogMirrorCategory(row) {
   );
   const haystack = `${explicitCategory} ${titleCategoryText(row)}`;
 
+  if (/\b(?:highlighter|illuminator|luminizer|luminiser)\b/.test(haystack)) {
+    return { productType: 'Highlighter', category: 'Highlighter', categoryPath: 'beauty/makeup/cheek/highlighter' };
+  }
+  if (/\b(?:setting powder|loose powder|pressed powder|finishing powder|face powder)\b/.test(haystack)) {
+    return { productType: 'Face Powder', category: 'Face Powder', categoryPath: 'beauty/makeup/face/powder' };
+  }
+  if (/\b(?:foundation|skin tint|complexion tint)\b/.test(haystack)) {
+    return { productType: 'Foundation', category: 'Foundation', categoryPath: 'beauty/makeup/face/foundation' };
+  }
+  if (/\b(?:concealer|corrector)\b/.test(haystack)) {
+    return { productType: 'Concealer', category: 'Concealer', categoryPath: 'beauty/makeup/face/concealer' };
+  }
   if (/\b(?:blush|blusher)\b/.test(haystack)) {
     return { productType: 'Blush', category: 'Blush', categoryPath: 'beauty/makeup/blush' };
+  }
+  if (/\b(?:bronzer|contour)\b/.test(haystack)) {
+    return { productType: 'Bronzer', category: 'Bronzer', categoryPath: 'beauty/makeup/face/bronzer' };
+  }
+  if (/\b(?:lipstick|liquid lip|lip color|lip colour|lip gloss|lip oil|lip balm|lip liner|lip blush|lip kit)\b/.test(haystack)) {
+    return { productType: 'Lip Color', category: 'Lip Color', categoryPath: 'beauty/makeup/lip' };
+  }
+  if (/\b(?:mascara|eyeliner|kyliner|eyeshadow|eye shadow|brow pencil|brow gel)\b/.test(haystack)) {
+    return { productType: 'Eye Makeup', category: 'Eye Makeup', categoryPath: 'beauty/makeup/eye' };
+  }
+  if (/\b(?:primer|pore prep)\b/.test(haystack)) {
+    return { productType: 'Primer', category: 'Primer', categoryPath: 'beauty/makeup/face/primer' };
   }
   if (/\b(?:toner|tonic|tonik|toning mist|face mist|rose water)\b/.test(haystack) && !/\bscalp tonic\b/.test(haystack)) {
     return { productType: 'Toner', category: 'Toner', categoryPath: 'beauty/skincare/toner' };
@@ -1278,9 +1302,19 @@ async function run() {
   }
 }
 
-run()
-  .catch((err) => {
-    process.stderr.write(`${err?.stack || err?.message || String(err)}\n`);
-    process.exitCode = 1;
-  })
-  .finally(closePool);
+if (require.main === module) {
+  run()
+    .catch((err) => {
+      process.stderr.write(`${err?.stack || err?.message || String(err)}\n`);
+      process.exitCode = 1;
+    })
+    .finally(closePool);
+}
+
+module.exports = {
+  _internals: {
+    inferCatalogMirrorCategory,
+    normalizeCategoryToken,
+    titleCategoryText,
+  },
+};

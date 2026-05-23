@@ -188,6 +188,14 @@ describe('official PDP manual insight review', () => {
     ).toBe('Beauty accessory');
     expect(
       inferRole(facts({
+        title: 'Cosmic Tray',
+        productType: 'Fragrance accessory',
+        categoryPath: 'beauty/fragrance/accessory',
+        description: 'A fragrance tray accessory for a fragrance line.',
+      })).label,
+    ).toBe('Beauty accessory');
+    expect(
+      inferRole(facts({
         title: 'Soft Pooch Blush Dog Toy - Faith',
         productType: 'Pet Toy',
         categoryPath: 'merch/pet',
@@ -240,6 +248,89 @@ describe('official PDP manual insight review', () => {
     expect(plan.preview.what_it_is).not.toContain('STRAIGHT UP');
     expect(plan.preview.what_it_is).not.toContain('THE LOWDOWN');
     expect(plan.preview.why_it_stands_out.map((item) => item.headline)).toContain('Ingredient list is available');
+  });
+
+  test('allows Kylie component lip combos through the reviewed official-PDP template', () => {
+    const plan = buildPlan(
+      row({
+        external_product_id: 'ext_kylie_combo',
+        title: 'Cocoa Precision Pout Lip Liner & Underestimated Gloss Drip',
+        brand: 'Kylie Cosmetics',
+        canonical_url: 'https://kyliecosmetics.com/products/cocoa-precision-pout-lip-liner-underestimated-gloss-drip',
+        seed_data: {
+          brand: 'Kylie Cosmetics',
+          pdp_description_raw:
+            "Kylie's Paris Glam Lip Combo look includes Precision Pout Lip Liner in Cocoa and Gloss Drip in Underestimated.",
+          pdp_how_to_use_raw:
+            'Use the Precision Pout Lip Liner to line and fill the lips, then apply Gloss Drip to bare lips or over lip color for a mirror-shine finish.',
+          pdp_details_sections: [
+            {
+              heading: 'Included components',
+              body: 'This combo includes Precision Pout Lip Liner in Cocoa and Gloss Drip in Underestimated.',
+            },
+          ],
+          variants: [
+            {
+              title: 'Cocoa liner + Underestimated gloss',
+              options: [{ name: 'Set', value: 'Cocoa liner + Underestimated gloss' }],
+            },
+          ],
+        },
+        product_key: 'pk_kylie_combo',
+        pivota_signature_id: 'sig_kylie_combo',
+      }),
+      { brand: 'Kylie Cosmetics', includeStrong: false },
+    );
+
+    expect(plan.blocked).toBe(false);
+    expect(plan.changed).toBe(true);
+    expect(plan.preview.headline).toBe('Lip combo');
+    expect(plan.preview.what_it_is).toContain('Kylie Cosmetics');
+    expect(plan.preview.what_it_is).not.toContain('Shop');
+    expect(plan.preview.why_it_stands_out.map((item) => item.headline)).toContain('Usage instructions available');
+  });
+
+  test('keeps Kylie fragrance tray insights in accessory language', () => {
+    const plan = buildPlan(
+      row({
+        external_product_id: 'ext_kylie_tray',
+        title: 'Cosmic Tray',
+        brand: 'Kylie Cosmetics',
+        canonical_url: 'https://kyliecosmetics.com/products/cosmic-by-kylie-jenner-eau-de-parfum-fragrance-tray',
+        seed_data: {
+          brand: 'Kylie Cosmetics',
+          product_family: 'accessory',
+          product_type: 'Fragrance accessory',
+          pdp_description_raw:
+            'Cosmic Tray is a non-formula fragrance tray accessory for the Cosmic by Kylie Jenner Eau de Parfum line, meant to sit alongside fragrance items rather than act as a fragrance formula.',
+          pdp_how_to_use_raw:
+            'This is a non-formula fragrance tray accessory, so it does not have fragrance application directions. Use it as a tray accessory for the Cosmic by Kylie Jenner fragrance line.',
+          pdp_details_sections: [
+            {
+              heading: 'Accessory status',
+              body: 'Cosmic Tray is a fragrance tray accessory, not a fragrance, skincare, or makeup formula.',
+            },
+          ],
+          variants: [
+            {
+              title: 'Fragrance tray accessory',
+              options: [{ name: 'Item', value: 'Fragrance tray accessory' }],
+            },
+          ],
+        },
+        product_key: 'pk_kylie_tray',
+        pivota_signature_id: 'sig_kylie_tray',
+      }),
+      { brand: 'Kylie Cosmetics', includeStrong: false },
+    );
+
+    expect(plan.blocked).toBe(false);
+    expect(plan.preview.headline).toBe('Beauty accessory');
+    expect(plan.preview.shopping_highlight).toBe('fragrance display');
+    expect(plan.preview.what_it_is).toContain('non-formula fragrance tray accessory');
+    expect(plan.preview.why_it_stands_out.map((item) => item.headline)).toContain('Accessory format is explicit');
+    expect(plan.preview.why_it_stands_out.map((item) => item.headline)).not.toContain('Shade and size are explicit');
+    expect(JSON.stringify(plan.preview)).not.toContain('makeup organization');
   });
 
   test('treats previous generic reviewed bundles as weak and replaceable', () => {

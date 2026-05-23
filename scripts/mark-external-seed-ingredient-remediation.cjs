@@ -221,6 +221,19 @@ function mergeQuality(seedData, key, patch) {
   snapshot.pdp_field_quality_summary = next;
 }
 
+function mergeComponentLinkedIngredientQuality(seedData, reasonCodes, generatedAt) {
+  for (const key of ['ingredients_raw', 'ingredients_inci']) {
+    mergeQuality(seedData, key, {
+      source_origin: 'pivota_manual_component_repair',
+      source_quality_status: 'component_refs_linked',
+      source_kinds: ['reviewed_bundle_component_refs'],
+      reason_codes: reasonCodes,
+      review_state: 'assistant_reviewed',
+      updated_at: generatedAt,
+    });
+  }
+}
+
 function mergeSnapshotContract(seedData, generatedAt) {
   const snapshot = asObject(seedData.snapshot);
   const existing = {
@@ -434,6 +447,21 @@ function buildPlan(row, options = {}) {
     && existingIntelStatus.queueStatus === existingRemediation.action
     && !options.forceFamily
   ) {
+    if (existingRemediation.action === 'component_refs_linked' && staleForceFillContract) {
+      clearForceFillContract(seedData);
+      mergeComponentLinkedIngredientQuality(
+        seedData,
+        asArray(existingRemediation.reason_codes).length
+          ? asArray(existingRemediation.reason_codes)
+          : ['bundle_component_refs_linked'],
+        generatedAt,
+      );
+      mergeSnapshotContract(seedData, generatedAt);
+      result.status = options.apply ? 'pending_apply' : 'dry_run';
+      result.action = existingRemediation.action;
+      result.reason_codes = asArray(existingRemediation.reason_codes);
+      return { result, nextSeedData: seedData, changed: before !== JSON.stringify(seedData) };
+    }
     result.status = 'already_remediated';
     result.action = existingRemediation.action;
     result.reason_codes = asArray(existingRemediation.reason_codes);
@@ -472,6 +500,10 @@ function buildPlan(row, options = {}) {
     const reasonCodes = componentRefs.length
       ? ['bundle_component_refs_linked']
       : ['bundle_component_refs_required'];
+    if (componentRefs.length) {
+      clearForceFillContract(seedData);
+      mergeComponentLinkedIngredientQuality(seedData, reasonCodes, generatedAt);
+    }
     const queue = buildReviewQueue(row, family, status, reasonCodes, generatedAt);
     patchBothIngredientIntel(seedData, { source_review_queue: queue });
     patchBothRemediation(
