@@ -660,6 +660,7 @@ function inferSpecificBeautySubtypeLabel(context) {
   if (/\b(?:brow|kybrow)\b/.test(text)) return 'Brow gel';
   if (/\b(?:lip liner|pout liner)\b/.test(text)) return 'Lip liner';
   if (/\b(?:lip oil)\b/.test(text)) return 'Lip oil';
+  if (/\b(?:lip cream|lip cr[eè]me)\b/.test(text)) return 'Lip cream';
   if (/\b(?:lipstick|lip stick)\b/.test(text)) return 'Lipstick';
   if (/\bdry\s+shampoo\b/.test(text)) return 'Dry shampoo';
   if (/\btoner\b/.test(text)) return 'Hydrating toner';
