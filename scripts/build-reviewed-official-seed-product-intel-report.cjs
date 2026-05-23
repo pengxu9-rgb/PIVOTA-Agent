@@ -374,7 +374,7 @@ function inferKind(title, category, categoryPath, description = '') {
   if (/\b(?:foundation|skin tint|skintint|skin-tint)\b/.test(haystack)) return 'foundation';
   if (/\bconcealer\b/.test(haystack)) return 'concealer';
   if (/\b(?:primer|poreless)\b/.test(haystack)) return 'primer';
-  if (/\b(?:lipstick|lip color|lip balm|lip butter|butter balm|balm stick|lip oil|lip gloss|lipgloss|lip glaze|lip treatment|lip mask|lip liner|lip pencil|lip luxe|lip patch|lippatch|gloss|pout)\b/.test(haystack)) return 'lip';
+  if (/\b(?:lipstick|lip color|lip balm|lip butter|butter balm|balm stick|lip oil|lip gloss|lipgloss|lip glaze|lip treatment|lip mask|lipmask|lip liner|lip pencil|lip luxe|lip patch|lippatch|gloss|pout)\b/.test(haystack)) return 'lip';
   if (/\b(?:candle)\b/.test(haystack)) return 'home_fragrance';
   if (/\bdeodorant\b/.test(haystack)) return 'deodorant';
   if (/\b(?:shower\s+gel|body\s+wash|hand\s*&\s*body\s+wash|hand\s+and\s+body\s+wash)\b/.test(titleCategoryText)) return 'body_wash';
@@ -769,6 +769,7 @@ function buildHighlightPhrase(kind, category, description, title = '') {
   if (kind === 'concealer' && /conceal|soft-?matte|shade/.test(signalText)) return 'Complexion coverage detail';
   if (kind === 'primer' && /pore|blur|shine|smooth/.test(signalText)) return 'Pore-blurring primer detail';
   if (kind === 'lip') {
+    if (/mask/.test(titleText)) return 'Lip mask formula detail';
     if (/liner|pout/.test(titleText)) return 'Lip liner format detail';
     if (/gloss|glaze|shine/.test(titleText)) return 'Shine lip formula detail';
     if (/matte/.test(titleText)) return 'Matte lip formula detail';
