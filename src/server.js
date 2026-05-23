@@ -1683,6 +1683,101 @@ function buildCreateOrderV2Body({
   });
 }
 
+function normalizeCurrencyCode(value) {
+  const currency = firstNonEmptyString(value);
+  return currency ? currency.toUpperCase() : null;
+}
+
+function resolveCheckoutQuoteId({ payload = {}, payment = {} } = {}) {
+  return firstNonEmptyString(
+    payment?.quote_id,
+    payment?.quoteId,
+    payload?.quote_id,
+    payload?.quoteId,
+    payload?.quote?.quote_id,
+    payload?.quote?.quoteId,
+  );
+}
+
+function getFirstDefinedValue(...values) {
+  for (const value of values) {
+    if (value !== undefined && value !== null) return value;
+  }
+  return undefined;
+}
+
+function normalizeExplicitMinorAmount(value) {
+  const raw =
+    typeof value === 'string' && value.trim()
+      ? Number(value)
+      : typeof value === 'number'
+        ? value
+        : null;
+  if (!Number.isFinite(raw) || raw < 0 || Math.trunc(raw) !== raw) return null;
+  return raw;
+}
+
+function decimalQuoteAmountToMinorUnits(value, currency) {
+  const raw =
+    typeof value === 'string' && value.trim()
+      ? Number(value.replace(/,/g, ''))
+      : typeof value === 'number'
+        ? value
+        : null;
+  if (!Number.isFinite(raw) || raw < 0) return null;
+  const multiplier = new Set(['JPY', 'KRW']).has(normalizeCurrencyCode(currency)) ? 1 : 100;
+  return Math.round(raw * multiplier);
+}
+
+function resolveCheckoutCurrency({ payload = {}, payment = {} } = {}) {
+  const quote = isPlainObject(payload?.quote) ? payload.quote : {};
+  const priceBreakdown = isPlainObject(quote?.price_breakdown) ? quote.price_breakdown : {};
+  const amounts = isPlainObject(quote?.amounts) ? quote.amounts : {};
+  return normalizeCurrencyCode(
+    firstNonEmptyString(
+      payment?.currency,
+      quote?.currency,
+      priceBreakdown?.currency,
+      amounts?.currency,
+      payload?.currency,
+      payload?.context?.currency,
+    ),
+  );
+}
+
+function resolveCheckoutExpectedAmount({ payload = {}, payment = {}, quoteId = null, currency = null } = {}) {
+  const quote = isPlainObject(payload?.quote) ? payload.quote : null;
+  const quoteMatches =
+    quote &&
+    quoteId &&
+    firstNonEmptyString(quote.quote_id, quote.quoteId, payload?.quote_id, payload?.quoteId) === quoteId;
+  if (quoteMatches) {
+    const priceBreakdown = isPlainObject(quote.price_breakdown) ? quote.price_breakdown : {};
+    const amounts = isPlainObject(quote.amounts) ? quote.amounts : {};
+    const quoteTotal = getFirstDefinedValue(
+      priceBreakdown.total,
+      quote.total,
+      quote.total_amount,
+      quote.amount_total,
+      amounts.total,
+    );
+    const quoteCurrency = normalizeCurrencyCode(
+      firstNonEmptyString(priceBreakdown.currency, quote.currency, amounts.currency, currency),
+    );
+    const quoteExpectedAmount = decimalQuoteAmountToMinorUnits(quoteTotal, quoteCurrency);
+    if (quoteExpectedAmount != null) return quoteExpectedAmount;
+  }
+
+  return normalizeExplicitMinorAmount(
+    getFirstDefinedValue(
+      payment?.expected_amount,
+      payment?.expectedAmount,
+      payload?.expected_amount,
+      payload?.expectedAmount,
+    ),
+  );
+}
+
 function buildCheckoutSessionV2Body({
   payload = {},
   payment = {},
@@ -1691,6 +1786,14 @@ function buildCheckoutSessionV2Body({
   gatewayRequestId = null,
 } = {}) {
   const buyerContext = buildInvokeBuyerContext({ source: payment, payload });
+  const quoteId = resolveCheckoutQuoteId({ payload, payment });
+  const currency = resolveCheckoutCurrency({ payload, payment });
+  const expectedAmount = resolveCheckoutExpectedAmount({
+    payload,
+    payment,
+    quoteId,
+    currency,
+  });
   const creatorCheckoutSource = resolveCanonicalCreatorCheckoutSource({
     payload,
     payment,
@@ -1699,6 +1802,15 @@ function buildCheckoutSessionV2Body({
   });
   return pruneEmptyFields({
     order_id: firstNonEmptyString(payment?.order_id, payment?.orderId),
+    quote_id: quoteId,
+    expected_amount: expectedAmount,
+    currency,
+    payment_method_hint: firstNonEmptyString(
+      payment?.payment_method_hint,
+      payment?.paymentMethodHint,
+      payload?.payment_method_hint,
+      payload?.paymentMethodHint,
+    ),
     return_url: firstNonEmptyString(
       payment?.return_url,
       payment?.returnUrl,
@@ -1721,7 +1833,7 @@ function buildCheckoutSessionV2Body({
       metadata,
       clientChannel,
       gatewayRequestId,
-      fallbackCurrency: payment?.currency,
+      fallbackCurrency: currency,
     }),
   });
 }
@@ -2563,7 +2675,9 @@ function normalizeCreateOrderCompat(upstreamPayload = {}) {
     payment_status: firstNonEmptyString(order.payment_status, upstreamPayload.payment_status),
     payment: paymentSummary,
     tracking: Object.keys(fulfillmentSummary).length ? fulfillmentSummary : upstreamPayload.tracking,
-    order_lines: Array.isArray(order.line_items) ? order.line_items : upstreamPayload.order_lines,
+    ...(Object.prototype.hasOwnProperty.call(upstreamPayload, 'order_lines')
+      ? { order_lines: upstreamPayload.order_lines }
+      : {}),
     order,
   };
 }
@@ -3142,88 +3256,6 @@ const RESOLVE_PRODUCT_CANDIDATES_TTL_MS = parseTimeoutMs(
   process.env.RESOLVE_PRODUCT_CANDIDATES_TTL_MS,
   60 * 1000,
 );
-
-function buildOrderLineSnapshots(orderRequest, options = {}) {
-  const req = orderRequest && typeof orderRequest === 'object' ? orderRequest : {};
-  const items = Array.isArray(req.items) ? req.items : [];
-  const orderId = options.orderId || req.order_id || req.orderId || null;
-  const resolvedOfferId = options.resolvedOfferId || null;
-  const resolvedMerchantId = options.resolvedMerchantId || null;
-  const currency = req.currency || null;
-  const selectedDelivery = req.selected_delivery_option || req.selectedDeliveryOption || null;
-  const shippingSnapshot = selectedDelivery
-    ? {
-        method_label: selectedDelivery.method_label || selectedDelivery.label || selectedDelivery.name || null,
-        eta_days_range: selectedDelivery.eta_days_range || selectedDelivery.etaDaysRange || null,
-        cost: selectedDelivery.cost || selectedDelivery.price || null,
-      }
-    : null;
-  const returnsSnapshotRaw = req.returns_snapshot || req.returns || req.returns_policy || null;
-  const returnsSnapshot = returnsSnapshotRaw
-    ? {
-        return_window_days:
-          returnsSnapshotRaw.return_window_days ||
-          returnsSnapshotRaw.returnWindowDays ||
-          returnsSnapshotRaw.window_days ||
-          returnsSnapshotRaw.windowDays ||
-          null,
-        free_returns:
-          typeof returnsSnapshotRaw.free_returns === 'boolean'
-            ? returnsSnapshotRaw.free_returns
-            : typeof returnsSnapshotRaw.freeReturns === 'boolean'
-              ? returnsSnapshotRaw.freeReturns
-              : null,
-      }
-    : null;
-  const policyHash = returnsSnapshot
-    ? createHash('sha256')
-        .update(JSON.stringify(returnsSnapshot))
-        .digest('hex')
-        .slice(0, 16)
-    : null;
-
-  return items.map((item, idx) => {
-    const merchantId =
-      item.merchant_id ||
-      item.merchantId ||
-      resolvedMerchantId ||
-      req.merchant_id ||
-      req.merchantId ||
-      null;
-    const productId = item.product_id || item.productId || null;
-    const productGroupId =
-      buildProductGroupId({ merchant_id: merchantId, product_id: productId }) || null;
-    const variantId = item.variant_id || item.variantId || null;
-    const unitPrice = Number(item.unit_price || item.price || 0);
-    const quantity = Number(item.quantity || 0) || 1;
-    const subtotal =
-      typeof item.subtotal === 'number' && Number.isFinite(item.subtotal)
-        ? item.subtotal
-        : unitPrice * quantity;
-    const lineId =
-      item.line_id || item.lineId || (orderId ? `line_${orderId}_${idx + 1}` : `line_${idx + 1}`);
-
-    return {
-      line_id: lineId,
-      offer_id: resolvedOfferId || item.offer_id || item.offerId || null,
-      merchant_id: merchantId,
-      product_id: productId,
-      product_group_id: productGroupId,
-      variant_id: variantId,
-      quantity,
-      price_snapshot: {
-        unit_price: unitPrice,
-        subtotal,
-        currency,
-      },
-      ...(shippingSnapshot ? { shipping_snapshot: shippingSnapshot } : {}),
-      ...(returnsSnapshot
-        ? { returns_snapshot: { ...returnsSnapshot, policy_hash: policyHash } }
-        : {}),
-      created_at: new Date().toISOString(),
-    };
-  });
-}
 
 function getResolveProductCandidatesCacheEntry(cacheKey) {
   const key = String(cacheKey || '');
@@ -21777,7 +21809,7 @@ const ROUTE_MAP = {
   },
   create_order: {
     method: 'POST',
-    path: '/agent/v1/orders/create',
+    path: '/agent/v2/orders',
     paramType: 'body'
   },
   confirm_payment: {
@@ -31830,7 +31862,6 @@ const CHECKOUT_SERVER_TIMING_STAGE_MAP = [
   ['requote_preview_ms', 'requote'],
   ['create_order_retry_ms', 'recreate'],
   ['submit_payment_retry_ms', 'payretry'],
-  ['order_lines_build_ms', 'lines'],
   ['response_normalize_ms', 'normalize'],
 ];
 const PRODUCT_INTEL_AGENT_OPERATIONS = new Set([
@@ -39438,17 +39469,22 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      case 'create_order': {
 	        // Map to real API requirements
 	        const order = payload.order || {};
+	        const quoteId = firstNonEmptyString(order.quote_id, order.quoteId);
+	        if (!quoteId) {
+	          return res.status(400).json({
+	            status: 'failure',
+	            code: 'quote_required',
+	            message: 'create_order requires a locked quote_id',
+	          });
+	        }
 	        const offerIdRaw =
 	          order.offer_id || order.offerId || payload.offer_id || payload.offerId || null;
 	        const offerId = String(offerIdRaw || '').trim() || null;
 
 	        const items = Array.isArray(order.items) ? order.items : [];
 	        
-	        // Calculate totals if not provided
-	        const subtotal = items.reduce((sum, item) => sum + (item.unit_price || item.price || 0) * item.quantity, 0);
-        
         // Extract merchant_id from first item (assuming single merchant order)
-        const merchantFromOffer = offerId ? extractMerchantIdFromOfferId(offerId) : null;
+	        const merchantFromOffer = offerId ? extractMerchantIdFromOfferId(offerId) : null;
         const merchant_id = merchantFromOffer || items[0]?.merchant_id;
         if (!merchant_id) {
           return res.status(400).json({
@@ -39488,85 +39524,30 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	          }
 	        }
 
-	        // Optional hint for PSP selection / checkout mode
-	        const preferredPsp =
-	          order.preferred_psp || payload.preferred_psp || undefined;
-	        const hasQuoteId = Boolean(firstNonEmptyString(order.quote_id, order.quoteId));
-
-	        if (hasQuoteId) {
-	          url = `${PIVOTA_API_BASE}/agent/v2/orders`;
-	          requestBody = buildCreateOrderV2Body({
-	            payload,
-	            order,
-	            metadata,
-	            clientChannel,
-	            gatewayRequestId,
-	          });
-	          requoteRequestBody = buildQuotePreviewV2Body({
-	            payload,
-	            quote: {
-	              merchant_id,
-	              items: rewrittenItems,
-	              discount_codes: order.discount_codes,
-	              customer_email: order.customer_email,
-	              shipping_address: order.shipping_address,
-	              selected_delivery_option: order.selected_delivery_option,
-	            },
-	            merchantId: merchant_id,
-	            offerId,
-	            metadata,
-	            clientChannel,
-	            gatewayRequestId,
-	          });
-	          break;
-	        }
-	        
-        // Build request body with all required fields
-	        requestBody = {
-	          merchant_id,
-	          customer_email: order.customer_email || 'agent@pivota.cc', // Default for agent orders
-	          ...(order.currency ? { currency: order.currency } : {}),
-	          ...(order.quote_id ? { quote_id: order.quote_id } : {}),
-	          ...(order.selected_delivery_option
-	            ? { selected_delivery_option: order.selected_delivery_option }
-	            : {}),
-	          items: rewrittenItems.map(item => ({
+	        url = `${PIVOTA_API_BASE}/agent/v2/orders`;
+	        requestBody = buildCreateOrderV2Body({
+	          payload,
+	          order,
+	          metadata,
+	          clientChannel,
+	          gatewayRequestId,
+	        });
+	        requoteRequestBody = buildQuotePreviewV2Body({
+	          payload,
+	          quote: {
 	            merchant_id,
-	            product_id: item.product_id,
-	            // Optional variant / SKU information for multi-variant products.
-	            ...(item.variant_id ? { variant_id: item.variant_id } : {}),
-	            ...(item.sku ? { sku: item.sku } : {}),
-            ...(item.selected_options ? { selected_options: item.selected_options } : {}),
-            product_title: item.product_title || item.title || 'Product',
-            quantity: item.quantity,
-            unit_price: item.unit_price || item.price,
-            subtotal: (item.unit_price || item.price) * item.quantity
-          })),
-	          ...(order.discount_codes ? { discount_codes: order.discount_codes } : {}),
-	          shipping_address: {
-	            name: order.shipping_address?.recipient_name || order.shipping_address?.name,
-	            address_line1: order.shipping_address?.address_line1,
-	            address_line2: order.shipping_address?.address_line2 || '',
-	            city: order.shipping_address?.city,
-	            ...(order.shipping_address?.state
-	              ? { state: order.shipping_address.state }
-	              : order.shipping_address?.province
-	                ? { state: order.shipping_address.province }
-	                : order.shipping_address?.state_code
-	                  ? { state: order.shipping_address.state_code }
-	                  : order.shipping_address?.province_code
-	                    ? { state: order.shipping_address.province_code }
-	                    : {}),
-	            country: order.shipping_address?.country,
-	            postal_code: order.shipping_address?.postal_code,
-	            phone: order.shipping_address?.phone || ''
+	            items: rewrittenItems,
+	            discount_codes: order.discount_codes,
+	            customer_email: order.customer_email,
+	            shipping_address: order.shipping_address,
+	            selected_delivery_option: order.selected_delivery_option,
 	          },
-          customer_notes: order.notes || '',
-          // Pass through arbitrary order-level metadata (e.g. creator_id / creator_slug / creator_name)
-          metadata: order.metadata || {},
-          ...(preferredPsp && { preferred_psp: preferredPsp }),
-          ...(payload.acp_state && { acp_state: payload.acp_state })
-        };
+	          merchantId: merchant_id,
+	          offerId,
+	          metadata,
+	          clientChannel,
+	          gatewayRequestId,
+	        });
         break;
       }
 
@@ -39601,6 +39582,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           clientChannel,
           gatewayRequestId,
         });
+        if (!requestBody.quote_id || requestBody.expected_amount == null) {
+          return res.status(400).json({
+            status: 'failure',
+            code: 'expected_amount_required',
+            reason: 'expected_amount_required',
+            message: 'submit_payment requires quote_id and expected_amount from a locked quote',
+          });
+        }
         break;
       }
       
@@ -41672,24 +41661,29 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       typeof upstreamData === 'object' &&
       !Array.isArray(upstreamData)
     ) {
-      const normalizedOrderRequest =
-        requestBody && requestBody.order_request
-          ? requestBody.order_request
-          : requestBody;
-      if (normalizedOrderRequest && !upstreamData.order_lines) {
-        const orderLines = withCheckoutTimingSpan(checkoutRuntime, 'order_lines_build_ms', () =>
-          buildOrderLineSnapshots(normalizedOrderRequest, {
-            orderId: upstreamData.order_id || upstreamData.orderId || null,
+      const upstreamOrder = isPlainObject(upstreamData.order) ? upstreamData.order : {};
+      const hasUpstreamOrderLines = Object.prototype.hasOwnProperty.call(upstreamData, 'order_lines');
+      if (!hasUpstreamOrderLines) {
+        logger.warn(
+          {
+            event: 'gateway_upstream_order_lines_missing',
+            order_id: firstNonEmptyString(
+              upstreamData.order_id,
+              upstreamData.orderId,
+              upstreamOrder.order_id,
+              upstreamOrder.orderId,
+            ),
+            merchant_id: firstNonEmptyString(
+              upstreamData.merchant_id,
+              upstreamData.merchantId,
+              upstreamOrder.merchant_id,
+              upstreamOrder.merchantId,
+              resolvedMerchantId,
+            ),
             resolvedOfferId,
-            resolvedMerchantId,
-          }),
+          },
+          'Upstream create_order response omitted order_lines',
         );
-        if (orderLines.length) {
-          upstreamData = {
-            ...upstreamData,
-            order_lines: orderLines,
-          };
-        }
       }
     }
 
@@ -41729,6 +41723,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     // Normalize submit_payment responses so frontends always see a unified
     // payment object with PSP + payment_action, regardless of PSP type.
     if (operation === 'submit_payment') {
+      let unsupportedPaymentSurface = null;
       const wrapped = withCheckoutTimingSpan(checkoutRuntime, 'response_normalize_ms', () => {
         const p = upstreamData || {};
         const checkoutSession =
@@ -41746,6 +41741,18 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           paymentObj.psp_used ||
           checkoutSession?.provider ||
           null;
+        if (String(psp || '').trim().toLowerCase() === 'pivota_hosted_checkout') {
+          unsupportedPaymentSurface = {
+            error: 'UNSUPPORTED_PAYMENT_SURFACE',
+            message:
+              'Merchant checkout must return the merchant PSP payment surface. pivota_hosted_checkout is disabled.',
+            detail: {
+              psp: 'pivota_hosted_checkout',
+              checkout_session_id: checkoutSession?.checkout_session_id || null,
+            },
+          };
+          return null;
+        }
 
         let paymentAction =
           p.payment_action ||
@@ -41850,6 +41857,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
         return wrappedResponse;
       });
+      if (unsupportedPaymentSurface) {
+        return res.status(502).json(unsupportedPaymentSurface);
+      }
       return res.status(response.status).json(wrapped);
     }
 

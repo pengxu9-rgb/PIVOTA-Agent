@@ -144,7 +144,6 @@ describe('checkout timing headers', () => {
       'upprimary',
       'requote',
       'recreate',
-      'lines',
       'normalize',
     ]);
     expect(res.headers['x-gateway-retries']).toBe('0');
@@ -175,6 +174,8 @@ describe('checkout timing headers', () => {
         payload: {
           payment: {
             order_id: 'ORD_PAY_TIMING',
+            quote_id: 'q_pay_timing',
+            expected_amount: 2900,
             currency: 'USD',
           },
         },
