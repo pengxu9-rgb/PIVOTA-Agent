@@ -79,7 +79,11 @@ function sanitizePublicSourceText(value) {
     .replace(/\bis your go-to for\b/gi, 'is designed for')
     .replace(/\bthis genius tool\b/gi, 'this tool')
     .replace(/\b(?:must-have|pro-favorite|ultimate|powerful)\b/gi, '')
-    .replace(/\b(?:best[-\s]?selling|bestselling|viral|cult[-\s]?favorite|award[-\s]?winning)\b/gi, '')
+    .replace(/\b(?:best[-\s]?selling|bestselling|viral|cult[-\s]?favorite)\b/gi, '')
+    .replace(/\baward[-\s]?winning\b(?!\s+brush\s+set)/gi, '')
+    .replace(/\bdiscover\s+the\s+brush\s+collection\s+that\s+has\s+captured\s+beauty\s+lovers['’]?\s+hearts\s+worldwide[.!]?\s*/gi, '')
+    .replace(/\bdiscover\s+the\s+collection\s+that\s+has\s+captured\s+beauty\s+lovers['’]?\s+hearts\s+worldwide[.!]?\s*/gi, '')
+    .replace(/\b(?:captured|captures)\s+beauty\s+lovers['’]?\s+hearts\s+worldwide[.!]?/gi, '')
     .replace(/\bformulated for all skin types\b/gi, 'described by the official page as a gentle formula')
     .replace(/\bfor all skin types\b/gi, 'with broad routine positioning')
     .replace(/\ball skin types\b/gi, 'broad skin-type positioning')
@@ -100,11 +104,16 @@ function sanitizePublicSourceText(value) {
 }
 
 function sanitizePublicTitleText(value) {
-  return sanitizePublicSourceText(value)
+  return text(value)
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<\/?[^>]+>/g, ' ')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/[$€£¥]\s*\d+(?:\.\d{2})?\s*(?:value)?\b/gi, '')
     .replace(/\s*[\[(]\s*\d{1,3}%\s*off\s*[\])]\s*/gi, ' ')
     .replace(/\s*[\[(]\s*[\])]\s*/g, ' ')
     .replace(/\s*[\[(]\s*(?:sale|clearance|promo|promotion|discount|free gift)\s*[\])]\s*/gi, ' ')
     .replace(/\b(?:sale|clearance|promo|promotion|discount)\s*$/gi, '')
+    .replace(/\.{2,}|…/g, '. ')
     .replace(/\s{2,}/g, ' ')
     .trim();
 }
@@ -661,7 +670,14 @@ function buildHighlightPhrase(kind, category, description, title = '') {
   if (kind === 'makeup_applicator') return 'Makeup sponge format detail';
   if (kind === 'brush') return 'Brush format detail';
   if (kind === 'brush_storage') return 'Brush storage detail';
-  if (kind === 'brush_set') return 'Brush set format detail';
+  if (kind === 'brush_set') {
+    if (/dry['’]?n\s*shape|drying\s+(?:and\s+)?storage|tower/.test(signalText)) {
+      return 'Brushes plus drying tower';
+    }
+    if (/\bfavorites?\b|featuring a selection/.test(signalText)) return 'Curated favorites brush set';
+    if (/\bface\b.*\beye\b|\beye\b.*\bface\b/.test(signalText)) return 'Face and eye brush set';
+    return 'Brush set format detail';
+  }
   if (kind === 'brush_care') return 'Brush-care cleaning detail';
   if (kind === 'skincare') {
     if (/moisturizer|moisturiser|body lotion|lotion/.test(titleText)) return 'Moisturizer formula detail';
