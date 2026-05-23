@@ -217,6 +217,15 @@ function summarizePdpQualityFailure(pdpQuality = null) {
   return Array.isArray(pdpQuality.failure_reasons) ? pdpQuality.failure_reasons : [];
 }
 
+function isActionableContentFinding(finding = {}) {
+  const anomaly = asString(finding.anomaly_type || finding.reason || finding.severity);
+  if (!anomaly) return false;
+  const severity = asString(finding.severity).toLowerCase();
+  if (severity === 'info') return false;
+  if (anomaly === 'gift_card_duplicate_sku') return false;
+  return true;
+}
+
 function classifyBeautyServingQualityRow({
   row = {},
   contentAudit = null,
@@ -239,6 +248,7 @@ function classifyBeautyServingQualityRow({
   if (category === 'external' || category === 'unknown' || category === 'uncategorized') failureReasons.push('generic_external_category');
   if (merchantUrlHealth?.checked && merchantUrlHealth.ok === false) failureReasons.push(`merchant_url_${merchantUrlHealth.status || merchantUrlHealth.reason || 'failed'}`);
   for (const finding of contentFindings) {
+    if (!isActionableContentFinding(finding)) continue;
     const anomaly = asString(finding.anomaly_type || finding.reason || finding.severity);
     if (anomaly) failureReasons.push(`content_${anomaly}`);
   }
