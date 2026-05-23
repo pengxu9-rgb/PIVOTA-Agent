@@ -174,6 +174,28 @@ describe('pivota insights agent context and replacement guard', () => {
         }),
       ),
     ).toBe(true);
+    expect(
+      hasCommerceTruthClaim(
+        reviewedBundle({
+          product_intel_core: {
+            what_it_is: {
+              body: 'A customizable eye trio. Save 20% with this kit.',
+            },
+          },
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      hasCommerceTruthClaim(
+        reviewedBundle({
+          product_intel_core: {
+            what_it_is: {
+              body: 'A toner described with 5% glycolic acid in the official ingredient context.',
+            },
+          },
+        }),
+      ),
+    ).toBe(false);
   });
 
   test('preserves existing agent context when present', () => {

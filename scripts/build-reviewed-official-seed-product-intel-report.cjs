@@ -93,6 +93,8 @@ function sanitizePublicSourceText(value) {
     .replace(/[\u200B-\u200D\uFEFF]/g, '')
     .replace(/[$€£¥]\s*\d+(?:\.\d{2})?\s*(?:value)?\b/gi, '')
     .replace(/\b\d{1,3}%\s*off\b/gi, '')
+    .replace(/\bsave\s+\d{1,3}%\s+with\s+this\s+kit\.?/gi, '')
+    .replace(/\bsave\s+\d{1,3}%\b/gi, '')
     .replace(/\b\d+(?:\.\d{2})?\s*(?:usd|eur|gbp|jpy|cny|rmb|value)\b/gi, '')
     .replace(/\bnot eligible for discounts?\.?/gi, '')
     .replace(/\b(?:ulta beauty|sephora|target|walmart|amazon)\s+exclusive\b/gi, '')
