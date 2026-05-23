@@ -225,6 +225,27 @@ describe('external seed product kind classification', () => {
         reasons: expect.arrayContaining(['explicit_product_family_signal']),
       }),
     );
+
+    expect(
+      classifyExternalSeedProductKind({
+        title: 'Cosmic Tray',
+        product_type: 'Fragrance accessory',
+        canonical_url: 'https://kyliecosmetics.com/products/cosmic-by-kylie-jenner-eau-de-parfum-fragrance-tray',
+        seed_data: {
+          product_family: 'accessory',
+          product_type: 'Fragrance accessory',
+          snapshot: {
+            product_family: 'accessory',
+            product_type: 'Fragrance accessory',
+          },
+        },
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        family: 'accessory',
+        reasons: expect.arrayContaining(['explicit_product_family_signal']),
+      }),
+    );
   });
 
   test('lets strong collection titles override stale single-formula seed kind', () => {

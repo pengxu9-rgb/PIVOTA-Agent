@@ -239,6 +239,93 @@ describe('mark-external-seed-ingredient-remediation', () => {
     expect(plan.nextSeedData.ingredient_intel.force_fill_contract).toBeUndefined();
   });
 
+  test('marks reviewed component-linked sets and clears stale force-fill contract', () => {
+    const row = baseRow({
+      title: 'Lip Liner & Gloss Duo',
+      product_family: 'set_or_collection',
+      bundle_component_refs: [
+        {
+          external_product_id: 'ext_liner',
+          review_state: 'reviewed',
+          inheritance_scope: ['ingredients_inci', 'how_to_use'],
+        },
+        {
+          external_product_id: 'ext_gloss',
+          review_state: 'reviewed',
+          inheritance_scope: ['ingredients_inci', 'how_to_use'],
+        },
+      ],
+      ingredient_intel: {
+        force_fill_contract: forceFillContract(),
+      },
+      pdp_field_quality_summary: {
+        ingredients_inci: {
+          source_origin: 'pivota_force_fill',
+          source_quality_status: 'force_filled_pending_source',
+        },
+      },
+    });
+    row.title = 'Lip Liner & Gloss Duo';
+
+    const plan = buildPlan(row, {
+      generatedAt: '2026-05-17T00:00:00.000Z',
+      apply: false,
+      forceFamily: 'set_or_collection',
+    });
+
+    expect(plan.result.action).toBe('component_refs_linked');
+    expect(plan.result.status).toBe('dry_run');
+    expect(plan.changed).toBe(true);
+    expect(plan.nextSeedData.ingredient_intel.force_fill_contract).toBeUndefined();
+    expect(plan.nextSeedData.ingredient_intel.source_review_queue.status).toBe('component_refs_linked');
+    expect(plan.nextSeedData.ingredient_remediation_v1.action).toBe('component_refs_linked');
+    expect(plan.nextSeedData.pdp_field_quality_summary.ingredients_inci).toMatchObject({
+      source_origin: 'pivota_manual_component_repair',
+      source_quality_status: 'component_refs_linked',
+    });
+  });
+
+  test('clears stale force-fill contract on already-remediated component-linked sets', () => {
+    const row = baseRow({
+      title: 'Lip Liner & Gloss Duo',
+      product_family: 'set_or_collection',
+      bundle_component_refs: [
+        {
+          external_product_id: 'ext_liner',
+          review_state: 'reviewed',
+          inheritance_scope: ['ingredients_inci', 'how_to_use'],
+        },
+      ],
+      ingredient_intel: {
+        force_fill_contract: forceFillContract(),
+        source_review_queue: {
+          status: 'component_refs_linked',
+        },
+      },
+      ingredient_remediation_v1: {
+        field: 'ingredients_inci',
+        source_origin: 'pivota_manual_component_repair',
+        action: 'component_refs_linked',
+        reason_codes: ['bundle_component_refs_linked'],
+      },
+    });
+    row.title = 'Lip Liner & Gloss Duo';
+
+    const plan = buildPlan(row, {
+      generatedAt: '2026-05-17T00:00:00.000Z',
+      apply: false,
+    });
+
+    expect(plan.result.action).toBe('component_refs_linked');
+    expect(plan.result.status).toBe('dry_run');
+    expect(plan.changed).toBe(true);
+    expect(plan.nextSeedData.ingredient_intel.force_fill_contract).toBeUndefined();
+    expect(plan.nextSeedData.ingredient_intel.source_review_queue.status).toBe('component_refs_linked');
+    expect(plan.nextSeedData.pdp_field_quality_summary.ingredients_inci.source_quality_status).toBe(
+      'component_refs_linked',
+    );
+  });
+
   test('serving mirror patch preserves trusted INCI only for stale-contract cleanup', () => {
     const seedData = {
       ingredients_inci: ['Calophyllum Inophyllum Seed Oil'],

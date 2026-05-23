@@ -118,6 +118,38 @@ describe('pdpIngredientAuthority', () => {
     expect(modules.ingredientsInciData.raw_text).not.toMatch(/^FLORAL PEONY BLOSSOM/i);
   });
 
+  test('keeps reviewed mineral makeup INCI visible for color formulas', () => {
+    const modules = buildStructuredPdpIngredientModules({
+      merchant_id: 'external_seed',
+      source: 'external_seed',
+      title: 'King Kylie Loose Powder Highlighter',
+      category_path: ['beauty', 'makeup', 'face', 'highlighter'],
+      pdp_ingredients_raw:
+        'Synthetic Fluorphlogopite, Mica, Silica, Octyldodecyl Stearoyl Stearate, Caprylyl Glycol, Ethylhexylglycerin, [+/-: Iron Oxides (CI 77491, CI 77492, CI 77499)].',
+      pdp_field_quality_summary: {
+        ingredients_raw: {
+          source_origin: 'reviewed_source_backed_pdp_content_patch',
+          source_quality_status: 'high',
+          source_url: 'https://www.ulta.com/p/king-kylie-collection-loose-powder-highlighter-pimprod2055671',
+          reviewed_by: 'codex',
+        },
+      },
+    });
+
+    expect(modules.ingredientsInciData).toEqual(
+      expect.objectContaining({
+        source_quality_status: 'authoritative',
+        items: expect.arrayContaining([
+          'Synthetic Fluorphlogopite',
+          'Mica',
+          'Silica',
+          'Octyldodecyl Stearoyl Stearate',
+        ]),
+      }),
+    );
+    expect(modules.ingredientsInciData.force_filled).toBeUndefined();
+  });
+
   test('suppresses full INCI when only active ingredient block is trustworthy', () => {
     const modules = buildStructuredPdpIngredientModules({
       pdp_active_ingredients_raw:

@@ -1,5 +1,5 @@
 const ACCESSORY_RE =
-  /\b(accessor(?:y|ies)|brush|sponge|puff|applicator|sharpener|tweezer|curler|scissors|comb|mirror|case|bag|pouch|holder|spatula|tool|tools|gua sha|roller|headband|scrunchie|scarf|hat|cap|tote|clip|clips|lash curler|refill case|soap dish|soap saver|washcloth|cloth|towel|gift wrap|wrapping cloth|blotting paper|keyring|key ring|keychain|key chain|charm|candles?|diffusers?|reed diffuser|home fragrance|(?:body\s+)?lotion\s+pump|replacement\s+pump)\b/i;
+  /\b(accessor(?:y|ies)|brush|sponge|puff|applicator|sharpener|tweezer|curler|scissors|comb|mirror|case|bag|pouch|holder|tray|spatula|tool|tools|gua sha|roller|headband|scrunchie|scarf|hat|cap|tote|clip|clips|lash curler|refill case|soap dish|soap saver|washcloth|cloth|towel|gift wrap|wrapping cloth|blotting paper|keyring|key ring|keychain|key chain|charm|candles?|diffusers?|reed diffuser|home fragrance|(?:body\s+)?lotion\s+pump|replacement\s+pump)\b/i;
 const STICKER_ACCESSORY_RE = /\b(stickers?|decals?)\b/i;
 const TREATMENT_STICKER_RE = /\b(?:blemish|acne|pimple|spot|hydrocolloid|patch(?:es)?)\b/i;
 const FALSE_LASH_ACCESSORY_RE = /\b(?:false|fake|faux|precut|individual)\s+lashes?\b|\black\s+segments?\b|\black\s+clusters?\b/i;

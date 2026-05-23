@@ -14,6 +14,7 @@ const SNAPSHOT_CONTRACT_VERSION = 'external_seed.snapshot_contract.v1';
 const TRUSTED_SOURCE_HOSTS = new Set([
   'guerlain.com',
   'fentybeauty.com',
+  'kyliecosmetics.com',
   'rarebeauty.com',
   'tomfordbeauty.com',
   'sokoglam.com',
@@ -152,6 +153,53 @@ function existingVariantIsProtected(seedData, snapshot, productPayload, identity
   return !isWeakVariantQuality(seedData, snapshot, productPayload, identityPayload);
 }
 
+function numericPrice(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function variantPriceAmount(variant) {
+  return numericPrice(variant?.price_amount ?? variant?.price);
+}
+
+function variantProductUrl(variant) {
+  return normalizeText(variant?.product_url || variant?.deep_link || variant?.url);
+}
+
+function priceAmountsDiffer(left, right) {
+  const leftPrice = variantPriceAmount(left);
+  const rightPrice = variantPriceAmount(right);
+  if (leftPrice == null || rightPrice == null) return false;
+  return Math.abs(leftPrice - rightPrice) >= 0.01;
+}
+
+function hasLocalizedProductUrlDrift(existingVariant, sourceUrl) {
+  const existingUrl = variantProductUrl(existingVariant);
+  if (!existingUrl || !sourceUrl) return false;
+  try {
+    const existing = new URL(existingUrl);
+    const source = new URL(sourceUrl);
+    const existingPath = existing.pathname.replace(/\/$/, '');
+    const sourcePath = source.pathname.replace(/\/$/, '');
+    if (existing.hostname.replace(/^www\./, '') !== source.hostname.replace(/^www\./, '')) return true;
+    if (existingPath === sourcePath) return false;
+    return /^\/[a-z]{2}(?:-[a-z]{2})?\//i.test(existingPath) && existingPath.endsWith(sourcePath);
+  } catch {
+    return false;
+  }
+}
+
+function existingVariantNeedsTrustedPriceUrlCorrection(seedData, mapping, variants, sourceUrl, sourceOrigin) {
+  if (mapping.allow_price_url_correction !== true) return false;
+  if (sourceOrigin !== 'official_pdp') return false;
+  const existingVariants = asArray(seedData.variants);
+  if (existingVariants.length !== 1 || variants.length !== 1) return false;
+  const existing = existingVariants[0];
+  const incoming = variants[0];
+  if (!variantIsDisplayable(existing) || !variantIsDisplayable(incoming)) return false;
+  return priceAmountsDiffer(existing, incoming) || hasLocalizedProductUrlDrift(existing, sourceUrl);
+}
+
 function normalizeVariant(input, sourceUrl, sourceOrigin) {
   const object = ensureObject(input);
   const rawOptions = asArray(object.options)
@@ -259,7 +307,15 @@ function buildPatch(row, mapping) {
   if (!variants.length) {
     return { patchKeys: [], reason: 'no_displayable_source_variants' };
   }
-  if (existingVariantIsProtected(seedData, snapshot, productPayload, identityPayload)) {
+  const protectedVariant = existingVariantIsProtected(seedData, snapshot, productPayload, identityPayload);
+  const trustedPriceUrlCorrection = existingVariantNeedsTrustedPriceUrlCorrection(
+    seedData,
+    mapping,
+    variants,
+    sourceUrl,
+    sourceOrigin,
+  );
+  if (protectedVariant && !trustedPriceUrlCorrection) {
     return { patchKeys: [], reason: 'blocked_protect_high_quality_variant' };
   }
   seedData.variants = variants;
@@ -286,7 +342,14 @@ function buildPatch(row, mapping) {
   seedData.source_variant_fields_v1 = marker;
   snapshot.source_variant_fields_v1 = marker;
   seedData.snapshot = snapshot;
-  return { seedData, variants, patchKeys: ['variants'], reason: 'replace_force_or_weak_variant' };
+  return {
+    seedData,
+    variants,
+    patchKeys: ['variants'],
+    reason: trustedPriceUrlCorrection
+      ? 'replace_high_quality_variant_price_url_correction'
+      : 'replace_force_or_weak_variant',
+  };
 }
 
 function buildServingPayloadPatch(seedData) {
@@ -319,6 +382,7 @@ function readMappings() {
     variant_detail_label: item.variant_detail_label || '',
     variant_axes: item.variant_axes || null,
     match_basis: item.match_basis || null,
+    allow_price_url_correction: item.allow_price_url_correction === true,
   })).filter((item) => item.target_id && item.source_url);
 }
 

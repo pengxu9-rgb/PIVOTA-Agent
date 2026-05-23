@@ -249,6 +249,34 @@ function hasReviewedInciNotApplicable(row = {}) {
   );
 }
 
+function hasReviewedComponentRefsLinked(row = {}) {
+  const seedData = ensureJsonObject(row.seed_data);
+  const snapshot = ensureJsonObject(seedData.snapshot);
+  const rootIntel = asObject(seedData.ingredient_intel);
+  const snapshotIntel = asObject(snapshot.ingredient_intel);
+  const queue = {
+    ...asObject(snapshotIntel.source_review_queue),
+    ...asObject(rootIntel.source_review_queue),
+  };
+  const remediation = {
+    ...asObject(snapshot.ingredient_remediation_v1),
+    ...asObject(seedData.ingredient_remediation_v1),
+  };
+  const refs = Array.isArray(seedData.bundle_component_refs) && seedData.bundle_component_refs.length
+    ? seedData.bundle_component_refs
+    : Array.isArray(snapshot.bundle_component_refs)
+      ? snapshot.bundle_component_refs
+      : [];
+  return (
+    refs.length > 0 &&
+    refs.every((ref) => normalizeNonEmptyString(ref?.review_state).toLowerCase() === 'reviewed') &&
+    (
+      normalizeNonEmptyString(queue.status).toLowerCase() === 'component_refs_linked' ||
+      normalizeNonEmptyString(remediation.action).toLowerCase() === 'component_refs_linked'
+    )
+  );
+}
+
 function hasEnoughSeedContentForKb(coverage = {}) {
   return (
     coverage.details_sections_count > 0 ||
@@ -271,6 +299,9 @@ function isFieldApplicable(field, context = {}) {
 function classifyMissingField({ field, row, context, coverage, hasProductKeyKb, hasIdentity }) {
   if (field === 'inci' && hasReviewedInciNotApplicable(row)) {
     return 'reviewed_not_applicable';
+  }
+  if (field === 'inci' && hasReviewedComponentRefsLinked(row)) {
+    return 'component_refs_linked';
   }
 
   if (!isFieldApplicable(field, context)) {
@@ -658,6 +689,7 @@ module.exports = {
   classifyProductContext,
   getSeedCoverage,
   hasReviewedInciNotApplicable,
+  hasReviewedComponentRefsLinked,
   classifyMissingField,
   classifyRow,
   isActionableStatus,
