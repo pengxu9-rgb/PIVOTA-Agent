@@ -27,6 +27,12 @@ function hasFlag(name) {
   return process.argv.includes(`--${name}`);
 }
 
+const SAFE_REWRITE_QUALITY_STATES = new Set(['limited', 'eligible']);
+const SAFE_REWRITE_EVIDENCE_PROFILES = new Set(['seller_only', 'seller_plus_formula']);
+const SAFE_REWRITE_BLOCKERS = new Set(['kb_blocked', 'kb_displayable_limited']);
+const NON_CORE_PUBLIC_REWRITE_TITLE_RE = /\b(?:sample|e-gift|gift card|hoodie|hat|tote|bucket|bag)\b/i;
+const MULTI_ITEM_PUBLIC_REWRITE_TITLE_RE = /\b(?:set|kit|duo|trio|bundle|routine|collection|choose your|gift set|gift trio)\b/i;
+
 function text(value) {
   if (typeof value === 'string') return value.replace(/\s+/g, ' ').trim();
   if (value == null) return '';
@@ -307,6 +313,7 @@ function inferSetKind(titleCategoryText, descriptionText) {
 }
 
 function inferKind(title, category, categoryPath, description = '') {
+  const titleText = `${title}`.toLowerCase();
   const titleCategoryText = `${title} ${category} ${categoryPath}`.toLowerCase();
   const titleDescriptionText = `${title} ${description}`.toLowerCase();
   const descriptionText = `${description}`.toLowerCase();
@@ -318,6 +325,7 @@ function inferKind(title, category, categoryPath, description = '') {
   if (/\b(?:grwm routine|look)\b/.test(titleCategoryText)) return 'makeup_set';
   if (/\b(?:brush\s+cup|brush\s+holder|brush\s+case|brush\s+bag|brush\s+storage|makeup\s+brush\s+cup)\b/.test(titleCategoryText)) return 'brush_storage';
   if (brushCareTitlePattern.test(titleCategoryText)) return 'brush_care';
+  if (/\b(?:face cloth|cleansing cloth|wash cloth|muslin cloth)\b/.test(titleText)) return 'skincare_tool';
   if (/\b(?:3dhd|makeup\s+blender|beauty\s+blender|blending\s+sponge|makeup\s+sponge|beauty\s+sponge|complexion\s+sponge)\b/.test(titleCategoryText)) {
     return 'makeup_applicator';
   }
@@ -381,14 +389,18 @@ function inferKind(title, category, categoryPath, description = '') {
   if (/\b(?:perfumery|scent|olfactive|oud|ombre leather|ombré leather|soleil blanc|private blend)\b/.test(titleCategoryText)) {
     return 'fragrance';
   }
+  if (/\b(?:face cloth|cleansing cloth|wash cloth|muslin cloth)\b/.test(titleText)) return 'skincare_tool';
   if (/\b(?:brow|eyebrow)\b/.test(haystack)) return 'brow';
   if (/\b(?:eye repair|eye cream|eye oil|eye treatment|eye serum|eye patch|eye patches|antioxifeye|beautifeye|detoxifeye|fortifeye|dream-yeye|dream-yeye|eye-surrounds)\b/.test(haystack)) return 'eye_treatment';
+  if (/\b(?:sharpener|pencil sharpener|liner sharpener)\b/.test(titleText)) return 'makeup_sharpener';
+  if (/\b(?:face palette|glow palette)\b/.test(titleCategoryText)) return 'face_palette';
   if (/\b(?:eyeliner|mascara|false lashes|falsies|eyelashes|lashes|lash|eye color|eyeshadow|eye primer|palette)\b/.test(haystack)) return 'eye_makeup';
   if (/\b(?:blush)\b/.test(haystack)) return 'blush';
   if (/\b(?:bronzer|bronze|bronzing)\b/.test(haystack)) return 'bronzer';
   if (/\b(?:highlighting|highlighter|illuminate)\b/.test(haystack)) return 'highlighter';
   if (/\bskinveil\b/.test(titleCategoryText) || /\b(?:loose water[-\s]?powder|setting makeup|velvet finish)\b/.test(haystack)) return 'face_powder';
   if (/\b(?:body oil|movement oil|universal oil)\b/.test(haystack)) return 'body_oil';
+  if (/\b(?:oil blend|facial oil|face oil)\b/.test(haystack)) return 'face_oil';
   if (/\b(?:spot sticker|spot stickers|zit|blemish spot|blemish sticker|blemish stickers)\b/.test(haystack)) return 'blemish_patch';
   if (/\b(?:cleansing pad|cleansing pads|cotton rounds?|reusable pads?|bamboo velour)\b/.test(haystack)) return 'cleansing_pads';
   if (/\b(?:sunscreen|sun\s*screen|spf\s*\d+|sun\s+stick|sun\s+cream)\b/.test(haystack)) return 'sunscreen';
@@ -421,6 +433,7 @@ function kindLabel(kind, category) {
     brow: 'brow product',
     eye_treatment: 'eye treatment',
     eye_makeup: 'eye makeup',
+    face_palette: 'face palette',
     blush: 'blush',
     bronzer: 'bronzer',
     highlighter: 'highlighter',
@@ -450,6 +463,8 @@ function kindLabel(kind, category) {
     blemish_patch: 'blemish patch',
     cleanser: 'cleanser',
     cleansing_pads: 'cleansing pads',
+    makeup_sharpener: 'makeup sharpener',
+    skincare_tool: 'skincare tool',
     makeup_applicator: 'makeup applicator',
     brush: 'brush',
     brush_storage: 'brush storage accessory',
@@ -479,6 +494,7 @@ function displayCategoryForKind(kind, category) {
     brow: 'Brow Product',
     eye_treatment: 'Eye Treatment',
     eye_makeup: 'Eye Makeup',
+    face_palette: 'Face Palette',
     blush: 'Blush',
     bronzer: 'Bronzer',
     highlighter: 'Highlighter',
@@ -508,6 +524,8 @@ function displayCategoryForKind(kind, category) {
     blemish_patch: 'Blemish Patch',
     cleanser: 'Cleanser',
     cleansing_pads: 'Cleansing Pads',
+    makeup_sharpener: 'Makeup Sharpener',
+    skincare_tool: 'Skincare Tool',
     makeup_applicator: 'Makeup Applicator',
     brush: 'Beauty Brush',
     brush_storage: 'Brush Storage',
@@ -524,6 +542,9 @@ function displayCategoryForKind(kind, category) {
   };
   const controlledCategoryKinds = new Set([
     'makeup_applicator',
+    'makeup_sharpener',
+    'skincare_tool',
+    'face_palette',
     'brush',
     'brush_storage',
     'brush_set',
@@ -559,6 +580,7 @@ function displayCategoryForKind(kind, category) {
   ]);
   if (controlledCategoryKinds.has(kind)) return labels[kind] || labels.beauty_product;
   const explicit = text(category);
+  if (/makeup sharpener/i.test(explicit) && kind !== 'makeup_sharpener') return labels[kind] || labels.beauty_product;
   if (explicit && explicit.toLowerCase() !== 'beauty product') return explicit;
   return labels[kind] || labels.beauty_product;
 }
@@ -575,6 +597,7 @@ function routineStep(kind) {
     brow: 'brow_makeup',
     eye_treatment: 'skin_care',
     eye_makeup: 'eye_makeup',
+    face_palette: 'complexion',
     blush: 'cheek_color',
     bronzer: 'cheek_color',
     highlighter: 'complexion',
@@ -604,6 +627,8 @@ function routineStep(kind) {
     blemish_patch: 'spot_care',
     cleanser: 'cleanse',
     cleansing_pads: 'tool',
+    makeup_sharpener: 'tool',
+    skincare_tool: 'tool',
     makeup_applicator: 'tool',
     brush: 'tool',
     brush_storage: 'tool',
@@ -788,6 +813,7 @@ function buildHighlightPhrase(kind, category, description, title = '') {
   if (kind === 'primer') return 'Primer format detail';
   if (kind === 'eye_treatment') return /patch|goggle|caffeine|de-?puff|hydrate/.test(signalText) ? 'Eye-care format detail' : 'Eye treatment detail';
   if (kind === 'eye_makeup') return /shimmer|glimmer|metallic|fairy|light/.test(signalText) ? 'Eye shimmer format detail' : 'Eye-makeup formula detail';
+  if (kind === 'face_palette') return 'Complexion palette detail';
   if (kind === 'blush') return 'Cheek color formula detail';
   if (kind === 'bronzer') return 'Bronzing complexion detail';
   if (kind === 'highlighter') return 'Highlighter formula detail';
@@ -831,6 +857,8 @@ function buildHighlightPhrase(kind, category, description, title = '') {
   if (kind === 'blemish_patch') return 'Spot-care format detail';
   if (kind === 'cleanser') return /glycolic|retinol|mud|jasmine/.test(signalText) ? 'Active cleanser detail' : 'Cleanser formula detail';
   if (kind === 'cleansing_pads') return 'Reusable cleansing pads';
+  if (kind === 'makeup_sharpener') return 'Pencil sharpener tool';
+  if (kind === 'skincare_tool') return 'Cleansing cloth tool';
   if (kind === 'makeup_applicator') return 'Makeup sponge format detail';
   if (kind === 'brush') return 'Brush format detail';
   if (kind === 'brush_storage') return 'Brush storage detail';
@@ -1140,17 +1168,41 @@ function buildReportRows({ seeds, inventoryById, generatedAt, batchName, reviewe
   });
 }
 
+function isConservativeRewriteCandidate(row, options = {}) {
+  if (options.safeOnly === false) return true;
+  const qualityState = text(row.kb_direct_quality_state).toLowerCase();
+  const evidenceProfile = text(row.kb_direct_evidence_profile).toLowerCase();
+  if (row.terminal_hold) return false;
+  if (row.kb_direct_high_quality_ready) return false;
+  if (row.kb_direct_human_reviewed !== true) return false;
+  if (!SAFE_REWRITE_QUALITY_STATES.has(qualityState)) return false;
+  if (!SAFE_REWRITE_EVIDENCE_PROFILES.has(evidenceProfile)) return false;
+  if (!SAFE_REWRITE_BLOCKERS.has(text(row.main_blocker))) return false;
+  if (NON_CORE_PUBLIC_REWRITE_TITLE_RE.test(text(row.title))) return false;
+  if (options.singleItemOnly && MULTI_ITEM_PUBLIC_REWRITE_TITLE_RE.test(text(row.title))) return false;
+  if (options.requirePublicCommerceDoc) {
+    if (row.catalog_attached !== true) return false;
+    if (row.index_serving_eligible !== true) return false;
+    if (row.commerce_doc_public !== true) return false;
+  }
+  return true;
+}
+
 function selectInventoryRows(rows, options) {
   const domain = text(options.domain).toLowerCase();
   const lane = text(options.lane) || 'lane_3_kb_rewrite_review';
   const limit = Math.max(1, Number(options.limit || 100) || 100);
   const requireDescription = options.requireDescription !== false;
+  const safeOnly = options.safeOnly !== false;
+  const requirePublicCommerceDoc = options.requirePublicCommerceDoc === true;
+  const singleItemOnly = options.singleItemOnly === true;
   return rows
     .filter((row) => !domain || text(row.domain).toLowerCase() === domain)
     .filter((row) => text(row.recommended_lane) === lane)
     .filter((row) => !text(row.seed_missing_fields))
     .filter((row) => text(row.identity_status) === 'approved' && row.identity_live_read_enabled !== false)
     .filter((row) => !row.kb_direct_high_quality_ready)
+    .filter((row) => isConservativeRewriteCandidate(row, { safeOnly, requirePublicCommerceDoc, singleItemOnly }))
     .filter((row) => (requireDescription ? true : true))
     .slice(0, limit);
 }
@@ -1220,6 +1272,9 @@ async function main() {
     lane: argValue('lane', 'lane_3_kb_rewrite_review'),
     limit: argValue('limit', '100'),
     requireDescription: !hasFlag('allow-missing-description'),
+    safeOnly: !hasFlag('include-protected-existing'),
+    requirePublicCommerceDoc: hasFlag('require-public-commerce-doc'),
+    singleItemOnly: hasFlag('single-item-only'),
   });
   const productIds = selectedInventory.map((row) => normalizeId(row.external_product_id)).filter(Boolean);
   const seeds = await fetchSeeds(productIds);
@@ -1308,8 +1363,10 @@ module.exports = {
     buildBundle,
     buildHighlightPhrase,
     inferKind,
+    isConservativeRewriteCandidate,
     sanitizeFormulaSummary,
     sanitizePublicSourceText,
     sanitizePublicTitleText,
+    selectInventoryRows,
   },
 };
