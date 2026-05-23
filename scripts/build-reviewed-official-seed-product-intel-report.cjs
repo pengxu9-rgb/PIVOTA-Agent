@@ -81,9 +81,29 @@ function sanitizePublicSourceText(value) {
     .replace(/\b(?:must-have|pro-favorite|ultimate|powerful)\b/gi, '')
     .replace(/\b(?:best[-\s]?selling|bestselling|viral|cult[-\s]?favorite)\b/gi, '')
     .replace(/\baward[-\s]?winning\b(?!\s+brush\s+set)/gi, '')
+    .replace(/\beditor['’]?s choice,\s*beauty shortlist awards\s*\d{4}\b/gi, '')
     .replace(/\bdiscover\s+the\s+brush\s+collection\s+that\s+has\s+captured\s+beauty\s+lovers['’]?\s+hearts\s+worldwide[.!]?\s*/gi, '')
     .replace(/\bdiscover\s+the\s+collection\s+that\s+has\s+captured\s+beauty\s+lovers['’]?\s+hearts\s+worldwide[.!]?\s*/gi, '')
     .replace(/\b(?:captured|captures)\s+beauty\s+lovers['’]?\s+hearts\s+worldwide[.!]?/gi, '')
+    .replace(/\bstay centred all day long with this potent,\s*nourishing serum\.?/gi, 'A nourishing smoothing serum positioned around calming-looking skin care.')
+    .replace(/\bcleansing,\s*purifying,\s*brightening and correcting\s*-\s*there['’]s a reason we called this (?:ultra\s+luxe\s+)?daily cleanser everything!?/gi, 'A daily cleanser positioned for cleansing, brightening, and oil-control support.')
+    .replace(/\bkiss goodbye to dry,\s*flaky skin with our nourishing cream cleanser\.?/gi, 'A nourishing cream cleanser positioned for dry, flaky skin.')
+    .replace(/\bkiss goodbye to ([^.?!]+) with our ([^.?!]+)(?:[.!?]|$)/gi, 'A $2 positioned for $1.')
+    .replace(/\ba specially formulated blend of botanical extracts which work harmoniously to cleanse,\s*nourish and protect sensitive skin\.?/gi, 'A botanical cleanser positioned for sensitive-skin cleansing and nourishment.')
+    .replace(/\bbalance and restore your oil\s*-\s*prone skin naturally with our signature oily skin cleanser\.?/gi, 'A cleanser positioned for oily-skin routines.')
+    .replace(/\bbalance and restore your oil-prone skin naturally with our signature oily skin cleanser\.?/gi, 'A cleanser positioned for oily-skin routines.')
+    .replace(/\blooking for a (?:powerful,\s*)?firming and brightening moisturiser that won['’]?t mess with your makeup\??/gi, 'A lightweight moisturiser positioned around firming- and brightening-looking care.')
+    .replace(/\bthe best of nature['’]s\s+['"]?botox['"]?,?\s+now bottled for your benefit!?/gi, 'An eye serum positioned around firming-looking eye-area care.')
+    .replace(/\bnature['’]s\s+['"]?botox['"]?\b/gi, 'firming eye-care positioning')
+    .replace(/\bintroducing your all in one solution to naturally radiant skin\.?/gi, 'A hydrating serum positioned around radiant-looking skin.')
+    .replace(/\bkeep your glow looking as young as you feel with our pure and potent anti[-\s]?ageing serum\.?/gi, 'A mature-skin serum positioned around Vitamin B and peptide support.')
+    .replace(/\bkeep your glow looking as young as you feel with our pure and potent anti[-\s]?aging serum\.?/gi, 'A mature-skin serum positioned around Vitamin B and peptide support.')
+    .replace(/\bkeep your glow looking as young as you feel with our pure and potent mature-skin serum\.?/gi, 'A mature-skin serum positioned around Vitamin B and peptide support.')
+    .replace(/\bkeep your glow looking as young as you feel with our\s+mature-skin serum\.?/gi, 'A mature-skin serum positioned around Vitamin B and peptide support.')
+    .replace(/\bhealthy radiant glow\b/gi, 'radiant-looking finish')
+    .replace(/\bpure and potent\b/gi, '')
+    .replace(/\bultra\s+luxe\b/gi, '')
+    .replace(/\boil\s*-\s*prone\b/gi, 'oil-prone')
     .replace(/\bformulated for all skin types\b/gi, 'described by the official page as a gentle formula')
     .replace(/\bfor all skin types\b/gi, 'with broad routine positioning')
     .replace(/\ball skin types\b/gi, 'broad skin-type positioning')
@@ -114,12 +134,32 @@ function sanitizePublicSourceText(value) {
     .replace(/\btargets age spots\b/gi, 'addresses the look of uneven tone')
     .replace(/\btargeting age spots\b/gi, 'addressing the look of uneven tone')
     .replace(/\bage spots\b/gi, 'uneven tone')
+    .replace(/\bvisibly reduce wrinkles,\s*dark circles and puffiness\b/gi, 'address the look of wrinkles, dark circles, and puffiness')
+    .replace(/\breduce wrinkles,\s*dark circles and puffiness\b/gi, 'address the look of wrinkles, dark circles, and puffiness')
+    .replace(/\breduce wrinkles\b/gi, 'address the look of wrinkles')
+    .replace(/\breduces wrinkles\b/gi, 'addresses the look of wrinkles')
+    .replace(/\breducing wrinkles\b/gi, 'addressing the look of wrinkles')
     .replace(
       /,\s*address the look of uneven tone\s+and\s+address the look of uneven tone\b/gi,
       ' and address the look of uneven tone',
     )
+    .replace(
+      /\bour\s+soleil\s+b[ée]b[ée]\s+was\s+developed\s+to\s+be\s+the\s+purest,?\s+and\s+most\s+natural,?\s+organic\s+sunscreen\s+for\s+babies\s+and\s+children\.?/gi,
+      'Soleil Bebe is an organic mineral sunscreen positioned for babies and children.',
+    )
+    .replace(
+      /\bdeveloped\s+to\s+be\s+the\s+purest(?:,?\s+and\s+most\s+natural)?,?\s+luxurious\s+organic\s+sunscreen\.?/gi,
+      'An organic mineral sunscreen positioned for face or body use.',
+    )
     .replace(/\banti[-\s]?ageing benefits\b/gi, 'skin-conditioning benefits')
     .replace(/\banti[-\s]?aging benefits\b/gi, 'skin-conditioning benefits')
+    .replace(/\banti[-\s]?ageing serum\b/gi, 'mature-skin serum')
+    .replace(/\banti[-\s]?aging serum\b/gi, 'mature-skin serum')
+    .replace(/\bpromotes a healthy,\s*luminous glow\b/gi, 'supports the look of a healthy, luminous glow')
+    .replace(/\bEnhances skin brightness and natural radiance Helps\b/g, 'Enhances skin brightness and natural radiance. Helps')
+    .replace(/\btone Supports smoother\b/g, 'tone. Supports smoother')
+    .replace(/\btexture Deeply nourishes\b/g, 'texture. Deeply nourishes')
+    .replace(/\bskin supports the look\b/g, 'skin. Supports the look')
     .replace(/\bthinning hair density\b/gi, 'hair density concerns')
     .replace(/\bexcessive shedding\b/gi, 'shedding concerns')
     .replace(/\bRestore damaged, dehydrated and overly processed hair\b/g, 'Supports damaged-feeling, dehydrated, or overly processed hair')
@@ -130,17 +170,23 @@ function sanitizePublicSourceText(value) {
     .replace(/\bwhile preventing the formation of new cells\b/gi, '')
     .replace(/\ba\s+antiperspirant\b/gi, 'an antiperspirant')
     .replace(/\ba\s+antioxidant\b/gi, 'an antioxidant')
+    .replace(/\ban\s+lightweight\b/gi, 'a lightweight')
     .replace(/\b(?:winner of|voted one of|voted as one of)[^.?!]*[.!]?/gi, '')
     .replace(/\b(?:an?|the)\s+(designed|made|created)\b/gi, '$1')
     .replace(/\b(?:everyone loves|widely loved)\b/gi, '')
     .replace(/\.{2,}|…/g, '. ')
+    .replace(/\ba\s*,\s+(?=(?:firming|hydrating|brightening|calming|cleansing|moisturizing|moisturising|gentle|lightweight|nourishing)\b)/gi, 'a ')
     .replace(/\s+([,.;:!?])/g, '$1')
+    .replace(/\bCleansing,\s*purifying,\s*brightening and correcting\s*-\s*there['’]s a reason we called this daily cleanser Everything!?/gi, 'A daily cleanser positioned for cleansing, brightening, and oil-control support.')
+    .replace(/\bBalance and restore your oil-prone skin naturally with our signature oily skin cleanser\.?/gi, 'A cleanser positioned for oily-skin routines.')
+    .replace(/\bLooking for a firming and brightening moisturiser that won['’]?t mess with your makeup\??/gi, 'A lightweight moisturiser positioned around firming- and brightening-looking care.')
+    .replace(/\bKeep your glow looking as young as you feel with our mature-skin serum\.?/gi, 'A mature-skin serum positioned around Vitamin B and peptide support.')
     .replace(/\s{2,}/g, ' ')
     .trim();
 }
 
 function sanitizePublicTitleText(value) {
-  return text(value)
+  const cleaned = text(value)
     .replace(/<!--[\s\S]*?-->/g, ' ')
     .replace(/<\/?[^>]+>/g, ' ')
     .replace(/[\u200B-\u200D\uFEFF]/g, '')
@@ -150,6 +196,12 @@ function sanitizePublicTitleText(value) {
     .replace(/\s*[\[(]\s*(?:sale|clearance|promo|promotion|discount|free gift)\s*[\])]\s*/gi, ' ')
     .replace(/\b(?:sale|clearance|promo|promotion|discount)\s*$/gi, '')
     .replace(/\.{2,}|…/g, '. ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  const pipeParts = cleaned.split('|').map((part) => part.trim()).filter(Boolean);
+  const candidate = pipeParts.length > 1 ? pipeParts[pipeParts.length - 1] : cleaned;
+  return candidate
+    .replace(/\s+[–-]\s+[A-Z0-9][A-Z0-9 .&'™®-]{2,}$/g, '')
     .replace(/\s{2,}/g, ' ')
     .trim();
 }
@@ -169,6 +221,12 @@ function sanitizeFormulaSummary(value) {
 
 function sentenceFragment(value) {
   return text(value).replace(/[.;:!?]+$/g, '').trim();
+}
+
+function articleFor(value) {
+  const cleaned = text(value);
+  if (!cleaned) return 'A';
+  return /^[aeiou]/i.test(cleaned) ? 'An' : 'A';
 }
 
 function titleCaseFromPath(value) {
@@ -308,7 +366,7 @@ function inferKind(title, category, categoryPath, description = '') {
   if (/\b(?:foundation|skin tint|skintint|skin-tint)\b/.test(haystack)) return 'foundation';
   if (/\bconcealer\b/.test(haystack)) return 'concealer';
   if (/\b(?:primer|poreless)\b/.test(haystack)) return 'primer';
-  if (/\b(?:lipstick|lip color|lip balm|lip butter|butter balm|balm stick|lip oil|lip gloss|lipgloss|lip glaze|lip treatment|lip mask|lip liner|lip pencil|lip luxe|lip patch|lippatch|gloss|pout|kiss)\b/.test(haystack)) return 'lip';
+  if (/\b(?:lipstick|lip color|lip balm|lip butter|butter balm|balm stick|lip oil|lip gloss|lipgloss|lip glaze|lip treatment|lip mask|lip liner|lip pencil|lip luxe|lip patch|lippatch|gloss|pout)\b/.test(haystack)) return 'lip';
   if (/\b(?:candle)\b/.test(haystack)) return 'home_fragrance';
   if (/\bdeodorant\b/.test(haystack)) return 'deodorant';
   if (/\b(?:shower\s+gel|body\s+wash|hand\s*&\s*body\s+wash|hand\s+and\s+body\s+wash)\b/.test(titleCategoryText)) return 'body_wash';
@@ -324,7 +382,7 @@ function inferKind(title, category, categoryPath, description = '') {
     return 'fragrance';
   }
   if (/\b(?:brow|eyebrow)\b/.test(haystack)) return 'brow';
-  if (/\b(?:eye repair|eye cream|eye treatment|eye serum|eye patch|eye patches|antioxifeye|beautifeye|detoxifeye|fortifeye|dream-yeye|dream-yeye|eye-surrounds)\b/.test(haystack)) return 'eye_treatment';
+  if (/\b(?:eye repair|eye cream|eye oil|eye treatment|eye serum|eye patch|eye patches|antioxifeye|beautifeye|detoxifeye|fortifeye|dream-yeye|dream-yeye|eye-surrounds)\b/.test(haystack)) return 'eye_treatment';
   if (/\b(?:eyeliner|mascara|false lashes|falsies|eyelashes|lashes|lash|eye color|eyeshadow|eye primer|palette)\b/.test(haystack)) return 'eye_makeup';
   if (/\b(?:blush)\b/.test(haystack)) return 'blush';
   if (/\b(?:bronzer|bronze|bronzing)\b/.test(haystack)) return 'bronzer';
@@ -332,12 +390,14 @@ function inferKind(title, category, categoryPath, description = '') {
   if (/\bskinveil\b/.test(titleCategoryText) || /\b(?:loose water[-\s]?powder|setting makeup|velvet finish)\b/.test(haystack)) return 'face_powder';
   if (/\b(?:body oil|movement oil|universal oil)\b/.test(haystack)) return 'body_oil';
   if (/\b(?:spot sticker|spot stickers|zit|blemish spot|blemish sticker|blemish stickers)\b/.test(haystack)) return 'blemish_patch';
+  if (/\b(?:cleansing pad|cleansing pads|cotton rounds?|reusable pads?|bamboo velour)\b/.test(haystack)) return 'cleansing_pads';
+  if (/\b(?:sunscreen|sun\s*screen|spf\s*\d+|sun\s+stick|sun\s+cream)\b/.test(haystack)) return 'sunscreen';
   if (/\b(?:foaming face wash|face wash|foaming gel cleanser|gel cleanser|face wipes|facial wipes|goat milk soap|bar soap|soap)\b/.test(haystack)) return 'cleanser';
   if (/\b(?:facial oil|face oil)\b/.test(haystack)) return 'face_oil';
   if (/\b(?:toning mist|toner|tonic)\b/.test(haystack)) return 'toner';
   if (/\bretinol\s+oil\b/.test(haystack)) return 'skincare';
   if (/\b(?:peel|polish|exfoliat|resurfac|steam facial|facial treatment)\b/.test(haystack)) return 'skincare';
-  if (/\b(?:facial cream|face cream|moisturizer|moisturiser|volume cream|body cream|body lotion|whipped body cream|goat milk lotion)\b/.test(haystack)) return 'moisturizer';
+  if (/\b(?:facial cream|face cream|moisturizer|moisturiser|volume cream|body cream|body lotion|whipped body cream|goat milk lotion|water gel|gel cream)\b/.test(haystack)) return 'moisturizer';
   if (/\b(?:cleansing|cleanser)\b/.test(titleCategoryText)) return 'cleanser';
   if (/\b(?:retinol|serum|peptide|aha|bha|lactic|glycolic|salicylic)\b/.test(haystack)) return 'serum';
   if (/\b(?:hand cream|hand salve|cuticle serum)\b/.test(haystack)) return 'skincare';
@@ -386,8 +446,10 @@ function kindLabel(kind, category) {
     toner: 'toner',
     moisturizer: 'moisturizer',
     serum: 'skincare treatment',
+    sunscreen: 'sunscreen',
     blemish_patch: 'blemish patch',
     cleanser: 'cleanser',
+    cleansing_pads: 'cleansing pads',
     makeup_applicator: 'makeup applicator',
     brush: 'brush',
     brush_storage: 'brush storage accessory',
@@ -442,8 +504,10 @@ function displayCategoryForKind(kind, category) {
     toner: 'Toner',
     moisturizer: 'Moisturizer',
     serum: 'Skincare Treatment',
+    sunscreen: 'Sunscreen',
     blemish_patch: 'Blemish Patch',
     cleanser: 'Cleanser',
+    cleansing_pads: 'Cleansing Pads',
     makeup_applicator: 'Makeup Applicator',
     brush: 'Beauty Brush',
     brush_storage: 'Brush Storage',
@@ -490,6 +554,8 @@ function displayCategoryForKind(kind, category) {
     'toner',
     'moisturizer',
     'serum',
+    'sunscreen',
+    'cleansing_pads',
   ]);
   if (controlledCategoryKinds.has(kind)) return labels[kind] || labels.beauty_product;
   const explicit = text(category);
@@ -534,8 +600,10 @@ function routineStep(kind) {
     toner: 'skin_care',
     moisturizer: 'skin_care',
     serum: 'skin_care',
+    sunscreen: 'skin_care',
     blemish_patch: 'spot_care',
     cleanser: 'cleanse',
+    cleansing_pads: 'tool',
     makeup_applicator: 'tool',
     brush: 'tool',
     brush_storage: 'tool',
@@ -759,8 +827,10 @@ function buildHighlightPhrase(kind, category, description, title = '') {
     if (/\baha\b|glycolic|lactic/.test(signalText)) return 'AHA serum detail';
     return 'Treatment formula detail';
   }
+  if (kind === 'sunscreen') return /baby|children|kids?/.test(signalText) ? 'Child sunscreen format detail' : 'Sunscreen format detail';
   if (kind === 'blemish_patch') return 'Spot-care format detail';
   if (kind === 'cleanser') return /glycolic|retinol|mud|jasmine/.test(signalText) ? 'Active cleanser detail' : 'Cleanser formula detail';
+  if (kind === 'cleansing_pads') return 'Reusable cleansing pads';
   if (kind === 'makeup_applicator') return 'Makeup sponge format detail';
   if (kind === 'brush') return 'Brush format detail';
   if (kind === 'brush_storage') return 'Brush storage detail';
@@ -829,9 +899,11 @@ function buildBundle({ seed, inventoryRow, generatedAt, batchName, reviewer }) {
   const ingredient = ingredientSignals(seedData);
   const evidenceProfile = ingredient.available ? 'seller_plus_formula' : 'official_pdp_seed';
   const highlight = buildHighlightPhrase(kind, category, description, title);
+  const labeledProduct = text(`${brandPrefix}${label}`);
+  const article = articleFor(labeledProduct);
   const whatItIsBody = descriptionSentence
-    ? `A ${brandPrefix}${label} listed on the official source page as ${title}. The official description identifies: ${descriptionSentence}`
-    : `A ${brandPrefix}${label} listed on the official source page as ${title}.`;
+    ? `${article} ${labeledProduct} listed on the official source page as ${title}. The official description identifies: ${descriptionSentence}`
+    : `${article} ${labeledProduct} listed on the official source page as ${title}.`;
   const formulaBody = ingredient.available
     ? `Captured formula fields include ${sentenceFragment(ingredient.summary) || `${ingredient.ingredient_count} ingredient tokens`}. Agents should keep composition claims within those source fields.`
     : `No complete ingredient list was captured for this review batch, so formula-level claims stay unavailable.`;
@@ -995,7 +1067,7 @@ function buildBundle({ seed, inventoryRow, generatedAt, batchName, reviewer }) {
       reviewer,
       reviewer_kind: 'assistant',
       reviewed_at: generatedAt,
-      external_highlight_review_status: 'seller_only_fallback',
+      external_highlight_review_status: 'rewrite',
       external_review_batch: batchName,
       official_source_url: sourceUrl,
       official_source_ingredient_count: ingredient.ingredient_count,
