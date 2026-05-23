@@ -3,6 +3,7 @@ const path = require('path');
 
 const axios = require('axios');
 const OpenAI = require('openai');
+const logger = require('../logger');
 const {
   resolveFindProductsGeminiApiKey,
   resolveFindProductsLlmRuntime,
@@ -156,6 +157,11 @@ function safeJsonStringify(value, maxChars = 120_000) {
   return out;
 }
 
+function cleanRerankProvenance(value) {
+  const text = typeof value === 'string' ? value.trim() : '';
+  return text ? text.slice(0, 240) : null;
+}
+
 function buildPrompt({ userQuery, n, internalProductsJson, externalProductsJson }) {
   const template = loadPromptTemplate();
   return String(template || '')
@@ -173,6 +179,8 @@ function parseRerankResponse(raw) {
       product_id: String(it?.product_id || '').trim(),
       source: String(it?.source || '').trim(),
       reason: typeof it?.reason === 'string' ? it.reason : null,
+      rationale: cleanRerankProvenance(it?.rationale),
+      criteria: cleanRerankProvenance(it?.criteria),
     }))
     .filter((it) => Boolean(it.product_id) && (it.source === 'internal' || it.source === 'external'));
 }
@@ -194,7 +202,8 @@ function applyRerankToProducts(products, rerankedItems, limit) {
     const p = byId.get(pid);
     if (!p) continue;
     seen.add(pid);
-    ordered.push(p);
+    const rerankRationale = it.rationale || it.criteria || null;
+    ordered.push(rerankRationale ? { ...p, rerank_rationale: rerankRationale } : p);
   }
 
   // Preserve the remainder in original order (stable) so pagination/total stays intact.
@@ -285,6 +294,11 @@ function setProductsOnResponse(response, key, products) {
   return { ...response, products };
 }
 
+function setEvidenceProfileOnResponse(response, evidenceProfile) {
+  if (!response || typeof response !== 'object' || Array.isArray(response)) return response;
+  return { ...response, evidence_profile: evidenceProfile };
+}
+
 async function maybeRerankFindProductsMultiResponse({ response, userQuery, limit }) {
   if (!isEnabled()) return { response, applied: false };
   const q = String(userQuery || '').trim();
@@ -311,13 +325,31 @@ async function maybeRerankFindProductsMultiResponse({ response, userQuery, limit
   const items = parseRerankResponse(json);
   if (!items.length) return { response, applied: false, provider };
 
+  const missingProvenanceCount = items.filter((it) => !it.rationale && !it.criteria).length;
+  const evidenceProfile = missingProvenanceCount > 0
+    ? 'llm_rerank_unprovenanced'
+    : 'llm_rerank_with_rationale';
+  if (missingProvenanceCount > 0) {
+    logger.warn(
+      {
+        provider,
+        items_count: items.length,
+        missing_count: missingProvenanceCount,
+        evidence_profile: evidenceProfile,
+      },
+      'find_products_multi llm rerank missing provenance',
+    );
+  }
+
   const reordered = applyRerankToProducts(list, items, n);
+  const responseWithProducts = setProductsOnResponse(response, key, reordered);
   return {
-    response: setProductsOnResponse(response, key, reordered),
+    response: setEvidenceProfileOnResponse(responseWithProducts, evidenceProfile),
     applied: true,
     provider,
     items_count: items.length,
     duration_ms: Date.now() - t0,
+    evidence_profile: evidenceProfile,
   };
 }
 
