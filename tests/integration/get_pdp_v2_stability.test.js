@@ -5,6 +5,7 @@ delete process.env.DATABASE_URL;
 
 const request = require('supertest');
 const nock = require('nock');
+const logger = require('../../src/logger');
 const app = require('../../src/server');
 
 function mockProductDetailInvoke(merchantId, productId, status, body, times = 1) {
@@ -24,6 +25,7 @@ function mockProductDetailInvoke(merchantId, productId, status, body, times = 1)
 describe('get_pdp_v2 stability semantics', () => {
   afterEach(() => {
     nock.cleanAll();
+    jest.restoreAllMocks();
   });
 
   it('auto-corrects ext_* merchant mismatches to the external_seed canonical product', async () => {
@@ -221,6 +223,71 @@ describe('get_pdp_v2 stability semantics', () => {
       }),
     );
     expect(JSON.stringify(offersModule?.data)).not.toContain('SHOULD_NOT_LEAK_AS_SELF_OFFER');
+  });
+
+  it('suppresses self offers when the product has a transaction hold', async () => {
+    const warnSpy = jest.spyOn(logger, 'warn').mockImplementation(() => {});
+    const product = {
+      merchant_id: 'merch_held',
+      product_id: 'held_1',
+      content_key: 'ck_held_1',
+      title: 'Held Merchant Product',
+      brand: 'Held',
+      currency: 'USD',
+      price: {
+        amount: 42,
+        currency: 'USD',
+      },
+      in_stock: true,
+      transaction_ready: false,
+    };
+
+    const productDetailScope = mockProductDetailInvoke('merch_held', 'held_1', 200, {
+      product,
+    });
+    nock(process.env.PIVOTA_API_BASE)
+      .get('/agent/v1/product-groups/resolve')
+      .query((query) => query && query.merchant_id === 'merch_held' && query.product_id === 'held_1')
+      .reply(200, {
+        status: 'success',
+        product_group_id: null,
+        members: [],
+      });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'get_pdp_v2',
+        payload: {
+          include: ['offers'],
+          product_ref: {
+            merchant_id: 'merch_held',
+            product_id: 'held_1',
+          },
+        },
+      })
+      .expect(200);
+
+    expect(productDetailScope.isDone()).toBe(true);
+    const offersModule = res.body.modules.find((module) => module.type === 'offers');
+    expect(offersModule?.data).toEqual(
+      expect.objectContaining({
+        offers_count: 0,
+        quality_state: 'transaction_held_no_fallback',
+        offers: [],
+      }),
+    );
+    const suppressionLog = warnSpy.mock.calls.find(
+      (call) => call[1] === 'PDP self-offer fallback suppressed',
+    );
+    expect(suppressionLog?.[0]).toEqual(
+      expect.objectContaining({
+        event: 'pdp_self_offer_fallback_suppressed',
+        reason: 'transaction_hold',
+        product_id: 'held_1',
+        content_key: 'ck_held_1',
+      }),
+    );
   });
 
   it('does not synchronously refetch product detail only to hydrate savings presentation', async () => {
