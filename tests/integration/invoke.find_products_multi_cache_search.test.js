@@ -327,6 +327,59 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(upstreamSearch.isDone()).toBe(false);
   });
 
+  test('non-shopping contract safe-empty does not call upstream search', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async () => ({ rows: [] }),
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            id: 'prod_noise_1',
+            product_id: 'prod_noise_1',
+            merchant_id: 'merch_noise',
+            title: 'Noise Product',
+            status: 'active',
+            inventory_quantity: 8,
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'return policy',
+            page: 1,
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'creator_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata?.query_source).toBe('search_quality_contract_v1_safe_empty');
+    expect(resp.body.metadata?.search_trace?.upstream_stage?.called).toBe(false);
+    expect(resp.body.metadata?.search_decision?.decision_lock_reason).toBe(
+      'search_quality_contract_ambiguous_or_non_shopping',
+    );
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products).toHaveLength(0);
+    expect(upstreamSearch.isDone()).toBe(false);
+  });
+
   test('treats zh brand lookup as relevant for en-vendor cached rows', async () => {
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
