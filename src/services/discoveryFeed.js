@@ -2847,6 +2847,8 @@ function normalizeDiscoveryRequest(input = {}) {
   const scope = normalizeDiscoveryScope(source.scope);
   const query = normalizeDiscoveryQuery(source.query ?? source.query_text ?? source.queryText);
   const sort = normalizeDiscoverySort(source.sort);
+  const requestId =
+    String(source.request_id || source.requestId || source.trace_id || source.traceId || '').trim() || null;
   const sourceProductRef =
     source.source_product_ref && typeof source.source_product_ref === 'object'
       ? {
@@ -2877,6 +2879,7 @@ function normalizeDiscoveryRequest(input = {}) {
     sort,
     scope,
     query,
+    request_id: requestId,
     context: {
       recent_views: dedupedRecentViews,
       recent_queries: recentQueries,
@@ -3842,6 +3845,27 @@ function shouldSkipPersonalizedProviderExpansion(products = [], { request, profi
     : false;
 }
 
+function buildDiscoveryTransportErrorDetail({ err, response, timeoutMs, elapsedMs } = {}) {
+  const resp = response || err?.response || null;
+  return {
+    code: err?.code || null,
+    name: err?.name || null,
+    message: err?.message || null,
+    cause: err?.cause ? String(err.cause).slice(0, 200) : null,
+    response_status: resp?.status ?? null,
+    response_has_data: Boolean(resp?.data),
+    timeout_ms: timeoutMs,
+    elapsed_ms: elapsedMs,
+  };
+}
+
+function firstRecallErrorDetail(recallSummary = []) {
+  const summary = (Array.isArray(recallSummary) ? recallSummary : []).find(
+    (row) => row && typeof row === 'object' && row.error_detail,
+  );
+  return summary?.error_detail || null;
+}
+
 async function fetchDiscoveryRecallStep({
   baseUrl,
   request,
@@ -3851,7 +3875,10 @@ async function fetchDiscoveryRecallStep({
   timeoutMs = getDiscoveryProductsSearchTimeoutMs(),
 } = {}) {
   const stepStartedAt = Date.now();
+  let capturedReqStartMs = stepStartedAt;
   try {
+    const reqStartMs = Date.now();
+    capturedReqStartMs = reqStartMs;
     const resp = await axios.get(`${baseUrl}/agent/v1/products/search`, {
       params: {
         ...(step?.query ? { query: step.query } : {}),
@@ -3870,8 +3897,17 @@ async function fetchDiscoveryRecallStep({
         ? resp.data.results
         : [];
     const stepLatencyMs = Date.now() - stepStartedAt;
+    const responseErrorDetail =
+      resp.status >= 200 && resp.status < 300
+        ? null
+        : buildDiscoveryTransportErrorDetail({
+            response: resp,
+            timeoutMs,
+            elapsedMs: Date.now() - reqStartMs,
+          });
     const summary = {
       provider,
+      ...(request?.request_id ? { request_id: request.request_id } : {}),
       label: step?.label || 'unknown',
       query: step?.query || null,
       offset: Number(step?.offset || 0),
@@ -3881,6 +3917,7 @@ async function fetchDiscoveryRecallStep({
       latency_ms: stepLatencyMs,
       cache_hit: false,
       ...(resp.status >= 200 && resp.status < 300 ? {} : { failure_reason: classifyDiscoveryHttpFailure(resp.status) }),
+      ...(responseErrorDetail ? { error_detail: responseErrorDetail } : {}),
     };
 
     recordDiscoveryRecallStep({
@@ -3898,6 +3935,11 @@ async function fetchDiscoveryRecallStep({
     };
   } catch (err) {
     const stepLatencyMs = Date.now() - stepStartedAt;
+    const errFields = buildDiscoveryTransportErrorDetail({
+      err,
+      timeoutMs,
+      elapsedMs: Date.now() - capturedReqStartMs,
+    });
     recordDiscoveryRecallStep({
       surface: request?.surface,
       step: step?.label,
@@ -3910,6 +3952,7 @@ async function fetchDiscoveryRecallStep({
       products: [],
       summary: {
         provider,
+        ...(request?.request_id ? { request_id: request.request_id } : {}),
         label: step?.label || 'unknown',
         query: step?.query || null,
         offset: Number(step?.offset || 0),
@@ -3922,6 +3965,7 @@ async function fetchDiscoveryRecallStep({
           err?.code === 'ECONNABORTED' || /timeout/i.test(String(err?.message || ''))
             ? 'timeout'
             : `request_error:${err?.code || 'unknown'}`,
+        error_detail: errFields,
         error: err?.message || String(err),
       },
     };
@@ -4084,11 +4128,13 @@ async function loadProductsSearchCandidates({ request, profile, limit = MAX_CAND
     }
 
     if (successCount <= 0) {
+      const errorDetail = firstRecallErrorDetail(recallSummary);
       logger.warn(
         {
           base_url: baseUrl,
           surface: request?.surface || 'unknown',
           recall_summary: recallSummary,
+          ...(errorDetail ? { error_detail: errorDetail } : {}),
         },
         'discovery feed products/search recall failed',
       );
@@ -4137,11 +4183,13 @@ async function loadProductsSearchCandidates({ request, profile, limit = MAX_CAND
   }
 
   if (successCount <= 0) {
+    const errorDetail = firstRecallErrorDetail(recallSummary);
     logger.warn(
       {
         base_url: baseUrl,
         surface: request?.surface || 'unknown',
         recall_summary: recallSummary,
+        ...(errorDetail ? { error_detail: errorDetail } : {}),
       },
       'discovery feed products/search recall failed',
     );

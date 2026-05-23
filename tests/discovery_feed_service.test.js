@@ -1,5 +1,6 @@
 const nock = require('nock');
 const axios = require('axios');
+const logger = require('../src/logger');
 const {
   DiscoveryCatalogUnavailableError,
   buildDiscoveryProfile,
@@ -53,6 +54,10 @@ function makeProduct({
     ...(external_seed_product_id ? { external_seed_product_id } : {}),
     status: 'active',
   };
+}
+
+function findProductsSearchRecallWarn(warnSpy) {
+  return warnSpy.mock.calls.find(([, message]) => message === 'discovery feed products/search recall failed')?.[0];
 }
 
 function makeExternalSeedRow({
@@ -4428,6 +4433,106 @@ describe('discovery feed service', () => {
         ]),
       }),
     });
+  });
+
+  test('products_search timeout logs structured axios error detail', async () => {
+    process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
+    process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY = 'test-key';
+    process.env.DISCOVERY_PRODUCTS_SEARCH_TIMEOUT_MS = '25';
+    process.env.DISCOVERY_PRODUCTS_SEARCH_MAX_CALLS = '1';
+    delete process.env.DATABASE_URL;
+
+    const timeoutErr = Object.assign(new Error('timeout of 25ms exceeded'), {
+      code: 'ECONNABORTED',
+      name: 'AxiosError',
+    });
+    const warnSpy = jest.spyOn(logger, 'warn').mockImplementation(() => {});
+    jest.spyOn(axios, 'get').mockRejectedValue(timeoutErr);
+
+    const err = await getDiscoveryFeed({
+      surface: 'home_hot_deals',
+      request_id: 'req_timeout_1',
+      limit: 6,
+      context: {
+        auth_state: 'anonymous',
+        locale: 'en-US',
+        recent_views: [],
+        recent_queries: [],
+      },
+    }).then(
+      () => null,
+      (caught) => caught,
+    );
+
+    expect(err).toMatchObject({ code: 'DISCOVERY_CATALOG_UNAVAILABLE' });
+    const logLine = findProductsSearchRecallWarn(warnSpy);
+    expect(logLine).toEqual(
+      expect.objectContaining({
+        error_detail: expect.objectContaining({
+          code: 'ECONNABORTED',
+          elapsed_ms: expect.any(Number),
+        }),
+      }),
+    );
+    expect(logLine.recall_summary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          request_id: 'req_timeout_1',
+          error_detail: expect.objectContaining({
+            code: 'ECONNABORTED',
+            elapsed_ms: expect.any(Number),
+          }),
+        }),
+      ]),
+    );
+  });
+
+  test('products_search 5xx logs structured response status detail', async () => {
+    process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
+    process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY = 'test-key';
+    process.env.DISCOVERY_PRODUCTS_SEARCH_MAX_CALLS = '1';
+    delete process.env.DATABASE_URL;
+
+    const warnSpy = jest.spyOn(logger, 'warn').mockImplementation(() => {});
+    nock('http://discovery-catalog.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(503, { error: 'backend unavailable' });
+
+    const err = await getDiscoveryFeed({
+      surface: 'home_hot_deals',
+      limit: 6,
+      context: {
+        auth_state: 'anonymous',
+        locale: 'en-US',
+        recent_views: [],
+        recent_queries: [],
+      },
+    }).then(
+      () => null,
+      (caught) => caught,
+    );
+
+    expect(err).toMatchObject({ code: 'DISCOVERY_CATALOG_UNAVAILABLE' });
+    const logLine = findProductsSearchRecallWarn(warnSpy);
+    expect(logLine).toEqual(
+      expect.objectContaining({
+        error_detail: expect.objectContaining({
+          response_status: 503,
+        }),
+      }),
+    );
+    expect(logLine.recall_summary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          failure_reason: 'http_5xx',
+          error_detail: expect.objectContaining({
+            response_status: 503,
+            response_has_data: true,
+          }),
+        }),
+      ]),
+    );
   });
 
   test('working products_search prevents catalog_unavailable even when db-backed providers are missing', async () => {

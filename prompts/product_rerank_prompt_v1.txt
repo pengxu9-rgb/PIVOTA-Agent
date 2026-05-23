@@ -24,6 +24,7 @@
    - serum/essence/ampoule 视为同类；moisturizer/cream/gel cream/lotion 视为保湿类近邻；sunscreen/sunblock/spf/broad spectrum 视为防晒类近邻；cleanser/face wash/cleansing 视为清洁类近邻；toner/lotion/face mist 视为化妆水类近邻。
    - 若 user_query 明确是 skincare/护肤/スキンケア，则 brush/sponge/puff/applicator/beauty tool/fragrance/perfume 这类候选视为不相关，除非候选池里根本没有任何同类护肤候选。
 5) source 只能作为同等相关度下的 tie-breaker，不能压过品牌/商品名匹配优先级。
+6) 每个 item 必须包含 rationale（一句话，说明排序依据）或 criteria。
 
 【排序建议（用于相关度 tie-break）】
 - query 关键词命中（title/brand/category/tags）更高优先
@@ -39,7 +40,7 @@
 仅输出可解析 JSON（不要 Markdown，不要解释文字，不要多余字段）：
 {
   "items": [
-    {"product_id":"...", "source":"internal|external", "reason":"..."},
+    {"product_id":"...", "source":"internal|external", "reason":"...", "rationale":"..."},
     ...
   ]
 }

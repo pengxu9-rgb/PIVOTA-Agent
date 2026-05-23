@@ -71,6 +71,34 @@ describe('sanitizer', () => {
     expect(out.safe_display_name).not.toContain('<b>');
     expect(out.safe_features.some((f) => f.includes('clinical'))).toBe(false);
   });
+
+  test('uses category path leaf in display name', () => {
+    const product = {
+      title: 'Lip Color',
+      brand: { brand_name: 'Brand' },
+      category: { path: ['Beauty', 'Lipstick'] },
+      attributes: { style_tags: [] },
+    };
+
+    const out = sanitizeProduct(product);
+
+    expect(out.safe_display_name).toContain('Lipstick');
+    expect(out.safe_name_parts.category_safe).toBe('Lipstick');
+  });
+
+  test('does not use category_id as display text when category path is absent', () => {
+    const product = {
+      title: 'Lip Color',
+      brand: { brand_name: 'Brand' },
+      category: { category_id: 'sku_abc123' },
+      attributes: { style_tags: [] },
+    };
+
+    const out = sanitizeProduct(product);
+
+    expect(out.safe_display_name).not.toContain('sku_abc123');
+    expect(out.safe_name_parts.category_safe).not.toContain('sku_abc123');
+  });
 });
 
 describe('rerank', () => {

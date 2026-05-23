@@ -11,5 +11,6 @@ describe('product rerank prompt', () => {
     expect(prompt).toContain('brush/sponge/puff/applicator/beauty tool/fragrance/perfume');
     expect(prompt).toContain('不能把 brush 排到 serum 前');
     expect(prompt).toContain('niacinamide、retinol、vitamin c、ceramide');
+    expect(prompt).toContain('rationale');
   });
 });
