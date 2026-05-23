@@ -87,6 +87,37 @@ describe('pdpIngredientAuthority', () => {
     );
   });
 
+  test('keeps official fragrance balm INCI visible when text starts with a shade prefix', () => {
+    const modules = buildStructuredPdpIngredientModules({
+      merchant_id: 'external_seed',
+      source: 'external_seed',
+      title: 'Fragrance Layering Balm - Floral Peony Blossom',
+      category_path: ['beauty', 'fragrance', 'perfume'],
+      pdp_ingredients_raw:
+        'FLORAL PEONY BLOSSOM : Isododecane, Dimethicone, Dimethicone/Vinyl Dimethicone Crosspolymer, Fragrance (Parfum), Sorbitan Isostearate, Rose Ketones, Hydroxycitronellal, Benzyl Cinnamate, Benzyl Salicylate.',
+      pdp_field_quality_summary: {
+        ingredients_raw: {
+          source_origin: 'official_html',
+          source_quality_status: 'high',
+        },
+      },
+    });
+
+    expect(modules.ingredientsInciData).toEqual(
+      expect.objectContaining({
+        source_origin: 'pdp_section',
+        source_quality_status: 'authoritative',
+        items: expect.arrayContaining([
+          'Isododecane',
+          'Fragrance (Parfum)',
+          'Hydroxycitronellal',
+          'Benzyl Salicylate',
+        ]),
+      }),
+    );
+    expect(modules.ingredientsInciData.raw_text).not.toMatch(/^FLORAL PEONY BLOSSOM/i);
+  });
+
   test('suppresses full INCI when only active ingredient block is trustworthy', () => {
     const modules = buildStructuredPdpIngredientModules({
       pdp_active_ingredients_raw:

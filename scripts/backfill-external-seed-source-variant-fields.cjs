@@ -13,6 +13,7 @@ const SNAPSHOT_CONTRACT_VERSION = 'external_seed.snapshot_contract.v1';
 
 const TRUSTED_SOURCE_HOSTS = new Set([
   'guerlain.com',
+  'rarebeauty.com',
   'tomfordbeauty.com',
   'sokoglam.com',
   'ohlolly.com',

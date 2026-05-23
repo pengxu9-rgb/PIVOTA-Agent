@@ -88,10 +88,9 @@ function getHeaders() {
   return headers;
 }
 
-async function fetchRows({ market, domain, brand, externalProductId, limit, offset }) {
+async function fetchRows({ market, domain, brand, externalProductId, includeAttached, limit, offset }) {
   const where = [
     `status = 'active'`,
-    `attached_product_key IS NULL`,
     `market = $1`,
     `(tool = '*' OR tool = 'creator_agents')`,
   ];
@@ -106,6 +105,7 @@ async function fetchRows({ market, domain, brand, externalProductId, limit, offs
     where.push(`lower(coalesce(seed_data->>'brand', seed_data->'snapshot'->>'brand', title, '')) = lower(${bind(brand)})`);
   }
   if (externalProductId) where.push(`external_product_id = ${bind(externalProductId)}`);
+  if (!includeAttached) where.push(`attached_product_key IS NULL`);
 
   params.push(limit);
   const limitBind = `$${params.length}`;
@@ -502,6 +502,7 @@ async function main() {
     domain: asString(argValue('domain')),
     brand: asString(argValue('brand')),
     externalProductId: asString(argValue('external-product-id')),
+    includeAttached: hasArg('include-attached'),
     limit: parsePositiveInt(argValue('limit'), 50, 1, 500),
     offset: Math.max(0, Number(argValue('offset') || 0) || 0),
   });
@@ -538,6 +539,7 @@ async function main() {
       domain: asString(argValue('domain')) || null,
       brand: asString(argValue('brand')) || null,
       external_product_id: asString(argValue('external-product-id')) || null,
+      include_attached: hasArg('include-attached'),
       limit: parsePositiveInt(argValue('limit'), 50, 1, 500),
       offset: Math.max(0, Number(argValue('offset') || 0) || 0),
       include_similar: options.includeSimilar,
