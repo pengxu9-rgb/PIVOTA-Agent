@@ -461,6 +461,25 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
       batchName: 'test_batch',
       reviewer: 'codex_test',
     });
+    const lipBlushBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_lipblush',
+        title: 'LipBlush',
+        canonical_url: 'https://pixibeauty.com/products/lipblush',
+        seed_data: {
+          brand: 'PIXI BEAUTY',
+          category: 'Lip Tint',
+          description: 'Lightweight, water-based lip stain with stale liner copy elsewhere on the row.',
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_lipblush',
+        sellable_item_group_id: 'sig_lipblush',
+      },
+      generatedAt: '2026-05-22T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
 
     expect(primerBundle.shopping_card.subtitle).toBe('Primer');
     expect(primerBundle.shopping_card.highlight).toBe('Pore-blurring primer detail');
@@ -485,6 +504,8 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
         reviewer: 'codex_test',
       }).shopping_card.highlight,
     ).toBe('Lip mask formula detail');
+    expect(lipBlushBundle.shopping_card.subtitle).toBe('Lip Tint');
+    expect(lipBlushBundle.shopping_card.highlight).toBe('Lip tint format detail');
     expect(peelBundle.shopping_card.highlight).toBe('Exfoliating treatment detail');
     expect(facialBundle.shopping_card.highlight).toBe('Facial treatment detail');
   });
