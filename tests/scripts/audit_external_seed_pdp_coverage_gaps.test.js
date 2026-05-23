@@ -53,6 +53,8 @@ describe('audit-external-seed-pdp-coverage-gaps helpers', () => {
       'Teddy Travel Bag',
       'LED Vanity Mirror',
       "Trace'd Out Dual Pencil Sharpener",
+      'Find Comfort Hydrating Body Lotion Pump',
+      'Soft Pooch Blush Dog Toy - Faith',
     ];
 
     for (const title of titles) {

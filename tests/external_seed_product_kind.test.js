@@ -49,6 +49,18 @@ describe('external seed product kind classification', () => {
         reasons: expect.arrayContaining(['accessory_signal']),
       }),
     );
+    expect(classifyExternalSeedProductKind({ title: 'Find Comfort Hydrating Body Lotion Pump' })).toEqual(
+      expect.objectContaining({
+        family: 'accessory',
+        reasons: expect.arrayContaining(['accessory_signal']),
+      }),
+    );
+    expect(classifyExternalSeedProductKind({ title: 'Soft Pooch Blush Dog Toy - Faith' })).toEqual(
+      expect.objectContaining({
+        family: 'accessory',
+        reasons: expect.arrayContaining(['pet_accessory_signal']),
+      }),
+    );
   });
 
   test('classifies skincare duo or set as collection even with formula category path', () => {
