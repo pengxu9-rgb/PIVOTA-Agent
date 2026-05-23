@@ -5454,13 +5454,26 @@ function shouldRequirePdpServingEligible(payload, options) {
       payload?.metadata?.serving_mode ||
       payload?.metadata?.servingMode,
   );
-  return (
+  const allowIneligible =
+    servingMode === 'permissive' ||
+    servingMode === 'db_serving' ||
+    isTruthyPdpOption(options?.allow_ineligible) ||
+    isTruthyPdpOption(options?.allowIneligible) ||
+    isTruthyPdpOption(payload?.allow_ineligible) ||
+    isTruthyPdpOption(payload?.allowIneligible) ||
+    isTruthyPdpOption(payload?.metadata?.allow_ineligible) ||
+    isTruthyPdpOption(payload?.metadata?.allowIneligible);
+  if (allowIneligible) return false;
+  if (
     servingMode === 'serving_eligible_only' ||
     isTruthyPdpOption(options?.serving_eligible_only) ||
     isTruthyPdpOption(options?.servingEligibleOnly) ||
     isTruthyPdpOption(payload?.serving_eligible_only) ||
     isTruthyPdpOption(payload?.servingEligibleOnly)
-  );
+  ) {
+    return true;
+  }
+  return true;
 }
 
 function normalizePdpServingEligibilityRow(row) {
@@ -43037,6 +43050,7 @@ module.exports._debug = {
   attachCanonicalChainRecallTelemetry,
   filterSearchServingEligibleProducts,
   getSearchProductServingEligibility,
+  shouldRequirePdpServingEligible,
   getSearchQualityContractHardConstraintResult,
   buildSearchQualityTierCounts,
   projectSearchQualityContractForMetadata,

@@ -8,9 +8,9 @@ const CATALOG_SERVING_GATEWAY_CONTRACT_VERSION = 'pivota.catalog_serving.gateway
 const DEFAULT_MARKET = 'US';
 const DEFAULT_LIMIT = 24;
 const MAX_LIMIT = 100;
-// 'serving_eligible_only' is a stricter form of DB serving that pre-filters
+// 'serving_eligible_only' is the default-strict DB serving mode. It pre-filters
 // local DB results to products marked serving_eligible=TRUE in
-// index_pipeline_state. Enable only after >=1000 products are eligible.
+// index_pipeline_state.
 const VALID_SERVING_MODES = new Set(['auto', 'external_only', 'db_serving', 'serving_eligible_only']);
 
 function asString(value) {
@@ -59,10 +59,7 @@ function resolveCatalogServingGatewayShadowMode(rawValue) {
 function resolveEffectiveCatalogServingGatewayServingMode(request, env = process.env) {
   const requested = resolveCatalogServingGatewayServingMode(request?.serving_mode, 'auto');
   if (requested !== 'auto') return requested;
-  const indexConfig = getCatalogServingIndexConfig(env);
-  if (indexConfig.enabled === true) return 'external_only';
-  if (canUseLocalCatalogServingSearch(env)) return 'db_serving';
-  return 'external_only';
+  return 'serving_eligible_only';
 }
 
 function normalizeCatalogServingGatewaySource(rawSource) {
