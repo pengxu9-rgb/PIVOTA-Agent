@@ -288,6 +288,7 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
         'A soothing jelly mask enriched with Coconut, Oat Extract, Chamomile and Sea Buckthorn.',
       ),
     ).toBe('skincare');
+    expect(inferKind('LipMask', '', '', 'A leave-on lip mask with a cushion texture.')).toBe('lip');
     expect(
       inferKind(
         'In-Shower Steam Facial',
@@ -376,6 +377,25 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     expect(primerBundle.shopping_card.highlight).toBe('Pore-blurring primer detail');
     expect(maskBundle.shopping_card.subtitle).toBe('Skincare');
     expect(maskBundle.shopping_card.highlight).toBe('Mask format detail');
+    expect(
+      buildBundle({
+        seed: {
+          external_product_id: 'ext_lipmask',
+          title: 'LipMask',
+          canonical_url: 'https://pixibeauty.com/products/lipmask',
+          seed_data: {
+            description: 'A leave-on lip mask with a cushion texture.',
+          },
+        },
+        inventoryRow: {
+          external_product_id: 'ext_lipmask',
+          sellable_item_group_id: 'sig_lipmask',
+        },
+        generatedAt: '2026-05-22T00:00:00.000Z',
+        batchName: 'test_batch',
+        reviewer: 'codex_test',
+      }).shopping_card.highlight,
+    ).toBe('Lip mask formula detail');
     expect(peelBundle.shopping_card.highlight).toBe('Exfoliating treatment detail');
     expect(facialBundle.shopping_card.highlight).toBe('Facial treatment detail');
   });
