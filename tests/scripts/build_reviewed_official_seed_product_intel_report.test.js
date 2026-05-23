@@ -65,11 +65,11 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
         'Controls sebum with kaolin powder listed in formula detail.',
       ),
     ).toBe('cleanser');
-    expect(inferKind('Lilac Dream Hand & Body Wash', '', '', 'Goat milk body wash.')).toBe('cleanser');
+    expect(inferKind('Lilac Dream Hand & Body Wash', '', '', 'Goat milk body wash.')).toBe('body_wash');
     expect(inferKind('Vanilla Absolute Goat Milk Soap', '', '', 'Goat milk bar soap.')).toBe('cleanser');
     expect(inferKind('Honeyed Grapefruit Hand Salve', '', '', 'Goat milk salve for dry hands.')).toBe('skincare');
     expect(inferKind('Candy Cane Whipped Body Cream', '', '', 'Whipped body cream with cocoa powder.')).toBe(
-      'skincare',
+      'moisturizer',
     );
   });
 
@@ -698,7 +698,7 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     });
 
     expect(brandFromUrl('https://pixibeauty.com/products/clarity-tonic-to-go')).toBe('Pixibeauty');
-    expect(bundle.product_intel_core.what_it_is.body).toContain('Pixibeauty skincare product');
+    expect(bundle.product_intel_core.what_it_is.body).toContain('Pixibeauty toner');
     expect(bundle.product_intel_core.what_it_is.body).not.toContain('Tom Ford');
   });
 });

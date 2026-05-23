@@ -80,6 +80,12 @@ function sanitizePublicSourceText(value) {
     .replace(/\bthis genius tool\b/gi, 'this tool')
     .replace(/\b(?:must-have|pro-favorite|ultimate|powerful)\b/gi, '')
     .replace(/\b(?:best[-\s]?selling|bestselling|viral|cult[-\s]?favorite|award[-\s]?winning)\b/gi, '')
+    .replace(/\bformulated for all skin types\b/gi, 'described by the official page as a gentle formula')
+    .replace(/\bfor all skin types\b/gi, 'with broad routine positioning')
+    .replace(/\ball skin types\b/gi, 'broad skin-type positioning')
+    .replace(/\.\s*with broad routine positioning\b/gi, ' with broad routine positioning')
+    .replace(/\ba\s+antiperspirant\b/gi, 'an antiperspirant')
+    .replace(/\ba\s+antioxidant\b/gi, 'an antioxidant')
     .replace(/\b(?:winner of|voted one of|voted as one of)[^.?!]*[.!]?/gi, '')
     .replace(/\b(?:an?|the)\s+(designed|made|created)\b/gi, '$1')
     .replace(/\b(?:everyone loves|widely loved)\b/gi, '')
@@ -101,6 +107,9 @@ function sanitizePublicTitleText(value) {
 
 function sanitizeFormulaSummary(value) {
   return text(value)
+    .replace(/\b(?:see all|how to use|complete list)\b[\s:-]*/gi, ' ')
+    .replace(/\b(?:wholesale|affiliate program|refer-a-friend|press|social|instagram|facebook|twitter|tiktok|pinterest|youtube)\b/gi, ' ')
+    .replace(/\b(?:var\s+\w+|await)\b[^.!?;,]*/gi, ' ')
     .replace(/([A-Z]{2,})([A-Z][a-z])/g, '$1 $2')
     .replace(/\s*;\s*\./g, ';')
     .replace(/\s*,\s*\./g, '.')
@@ -224,6 +233,13 @@ function inferKind(title, category, categoryPath, description = '') {
   if (/\b(?:primer|poreless)\b/.test(haystack)) return 'primer';
   if (/\b(?:lipstick|lip color|lip balm|lip butter|butter balm|balm stick|lip oil|lip gloss|lipgloss|lip glaze|lip treatment|lip mask|lip liner|lip pencil|lip luxe|lip patch|lippatch|gloss|pout|kiss)\b/.test(haystack)) return 'lip';
   if (/\b(?:candle)\b/.test(haystack)) return 'home_fragrance';
+  if (/\bdry\s+shampoo\b/.test(haystack)) return 'dry_shampoo';
+  if (/\bdeodorant\b/.test(haystack)) return 'deodorant';
+  if (/\b(?:shower\s+gel|body\s+wash|hand\s*&\s*body\s+wash|hand\s+and\s+body\s+wash)\b/.test(haystack)) return 'body_wash';
+  if (/\bhand\s+wash\b/.test(haystack)) return 'hand_wash';
+  if (/\b(?:bath\s+soak|circulation\s+soak)\b/.test(haystack)) return 'bath_soak';
+  if (/\bbody\s+balm\b/.test(haystack)) return 'body_balm';
+  if (/\bbody\s+gel\b/.test(haystack)) return 'body_gel';
   if (/\b(?:hair\s*&\s*body mist|hair and body mist|body mist)\b/.test(titleCategoryText)) return 'body_mist';
   if (/\b(?:eau de parfum|parfum|eau de toilette|body spray|fragrance|cologne)\b/.test(titleCategoryText)) return 'fragrance';
   if (/\b(?:perfumery|scent|olfactive|oud|ombre leather|ombré leather|soleil blanc|private blend)\b/.test(titleCategoryText)) {
@@ -236,10 +252,17 @@ function inferKind(title, category, categoryPath, description = '') {
   if (/\b(?:bronzer|bronze|bronzing)\b/.test(haystack)) return 'bronzer';
   if (/\b(?:highlighting|highlighter|illuminate)\b/.test(haystack)) return 'highlighter';
   if (/\bskinveil\b/.test(titleCategoryText) || /\b(?:loose water[-\s]?powder|setting makeup|velvet finish)\b/.test(haystack)) return 'face_powder';
-  if (/\b(?:body oil)\b/.test(haystack)) return 'body_oil';
+  if (/\b(?:body oil|movement oil|universal oil)\b/.test(haystack)) return 'body_oil';
   if (/\b(?:spot sticker|spot stickers|zit|blemish spot|blemish sticker|blemish stickers)\b/.test(haystack)) return 'blemish_patch';
   if (/\b(?:foaming face wash|face wash|foaming gel cleanser|gel cleanser|face wipes|facial wipes|body wash|hand & body wash|hand and body wash|goat milk soap|bar soap|soap)\b/.test(haystack)) return 'cleanser';
-  if (/\b(?:hand cream|body cream|whipped body cream|body lotion|goat milk lotion|hand salve|cuticle serum|facial oil|face oil)\b/.test(haystack)) return 'skincare';
+  if (/\b(?:facial oil|face oil)\b/.test(haystack)) return 'face_oil';
+  if (/\b(?:toning mist|toner|tonic)\b/.test(haystack)) return 'toner';
+  if (/\bretinol\s+oil\b/.test(haystack)) return 'skincare';
+  if (/\b(?:peel|polish|exfoliat|resurfac|steam facial|facial treatment)\b/.test(haystack)) return 'skincare';
+  if (/\b(?:facial cream|face cream|moisturizer|moisturiser|volume cream|body cream|body lotion|whipped body cream|goat milk lotion)\b/.test(haystack)) return 'moisturizer';
+  if (/\b(?:cleansing|cleanser)\b/.test(titleCategoryText)) return 'cleanser';
+  if (/\b(?:retinol|serum|peptide|aha|bha|lactic|glycolic|salicylic)\b/.test(haystack)) return 'serum';
+  if (/\b(?:hand cream|hand salve|cuticle serum)\b/.test(haystack)) return 'skincare';
   if (/\b(?:sheet mask|face mask|jelly mask|remedy mask|lip patch|lippatch|body polish|retinol oil|concentrate|essence oil|oil-essence|enzyme treatment|exfoliat|resurfac|steam facial|facial treatment)\b/.test(haystack)) return 'skincare';
   if (/\b(?:cleansing|cleanser)\b/.test(haystack)) return 'cleanser';
   if (/\b(?:powder)\b/.test(titleCategoryText)) return 'face_powder';
@@ -265,6 +288,17 @@ function kindLabel(kind, category) {
     highlighter: 'highlighter',
     face_powder: 'face powder',
     body_oil: 'body oil',
+    dry_shampoo: 'dry shampoo',
+    deodorant: 'deodorant',
+    body_wash: 'body wash',
+    hand_wash: 'hand wash',
+    bath_soak: 'bath soak',
+    body_balm: 'body balm',
+    body_gel: 'body gel',
+    face_oil: 'face oil',
+    toner: 'toner',
+    moisturizer: 'moisturizer',
+    serum: 'skincare treatment',
     blemish_patch: 'blemish patch',
     cleanser: 'cleanser',
     brush: 'brush',
@@ -300,6 +334,17 @@ function displayCategoryForKind(kind, category) {
     highlighter: 'Highlighter',
     face_powder: 'Face Powder',
     body_oil: 'Body Oil',
+    dry_shampoo: 'Dry Shampoo',
+    deodorant: 'Deodorant',
+    body_wash: 'Body Wash',
+    hand_wash: 'Hand Wash',
+    bath_soak: 'Bath Soak',
+    body_balm: 'Body Balm',
+    body_gel: 'Body Gel',
+    face_oil: 'Face Oil',
+    toner: 'Toner',
+    moisturizer: 'Moisturizer',
+    serum: 'Skincare Treatment',
     blemish_patch: 'Blemish Patch',
     cleanser: 'Cleanser',
     brush: 'Beauty Brush',
@@ -339,6 +384,17 @@ function routineStep(kind) {
     highlighter: 'complexion',
     face_powder: 'complexion',
     body_oil: 'body_care',
+    dry_shampoo: 'hair_refresh',
+    deodorant: 'body_care',
+    body_wash: 'body_cleanse',
+    hand_wash: 'hand_cleanse',
+    bath_soak: 'body_care',
+    body_balm: 'body_care',
+    body_gel: 'body_care',
+    face_oil: 'skin_care',
+    toner: 'skin_care',
+    moisturizer: 'skin_care',
+    serum: 'skin_care',
     blemish_patch: 'spot_care',
     cleanser: 'cleanse',
     brush: 'tool',
@@ -359,6 +415,30 @@ function routineStep(kind) {
 
 function ingredientSignals(seedData) {
   const snapshot = asObject(seedData.snapshot);
+  const ingredientLikePattern = /\b(?:aqua|water|glycerin|sodium|aloe|simmondsia|helianthus|extract|oil|glycol|alcohol|acid|butter|wax|ester|triglyceride|caprylic|fragrance|parfum|cetearyl|citric|tocopherol|niacinamide|squalane|retinol|peptide|polysorbate|xanthan|benzyl|linalool|limonene|ayurvedic complex|key actives?)\b/i;
+  const boilerplatePattern = /\b(?:vstar_review_settings|loox_global_hash|visitor_level_referral|schema\.org|@context|@type|productgroup|wholesale\s+affiliate\s+program|refer-a-friend|social\s+instagram|add to cart|sold out)\b/i;
+  const nonFormulaPattern = /\b(?:how to use|directions?|shipping|returns?|privacy policy|terms of service|customer service|subscribe|newsletter)\b/i;
+  function formulaCandidate(value) {
+    const cleaned = sanitizeFormulaSummary(value);
+    if (cleaned.length < 20) return '';
+    if (boilerplatePattern.test(value) || nonFormulaPattern.test(value)) return '';
+    const fragments = cleaned
+      .split(/(?:[.!?]\s+|\n+)/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+    const formulaFragment = fragments.find((fragment) => {
+      const commaCount = (fragment.match(/,/g) || []).length;
+      return (
+        ingredientLikePattern.test(fragment) &&
+        (commaCount >= 2 || /\b(?:key actives?|complete list)\b/i.test(fragment))
+      );
+    });
+    if (formulaFragment) return formulaFragment;
+    const commaCount = (cleaned.match(/,/g) || []).length;
+    if (ingredientLikePattern.test(cleaned) && commaCount >= 2) return cleaned;
+    if (/\bkey actives?\b/i.test(cleaned) && ingredientLikePattern.test(cleaned)) return cleaned;
+    return '';
+  }
   function ingredientTextFromValue(value) {
     if (!value) return '';
     if (typeof value === 'string') {
@@ -410,11 +490,14 @@ function ingredientSignals(seedData) {
     seedData.ingredient_intel,
     snapshot.ingredient_intel,
   ];
-  const flattened = candidates.map((item) => ingredientTextFromValue(item)).filter(Boolean);
+  const flattened = candidates
+    .map((item) => formulaCandidate(ingredientTextFromValue(item)))
+    .filter(Boolean);
   const joined = text(flattened.join(' '));
+  const ingredientCount = asArray(seedData.ingredient_tokens || snapshot.ingredient_tokens).length;
   return {
     available: joined.length > 20,
-    ingredient_count: asArray(seedData.ingredient_tokens || snapshot.ingredient_tokens).length,
+    ingredient_count: ingredientCount,
     summary: sanitizeFormulaSummary(firstSentence(joined, 160)),
   };
 }
@@ -502,6 +585,22 @@ function buildHighlightPhrase(kind, category, description, title = '') {
   if (kind === 'highlighter') return 'Highlighter formula detail';
   if (kind === 'face_powder') return 'Complexion powder detail';
   if (kind === 'body_oil') return 'Body oil formula detail';
+  if (kind === 'dry_shampoo') return 'Post-workout dry shampoo';
+  if (kind === 'deodorant') return 'Post-workout deodorant';
+  if (kind === 'body_wash') return /shower\s+gel/.test(signalText) ? 'Post-workout shower gel' : 'Body wash format detail';
+  if (kind === 'hand_wash') return 'Hand wash format detail';
+  if (kind === 'bath_soak') return 'Bath soak format detail';
+  if (kind === 'body_balm') return 'Body balm format detail';
+  if (kind === 'body_gel') return 'Body gel format detail';
+  if (kind === 'face_oil') return 'Face oil formula detail';
+  if (kind === 'toner') return /mist/.test(signalText) ? 'Toning mist detail' : 'Toner formula detail';
+  if (kind === 'moisturizer') return /body/.test(signalText) ? 'Body moisturizer detail' : 'Moisturizer formula detail';
+  if (kind === 'serum') {
+    if (/retinol/.test(signalText)) return 'Retinol treatment detail';
+    if (/peptide/.test(signalText)) return 'Peptide serum detail';
+    if (/\baha\b|glycolic|lactic/.test(signalText)) return 'AHA serum detail';
+    return 'Treatment formula detail';
+  }
   if (kind === 'blemish_patch') return 'Spot-care format detail';
   if (kind === 'cleanser') return /glycolic|retinol|mud|jasmine/.test(signalText) ? 'Active cleanser detail' : 'Cleanser formula detail';
   if (kind === 'brush') return 'Brush format detail';
