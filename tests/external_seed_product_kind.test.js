@@ -117,6 +117,50 @@ describe('external seed product kind classification', () => {
     );
   });
 
+  test('overrides stale bundle product kind for strong formula category text', () => {
+    expect(
+      classifyExternalSeedProductKind({
+        title: "Pro Filt'r Instant Retouch Concealer — #210",
+        canonical_url: 'https://fentybeauty.com/products/pro-filtr-instant-retouch-concealer-420-concealer',
+        seed_data: {
+          product_kind: 'bundle',
+          category: 'Foundations & Concealers',
+          source_page_type: 'product',
+          snapshot: {
+            product_kind: 'bundle',
+            category: 'Foundations & Concealers',
+            source_page_type: 'product',
+          },
+        },
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        family: 'single_formula',
+        reasons: expect.arrayContaining(['stale_bundle_kind_overridden_by_formula_category_text']),
+      }),
+    );
+  });
+
+  test('overrides stale bundle product kind for shade-variant formula titles without category text', () => {
+    expect(
+      classifyExternalSeedProductKind({
+        title: "Pro Filt'r Instant Retouch Concealer — #210",
+        canonical_url: 'https://fentybeauty.com/products/pro-filtr-instant-retouch-concealer-420-concealer',
+        seed_data: {
+          product_kind: 'bundle',
+          snapshot: {
+            product_kind: 'bundle',
+          },
+        },
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        family: 'single_formula',
+        reasons: expect.arrayContaining(['stale_bundle_kind_overridden_by_formula_variant_title']),
+      }),
+    );
+  });
+
   test('overrides stale accessory product kind for formula makeup PDPs', () => {
     expect(
       classifyExternalSeedProductKind({

@@ -1988,10 +1988,18 @@ function normalizeBundleComponents(value, maxItems = 24) {
 }
 
 const SOURCE_BACKED_BUNDLE_EVIDENCE_RE =
-  /\b(?:set\s+includes|includes\s+\d|bundle|kit|duo|trio|quartet|set|calendar|collection|select\s+\d+\s+(?:shades?|powders?|items?|products?))\b/i;
+  /\b(?:set\s+includes|includes\s+\d|bundle|kit|sets|(?:gift|value|starter|travel|mini|discovery|essentials?|holiday|routine|regimen|full[-\s]?size|two[-\s]?piece|2[-\s]?piece|three[-\s]?piece|3[-\s]?piece)\s+set|(?:two|2|three|3|four|4)[-\s]?piece|calendar|collection|select\s+\d+\s+(?:shades?|powders?|items?|products?))\b/i;
+const SOURCE_BACKED_BUNDLE_SHORT_TEXT_EVIDENCE_RE = /\b(?:duo|trio|quartet)\b/i;
 
 function hasSourceBackedBundleEvidence(...values) {
-  return values.map(normalizeNonEmptyString).filter(Boolean).some((value) => SOURCE_BACKED_BUNDLE_EVIDENCE_RE.test(value));
+  return values
+    .map(normalizeNonEmptyString)
+    .filter(Boolean)
+    .some(
+      (value) =>
+        SOURCE_BACKED_BUNDLE_EVIDENCE_RE.test(value) ||
+        (value.length <= 120 && SOURCE_BACKED_BUNDLE_SHORT_TEXT_EVIDENCE_RE.test(value)),
+    );
 }
 
 function stableComparableJson(value) {
