@@ -18,7 +18,7 @@ const {
 const REVIEW_SOURCE = 'pivota_insights_official_pdp_manual_review_v1';
 const REVIEWER = 'codex_manual_review';
 const PROTECTED_QUALITY_STATES = new Set(['reviewed', 'verified', 'published', 'ready']);
-const SUPPORTED_BRANDS = new Set(['guerlain', 'tom ford', 'tom ford beauty']);
+const SUPPORTED_BRANDS = new Set(['guerlain', 'rare beauty', 'tom ford', 'tom ford beauty']);
 
 function argValue(name, fallback = '') {
   const prefix = `--${name}=`;
@@ -320,26 +320,49 @@ function combinedText(facts) {
 
 function inferRole(facts) {
   const text = combinedText(facts).toLowerCase();
+  const titleText = `${facts.title} ${facts.productType} ${facts.categoryPath}`.toLowerCase();
   if (/\bcandle\b/.test(text)) return { label: 'Scented candle', step: 'home fragrance', amPm: ['as_needed'] };
-  if (/\bbody\s+spray\b/.test(text)) return { label: 'Body fragrance spray', step: 'body fragrance', amPm: ['as_needed'] };
-  if (/\bbrush\b/.test(text)) return { label: 'Makeup brush', step: 'application tool', amPm: ['as_needed'] };
-  if (/\bbrow\s+pencil|eyebrow|brow\b/.test(text)) return { label: 'Brow pencil', step: 'brow definition', amPm: ['as_needed'] };
-  if (/\blip\s+pencil|contour\s+g\b/.test(text)) return { label: 'Lip liner', step: 'lip definition', amPm: ['as_needed'] };
-  if (/\blipstick|lip color|rouge g|kisskiss|lip colour\b/.test(text)) return { label: 'Lip color', step: 'lip color', amPm: ['as_needed'] };
-  if (/\blip\s+balm|lip\s+oil|lip\s+serum|lip\s+treatment\b/.test(text)) return { label: 'Lip treatment', step: 'lip treatment', amPm: ['as_needed'] };
-  if (/\bfoundation|concealer|skin tint|complexion\b/.test(text)) return { label: 'Complexion makeup', step: 'complexion', amPm: ['as_needed'] };
-  if (/\bprimer|base perfecting|pore prep\b/.test(text)) return { label: 'Makeup primer', step: 'primer', amPm: ['as_needed'] };
-  if (/\bpowder|bronzer|blush|highlighter\b/.test(text)) return { label: 'Face color makeup', step: 'face color', amPm: ['as_needed'] };
-  if (/\bmascara|eyeshadow|eye color|eyeliner\b/.test(text)) return { label: 'Eye makeup', step: 'eye makeup', amPm: ['as_needed'] };
-  if (/\bserum|cream|moisturizer|lotion|cleanser|mask|spf|sunscreen|treatment\b/.test(text)) {
-    if (/\bcleanser\b/.test(text)) return { label: 'Cleanser', step: 'cleanser', amPm: ['am', 'pm'] };
-    if (/\bspf|sunscreen\b/.test(text)) return { label: 'Daily sunscreen', step: 'sunscreen', amPm: ['am'] };
-    if (/\bserum\b/.test(text)) return { label: 'Treatment serum', step: 'serum', amPm: ['am', 'pm'] };
-    if (/\bmask\b/.test(text)) return { label: 'Treatment mask', step: 'mask', amPm: ['as_needed'] };
-    return { label: 'Skincare treatment', step: 'skincare', amPm: ['am', 'pm'] };
+  if (/\b(?:body\s+spray|body\s*&\s*hair\s+fragrance|body\s+and\s+hair\s+fragrance|fragrance\s+mist|hair\s+fragrance\s+mist)\b/.test(titleText)) {
+    return { label: 'Body fragrance spray', step: 'body fragrance', amPm: ['as_needed'] };
+  }
+  if (/\b(?:parfum|eau de parfum|eau de toilette|fragrance|perfume|cologne|layering balm)\b/.test(titleText)) {
+    return { label: 'Fine fragrance', step: 'fragrance', amPm: ['as_needed'] };
+  }
+  if (/\bbrow\s+pencil|eyebrow|brow\b/.test(titleText)) return { label: 'Brow product', step: 'brow definition', amPm: ['as_needed'] };
+  if (/\blip\s+pencil|lip liner|contour\s+g\b/.test(titleText)) return { label: 'Lip liner', step: 'lip definition', amPm: ['as_needed'] };
+  if (/\blipstick|lip color|lip colour|lip\s+gloss|rouge g|kisskiss\b/.test(titleText)) return { label: 'Lip color', step: 'lip color', amPm: ['as_needed'] };
+  if (/\blip\s+balm|lip\s+butter|lip\s+oil|lip\s+serum|lip\s+treatment|glossy\s+lip\b/.test(titleText)) return { label: 'Lip treatment', step: 'lip treatment', amPm: ['as_needed'] };
+  if (/\bmascara|eyeshadow|eye shadow|eye color|eye colour|eyeliner\b/.test(titleText)) return { label: 'Eye makeup', step: 'eye makeup', amPm: ['as_needed'] };
+  if (/\bfoundation|concealer|skin tint|complexion|tinted moisturizer\b/.test(titleText)) return { label: 'Complexion makeup', step: 'complexion', amPm: ['as_needed'] };
+  if (/\bbrush\b/.test(titleText)) return { label: 'Makeup brush', step: 'application tool', amPm: ['as_needed'] };
+  if (/\b(?:setting spray|4-in-1 mist|4 in 1 mist|face mist)\b/.test(titleText)) return { label: 'Setting mist', step: 'complexion', amPm: ['as_needed'] };
+  if (/\b(?:setting powder|finishing powder|powder|bronzer|blush|highlighter|luminizer)\b/.test(titleText)) return { label: 'Face color makeup', step: 'face color', amPm: ['as_needed'] };
+  if (/\bprimer|base perfecting|pore prep\b/.test(titleText)) return { label: 'Makeup primer', step: 'primer', amPm: ['as_needed'] };
+  if (/\bbody\s+wash|cleanser|cleansing\b/.test(titleText)) return { label: 'Body cleanser', step: 'cleanser', amPm: ['am', 'pm'] };
+  if (/\bbody\s+lotion|body\s+cream|body\s+mousse|hand\s+cream|moisturizer|spf|sunscreen|serum|cream|lotion|mask|treatment\b/.test(titleText)) {
+    if (/\bspf|sunscreen\b/.test(titleText)) return { label: 'Daily sunscreen', step: 'sunscreen', amPm: ['am'] };
+    if (/\bserum\b/.test(titleText)) return { label: 'Treatment serum', step: 'serum', amPm: ['am', 'pm'] };
+    if (/\bmask\b/.test(titleText)) return { label: 'Treatment mask', step: 'mask', amPm: ['as_needed'] };
+    return { label: 'Body care treatment', step: 'skincare', amPm: ['am', 'pm'] };
+  }
+  if (/\bclaw clip|head\s*band|headband|pouch|bag|organizer|mirror|sharpener|tool\b/.test(titleText)) {
+    return { label: 'Beauty accessory', step: 'beauty routine', amPm: ['as_needed'] };
   }
   if (/\bparfum|eau de parfum|eau de toilette|fragrance|perfume|cologne\b/.test(text)) {
     return { label: 'Fine fragrance', step: 'fragrance', amPm: ['as_needed'] };
+  }
+  if (/\bbrow\s+pencil|eyebrow|brow\b/.test(text)) return { label: 'Brow product', step: 'brow definition', amPm: ['as_needed'] };
+  if (/\blip\s+gloss|lipstick|lip color|lip colour\b/.test(text)) return { label: 'Lip color', step: 'lip color', amPm: ['as_needed'] };
+  if (/\blip\s+balm|lip\s+butter|lip\s+oil|lip\s+serum|lip\s+treatment\b/.test(text)) return { label: 'Lip treatment', step: 'lip treatment', amPm: ['as_needed'] };
+  if (/\bbrush\b/.test(text) && /\bbrush\b/.test(titleText)) return { label: 'Makeup brush', step: 'application tool', amPm: ['as_needed'] };
+  if (/\bpowder|bronzer|blush|highlighter|luminizer\b/.test(text)) return { label: 'Face color makeup', step: 'face color', amPm: ['as_needed'] };
+  if (/\bmascara|eyeshadow|eye color|eyeliner\b/.test(text)) return { label: 'Eye makeup', step: 'eye makeup', amPm: ['as_needed'] };
+  if (/\bserum|cream|moisturizer|lotion|cleanser|mask|spf|sunscreen|treatment\b/.test(text)) {
+    if (/\bcleanser|body wash\b/.test(text)) return { label: 'Body cleanser', step: 'cleanser', amPm: ['am', 'pm'] };
+    if (/\bspf|sunscreen\b/.test(text)) return { label: 'Daily sunscreen', step: 'sunscreen', amPm: ['am'] };
+    if (/\bserum\b/.test(text)) return { label: 'Treatment serum', step: 'serum', amPm: ['am', 'pm'] };
+    if (/\bmask\b/.test(text)) return { label: 'Treatment mask', step: 'mask', amPm: ['as_needed'] };
+    return { label: 'Body care treatment', step: 'skincare', amPm: ['am', 'pm'] };
   }
   return { label: 'Beauty product', step: 'beauty routine', amPm: ['as_needed'] };
 }

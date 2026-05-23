@@ -16,6 +16,7 @@ const SHOPIFY_PRODUCT_JSON_VARIANT_HOSTS = new Set([
   'us.laneige.com',
   'kyliecosmetics.com',
   'tomfordbeauty.com',
+  'rarebeauty.com',
 ]);
 const REVIEW_SUMMARY_ONLY_OKENDO_HOSTS = new Set(['beautyofjoseon.com', 'kravebeauty.com']);
 const REVIEW_SUMMARY_ONLY_GENERIC_HOSTS = new Set([...REVIEW_SUMMARY_ONLY_OKENDO_HOSTS, 'roundlab.com']);
@@ -2401,6 +2402,91 @@ function extractTomFordFields(html, options = {}) {
   return fields;
 }
 
+function extractRareSectionDescription(html, labelPattern) {
+  const labelSource = labelPattern instanceof RegExp ? labelPattern.source : escapeRegExp(String(labelPattern || ''));
+  const match = String(html || '').match(
+    new RegExp(
+      `<h2[^>]*class=["'][^"']*\\bpv-extra-details__section-title\\b[^"']*["'][^>]*>\\s*${labelSource}\\s*<\\/h2>\\s*<p[^>]*class=["'][^"']*\\bpv-extra-details__section-description\\b[^"']*["'][^>]*>([\\s\\S]*?)<\\/p>`,
+      'i',
+    ),
+  );
+  return match ? cleanSectionText(match[1]) : '';
+}
+
+function extractRareAccordionBody(html, labelPattern) {
+  const labelSource = labelPattern instanceof RegExp ? labelPattern.source : escapeRegExp(String(labelPattern || ''));
+  const match = String(html || '').match(
+    new RegExp(
+      `<span[^>]*class=["'][^"']*\\bacc__title\\b[^"']*["'][^>]*>\\s*${labelSource}\\s*<\\/span>[\\s\\S]*?<div[^>]*class=["'][^"']*\\bacc__menu\\b[^"']*["'][^>]*>\\s*<p[^>]*class=["'][^"']*\\bpv-extra-details__accordion-body\\b[^"']*["'][^>]*>([\\s\\S]*?)<\\/p>`,
+      'i',
+    ),
+  );
+  return match ? cleanSectionText(match[1]) : '';
+}
+
+function extractRareClaims(html) {
+  return Array.from(
+    String(html || '').matchAll(/<p[^>]*class=["'][^"']*\bpv-extra-details__claim\b[^"']*["'][^>]*>([\s\S]*?)<\/p>/gi),
+  )
+    .map((match) => cleanSectionText(match[1]))
+    .filter((item) => item.length >= 3 && item.length <= 80);
+}
+
+function extractRareFullIngredients(html) {
+  const match = String(html || '').match(
+    /<h2[^>]*id=["']ingredientsModalLabel["'][^>]*>\s*Full Ingredients\s*<\/h2>[\s\S]*?<div[^>]*class=["'][^"']*\bmodal__content\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/i,
+  );
+  if (!match) return '';
+  return cleanSectionText(match[1])
+    .replace(/\bSHADE\s*:/gi, 'Shade:')
+    .replace(/\bSHADES\s*:/gi, 'Shades:')
+    .replace(/\[\+\/-\s*MAY CONTAIN:/gi, '[+/- May contain:')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+function extractRareActiveIngredients(fullIngredients) {
+  const full = normalizeText(fullIngredients);
+  if (!full) return '';
+  const match = full.match(/\bActive ingredients?\s*:\s*([\s\S]*?)(?:\bInactive ingredients?\s*:|$)/i);
+  if (!match) return '';
+  const active = cleanSectionText(match[1]).replace(/\s+/g, ' ').trim();
+  if (!/%/.test(active)) return '';
+  if (!/\b(?:avobenzone|homosalate|octisalate|octocrylene|octinoxate|oxybenzone|titanium dioxide|zinc oxide)\b/i.test(active)) return '';
+  return active;
+}
+
+function extractRareFields(html, options = {}) {
+  const fields = {};
+  const product = findJsonLdProduct(html, options);
+  const productDescription = cleanSectionText(product?.description);
+  const detailsText = extractRareSectionDescription(html, /Details/i);
+  const ingredientSummary = extractRareSectionDescription(html, /What(?:&apos;|')?s in it\??/i);
+  const rawHowTo = extractRareAccordionBody(html, /How to use/i) || extractRareSectionDescription(html, /How to use/i);
+  const howTo = normalizeHowToUseCandidate(rawHowTo.replace(/\s*(?:Melting Blush FAQs|FAQs?)\b[\s\S]*$/i, ''));
+  const fullIngredients = extractRareFullIngredients(html);
+  const activeIngredients = extractRareActiveIngredients(fullIngredients);
+  const claims = extractRareClaims(html);
+
+  if (productDescription.length >= 60) fields.pdp_description_raw = productDescription;
+  if (looksLikeFullInci(fullIngredients) || looksLikeShortOfficialInci(fullIngredients) || activeIngredients) {
+    fields.pdp_ingredients_raw = fullIngredients;
+  }
+  if (activeIngredients) fields.pdp_active_ingredients_raw = activeIngredients;
+  if (looksLikeHowToUse(howTo)) fields.pdp_how_to_use_raw = howTo;
+
+  const details = [];
+  if (productDescription.length >= 60) details.push({ heading: 'Overview', body: productDescription });
+  if (detailsText.length >= 60 && detailsText !== productDescription) {
+    details.push({ heading: 'Details', body: truncateOfficialDetailText(detailsText) || detailsText });
+  }
+  if (ingredientSummary.length >= 30) details.push({ heading: 'What’s In It', body: ingredientSummary });
+  if (claims.length >= 2) details.push({ heading: 'Claims', body: Array.from(new Set(claims)).join(', ') });
+  if (looksLikeHowToUse(howTo)) details.push({ heading: 'How To Use', body: howTo });
+  if (details.length > 0) fields.pdp_details_sections = details.slice(0, 8);
+  return fields;
+}
+
 async function extractOfficialHtmlFields(host, html, options = {}) {
   let fields = {};
   if (host === 'skin1004.com') fields = extractSkin1004Fields(html);
@@ -2418,6 +2504,7 @@ async function extractOfficialHtmlFields(host, html, options = {}) {
     fields = extractGuerlainFields(html, { ...options, ingredientModalHtml });
   }
   else if (host === 'tomfordbeauty.com') fields = extractTomFordFields(html, options);
+  else if (host === 'rarebeauty.com') fields = extractRareFields(html, options);
   else if (!options.reviewSummaryOnly || !REVIEW_SUMMARY_ONLY_GENERIC_HOSTS.has(host)) return {};
 
   if (options.reviewSummaryOnly && REVIEW_SUMMARY_ONLY_OKENDO_HOSTS.has(host)) {
@@ -3119,6 +3206,7 @@ module.exports = {
     parseGuerlainIngredientModalHtml,
     extractGuerlainVariantsFromJsonLd,
     extractTomFordFields,
+    extractRareFields,
     extractTomFordAccordionText,
     extractOfficialShopifyVariants,
     fetchStampedReviewSummary,

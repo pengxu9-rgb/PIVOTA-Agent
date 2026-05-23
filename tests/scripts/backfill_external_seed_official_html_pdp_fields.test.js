@@ -16,6 +16,7 @@ const {
     extractGuerlainIngredientModalUrl,
     parseGuerlainIngredientModalHtml,
     extractTomFordFields,
+    extractRareFields,
     extractOfficialShopifyVariants,
     fetchStampedReviewSummary,
     fetchBazaarvoiceReviewSummary,
@@ -1112,6 +1113,72 @@ describe('backfill-external-seed-official-html-pdp-fields TIRTIR sheet matching'
     expect(fields.pdp_details_sections).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ heading: 'Product Details', body: expect.stringContaining('Cardamom') }),
+      ]),
+    );
+  });
+
+  test('extracts Rare Beauty official details, INCI, claims, and clean how-to without FAQ drift', () => {
+    const html = `
+      <script type="application/ld+json">
+      {"@context":"https://schema.org/","@type":"Product","name":"Stay Vulnerable Melting Blush","description":"A breakthrough, mistakeproof liquid-like cream blush that melts into a second skin for the most natural-looking flush you can’t mess up."}
+      </script>
+      <p class="pv-extra-details__claim">Cruelty Free</p>
+      <p class="pv-extra-details__claim">Vegan</p>
+      <div class="pv-extra-details__section pv-extra-details__section--large">
+        <h2 class="pv-extra-details__section-title">Details</h2>
+        <p class="pv-extra-details__section-description">Inspired by the soft, flushed look we get when we feel the most vulnerable, this unique liquid-like cream melts on contact for a truly weightless wash of color that lasts all day.<br><br>Real results: 98% said it’s smooth, creamy, and lightweight.</p>
+      </div>
+      <span class="acc__title">What&apos;s in it?</span>
+      <div class="acc__menu"><p class="pv-extra-details__accordion-body">Made with a Botanical Blend of lotus, gardenia, and white water lily to help soothe, calm, and nourish skin.</p></div>
+      <span class="acc__title">How to use</span>
+      <div class="acc__menu"><p class="pv-extra-details__accordion-body">Use a dense brush—or your fingertips—to dab onto the apples of your cheeks and blend. Apply more layers as desired.<br><br><h3>Melting Blush FAQs</h3><b>Can I layer it?</b> Yes.</p></div>
+      <h2 id="ingredientsModalLabel" class="h3">Full Ingredients</h2>
+      <div class="modal__content">
+        <p><b>SHADE: NEARLY ROSE</b><br>Isodecyl Isononanoate, Silica, C12-15 Alkyl Benzoate, Isodecyl Neopentanoate, Octyldodecyl Stearoyl Stearate, Methyl Methacrylate Crosspolymer, Limnanthes Alba (Meadowfoam) Seed Oil, Polyethylene, Synthetic Fluorphlogopite, Tocopheryl Acetate, Gardenia Florida Fruit Extract, Nelumbo Nucifera Flower Extract, Nymphaea Odorata Root Extract, Red 28 Lake (CI 45410), Titanium Dioxide (CI 77891), Iron Oxides (CI 77492).</p>
+      </div>
+    `;
+
+    const fields = extractRareFields(html, { productTitle: 'Stay Vulnerable Melting Blush' });
+
+    expect(fields.pdp_description_raw).toContain('mistakeproof liquid-like cream blush');
+    expect(fields.pdp_details_sections).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ heading: 'Details', body: expect.stringContaining('Real results') }),
+        expect.objectContaining({ heading: 'Claims', body: expect.stringContaining('Cruelty Free') }),
+        expect.objectContaining({ heading: 'How To Use', body: expect.stringContaining('dab onto the apples') }),
+      ]),
+    );
+    expect(JSON.stringify(fields.pdp_details_sections)).not.toMatch(/Can I layer|FAQs/i);
+    expect(fields.pdp_how_to_use_raw).toContain('Apply more layers as desired');
+    expect(fields.pdp_how_to_use_raw).not.toMatch(/FAQs|Can I layer/i);
+    expect(fields.pdp_ingredients_raw).toContain('Isodecyl Isononanoate');
+    expect(fields.pdp_active_ingredients_raw).toBeUndefined();
+  });
+
+  test('extracts Rare Beauty SPF active ingredients from full ingredient modal', () => {
+    const html = `
+      <script type="application/ld+json">
+      {"@context":"https://schema.org/","@type":"Product","name":"Positive Light Tinted Moisturizer Broad Spectrum SPF 20 Sunscreen","description":"Lightweight tinted moisturizer with SPF 20 for breathable coverage and hydration."}
+      </script>
+      <h2 class="pv-extra-details__section-title">Details</h2>
+      <p class="pv-extra-details__section-description">Think no-makeup makeup in a bottle with built-in Broad Spectrum SPF 20 sunscreen plus Vitamin E. Net Wt. 1.0 fl.oz | 30mL.</p>
+      <span class="acc__title">How to use</span>
+      <div class="acc__menu"><p class="pv-extra-details__accordion-body">Shake it up, then massage a few drops into skin using your fingertips.</p></div>
+      <h2 id="ingredientsModalLabel" class="h3">Full Ingredients</h2>
+      <div class="modal__content">
+        <p><b>Active ingredients:</b><br> Homosalate: 9.0% <br>Titanium Dioxide: 1.8% <br>Zinc Oxide: 0.9% <br><br><b>Inactive ingredients:</b><br> Water/Aqua, Dimethicone, Talc, Tocopheryl Acetate, Gardenia Florida Fruit Extract, Iron Oxides (CI 77491, CI 77492, CI 77499)</p>
+      </div>
+    `;
+
+    const fields = extractRareFields(html, {
+      productTitle: 'Positive Light Tinted Moisturizer Broad Spectrum SPF 20 Sunscreen',
+    });
+
+    expect(fields.pdp_active_ingredients_raw).toBe('Homosalate: 9.0% Titanium Dioxide: 1.8% Zinc Oxide: 0.9%');
+    expect(fields.pdp_ingredients_raw).toContain('Inactive ingredients');
+    expect(fields.pdp_details_sections).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ heading: 'Details', body: expect.stringContaining('Broad Spectrum SPF 20') }),
       ]),
     );
   });

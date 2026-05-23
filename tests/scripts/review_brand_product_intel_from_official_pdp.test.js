@@ -97,6 +97,49 @@ describe('official PDP manual insight review', () => {
     expect(inferRole(facts).label).toBe('Lip color');
   });
 
+  test('classifies Rare Beauty roles from product identity before ingredient prose', () => {
+    const facts = (overrides) => ({
+      activeIngredients: [],
+      rawIngredients: [],
+      details: [],
+      variants: { labels: [] },
+      ...overrides,
+    });
+
+    expect(
+      inferRole(facts({
+        title: 'Find Comfort Body & Hair Fragrance Mist Mini',
+        productType: 'Fragrance',
+        categoryPath: 'beauty/fragrance/body_mist',
+        description: 'A soft body and hair mist.',
+      })).label,
+    ).toBe('Body fragrance spray');
+    expect(
+      inferRole(facts({
+        title: 'Always an Optimist Soft Radiance Setting Powder',
+        productType: 'Setting Powder',
+        categoryPath: 'beauty/makeup/face/powder',
+        description: 'A loose setting powder with a fragrance-free finish.',
+      })).label,
+    ).toBe('Face color makeup');
+    expect(
+      inferRole(facts({
+        title: 'Positive Light Luminizing Lip Gloss',
+        productType: 'Lip Gloss',
+        categoryPath: 'beauty/makeup/lip/lip_gloss',
+        description: 'Glossy lip color with shine.',
+      })).label,
+    ).toBe('Lip color');
+    expect(
+      inferRole(facts({
+        title: 'Find Comfort Hydrating Body Lotion with Pump',
+        productType: 'Body Lotion',
+        categoryPath: 'beauty/body/body_lotion',
+        description: 'A hydrating lotion for body care.',
+      })).label,
+    ).toBe('Body care treatment');
+  });
+
   test('builds specific source-backed insight copy', () => {
     const bundle = buildInsightBundle(row());
 
