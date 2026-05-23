@@ -203,6 +203,9 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
           COALESCE(pgm.is_primary, false) AS is_primary,
           COALESCE(offer_stats.offer_count, 0)::int AS offer_count
         FROM catalog_products cp
+        INNER JOIN index_pipeline_state ips
+          ON ips.content_key = cp.content_key
+         AND ips.serving_eligible = TRUE
         LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id
         LEFT JOIN product_group_members pgm
           ON pgm.merchant_id = cp.merchant_id

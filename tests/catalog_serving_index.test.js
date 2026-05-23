@@ -316,6 +316,7 @@ describe('catalog serving index', () => {
         merchant_id: 'external_seed',
         product_id: 'serum_1',
         source_kind: 'external_seed',
+        serving_eligible: true,
         product: {
           product_id: 'serum_1',
           title: 'Barrier Serum',
@@ -332,6 +333,7 @@ describe('catalog serving index', () => {
         merchant_id: 'external_seed',
         product_id: 'cream_1',
         source_kind: 'external_seed',
+        serving_eligible: true,
         product: {
           product_id: 'cream_1',
           title: 'Barrier Cream',
@@ -504,6 +506,7 @@ describe('catalog serving index', () => {
         merchant_id: 'external_seed',
         product_id: 'seed_gbr_45ml',
         source_kind: 'external_seed',
+        serving_eligible: true,
         product: {
           product_id: 'seed_gbr_45ml',
           title: 'Great Barrier Relief',
@@ -524,6 +527,7 @@ describe('catalog serving index', () => {
         merchant_id: 'merch_internal',
         product_id: 'internal_gbr_45ml',
         source_kind: 'internal',
+        serving_eligible: true,
         product: {
           product_id: 'internal_gbr_45ml',
           title: 'Great Barrier Relief 45ml',
@@ -712,6 +716,7 @@ describe('catalog serving index', () => {
             merchant_id: 'external_seed',
             product_id: 'ext_vitamin_c',
             source_kind: 'external_seed',
+            serving_eligible: true,
             product: {
               product_id: 'ext_vitamin_c',
               title: 'Vitamin C Serum',

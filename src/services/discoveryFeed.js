@@ -4487,6 +4487,19 @@ async function fetchInternalCatalogCandidates({
           FROM products_cache
           WHERE (expires_at IS NULL OR expires_at > now())
             AND ${activeProductsCacheSourceWhere('products_cache')}
+            AND EXISTS (
+              SELECT 1
+              FROM catalog_products cp
+              INNER JOIN index_pipeline_state ips
+                ON ips.content_key = cp.content_key
+               AND ips.serving_eligible = TRUE
+              WHERE cp.merchant_id = products_cache.merchant_id
+                AND cp.source_product_id = coalesce(
+                  nullif(products_cache.product_data->>'product_id', ''),
+                  nullif(products_cache.product_data->>'id', ''),
+                  nullif(products_cache.platform_product_id, '')
+                )
+            )
             AND COALESCE(lower(product_data->>'status'), 'active') = 'active'
             AND merchant_id <> $1
             AND (
@@ -8672,8 +8685,9 @@ async function loadBrandScopedDirectCandidates({
 
   // When BRAND_PAGE_USES_COMMERCE_INDEX is enabled, swap the legacy products_cache
   // read for the commerce-index canonical view (agent_pdp_view + catalog_products).
-  // Also suppress attached external seeds so they don't duplicate canonical rows.
+  // Attached external seeds stay enabled as fallback when canonical coverage misses.
   const useCommerceIndex = brandPageUsesCommerceIndex();
+  const includeAttachedSeeds = true;
 
   try {
     const [internalCandidates, externalCandidates] = await Promise.all([
@@ -8697,14 +8711,13 @@ async function loadBrandScopedDirectCandidates({
             brandAliases: normalizedAliases,
             limit: safeLimit,
             request,
+            includeAttached: includeAttachedSeeds,
           })
         : fetchBrandScopedExternalSeedCandidates({
             brandAliases: normalizedAliases,
             limit: safeLimit,
             orderByRecency: !isBrandScopeOnlyQuery(request),
-            // When canonical view is primary, suppress attached-seed flow so
-            // the same product doesn't appear twice (once via apv, once via seed).
-            includeAttached: !useCommerceIndex,
+            includeAttached: includeAttachedSeeds,
           }),
     ]);
 
@@ -11122,6 +11135,8 @@ module.exports = {
     fetchExternalSeedCandidates,
     fetchBrandScopedExternalSeedCandidates,
     fetchBrandScopedCanonicalCandidates,
+    fetchInternalCatalogCandidates,
+    loadBrandScopedDirectCandidates,
     fetchExternalSeedExactTitleCandidates,
     fetchBeautyInterestExternalSeedFastpathCandidates,
     buildDiscoveryExactTitleLookupVariants,
