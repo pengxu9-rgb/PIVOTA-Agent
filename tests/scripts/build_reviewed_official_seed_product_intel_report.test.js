@@ -780,6 +780,9 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     ).toBe(
       'Use this soft brush. This set is designed for fresh coverage. Dry brushes with this tool.',
     );
+    expect(sanitizePublicSourceText('Now available in a customizable trio. Save 20% with this kit.')).toBe(
+      'Now available in a customizable trio.',
+    );
 
     const lipDuoBundle = buildBundle({
       seed: {
