@@ -7,6 +7,8 @@ const {
     terminalHoldStatus,
   },
 } = require('../../scripts/audit-kb-commerce-index-readiness.cjs');
+const fs = require('node:fs');
+const path = require('node:path');
 
 describe('audit-kb-commerce-index-readiness terminal holds', () => {
   test('classifies source-unavailable rows as terminal holds before seed fact gaps', () => {
@@ -80,6 +82,85 @@ describe('audit-kb-commerce-index-readiness terminal holds', () => {
     });
   });
 
+  test('classifies index non-core product blockers as terminal public-index holds', () => {
+    const rows = buildInventoryRows({
+      seedRows: [
+        {
+          id: 'eps_sample_set',
+          external_product_id: 'ext_sample_set',
+          market: 'US',
+          domain: 'www.tomfordbeauty.com',
+          title: 'Private Blend Deluxe Sample Set',
+          canonical_url: 'https://www.tomfordbeauty.com/products/private-blend-deluxe-sample-set',
+          attached_product_key: 'prod_sample_set',
+          price_amount: 40,
+          price_currency: 'USD',
+          availability: 'in_stock',
+          seed_data: {
+            brand: 'Tom Ford Beauty',
+            description: 'A source-backed sample set description.',
+            image_url: 'https://example.com/sample-set.png',
+            category: 'Fragrance',
+            snapshot: {
+              brand: 'Tom Ford Beauty',
+              description: 'A source-backed sample set description.',
+              image_url: 'https://example.com/sample-set.png',
+            },
+          },
+        },
+      ],
+      readinessByProductId: new Map([
+        [
+          'ext_sample_set',
+          {
+            pivota_insights: {
+              direct: { kb_exists: true, high_quality_ready: true },
+            },
+          },
+        ],
+      ]),
+      identityByProductId: new Map([
+        [
+          'ext_sample_set',
+          {
+            live_read_enabled: true,
+            identity_status: 'approved',
+            review_required: false,
+            sellable_item_group_id: 'sig_sample_set',
+            product_line_id: 'pl_sample_set',
+            review_family_id: 'rf_sample_set',
+            source_tier: 'brand',
+          },
+        ],
+      ]),
+      kbByProductId: new Map([['ext_sample_set', { last_success_at: '2026-05-23T00:00:00.000Z' }]]),
+      catalogByProductKey: new Map([
+        ['prod_sample_set', { content_key: 'ck_sample_set' }],
+      ]),
+      offerByProductKey: new Map([['prod_sample_set', { offer_count: 1 }]]),
+      indexByContentKey: new Map([
+        [
+          'ck_sample_set',
+          {
+            serving_eligible: false,
+            blocker_code: 'non_core_product',
+            blocker_detail: 'sample/gift/protection/GWP row is not eligible for commerce index serving',
+          },
+        ],
+      ]),
+      docBySourceRef: new Map(),
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].terminal_hold).toBe(true);
+    expect(rows[0].terminal_hold_reason).toBe(
+      'sample/gift/protection/GWP row is not eligible for commerce index serving',
+    );
+    expect(rows[0].main_blocker).toBe('terminal_hold');
+    expect(rows[0].recommended_lane).toBe('terminal_hold_no_action');
+    expect(rows[0].next_command).toBe('');
+  });
+
   test('reports actionable readiness rate separately from terminal holds', () => {
     const summary = summarizeInventory(
       [
@@ -105,6 +186,17 @@ describe('audit-kb-commerce-index-readiness terminal holds', () => {
         { key: 'terminal_hold_no_action', count: 1 },
       ]),
     );
+  });
+
+  test('does not convert statement timeouts into empty optional audit data', () => {
+    const source = fs.readFileSync(
+      path.join(__dirname, '../../scripts/audit-kb-commerce-index-readiness.cjs'),
+      'utf8',
+    );
+    const queryRowsSource = source.match(/async function queryRows[\s\S]+?async function fetchIdentityRows/)?.[0] || '';
+
+    expect(queryRowsSource).toContain('relationMissing(error)');
+    expect(queryRowsSource).not.toContain("error?.code === '57014'");
   });
 
   test('builds catalog-serving eligibility keys from attached catalog IPS state', () => {
