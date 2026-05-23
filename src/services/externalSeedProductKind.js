@@ -289,6 +289,9 @@ function classifyExternalSeedProductKind(input = {}) {
   if (
     explicitFamily?.family === 'accessory' &&
     !hasToolCategoryPath(input) &&
+    !PET_ACCESSORY_RE.test(text) &&
+    !(STICKER_ACCESSORY_RE.test(text) && !TREATMENT_STICKER_RE.test(text)) &&
+    !FALSE_LASH_ACCESSORY_RE.test(text) &&
     (formulaCategoryPathSignal || FORMULA_PRODUCT_RE.test(contentText)) &&
     !ACCESSORY_RE.test(primaryContentText)
   ) {

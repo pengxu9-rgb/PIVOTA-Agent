@@ -61,6 +61,21 @@ describe('external seed product kind classification', () => {
         reasons: expect.arrayContaining(['pet_accessory_signal']),
       }),
     );
+    expect(
+      classifyExternalSeedProductKind({
+        title: 'Soft Pooch Blush Dog Toy - Faith',
+        seed_data: {
+          product_family: 'accessory',
+          description:
+            'A plush dog toy inspired by the Soft Pinch blush tube so your pet can play with makeup as much as you do.',
+        },
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        family: 'accessory',
+        reasons: expect.arrayContaining(['explicit_product_family_signal']),
+      }),
+    );
   });
 
   test('classifies skincare duo or set as collection even with formula category path', () => {
