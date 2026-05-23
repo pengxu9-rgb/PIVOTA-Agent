@@ -501,6 +501,12 @@ function terminalHoldContract(value) {
     return { held: true, reason: reason || 'source_unavailable' };
   }
   if (
+    contractVersion === 'external_seed.content_evidence_hold.v1' ||
+    ['hold_for_evidence', 'content_evidence_hold'].includes(status)
+  ) {
+    return { held: true, reason: reason || 'content_evidence_hold' };
+  }
+  if (
     contractVersion === 'external_seed.transaction_readiness_blocker.v1' &&
     (contract.transaction_ready === false || contract.transactionReady === false)
   ) {
@@ -542,6 +548,8 @@ function terminalHoldStatus(row) {
     snapshot.source_unavailable_v1,
     seedData.non_merch_terminal_hold_v1,
     snapshot.non_merch_terminal_hold_v1,
+    seedData.content_evidence_hold_v1,
+    snapshot.content_evidence_hold_v1,
     seedData.transaction_readiness_blocker_v1,
     snapshot.transaction_readiness_blocker_v1,
   ];
