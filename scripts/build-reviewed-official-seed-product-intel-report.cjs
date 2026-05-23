@@ -84,6 +84,10 @@ function sanitizePublicSourceText(value) {
     .replace(/\bfor all skin types\b/gi, 'with broad routine positioning')
     .replace(/\ball skin types\b/gi, 'broad skin-type positioning')
     .replace(/\.\s*with broad routine positioning\b/gi, ' with broad routine positioning')
+    .replace(/\b(?:combat|reduce|reducing|target)\s+cellulite\b/gi, 'support body-smoothing positioning')
+    .replace(/\bstimulate\s+fat\s+burning\b/gi, 'support firming and toning positioning')
+    .replace(/,\s*while preventing the formation of new cells\b/gi, '')
+    .replace(/\bwhile preventing the formation of new cells\b/gi, '')
     .replace(/\ba\s+antiperspirant\b/gi, 'an antiperspirant')
     .replace(/\ba\s+antioxidant\b/gi, 'an antioxidant')
     .replace(/\b(?:winner of|voted one of|voted as one of)[^.?!]*[.!]?/gi, '')
@@ -236,9 +240,11 @@ function inferKind(title, category, categoryPath, description = '') {
   if (/\b(?:candle)\b/.test(haystack)) return 'home_fragrance';
   if (/\bdry\s+shampoo\b/.test(haystack)) return 'dry_shampoo';
   if (/\bdeodorant\b/.test(haystack)) return 'deodorant';
-  if (/\b(?:shower\s+gel|body\s+wash|hand\s*&\s*body\s+wash|hand\s+and\s+body\s+wash)\b/.test(haystack)) return 'body_wash';
+  if (/\b(?:shower\s+gel|body\s+wash|hand\s*&\s*body\s+wash|hand\s+and\s+body\s+wash)\b/.test(titleCategoryText)) return 'body_wash';
   if (/\bhand\s+wash\b/.test(haystack)) return 'hand_wash';
   if (/\b(?:bath\s+soak|circulation\s+soak)\b/.test(haystack)) return 'bath_soak';
+  if (/\b(?:hair\s+mask|hair\s+treatment)\b/.test(haystack)) return 'hair_mask';
+  if (/\b(?:body\s+scrub|body\s+polish|body\s+exfoliant)\b/.test(haystack)) return 'body_scrub';
   if (/\bbody\s+balm\b/.test(haystack)) return 'body_balm';
   if (/\bbody\s+gel\b/.test(haystack)) return 'body_gel';
   if (/\b(?:hair\s*&\s*body mist|hair and body mist|body mist)\b/.test(titleCategoryText)) return 'body_mist';
@@ -255,7 +261,7 @@ function inferKind(title, category, categoryPath, description = '') {
   if (/\bskinveil\b/.test(titleCategoryText) || /\b(?:loose water[-\s]?powder|setting makeup|velvet finish)\b/.test(haystack)) return 'face_powder';
   if (/\b(?:body oil|movement oil|universal oil)\b/.test(haystack)) return 'body_oil';
   if (/\b(?:spot sticker|spot stickers|zit|blemish spot|blemish sticker|blemish stickers)\b/.test(haystack)) return 'blemish_patch';
-  if (/\b(?:foaming face wash|face wash|foaming gel cleanser|gel cleanser|face wipes|facial wipes|body wash|hand & body wash|hand and body wash|goat milk soap|bar soap|soap)\b/.test(haystack)) return 'cleanser';
+  if (/\b(?:foaming face wash|face wash|foaming gel cleanser|gel cleanser|face wipes|facial wipes|goat milk soap|bar soap|soap)\b/.test(haystack)) return 'cleanser';
   if (/\b(?:facial oil|face oil)\b/.test(haystack)) return 'face_oil';
   if (/\b(?:toning mist|toner|tonic)\b/.test(haystack)) return 'toner';
   if (/\bretinol\s+oil\b/.test(haystack)) return 'skincare';
@@ -294,6 +300,8 @@ function kindLabel(kind, category) {
     body_wash: 'body wash',
     hand_wash: 'hand wash',
     bath_soak: 'bath soak',
+    hair_mask: 'hair mask',
+    body_scrub: 'body scrub',
     body_balm: 'body balm',
     body_gel: 'body gel',
     face_oil: 'face oil',
@@ -340,6 +348,8 @@ function displayCategoryForKind(kind, category) {
     body_wash: 'Body Wash',
     hand_wash: 'Hand Wash',
     bath_soak: 'Bath Soak',
+    hair_mask: 'Hair Mask',
+    body_scrub: 'Body Scrub',
     body_balm: 'Body Balm',
     body_gel: 'Body Gel',
     face_oil: 'Face Oil',
@@ -370,6 +380,21 @@ function displayCategoryForKind(kind, category) {
     'makeup_set',
     'fragrance_set',
     'eye_care_set',
+    'body_mist',
+    'dry_shampoo',
+    'deodorant',
+    'body_wash',
+    'hand_wash',
+    'bath_soak',
+    'hair_mask',
+    'body_scrub',
+    'body_balm',
+    'body_gel',
+    'body_oil',
+    'face_oil',
+    'toner',
+    'moisturizer',
+    'serum',
   ]);
   if (controlledCategoryKinds.has(kind)) return labels[kind] || labels.beauty_product;
   const explicit = text(category);
@@ -399,6 +424,8 @@ function routineStep(kind) {
     body_wash: 'body_cleanse',
     hand_wash: 'hand_cleanse',
     bath_soak: 'body_care',
+    hair_mask: 'hair_care',
+    body_scrub: 'body_care',
     body_balm: 'body_care',
     body_gel: 'body_care',
     face_oil: 'skin_care',
@@ -596,10 +623,21 @@ function buildHighlightPhrase(kind, category, description, title = '') {
   if (kind === 'face_powder') return 'Complexion powder detail';
   if (kind === 'body_oil') return 'Body oil formula detail';
   if (kind === 'dry_shampoo') return 'Post-workout dry shampoo';
-  if (kind === 'deodorant') return 'Post-workout deodorant';
-  if (kind === 'body_wash') return /shower\s+gel/.test(signalText) ? 'Post-workout shower gel' : 'Body wash format detail';
+  if (kind === 'deodorant') {
+    if (/after\s+workout/.test(signalText)) return 'Post-workout deodorant';
+    if (/sensitive\s+skin/.test(signalText)) return 'Sensitive deodorant detail';
+    if (/extra\s+strength/.test(signalText)) return 'Extra-strength deodorant';
+    return 'Deodorant format detail';
+  }
+  if (kind === 'body_wash') {
+    if (/after\s+workout/.test(signalText)) return 'Post-workout shower gel';
+    if (/shower\s+gel/.test(signalText)) return 'Shower gel format detail';
+    return 'Body wash format detail';
+  }
   if (kind === 'hand_wash') return 'Hand wash format detail';
   if (kind === 'bath_soak') return 'Bath soak format detail';
+  if (kind === 'hair_mask') return 'Hair mask format detail';
+  if (kind === 'body_scrub') return /salt|polish|exfoliat/.test(signalText) ? 'Body polish format detail' : 'Body scrub format detail';
   if (kind === 'body_balm') return 'Body balm format detail';
   if (kind === 'body_gel') return 'Body gel format detail';
   if (kind === 'face_oil') return 'Face oil formula detail';

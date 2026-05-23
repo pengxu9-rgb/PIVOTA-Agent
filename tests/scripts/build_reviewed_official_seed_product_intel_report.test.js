@@ -71,6 +71,65 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     expect(inferKind('Candy Cane Whipped Body Cream', '', '', 'Whipped body cream with cocoa powder.')).toBe(
       'moisturizer',
     );
+    expect(inferKind('Herbal Hair Mask Probiotics', 'Hair Mask', '', 'Probiotic hair treatment.')).toBe(
+      'hair_mask',
+    );
+    expect(inferKind('Firming & Polishing Body Scrub Sea Salt', 'Exfoliant', '', 'Body scrub.')).toBe(
+      'body_scrub',
+    );
+    expect(
+      inferKind(
+        'Firming & Toning Body Cream Pineapple & Retinol',
+        'Body Cream',
+        '',
+        'Body cream page with related body wash recommendations.',
+      ),
+    ).toBe('moisturizer');
+  });
+
+  test('uses non-workout highlights unless the product is explicitly workout positioned', () => {
+    expect(
+      buildBundle({
+        seed: {
+          external_product_id: 'ext_nala_deodorant',
+          title: 'Coastal Waters, Extra Strength Natural Deodorant',
+          canonical_url: 'https://nalacare.com/products/coastal-waters-extra-strength-natural-deodorant',
+          seed_data: {
+            brand: 'Nala Care',
+            category: 'Deodorant',
+            description: 'A natural deodorant with coastal scent positioning.',
+          },
+        },
+        inventoryRow: {
+          external_product_id: 'ext_nala_deodorant',
+          sellable_item_group_id: 'sig_nala_deodorant',
+        },
+        generatedAt: '2026-05-23T00:00:00.000Z',
+        batchName: 'test_batch',
+        reviewer: 'codex_test',
+      }).shopping_card.highlight,
+    ).toBe('Extra-strength deodorant');
+    expect(
+      buildBundle({
+        seed: {
+          external_product_id: 'ext_moss_deodorant',
+          title: 'After Workout Deodorant',
+          canonical_url: 'https://mossnoor.com/products/after-workout-deodorant',
+          seed_data: {
+            brand: 'Moss & Noor',
+            category: 'Deodorant',
+            description: 'After Workout Deodorant is developed for active lifestyles.',
+          },
+        },
+        inventoryRow: {
+          external_product_id: 'ext_moss_deodorant',
+          sellable_item_group_id: 'sig_moss_deodorant',
+        },
+        generatedAt: '2026-05-23T00:00:00.000Z',
+        batchName: 'test_batch',
+        reviewer: 'codex_test',
+      }).shopping_card.highlight,
+    ).toBe('Post-workout deodorant');
   });
 
   test('classifies Pixi complexion, lip, and treatment formats without generic fallback', () => {
