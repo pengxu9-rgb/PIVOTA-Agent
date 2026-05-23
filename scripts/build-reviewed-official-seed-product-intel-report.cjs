@@ -99,6 +99,15 @@ function brandFromUrl(value) {
   }
 }
 
+function displayBrand(value) {
+  const raw = text(value);
+  if (!raw) return '';
+  if (raw === raw.toLowerCase()) {
+    return raw.replace(/\b([a-z])/g, (match) => match.toUpperCase());
+  }
+  return raw;
+}
+
 function inferCategory(seed, inventoryRow) {
   const seedData = asObject(seed.seed_data);
   const snapshot = asObject(seedData.snapshot);
@@ -151,7 +160,15 @@ function inferKind(title, category, categoryPath, description = '') {
   const descriptionText = `${description}`.toLowerCase();
   const haystack = `${titleCategoryText} ${descriptionText}`;
   if (/\b(?:grwm routine|look)\b/.test(titleCategoryText)) return 'makeup_set';
-  if (/\b(?:brush cleanser|brush cleaning|brush cleaner|sigmagic)\b/.test(haystack)) return 'brush_care';
+  if (/\b(?:brush\s+care|brush cleanser|brush cleaning|brush cleaner|brushampoo|sigmagic|travel\s+switch|switch\s+set|dry['’]?n\s+shape|brush\s+cleaning\s+mat|brush\s+cleaning\s+tool)\b|sigma\W*switch\b/.test(titleCategoryText)) return 'brush_care';
+  if (
+    /\bbrush(?:\s+[a-z0-9&'’.-]+){0,4}\s+(?:set|kit|duo|trio|quad|bundle|collection)\b/.test(titleCategoryText) ||
+    /\b(?:set|kit|duo|trio|quad|bundle|collection)\b.*\bbrush(?:es)?\b/.test(titleCategoryText) ||
+    (/\b(?:set|kit|duo|trio|quad|bundle|collection|favorites|favourites)\b/.test(titleCategoryText) &&
+      /\b(?:brush\s+set|brushes\s+included|brushes\s+needed|go-to\s+brushes)\b/.test(descriptionText))
+  ) {
+    return 'brush_set';
+  }
   if (/\b(?:set|kit|duo|trio|quad|sampler|bundle|vault|box|favourites|favorites|collection|best of|holiday edition|choose your shades)\b/.test(titleCategoryText)) {
     return inferSetKind(titleCategoryText, descriptionText);
   }
@@ -210,7 +227,8 @@ function kindLabel(kind, category) {
     body_oil: 'body oil',
     blemish_patch: 'blemish patch',
     cleanser: 'cleanser',
-    brush: 'beauty brush',
+    brush: 'brush',
+    brush_set: 'brush set',
     brush_care: 'brush-care product',
     skincare: 'skincare product',
     home_fragrance: 'home fragrance',
@@ -225,8 +243,6 @@ function kindLabel(kind, category) {
 }
 
 function displayCategoryForKind(kind, category) {
-  const explicit = text(category);
-  if (explicit && explicit.toLowerCase() !== 'beauty product') return explicit;
   const labels = {
     foundation: 'Foundation',
     concealer: 'Concealer',
@@ -246,6 +262,7 @@ function displayCategoryForKind(kind, category) {
     blemish_patch: 'Blemish Patch',
     cleanser: 'Cleanser',
     brush: 'Beauty Brush',
+    brush_set: 'Brush Set',
     brush_care: 'Brush Care',
     skincare: 'Skincare',
     home_fragrance: 'Home Fragrance',
@@ -256,6 +273,10 @@ function displayCategoryForKind(kind, category) {
     lip_set: 'Lip Set',
     beauty_product: 'Beauty Product',
   };
+  const controlledCategoryKinds = new Set(['brush', 'brush_set', 'brush_care']);
+  if (controlledCategoryKinds.has(kind)) return labels[kind] || labels.beauty_product;
+  const explicit = text(category);
+  if (explicit && explicit.toLowerCase() !== 'beauty product') return explicit;
   return labels[kind] || labels.beauty_product;
 }
 
@@ -279,6 +300,7 @@ function routineStep(kind) {
     blemish_patch: 'spot_care',
     cleanser: 'cleanse',
     brush: 'tool',
+    brush_set: 'tool',
     brush_care: 'tool_care',
     skincare: 'skin_care',
     home_fragrance: 'home_fragrance',
@@ -294,9 +316,48 @@ function routineStep(kind) {
 
 function ingredientSignals(seedData) {
   const snapshot = asObject(seedData.snapshot);
+  function ingredientTextFromValue(value) {
+    if (!value) return '';
+    if (typeof value === 'string') {
+      const cleaned = text(value);
+      if (/^\{.*(?:force_fill_contract|inci_applicability|approved_source_not_captured).*}$/i.test(cleaned)) {
+        return '';
+      }
+      return cleaned;
+    }
+    if (Array.isArray(value)) {
+      return value
+        .map((item) => ingredientTextFromValue(item))
+        .filter(Boolean)
+        .join(', ');
+    }
+    if (typeof value === 'object') {
+      const applicability = asObject(value.inci_applicability);
+      if (text(applicability.status).toLowerCase() === 'not_applicable') return '';
+      return [
+        value.raw_ingredient_text_clean,
+        value.raw_text,
+        value.ingredients_raw,
+        value.ingredients_inci,
+        value.inci_list,
+        value.inci_normalized,
+        value.ingredient_tokens,
+        value.key_ingredients,
+        value.active_ingredients,
+        value.full_ingredients,
+        value.full_ingredient_list,
+      ]
+        .map((item) => ingredientTextFromValue(item))
+        .filter(Boolean)
+        .join(', ');
+    }
+    return '';
+  }
   const candidates = [
     seedData.raw_ingredient_text_clean,
     snapshot.raw_ingredient_text_clean,
+    seedData.ingredients_inci,
+    snapshot.ingredients_inci,
     seedData.inci_list,
     snapshot.inci_list,
     seedData.ingredient_tokens,
@@ -306,13 +367,7 @@ function ingredientSignals(seedData) {
     seedData.ingredient_intel,
     snapshot.ingredient_intel,
   ];
-  const flattened = [];
-  for (const item of candidates) {
-    if (!item) continue;
-    if (typeof item === 'string') flattened.push(item);
-    else if (Array.isArray(item)) flattened.push(item.map((part) => text(part)).filter(Boolean).join(', '));
-    else if (typeof item === 'object') flattened.push(JSON.stringify(item));
-  }
+  const flattened = candidates.map((item) => ingredientTextFromValue(item)).filter(Boolean);
   const joined = text(flattened.join(' '));
   return {
     available: joined.length > 20,
@@ -407,6 +462,7 @@ function buildHighlightPhrase(kind, category, description, title = '') {
   if (kind === 'blemish_patch') return 'Spot-care format detail';
   if (kind === 'cleanser') return /glycolic|retinol|mud|jasmine/.test(signalText) ? 'Active cleanser detail' : 'Cleanser formula detail';
   if (kind === 'brush') return 'Brush format detail';
+  if (kind === 'brush_set') return 'Brush set format detail';
   if (kind === 'brush_care') return 'Brush-care cleaning detail';
   if (kind === 'skincare') {
     if (/moisturizer|moisturiser|body lotion|lotion/.test(titleText)) return 'Moisturizer formula detail';
@@ -448,7 +504,7 @@ function buildBundle({ seed, inventoryRow, generatedAt, batchName, reviewer }) {
   const productId = text(seed.external_product_id);
   const title = text(seed.title || seedData.title || inventoryRow.title);
   const sourceUrl = text(seed.canonical_url || seed.destination_url || inventoryRow.canonical_url);
-  const brand = text(seedData.brand || snapshot.brand || inventoryRow.brand || brandFromUrl(sourceUrl));
+  const brand = displayBrand(seedData.brand || snapshot.brand || inventoryRow.brand || brandFromUrl(sourceUrl));
   const brandPrefix = brand ? `${brand} ` : '';
   const rawCategory = inferCategory(seed, inventoryRow);
   const categoryPath = inferCategoryPath(seed, inventoryRow);
