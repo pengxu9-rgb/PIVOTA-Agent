@@ -18,7 +18,15 @@ const {
 const REVIEW_SOURCE = 'pivota_insights_official_pdp_manual_review_v1';
 const REVIEWER = 'codex_manual_review';
 const PROTECTED_QUALITY_STATES = new Set(['reviewed', 'verified', 'published', 'ready']);
-const SUPPORTED_BRANDS = new Set(['guerlain', 'rare beauty', 'tom ford', 'tom ford beauty']);
+const SUPPORTED_BRANDS = new Set([
+  'fenty',
+  'fenty beauty',
+  'fenty skin',
+  'guerlain',
+  'rare beauty',
+  'tom ford',
+  'tom ford beauty',
+]);
 
 function argValue(name, fallback = '') {
   const prefix = `--${name}=`;
@@ -98,12 +106,29 @@ function isLowSignalMarketingSentence(value) {
   return (
     /\b(add to bag|shop now|discover|limited time|free shipping|subscribe|sign up)\b/i.test(current) ||
     /\b(anything but ordinary|far from innocent|you won't want to|must-have|iconic|indulge in)\b/i.test(current) ||
-    /\b(inspired packaging|wardrobe of lip and face cosmetics|sensuous beauty|afterglow)\b/i.test(current)
+    /\b(inspired packaging|wardrobe of lip and face cosmetics|sensuous beauty|afterglow)\b/i.test(current) ||
+    /^(?:your done-in-one|straight up|the lowdown|made with|what else|the #?'?s don't lie|already have|click here|want the full scoop)\b/i.test(current)
   );
 }
 
-function firstUsefulSentence(value, limit = 260) {
+function stripPdpMarketingFrames(value) {
   let text = stripHtml(value);
+  if (!text) return '';
+  const straightUpIndex = text.search(/\bstraight\s+up\s*:/i);
+  if (straightUpIndex >= 0) {
+    text = text.slice(straightUpIndex).replace(/^straight\s+up\s*:\s*/i, '');
+  }
+  text = text
+    .replace(/^(?:your done-in-one|the lowdown|made with)\b[^.!?]*:\s*/i, '')
+    .replace(/\b(?:the lowdown|made with|what else\?!?|the #?'?s don't lie)\b[\s\S]*$/i, '')
+    .replace(/\bclick here to find your fit\.?/gi, '')
+    .replace(/\bwant the full scoop[\s\S]*$/i, '')
+    .trim();
+  return text;
+}
+
+function firstUsefulSentence(value, limit = 260) {
+  let text = stripPdpMarketingFrames(value);
   const merchandisingMarker = /\bSkin\s+Type\s+Skin\s+Concern\s+Finish\s+Coverage\b/i;
   if (merchandisingMarker.test(text)) {
     const afterMarker = text.split(merchandisingMarker).pop();
@@ -208,6 +233,8 @@ function readFirstField(seedData, snapshot, keys) {
 
 function displayBrand(raw) {
   const brand = asString(raw);
+  if (/^fenty\s*skin/i.test(brand)) return 'Fenty Skin';
+  if (/^fenty/i.test(brand)) return 'Fenty Beauty';
   if (/^tom\s*ford/i.test(brand)) return 'Tom Ford Beauty';
   if (/^guerlain/i.test(brand)) return 'Guerlain';
   return brand || 'the brand';
@@ -240,7 +267,7 @@ function readVariantValues(variant) {
       if (value && !/^default/i.test(value)) out.push(name ? `${name}: ${value}` : value);
     }
   }
-  return uniq(out).filter((value) => !/^(default|default title|single)$/i.test(value));
+  return uniq(out).filter((value) => !/^(default|default title|single|single item|format:\s*single item)$/i.test(value));
 }
 
 function readVariantSummary(seedData, snapshot) {
@@ -350,6 +377,9 @@ function inferRole(facts) {
   if (/\blipstick|lip color|lip colour|lip\s+gloss|rouge g|kisskiss\b/.test(titleText)) return { label: 'Lip color', step: 'lip color', amPm: ['as_needed'] };
   if (/\blip\s+balm|lip\s+butter|lip\s+oil|lip\s+serum|lip\s+treatment|glossy\s+lip\b/.test(titleText)) return { label: 'Lip treatment', step: 'lip treatment', amPm: ['as_needed'] };
   if (/\bmascara|eyeshadow|eye shadow|eye color|eye colour|eyeliner\b/.test(titleText)) return { label: 'Eye makeup', step: 'eye makeup', amPm: ['as_needed'] };
+  if (/\b(?:spf|sunscreen|broad\s+spectrum)\b/.test(titleText) && !/\bfoundation|concealer\b/.test(titleText)) {
+    return { label: 'Daily sunscreen', step: 'sunscreen', amPm: ['am'] };
+  }
   if (/\bfoundation|concealer|skin tint|complexion|tinted moisturizer\b/.test(titleText)) return { label: 'Complexion makeup', step: 'complexion', amPm: ['as_needed'] };
   if (/\b(?:setting spray|4-in-1 mist|4 in 1 mist|face mist)\b/.test(titleText)) return { label: 'Setting mist', step: 'complexion', amPm: ['as_needed'] };
   if (/\b(?:setting powder|finishing powder|powder|bronzer|blush|highlighter|luminizer)\b/.test(titleText)) return { label: 'Face color makeup', step: 'face color', amPm: ['as_needed'] };
@@ -492,12 +522,13 @@ function inferBestFor(facts, role, anchors) {
       ['precision application', /\bprecision|pencil|clear-cut\b/],
       ['shade matching', /\bshade|taupe|blonde|brown|chestnut\b/],
     ]);
-  } else if (role.step === 'skincare' || role.step === 'serum' || role.step === 'body care' || role.step === 'body care set') {
+  } else if (role.step === 'skincare' || role.step === 'serum' || role.step === 'sunscreen' || role.step === 'body care' || role.step === 'body care set') {
     labels = findTokens(text, [
       ['hydration', /\bhydrat|hyaluronic|moistur\b/],
       ['firmness', /\bfirm|peptide|elastic|lift\b/],
       ['radiance', /\bradiance|bright|glow\b/],
       ['barrier support', /\bbarrier|squalane|shea|ceramide\b/],
+      ['sun protection', /\bspf|sunscreen|uva|uvb|broad\s+spectrum\b/],
       ['body routine', /\bbody|lotion|wash|essentials\b/],
       ['aromatherapy', /\baromatherapy|scent|soothe|comfort\b/],
     ]);
