@@ -489,6 +489,34 @@ describe('RecommendationEngine external candidate fetch', () => {
     expect(out.semantic?.vertical).toBe('makeup');
   });
 
+  test('enrichExternalBaseProduct treats tonik/tonic identity as skincare toner over stale haircare recall', async () => {
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const out = await _internals.enrichExternalBaseProduct({
+      merchant_id: 'external_seed',
+      product_id: 'ext_oio_fulvic',
+      external_product_id: 'ext_oio_fulvic',
+      title: 'Fulvic Ionic',
+      brand: 'Oio Lab',
+      category: 'tonik',
+      product_type: 'tonik',
+      semantic_vertical: 'haircare',
+      recall_vertical: 'haircare',
+      source: 'external_seed',
+    });
+
+    expect(out.product).toEqual(
+      expect.objectContaining({
+        category: 'Toner',
+        product_type: 'Toner',
+        semantic_vertical: 'skincare',
+        recall_vertical: 'skincare',
+        external_seed_runtime_family: 'toner',
+      }),
+    );
+    expect(_internals.getLeafCategory(out.product)).toBe('toner');
+    expect(out.semantic?.vertical).toBe('skincare');
+  });
+
   test('excludes attached same-brand seed rows from broad brand fallback matching', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 
