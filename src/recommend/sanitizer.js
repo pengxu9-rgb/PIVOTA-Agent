@@ -54,7 +54,7 @@ function composeSafeDisplayName(parts) {
 
 function sanitizeDisplayName(rawTitle, product) {
   const brand = product.brand?.brand_name || '';
-  const category = product.category?.path?.slice(-1)[0] || product.category?.category_id || '';
+  const category = product.category?.path?.slice(-1)[0] || '';
 
   const noHtml = stripHtml(rawTitle || '');
   const noUrls = stripUrls(noHtml);
