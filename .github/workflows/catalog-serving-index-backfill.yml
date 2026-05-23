@@ -41,9 +41,9 @@ jobs:
       name: Pivota Agent / production
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      CATALOG_SERVING_BASE_URL: ${{ secrets.CATALOG_SERVING_BASE_URL }}
-      CATALOG_SERVING_INDEX_BASE_URL: ${{ secrets.CATALOG_SERVING_INDEX_BASE_URL || secrets.CATALOG_SERVING_BASE_URL }}
-      CATALOG_SERVING_INDEX_NAME: ${{ secrets.CATALOG_SERVING_INDEX_NAME }}
+      CATALOG_SERVING_BASE_URL: ${{ vars.CATALOG_SERVING_BASE_URL || secrets.CATALOG_SERVING_BASE_URL }}
+      CATALOG_SERVING_INDEX_BASE_URL: ${{ vars.CATALOG_SERVING_INDEX_BASE_URL || secrets.CATALOG_SERVING_INDEX_BASE_URL || vars.CATALOG_SERVING_BASE_URL || secrets.CATALOG_SERVING_BASE_URL }}
+      CATALOG_SERVING_INDEX_NAME: ${{ vars.CATALOG_SERVING_INDEX_NAME || secrets.CATALOG_SERVING_INDEX_NAME || 'catalog_public_v1' }}
       CATALOG_SERVING_API_KEY: ${{ secrets.CATALOG_SERVING_API_KEY }}
       CATALOG_SERVING_INDEX_API_KEY: ${{ secrets.CATALOG_SERVING_INDEX_API_KEY || secrets.CATALOG_SERVING_API_KEY }}
     steps:
@@ -63,12 +63,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p reports/workflow_ops/catalog-serving-index-backfill/${{ github.run_id }}
+          out_dir="reports/workflow_ops/catalog-serving-index-backfill/${{ github.run_id }}"
+          result_path="${out_dir}/result.json"
+          mkdir -p "${out_dir}"
+          brand='${{ inputs.brand }}'
+          export BRAND="${brand}"
+          export MARKET="${{ inputs.market }}"
+          export PUBLIC_ONLY="${{ inputs.public_only }}"
+          if [[ '${{ inputs.dry_run }}' != 'true' && -z "${CATALOG_SERVING_INDEX_BASE_URL:-}" && -z "${CATALOG_SERVING_BASE_URL:-}" ]]; then
+            node -e 'const fs=require("fs"); const out=process.argv[1]; fs.writeFileSync(out, `${JSON.stringify({ok:false,error:"CATALOG_SERVING_INDEX_DISABLED",message:"CATALOG_SERVING_INDEX_BASE_URL or CATALOG_SERVING_BASE_URL must be configured for non-dry-run catalog serving backfill.",requested:{brand:process.env.BRAND||"",market:process.env.MARKET||"US",dry_run:false,public_only:process.env.PUBLIC_ONLY==="true"},index:{enabled:false,base_url:null,index_name:process.env.CATALOG_SERVING_INDEX_NAME||"catalog_public_v1"}}, null, 2)}\n`);' "${result_path}"
+            cat "${result_path}"
+            exit 1
+          fi
           args=(
             --market "${{ inputs.market }}"
             --limit "${{ inputs.limit }}"
           )
-          brand='${{ inputs.brand }}'
           if [[ -n "${brand}" ]]; then
             args+=(--brand "${brand}")
           fi
@@ -82,7 +92,25 @@ jobs:
             args+=(--public-only)
           fi
           node scripts/backfill-catalog-serving-index.js "${args[@]}" \
-            | tee reports/workflow_ops/catalog-serving-index-backfill/${{ github.run_id }}/result.json
+            | tee "${result_path}"
+          node - "${result_path}" <<'NODE'
+          const fs = require('fs');
+          const resultPath = process.argv[2];
+          const payload = JSON.parse(fs.readFileSync(resultPath, 'utf8'));
+          const dryRun = payload?.requested?.dry_run === true;
+          const indexed = Number(payload?.result?.indexed || 0);
+          const docsBuilt = Number(payload?.result?.docs_built || 0);
+          const source = String(payload?.result?.source || '');
+          if (!dryRun && (source === 'disabled' || indexed < docsBuilt)) {
+            console.error(JSON.stringify({
+              error: 'CATALOG_SERVING_INDEX_BACKFILL_INCOMPLETE',
+              source,
+              indexed,
+              docs_built: docsBuilt,
+            }));
+            process.exit(1);
+          }
+          NODE
 
       - name: Upload artifact
         if: always()
