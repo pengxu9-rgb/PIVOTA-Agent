@@ -214,6 +214,9 @@ function inferKind(title, category, categoryPath, description = '') {
   if (/\b(?:grwm routine|look)\b/.test(titleCategoryText)) return 'makeup_set';
   if (/\b(?:brush\s+cup|brush\s+holder|brush\s+case|brush\s+bag|brush\s+storage|makeup\s+brush\s+cup)\b/.test(titleCategoryText)) return 'brush_storage';
   if (brushCareTitlePattern.test(titleCategoryText)) return 'brush_care';
+  if (/\b(?:3dhd|makeup\s+blender|beauty\s+blender|blending\s+sponge|makeup\s+sponge|beauty\s+sponge|complexion\s+sponge)\b/.test(titleCategoryText)) {
+    return 'makeup_applicator';
+  }
   if (
     /\bbrush(?:\s+[a-z0-9&'’.-]+){0,4}\s+(?:set|kit|duo|trio|quad|bundle|collection)\b/.test(titleCategoryText) ||
     /\b(?:set|kit|duo|trio|quad|bundle|collection)\b.*\bbrush(?:es)?\b/.test(titleCategoryText) ||
@@ -310,6 +313,7 @@ function kindLabel(kind, category) {
     serum: 'skincare treatment',
     blemish_patch: 'blemish patch',
     cleanser: 'cleanser',
+    makeup_applicator: 'makeup applicator',
     brush: 'brush',
     brush_storage: 'brush storage accessory',
     brush_set: 'brush set',
@@ -358,6 +362,7 @@ function displayCategoryForKind(kind, category) {
     serum: 'Skincare Treatment',
     blemish_patch: 'Blemish Patch',
     cleanser: 'Cleanser',
+    makeup_applicator: 'Makeup Applicator',
     brush: 'Beauty Brush',
     brush_storage: 'Brush Storage',
     brush_set: 'Brush Set',
@@ -372,6 +377,7 @@ function displayCategoryForKind(kind, category) {
     beauty_product: 'Beauty Product',
   };
   const controlledCategoryKinds = new Set([
+    'makeup_applicator',
     'brush',
     'brush_storage',
     'brush_set',
@@ -434,6 +440,7 @@ function routineStep(kind) {
     serum: 'skin_care',
     blemish_patch: 'spot_care',
     cleanser: 'cleanse',
+    makeup_applicator: 'tool',
     brush: 'tool',
     brush_storage: 'tool',
     brush_set: 'tool',
@@ -651,6 +658,7 @@ function buildHighlightPhrase(kind, category, description, title = '') {
   }
   if (kind === 'blemish_patch') return 'Spot-care format detail';
   if (kind === 'cleanser') return /glycolic|retinol|mud|jasmine/.test(signalText) ? 'Active cleanser detail' : 'Cleanser formula detail';
+  if (kind === 'makeup_applicator') return 'Makeup sponge format detail';
   if (kind === 'brush') return 'Brush format detail';
   if (kind === 'brush_storage') return 'Brush storage detail';
   if (kind === 'brush_set') return 'Brush set format detail';
