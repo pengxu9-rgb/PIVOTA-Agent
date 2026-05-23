@@ -242,6 +242,27 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     );
     expect(
       sanitizePublicSourceText(
+        'Pixi Beauty Vitamin-C Tonic is a daily facial toner that contains Vitamin-C, a potent Antioxidant that is known to boost skin luminosity.',
+      ),
+    ).toBe(
+      'Pixi Beauty Vitamin-C Tonic is a daily facial toner that contains Vitamin-C and is positioned around luminous-looking skin.',
+    );
+    expect(
+      sanitizePublicSourceText(
+        'Designed to leave the complexion looking refreshed and Glowing, these soft, pre-soaked wipes are perfect.',
+      ),
+    ).toBe(
+      'Designed to leave the complexion looking refreshed and glowing in a pre-soaked wipe format.',
+    );
+    expect(
+      sanitizePublicSourceText(
+        'Designed to leave the complexion looking refreshed and Glowing, these soft, pre-soaked wipes are perfect. for daily use.',
+      ),
+    ).toBe(
+      'Designed to leave the complexion looking refreshed and glowing in a pre-soaked wipe format for daily use.',
+    );
+    expect(
+      sanitizePublicSourceText(
         'Reset your complexion with the Clear Skin Reset Kit, a clarifying routine designed to balance and refresh. Featuring yet gentle formulas, this set works to purify, smooth and soothe while targeting excess oil and visible. With skin-loving. ingredients like.',
       ),
     ).toBe(
@@ -260,6 +281,12 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     ).toBe('Pixi + Maryam Maquillage Dream-y Lit Kit');
     expect(sanitizeFormulaSummary('Vitamin-C brightens & promotes collagen production')).toBe(
       'Vitamin-C supports radiant-looking tone',
+    );
+    expect(sanitizeFormulaSummary('Vitamin-C brightens & boosts luminosity')).toBe(
+      'Vitamin-C supports luminous-looking tone',
+    );
+    expect(sanitizeFormulaSummary('Vitamin C brightens and promotes a radiant complexion')).toBe(
+      'Vitamin C supports a radiant-looking complexion',
     );
     expect(sanitizeFormulaSummary('Vitamin C – Evens skintone and improves the appearance of skin')).toBe(
       'Vitamin C – Supports the look of more even tone',
@@ -1534,6 +1561,60 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
         { requirePublicCommerceDoc: true },
       ),
     ).toBe(false);
+    expect(
+      isConservativeRewriteCandidate({
+        ...base,
+        title: 'Vitamin-C Tonic Travel Size',
+        kb_direct_human_reviewed: false,
+        kb_direct_quality_state: 'limited',
+        kb_direct_evidence_profile: 'seller_only',
+        kb_direct_blocking_issues: 'not_reviewed|not_displayable_gate',
+        main_blocker: 'kb_blocked',
+      }),
+    ).toBe(false);
+    expect(
+      isConservativeRewriteCandidate(
+        {
+          ...base,
+          title: 'Vitamin-C Tonic Travel Size',
+          kb_direct_human_reviewed: false,
+          kb_direct_quality_state: 'limited',
+          kb_direct_evidence_profile: 'seller_only',
+          kb_direct_blocking_issues: 'not_reviewed|not_displayable_gate',
+          main_blocker: 'kb_blocked',
+        },
+        { includeNotReviewedOfficialSource: true },
+      ),
+    ).toBe(true);
+    expect(
+      isConservativeRewriteCandidate(
+        {
+          ...base,
+          title: 'Vitamin-C Tonic Travel Size',
+          kb_direct_human_reviewed: false,
+          kb_direct_quality_state: 'limited',
+          kb_direct_evidence_profile: 'seller_only',
+          kb_direct_blocking_issues: 'not_reviewed|missing_card_highlight',
+          main_blocker: 'kb_blocked',
+        },
+        { includeNotReviewedOfficialSource: true },
+      ),
+    ).toBe(false);
+    expect(
+      isConservativeRewriteCandidate(
+        {
+          ...base,
+          title: 'Vitamin-C Tonic Travel Size',
+          kb_direct_human_reviewed: false,
+          kb_direct_quality_state: 'limited',
+          kb_direct_evidence_profile: 'seller_only',
+          kb_direct_blocking_issues: 'not_reviewed|not_displayable_gate',
+          main_blocker: 'kb_blocked',
+          commerce_doc_public: false,
+        },
+        { includeNotReviewedOfficialSource: true },
+      ),
+    ).toBe(false);
   });
 
   test('selectInventoryRows keeps only safe public candidates when requested', () => {
@@ -1593,6 +1674,25 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
         terminal_hold: false,
       },
       {
+        external_product_id: 'not_reviewed_official_source',
+        domain: 'pixibeauty.com',
+        title: 'Vitamin-C Cleansing Cloths',
+        recommended_lane: 'lane_3_kb_rewrite_review',
+        seed_missing_fields: '',
+        identity_status: 'approved',
+        identity_live_read_enabled: true,
+        kb_direct_high_quality_ready: false,
+        kb_direct_human_reviewed: false,
+        kb_direct_quality_state: 'limited',
+        kb_direct_evidence_profile: 'seller_only',
+        kb_direct_blocking_issues: 'not_reviewed|not_displayable_gate',
+        main_blocker: 'kb_blocked',
+        catalog_attached: true,
+        index_serving_eligible: true,
+        commerce_doc_public: true,
+        terminal_hold: false,
+      },
+      {
         external_product_id: 'shadow',
         domain: 'pixibeauty.com',
         title: 'Rose Body Cleanser',
@@ -1632,5 +1732,16 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
         includeReviewedSellerOnly: true,
       }).map((row) => row.external_product_id),
     ).toEqual(['safe', 'reviewed_seller_only']);
+
+    expect(
+      selectInventoryRows(rows, {
+        domain: 'pixibeauty.com',
+        lane: 'lane_3_kb_rewrite_review',
+        limit: 10,
+        requirePublicCommerceDoc: true,
+        singleItemOnly: true,
+        includeNotReviewedOfficialSource: true,
+      }).map((row) => row.external_product_id),
+    ).toEqual(['safe', 'not_reviewed_official_source']);
   });
 });
