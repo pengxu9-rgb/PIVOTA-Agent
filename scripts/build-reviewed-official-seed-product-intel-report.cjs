@@ -179,11 +179,12 @@ function inferCategoryPath(seed, inventoryRow) {
 function inferSetKind(titleCategoryText, descriptionText) {
   const joined = `${titleCategoryText} ${descriptionText}`;
   if (/\b(?:eau de parfum|parfum|fragrance|pen spray|body mist|hair\s*&\s*body mist|hair and body mist)\b/.test(joined)) return 'fragrance_set';
-  if (/\b(?:lip patch|lippatch|lip treat|liptreat|lip butter|lip combo|lip oil|lip glaze|high gloss|lip kit|lip set|lip duo|lip trio|lip favourites|lip favorites)\b/.test(titleCategoryText)) return 'lip_set';
+  if (/\b(?:lip patch|lippatch|lip treat|liptreat|lip butter|butter balm|lip combo|lip oil|lip glaze|lip tint|lip liner|precision pout|powder matte lip|high gloss|lip kit|lip set|lip bundle|lip duo|lip trio|lip favourites|lip favorites)\b/.test(titleCategoryText)) return 'lip_set';
   if (/\b(?:eye patch|eye patches|eye kit|eye set|eye trio|detoxifeye|fortifeye|dream-yeye|antioxifeye|beautifeye)\b/.test(titleCategoryText)) return 'eye_care_set';
-  if (/\b(?:look|makeup|lash|mascara|brow|blush|bronze|bronzer|bronzing|complexion|colour|color|base|liquidglow|superglow|blur\s*(?:,|&|and)?\s*(?:colour|color)?\s*&?\s*set|foundation|conceal|correct|concealer|palette|eye|eye shadow|eyeshadow)\b/.test(titleCategoryText)) {
+  if (/\b(?:look|makeup|lash|mascara|brow|blush|blush tint|lip\s*(?:&|and)\s*cheek|glow balm|bronze|bronzer|bronzing|complexion|colour|color|base|liquidglow|superglow|blur\s*(?:,|&|and)?\s*(?:colour|color)?\s*&?\s*set|foundation|conceal|correct|concealer|palette|eye|eye shadow|eyeshadow)\b/.test(titleCategoryText)) {
     return 'makeup_set';
   }
+  if (/\b(?:lip\s*(?:&|and)\s*cheek|blush tint|powder blush|glow balm)\b/.test(joined)) return 'makeup_set';
   if (/\b(?:skin|skincare|cleanse|cleanser|cleansing|tonic|toner|serum|mask|peel|clarity|glow)\b/.test(titleCategoryText)) {
     return 'skincare_set';
   }
@@ -191,7 +192,7 @@ function inferSetKind(titleCategoryText, descriptionText) {
   if (/\b(?:look|makeup|lash|mascara|brow|blush|bronzer|bronzing|foundation|conceal|correct|concealer|palette|eye|eye shadow|eyeshadow)\b/.test(joined)) {
     return 'makeup_set';
   }
-  if (/\b(?:lip treat|liptreat|lip butter|lip combo|lip oil|lip glaze|high gloss|lip kit|lip set|lip duo|lip trio|lip favourites|lip favorites)\b/.test(joined)) return 'lip_set';
+  if (/\b(?:lip treat|liptreat|lip butter|butter balm|lip combo|lip oil|lip glaze|lip tint|lip liner|precision pout|powder matte lip|high gloss|lip kit|lip set|lip bundle|lip duo|lip trio|lip favourites|lip favorites)\b/.test(joined)) return 'lip_set';
   if (/\b(?:cleanse|cleanser|cleansing|tonic|toner|serum|skin|skincare|mask|peel|clarity|glow|rose)\b/.test(joined)) {
     return 'skincare_set';
   }
@@ -360,7 +361,16 @@ function displayCategoryForKind(kind, category) {
     lip_set: 'Lip Set',
     beauty_product: 'Beauty Product',
   };
-  const controlledCategoryKinds = new Set(['brush', 'brush_storage', 'brush_set', 'brush_care']);
+  const controlledCategoryKinds = new Set([
+    'brush',
+    'brush_storage',
+    'brush_set',
+    'brush_care',
+    'lip_set',
+    'makeup_set',
+    'fragrance_set',
+    'eye_care_set',
+  ]);
   if (controlledCategoryKinds.has(kind)) return labels[kind] || labels.beauty_product;
   const explicit = text(category);
   if (explicit && explicit.toLowerCase() !== 'beauty product') return explicit;
@@ -632,6 +642,8 @@ function buildHighlightPhrase(kind, category, description, title = '') {
     return 'Skincare routine set';
   }
   if (kind === 'makeup_set') {
+    if (/lip\s*(?:&|and)\s*cheek|glow balm/.test(signalText)) return 'Lip-and-cheek color set';
+    if (/blush|cheek/.test(signalText)) return 'Cheek color set';
     if (/\b(?:favorites|favourites|routine|bundle|set)\b/.test(titleText) && /\b(?:eye|eyeshadow|palette|lip|brush)\b/.test(signalText)) return 'Makeup routine set';
     if (/complexion|base|foundation|conceal|blur|bronze/.test(signalText)) return 'Complexion routine set';
     if (/eye|eyeshadow|palette|lash|mascara/.test(signalText)) return 'Eye-makeup routine set';

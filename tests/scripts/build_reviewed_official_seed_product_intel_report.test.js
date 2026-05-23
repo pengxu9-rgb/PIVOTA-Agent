@@ -203,6 +203,25 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     );
     expect(inferKind('Lip Oil Desserts PR Box', '', '', 'Lip oil collection.')).toBe('lip_set');
     expect(inferKind('Mini High Gloss Duo', '', '', 'Two gloss products.')).toBe('lip_set');
+    expect(
+      inferKind(
+        'Glow Balm Bundle',
+        'Skincare Set',
+        '',
+        'My Glow Balm Bundle features all eight easily wearable shades of my Lip & Cheek Glow Balm.',
+      ),
+    ).toBe('makeup_set');
+    expect(
+      inferKind('Plumping Powder Matte Lip Bundle', '', '', 'All seven shades to create everyday lip looks.'),
+    ).toBe('lip_set');
+    expect(
+      inferKind(
+        'Transformative Lip Tint & Precision Pout Lip Liner Duo',
+        '',
+        '',
+        'Two lip-adapting shades with a precision pout liner.',
+      ),
+    ).toBe('lip_set');
     expect(inferKind('Cosmic Kylie Jenner 3-Piece Gift Set', '', '', 'Eau de parfum gift set.')).toBe(
       'fragrance_set',
     );
@@ -212,6 +231,35 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     expect(inferKind("Kylie’s Maison Margiela Show Look", '', '', 'Makeup look with lip and complexion items.')).toBe(
       'makeup_set',
     );
+  });
+
+  test('does not let stale Kylie skincare category override lip-and-cheek source copy', () => {
+    const bundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_kylie_glow_balm_bundle',
+        title: 'Glow Balm Bundle',
+        canonical_url: 'https://kyliecosmetics.com/products/glow-balm-bundle',
+        seed_data: {
+          brand: 'Kylie Cosmetics',
+          category: 'Skincare Set',
+          description:
+            'My Glow Balm Bundle features all eight easily wearable shades of my Lip & Cheek Glow Balm.',
+          ingredient_tokens: ['Haute Pink: Isodecyl Neopentanoate, Ethylhexyl Isononanoate.'],
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_kylie_glow_balm_bundle',
+        sellable_item_group_id: 'sig_kylie_glow_balm_bundle',
+      },
+      generatedAt: '2026-05-23T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+
+    expect(bundle.shopping_card.subtitle).toBe('Makeup Set');
+    expect(bundle.shopping_card.highlight).toBe('Lip-and-cheek color set');
+    expect(bundle.product_intel_core.what_it_is.headline).toBe('Makeup set identity');
+    expect(JSON.stringify(bundle)).not.toMatch(/skincare set identity|daily moisturizer/i);
   });
 
   test('sanitizes Sigma value, retailer, and ellipsis source text before public insight use', () => {
