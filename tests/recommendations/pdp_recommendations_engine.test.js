@@ -1444,6 +1444,82 @@ describe('RecommendationEngine (PDP)', () => {
     expect(out.items.every((item) => !/brush/i.test(item.title))).toBe(true);
   });
 
+  test('external face-oil recall rejects category-only stale oil/tool matches', () => {
+    const base = makeProduct({
+      merchant_id: 'external_seed',
+      product_id: 'ext_norre_revive',
+      title: 'REVIVE Brightening Antioxidant Face Oil Serum',
+      vendor: 'Norre Nordic',
+      category: 'Face Oil',
+      source: 'external_seed',
+      price: 16,
+    });
+
+    const external = [
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_norre_recalm',
+        title: 'RECALM Soothing & Repairing Face Oil Serum',
+        vendor: 'Norre Nordic',
+        category: 'Face Oil',
+        source: 'external_seed',
+        price: 16,
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_haruharu_face_oil',
+        title: 'Facial Oil',
+        vendor: 'Haruharu Wonder',
+        category: 'Face Oil',
+        source: 'external_seed',
+        price: 11,
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_murad_face_oil',
+        title: 'Cellular Hydration Repair Face Oil Drops',
+        vendor: 'Murad',
+        category: 'Face Oil',
+        source: 'external_seed',
+        price: 42,
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_jurlique_spoons',
+        title: 'Cooling Facial Spoons',
+        vendor: 'Jurlique',
+        category: 'Face Oil',
+        source: 'external_seed',
+        price: 15,
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_naturium_body_butter',
+        title: 'The Glow Getter Multi-Oil Body Butter',
+        vendor: 'Naturium',
+        category: 'Face Oil',
+        source: 'external_seed',
+        price: 20,
+      }),
+    ];
+
+    const out = pickLayeredRecommendations({
+      baseProduct: base,
+      internalCandidates: [],
+      externalCandidates: external,
+      k: 6,
+    });
+
+    expect(out.items.map((item) => item.product_id)).toEqual([
+      'ext_norre_recalm',
+      'ext_haruharu_face_oil',
+      'ext_murad_face_oil',
+    ]);
+    expect(out.items.map((item) => item.product_id)).not.toEqual(
+      expect.arrayContaining(['ext_jurlique_spoons', 'ext_naturium_body_butter']),
+    );
+  });
+
   test('k) weak base semantics must not skip external retrieval', async () => {
     const base = makeProduct({
       merchant_id: 'external_seed',

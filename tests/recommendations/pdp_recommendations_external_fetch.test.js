@@ -541,6 +541,53 @@ describe('RecommendationEngine external candidate fetch', () => {
     ).toBe(true);
   });
 
+  test('includes attached seed rows for external PDP deep-domain recall', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const attachedRows = Array.from({ length: 6 }).map((_, index) => ({
+      ...makeExternalRow({
+        id: `eps_face_oil_${index}`,
+        external_product_id: `ext_face_oil_${index}`,
+        title: `Comparable Facial Oil ${index + 1}`,
+        brand: index < 2 ? 'Norre Nordic' : `Comparable Brand ${index}`,
+        category: 'Face Oil',
+        domain: index < 2 ? 'norrenordic.com' : `brand${index}.com`,
+      }),
+      attached_product_key: `prod::external_seed::external_seed::ext_face_oil_${index}`,
+    }));
+
+    const queryMock = jest.fn(async (sql) => {
+      const sqlText = String(sql);
+      if (sqlText.includes('domain = ANY($4)')) {
+        expect(sqlText).not.toContain('attached_product_key IS NULL');
+        return { rows: attachedRows };
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const products = await _internals.fetchExternalCandidates({
+      brandHint: 'Norre Nordic',
+      categoryHint: 'Face Oil',
+      domainHints: ['norrenordic.com'],
+      limit: 12,
+      minFocusedCandidates: 6,
+      deepDomainRecall: true,
+    });
+
+    expect(products).toHaveLength(6);
+    expect(products.map((product) => product.product_id)).toEqual(
+      attachedRows.map((row) => row.external_product_id),
+    );
+    expect(products.__externalFetchStats?.include_attached_seed_rows).toBe(true);
+    expect(
+      queryMock.mock.calls.some(([sql]) => String(sql).includes('domain = ANY($4)')),
+    ).toBe(true);
+  });
+
   test('uses same-domain seed lookup and skips broad scans when domain rows can fill target', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 
