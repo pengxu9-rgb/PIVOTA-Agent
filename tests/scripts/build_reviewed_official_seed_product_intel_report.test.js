@@ -294,6 +294,122 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     expect(JSON.stringify(brushCareBundle)).not.toMatch(/community-backed/i);
   });
 
+  test('keeps Sigma brush sets and switch tools out of stale skincare or eye-makeup buckets', () => {
+    expect(
+      inferKind(
+        'Flawless Finish Brush Set',
+        'Skin Care',
+        '',
+        'Achieve a flawless, airbrushed complexion with the Flawless Finish Brush Set. Outlasts frequent brush care.',
+      ),
+    ).toBe('brush_set');
+    expect(
+      inferKind(
+        'Sigma® Travel Switch',
+        '',
+        '',
+        'Quickly change eyeshadow shades without changing brushes.',
+      ),
+    ).toBe('brush_care');
+    expect(
+      inferKind(
+        'Sigma® Switch Set',
+        '',
+        '',
+        'Switch shades without switching brushes at home or on the go.',
+      ),
+    ).toBe('brush_care');
+    expect(
+      inferKind(
+        'Nina Ubhi Favorites Set',
+        '',
+        '',
+        'This is the only brush set you need. Brushes Included: Sigma Switch, E06 Winged Liner Brush.',
+      ),
+    ).toBe('brush_set');
+
+    const brushSetBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_sigma_brush_set',
+        title: 'Flawless Finish Brush Set',
+        canonical_url: 'https://sigmabeauty.com/products/flawless-finish-brush-set',
+        seed_data: {
+          category: 'Skin Care',
+          description: 'Achieve a flawless, airbrushed complexion with the Flawless Finish Brush Set.',
+          ingredient_intel: {
+            force_fill_contract: {
+              field: 'ingredients_inci',
+              reason: 'approved_source_not_captured',
+            },
+          },
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_sigma_brush_set',
+        sellable_item_group_id: 'sig_sigma_brush_set',
+      },
+      generatedAt: '2026-05-22T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+    const switchBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_sigma_switch',
+        title: 'Sigma® Travel Switch',
+        canonical_url: 'https://sigmabeauty.com/products/sigma-travel-switch',
+        seed_data: {
+          description: 'Quickly change eyeshadow shades without changing brushes.',
+          ingredient_intel: {
+            inci_applicability: {
+              status: 'not_applicable',
+              reason: 'product_family_accessory',
+            },
+          },
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_sigma_switch',
+        sellable_item_group_id: 'sig_sigma_switch',
+      },
+      generatedAt: '2026-05-22T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+
+    expect(brushSetBundle.shopping_card.subtitle).toBe('Brush Set');
+    expect(brushSetBundle.shopping_card.highlight).toBe('Brush set format detail');
+    expect(brushSetBundle.evidence_profile).toBe('official_pdp_seed');
+    expect(JSON.stringify(brushSetBundle)).not.toMatch(/force_fill_contract|Formula context captured/i);
+    expect(switchBundle.shopping_card.subtitle).toBe('Brush Care');
+    expect(switchBundle.shopping_card.highlight).toBe('Brush-care cleaning detail');
+    expect(switchBundle.evidence_profile).toBe('official_pdp_seed');
+    expect(JSON.stringify(switchBundle)).not.toMatch(/inci_applicability|Formula context captured/i);
+  });
+
+  test('uses clean Sigma brush prose without duplicated beauty wording', () => {
+    const bundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_sigma_brush',
+        title: 'F30 Large Powder Brush',
+        canonical_url: 'https://sigmabeauty.com/products/f30-large-powder-chrome',
+        seed_data: {
+          brand: 'sigma beauty',
+          description: 'Your classic powder brush in extra-soft SigmaTech fibers.',
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_sigma_brush',
+        sellable_item_group_id: 'sig_sigma_brush',
+      },
+      generatedAt: '2026-05-22T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+
+    expect(bundle.product_intel_core.what_it_is.body).toContain('A Sigma Beauty brush listed');
+    expect(bundle.product_intel_core.what_it_is.body).not.toMatch(/beauty beauty/i);
+  });
+
   test('uses compact Kylie highlights that avoid beauty-product and source-backed fallbacks', () => {
     const lipBundle = buildBundle({
       seed: {
