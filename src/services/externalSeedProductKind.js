@@ -20,6 +20,8 @@ const FORMULA_PRODUCT_RE =
   /\b(skincare|skin care|makeup|cosmetic|haircare|hair care|fragrance|perfume|parfum|cologne|cleanser|cleansing|toner|essence|serum|ampoule|solution|suspension|emulsion|moisturi[sz]er|cream|lotion|balm|mask|patch(?:es)?|peel|exfoliant|exfoliator|treatment|oil|acid|acne control|sunscreen|spf|foundation|concealer|mascara|lash|lip(?:stick| gloss| balm| oil)?|gloss stick|match stix|skinstick|contour|packette|blush|bronzer|powder|highlighter|eyeshadow|eyeliner|brow|primer|setting spray|shampoo|conditioner|body wash|body lotion)\b/i;
 const FORMULA_VARIANT_TITLE_RE =
   /\b(?:foundation|concealer|mascara|lipstick|lip\s+gloss|lip\s+balm|lip\s+oil|blush|bronzer|powder|highlighter|eyeshadow|eyeliner|brow|primer|setting\s+spray)\b[\s\S]{0,120}(?:[—–-]\s*#?[a-z0-9][\w.-]*|#\s*[a-z0-9][\w.-]*)\b/i;
+const FORMULA_COMPONENT_PAIR_RE =
+  /\b(?:matte\s+lip\s+kit|lip\s+kit|matte\s+liquid\s+lipstick|lipstick|lip\s+liner|precision\s+pout\s+lip\s+liner|lip\s+gloss|gloss\s+drip|high\s+gloss|lip\s+glaze|lip\s+tint|butter\s+balm|lip\s+oil)\b[\s\S]{0,90}(?:&|\+|\band\b)[\s\S]{0,90}\b(?:matte\s+lip\s+kit|lip\s+kit|matte\s+liquid\s+lipstick|lipstick|lip\s+liner|precision\s+pout\s+lip\s+liner|lip\s+gloss|gloss\s+drip|high\s+gloss|lip\s+glaze|lip\s+tint|butter\s+balm|lip\s+oil)\b/i;
 const SET_PHRASE_FORMULA_RE = /\bset\s+it\s+down\b/i;
 const FORMULA_REFILL_PACKAGING_RE = /\b(?:refill\s+pouch|refill\s+pack|refill\s+pod)\b/i;
 const FORMULA_CATEGORY_PATH_RE =
@@ -257,22 +259,30 @@ function classifyExternalSeedProductKind(input = {}) {
   const formulaCategoryPathSignal = hasFormulaCategoryPath(input);
   const formulaCategoryTextSignal = hasFormulaCategoryText(input);
   const formulaVariantTitleSignal = FORMULA_VARIANT_TITLE_RE.test(primaryContentText);
+  const formulaComponentPairSignal = FORMULA_COMPONENT_PAIR_RE.test(primaryContentText);
   if (
     explicitFamily?.family === 'single_formula' &&
     !SET_PHRASE_FORMULA_RE.test(text) &&
-    (strongBundleSignal || collectionBundleSignal)
+    (strongBundleSignal || collectionBundleSignal || formulaComponentPairSignal)
   ) {
     reasons.push(
-      strongBundleSignal
+      formulaComponentPairSignal
+        ? 'formula_component_pair_overrides_single_formula_signal'
+        : strongBundleSignal
         ? 'bundle_set_overrides_single_formula_signal'
         : 'collection_bundle_overrides_single_formula_signal',
     );
+    return { family: 'set_or_collection', reasons };
+  }
+  if (formulaComponentPairSignal && !SET_PHRASE_FORMULA_RE.test(text)) {
+    reasons.push('formula_component_pair_signal');
     return { family: 'set_or_collection', reasons };
   }
   if (
     explicitFamily?.family === 'set_or_collection' &&
     (formulaCategoryPathSignal || formulaCategoryTextSignal || formulaVariantTitleSignal) &&
     FORMULA_PRODUCT_RE.test(text) &&
+    !formulaComponentPairSignal &&
     !primaryBundleContentSignal &&
     (!strongBundleContentSignal || FORMULA_PRODUCT_RE.test(primaryContentText)) &&
     (!collectionBundleContentSignal || FORMULA_PRODUCT_RE.test(primaryContentText))
