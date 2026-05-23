@@ -322,6 +322,23 @@ function inferRole(facts) {
   const text = combinedText(facts).toLowerCase();
   const titleText = `${facts.title} ${facts.productType} ${facts.categoryPath}`.toLowerCase();
   if (/\bcandle\b/.test(text)) return { label: 'Scented candle', step: 'home fragrance', amPm: ['as_needed'] };
+  if (/\b(?:dog|cat|pet|puppy|kitten|pooch)\b(?:\s+\w+){0,5}\s+\b(?:toy|toys|collar|leash|bowl|bandana|bed)\b|\b(?:toy|toys|collar|leash|bowl|bandana|bed)\b(?:\s+\w+){0,5}\s+\b(?:dog|cat|pet|puppy|kitten|pooch)\b/.test(titleText)) {
+    return { label: 'Pet accessory', step: 'pet accessory', amPm: ['as_needed'] };
+  }
+  if (/\b(?:hoodie|sweatshirt|sweatpants?|t[-\s]?shirt|tee|apparel|clothing)\b/.test(titleText)) {
+    return { label: 'Branded apparel', step: 'branded apparel', amPm: ['as_needed'] };
+  }
+  if (/\b(?:body essentials|body care set|mini body essentials)\b/.test(titleText)) {
+    return { label: 'Body care set', step: 'body care set', amPm: ['am', 'pm'] };
+  }
+  if (/\baromatherapy\s+pen|stop\s*&\s*soothe|stop\s+and\s+soothe\b/.test(titleText)) {
+    return { label: 'Aromatherapy treatment', step: 'body care', amPm: ['as_needed'] };
+  }
+  if (/\b(?:puff|sponge|applicator)\b/.test(titleText)) return { label: 'Makeup applicator', step: 'application tool', amPm: ['as_needed'] };
+  if (/\bbrush\b/.test(titleText)) return { label: 'Makeup brush', step: 'application tool', amPm: ['as_needed'] };
+  if (/\b(?:stickers?|decals?|claw clip|head\s*band|headband|pouch|bag|organizer|mirror|sharpener|tool|keychain|key chain|tote|clutch|backpack)\b/.test(titleText)) {
+    return { label: 'Beauty accessory', step: 'beauty routine', amPm: ['as_needed'] };
+  }
   if (/\b(?:body\s+spray|body\s*&\s*hair\s+fragrance|body\s+and\s+hair\s+fragrance|fragrance\s+mist|hair\s+fragrance\s+mist)\b/.test(titleText)) {
     return { label: 'Body fragrance spray', step: 'body fragrance', amPm: ['as_needed'] };
   }
@@ -334,7 +351,6 @@ function inferRole(facts) {
   if (/\blip\s+balm|lip\s+butter|lip\s+oil|lip\s+serum|lip\s+treatment|glossy\s+lip\b/.test(titleText)) return { label: 'Lip treatment', step: 'lip treatment', amPm: ['as_needed'] };
   if (/\bmascara|eyeshadow|eye shadow|eye color|eye colour|eyeliner\b/.test(titleText)) return { label: 'Eye makeup', step: 'eye makeup', amPm: ['as_needed'] };
   if (/\bfoundation|concealer|skin tint|complexion|tinted moisturizer\b/.test(titleText)) return { label: 'Complexion makeup', step: 'complexion', amPm: ['as_needed'] };
-  if (/\bbrush\b/.test(titleText)) return { label: 'Makeup brush', step: 'application tool', amPm: ['as_needed'] };
   if (/\b(?:setting spray|4-in-1 mist|4 in 1 mist|face mist)\b/.test(titleText)) return { label: 'Setting mist', step: 'complexion', amPm: ['as_needed'] };
   if (/\b(?:setting powder|finishing powder|powder|bronzer|blush|highlighter|luminizer)\b/.test(titleText)) return { label: 'Face color makeup', step: 'face color', amPm: ['as_needed'] };
   if (/\bprimer|base perfecting|pore prep\b/.test(titleText)) return { label: 'Makeup primer', step: 'primer', amPm: ['as_needed'] };
@@ -344,9 +360,6 @@ function inferRole(facts) {
     if (/\bserum\b/.test(titleText)) return { label: 'Treatment serum', step: 'serum', amPm: ['am', 'pm'] };
     if (/\bmask\b/.test(titleText)) return { label: 'Treatment mask', step: 'mask', amPm: ['as_needed'] };
     return { label: 'Body care treatment', step: 'skincare', amPm: ['am', 'pm'] };
-  }
-  if (/\bclaw clip|head\s*band|headband|pouch|bag|organizer|mirror|sharpener|tool\b/.test(titleText)) {
-    return { label: 'Beauty accessory', step: 'beauty routine', amPm: ['as_needed'] };
   }
   if (/\bparfum|eau de parfum|eau de toilette|fragrance|perfume|cologne\b/.test(text)) {
     return { label: 'Fine fragrance', step: 'fragrance', amPm: ['as_needed'] };
@@ -417,6 +430,24 @@ function inferAnchors(facts, role) {
       ['precision application', /\bprecise|precision|contour|concealer|eyeshadow|cheek|foundation|brush\b/],
       ['face blending', /\bblend|blending|buff|diffuse|seamless\b/],
     ]);
+  } else if (role.step === 'beauty routine') {
+    productAnchors = findTokens(text, [
+      ['travel organization', /\btravel|organize|organizer|toiletry|pouch|bag|tote|backpack|clutch|carryall\b/],
+      ['hair control', /\bhair|headband|claw clip|clip\b/],
+      ['collectible format', /\bsticker|decal|collectible|enamel\b/],
+      ['compact accessory', /\bkeychain|key chain|mini|pouch|compact\b/],
+    ]);
+  } else if (role.step === 'branded apparel') {
+    productAnchors = findTokens(text, [
+      ['soft fleece', /\bfleece|cozy|comfy|soft\b/],
+      ['cotton feel', /\bcotton|tee|t-shirt\b/],
+      ['everyday layering', /\bhoodie|sweatshirt|sweatpants|quarter zip|layer\b/],
+    ]);
+  } else if (role.step === 'pet accessory') {
+    productAnchors = findTokens(text, [
+      ['pet toy', /\bdog toy|pet toy|pooch\b/],
+      ['brand collectible', /\bsoft pooch|rare beauty|collectible\b/],
+    ]);
   }
   const normalizeAnchorLabel = (value) =>
     asString(value).replace(/^(?:size|shade|format|scent|jar):\s*/i, '').trim();
@@ -461,12 +492,32 @@ function inferBestFor(facts, role, anchors) {
       ['precision application', /\bprecision|pencil|clear-cut\b/],
       ['shade matching', /\bshade|taupe|blonde|brown|chestnut\b/],
     ]);
-  } else if (role.step === 'skincare' || role.step === 'serum') {
+  } else if (role.step === 'skincare' || role.step === 'serum' || role.step === 'body care' || role.step === 'body care set') {
     labels = findTokens(text, [
       ['hydration', /\bhydrat|hyaluronic|moistur\b/],
       ['firmness', /\bfirm|peptide|elastic|lift\b/],
       ['radiance', /\bradiance|bright|glow\b/],
       ['barrier support', /\bbarrier|squalane|shea|ceramide\b/],
+      ['body routine', /\bbody|lotion|wash|essentials\b/],
+      ['aromatherapy', /\baromatherapy|scent|soothe|comfort\b/],
+    ]);
+  } else if (role.step === 'beauty routine') {
+    labels = findTokens(text, [
+      ['makeup organization', /\bmakeup|toiletry|pouch|bag|organize|organizer|tote|clutch|backpack\b/],
+      ['hair hold', /\bhair|headband|claw clip|clip\b/],
+      ['collecting', /\bsticker|decal|collectible|keychain|key chain\b/],
+      ['travel', /\btravel|on the go|carryall\b/],
+    ]);
+  } else if (role.step === 'branded apparel') {
+    labels = findTokens(text, [
+      ['casual wear', /\bhoodie|sweatshirt|sweatpants|t-shirt|tee|apparel\b/],
+      ['soft comfort', /\bsoft|fleece|cozy|comfy|comfortable\b/],
+      ['everyday layering', /\blayer|quarter zip|year round\b/],
+    ]);
+  } else if (role.step === 'pet accessory') {
+    labels = findTokens(text, [
+      ['pet play', /\bdog toy|pet toy|pooch\b/],
+      ['brand collectible', /\brare beauty|soft pooch|collectible\b/],
     ]);
   }
   if (!labels.length && anchors.length) labels = anchors.slice(0, 3);
@@ -639,11 +690,25 @@ function buildWatchouts(facts, role) {
     });
   }
   if (!watchouts.length) {
-    watchouts.push({
-      type: 'fit_check',
-      label: 'Check the official ingredient list and format details against your personal sensitivities.',
-      severity: 'low',
-    });
+    if (role.step === 'branded apparel') {
+      watchouts.push({
+        type: 'size_fit',
+        label: 'Check the official size and material details before choosing a fit.',
+        severity: 'low',
+      });
+    } else if (role.step === 'beauty routine' || role.step === 'pet accessory' || role.step === 'application tool') {
+      watchouts.push({
+        type: 'format_fit',
+        label: 'Check the official dimensions, material, or care details for fit with your routine.',
+        severity: 'low',
+      });
+    } else {
+      watchouts.push({
+        type: 'fit_check',
+        label: 'Check the official ingredient list and format details against your personal sensitivities.',
+        severity: 'low',
+      });
+    }
   }
   return watchouts;
 }
