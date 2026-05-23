@@ -55,6 +55,12 @@ describe('external seed product kind classification', () => {
         reasons: expect.arrayContaining(['accessory_signal']),
       }),
     );
+    expect(classifyExternalSeedProductKind({ title: 'Velvet Cleansing Pads' })).toEqual(
+      expect.objectContaining({
+        family: 'accessory',
+        reasons: expect.arrayContaining(['accessory_signal']),
+      }),
+    );
     expect(classifyExternalSeedProductKind({ title: 'Soft Pooch Blush Dog Toy - Faith' })).toEqual(
       expect.objectContaining({
         family: 'accessory',
