@@ -281,10 +281,16 @@ function inferCatalogMirrorCategory(row) {
   if (/\b(?:primer|pore prep)\b/.test(haystack)) {
     return { productType: 'Primer', category: 'Primer', categoryPath: 'beauty/makeup/face/primer' };
   }
+  if (/\b(?:sunscreen|sun\s*screen|spf\s*\d+|sun\s+stick|sun\s+cream)\b/.test(haystack)) {
+    return { productType: 'Sunscreen', category: 'Sunscreen', categoryPath: 'beauty/skincare/sunscreen' };
+  }
   if (/\b(?:toner|tonic|tonik|toning mist|face mist|rose water)\b/.test(haystack) && !/\bscalp tonic\b/.test(haystack)) {
     return { productType: 'Toner', category: 'Toner', categoryPath: 'beauty/skincare/toner' };
   }
-  if (/\b(?:eye serum|eye cream|eye treatment|all in eye|lash serum|brow serum|eyebrow)\b/.test(haystack)) {
+  if (/\b(?:cleansing pad|cleansing pads|cotton rounds?|reusable pads?|bamboo velour)\b/.test(haystack)) {
+    return { productType: 'Cleansing Pads', category: 'Cleansing Pads', categoryPath: 'beauty/accessories/cleansing-pads' };
+  }
+  if (/\b(?:eye serum|eye cream|eye oil|eye treatment|all in eye|lash serum|brow serum|eyebrow)\b/.test(haystack)) {
     return { productType: 'Eye Treatment', category: 'Eye Treatment', categoryPath: 'beauty/skincare/eye-care' };
   }
   if (/\b(?:face oil|facial oil|oil serum)\b/.test(haystack)) {
@@ -296,7 +302,7 @@ function inferCatalogMirrorCategory(row) {
   if (/\b(?:face mask|herbal face mask|recovery mask)\b/.test(haystack)) {
     return { productType: 'Face Mask', category: 'Face Mask', categoryPath: 'beauty/skincare/mask' };
   }
-  if (/\b(?:facial emulsion|face emulsion|moisturizer|moisturiser|cream)\b/.test(haystack)) {
+  if (/\b(?:facial emulsion|face emulsion|moisturizer|moisturiser|cream|water gel|gel cream)\b/.test(haystack)) {
     return { productType: 'Moisturizer', category: 'Moisturizer', categoryPath: 'beauty/skincare/moisturizer' };
   }
   if (/\b(?:hair mask)\b/.test(haystack)) {
