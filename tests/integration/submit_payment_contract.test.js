@@ -23,7 +23,7 @@ describe('submit_payment response contract normalization', () => {
     process.env = { ...ORIGINAL_ENV };
   });
 
-  async function invokeSubmitPayment() {
+  async function invokeSubmitPayment(paymentOverrides = {}) {
     return request(app)
       .post('/agent/shop/v1/invoke')
       .send({
@@ -31,17 +31,42 @@ describe('submit_payment response contract normalization', () => {
         payload: {
           payment: {
             order_id: 'ord_001',
-            expected_amount: 29,
+            quote_id: 'quote_001',
+            expected_amount: 2900,
             currency: 'EUR',
             payment_method_hint: 'card',
+            ...paymentOverrides,
           },
         },
       });
   }
 
+  it('requires quote-bound expected_amount before creating a checkout session', async () => {
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'submit_payment',
+        payload: {
+          payment: {
+            order_id: 'ord_missing_quote',
+            currency: 'EUR',
+          },
+        },
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({
+      status: 'failure',
+      code: 'expected_amount_required',
+      reason: 'expected_amount_required',
+    });
+  });
+
   it('marks processing status as backend-owned even when client_secret is present', async () => {
     nock(API_BASE)
-      .post('/agent/v1/payments')
+      .post('/agent/v2/payments/checkout-sessions', (body) => {
+        return body?.quote_id === 'quote_001' && body?.expected_amount === 2900;
+      })
       .reply(200, {
         status: 'processing',
         psp: 'stripe',
@@ -69,7 +94,7 @@ describe('submit_payment response contract normalization', () => {
 
   it('propagates explicit submit ownership fields from the backend contract', async () => {
     nock(API_BASE)
-      .post('/agent/v1/payments')
+      .post('/agent/v2/payments/checkout-sessions')
       .reply(200, {
         payment_status: 'requires_action',
         confirmation_owner: 'client',
@@ -111,7 +136,7 @@ describe('submit_payment response contract normalization', () => {
 
   it('fails closed when upstream sends only a partial explicit contract', async () => {
     nock(API_BASE)
-      .post('/agent/v1/payments')
+      .post('/agent/v2/payments/checkout-sessions')
       .reply(200, {
         payment_status: 'requires_action',
         psp: 'stripe',
@@ -142,7 +167,7 @@ describe('submit_payment response contract normalization', () => {
 
   it('marks requires_action status as client-owned confirmation', async () => {
     nock(API_BASE)
-      .post('/agent/v1/payments')
+      .post('/agent/v2/payments/checkout-sessions')
       .reply(200, {
         payment_status: 'requires_action',
         psp: 'stripe',
@@ -168,7 +193,7 @@ describe('submit_payment response contract normalization', () => {
 
   it('maps unknown statuses to payment_status=unknown and preserves raw status', async () => {
     nock(API_BASE)
-      .post('/agent/v1/payments')
+      .post('/agent/v2/payments/checkout-sessions')
       .reply(200, {
         status: 'queued_for_review',
         psp: 'stripe',
@@ -193,7 +218,7 @@ describe('submit_payment response contract normalization', () => {
 
   it('normalizes failed statuses to payment_failed terminal state', async () => {
     nock(API_BASE)
-      .post('/agent/v1/payments')
+      .post('/agent/v2/payments/checkout-sessions')
       .reply(200, {
         status: 'failed',
         psp: 'stripe',
@@ -216,7 +241,7 @@ describe('submit_payment response contract normalization', () => {
 
   it('ignores explicit client ownership on terminal payment failure', async () => {
     nock(API_BASE)
-      .post('/agent/v1/payments')
+      .post('/agent/v2/payments/checkout-sessions')
       .reply(200, {
         payment_status: 'payment_failed',
         confirmation_owner: 'client',
@@ -237,8 +262,6 @@ describe('submit_payment response contract normalization', () => {
       payment_status: 'payment_failed',
       confirmation_owner: 'backend',
       requires_client_confirmation: false,
-      submit_owner: null,
-      component_kind: null,
       payment: {
         payment_status: 'payment_failed',
         confirmation_owner: 'backend',
@@ -249,7 +272,7 @@ describe('submit_payment response contract normalization', () => {
 
   it('rejects unsupported pivota hosted checkout responses', async () => {
     nock(API_BASE)
-      .post('/agent/v1/payments')
+      .post('/agent/v2/payments/checkout-sessions')
       .reply(200, {
         status: 'success',
         checkout_session: {
