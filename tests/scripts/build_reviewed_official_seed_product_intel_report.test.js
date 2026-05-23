@@ -1463,6 +1463,139 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     expect(lipButterBundle.shopping_card.intro).not.toMatch(/best-selling/i);
   });
 
+  test('keeps Fenty essentials out of single-item batches and avoids generic highlights', () => {
+    const baseCandidate = {
+      domain: 'fentybeauty.com',
+      recommended_lane: 'lane_3_kb_rewrite_review',
+      seed_missing_fields: '',
+      identity_status: 'approved',
+      identity_live_read_enabled: true,
+      kb_direct_high_quality_ready: false,
+      kb_direct_human_reviewed: true,
+      kb_direct_quality_state: 'reviewed',
+      kb_direct_evidence_profile: 'seller_only',
+      main_blocker: 'kb_blocked',
+      catalog_attached: true,
+      index_serving_eligible: true,
+      commerce_doc_public: true,
+      terminal_hold: false,
+    };
+
+    expect(
+      inferKind(
+        'Lip Sav’rs Lip Care Essentials',
+        '',
+        '',
+        'Ultra-hydrating lip treatments to soften and smooth dry, chapped lips.',
+      ),
+    ).toBe('lip_set');
+    expect(
+      inferKind(
+        'Slick-Back Styling Essentials',
+        '',
+        '',
+        'A hair styling gel built around soothing support for hold and styling definition.',
+      ),
+    ).toBe('beauty_set');
+    expect(
+      isConservativeRewriteCandidate(
+        { ...baseCandidate, title: 'Lip Sav’rs Lip Care Essentials' },
+        { singleItemOnly: true, includeReviewedSellerOnly: true, requirePublicCommerceDoc: true },
+      ),
+    ).toBe(false);
+    expect(
+      isConservativeRewriteCandidate(
+        { ...baseCandidate, title: 'Slick-Back Styling Essentials' },
+        { singleItemOnly: true, includeReviewedSellerOnly: true, requirePublicCommerceDoc: true },
+      ),
+    ).toBe(false);
+
+    const foundationBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_fenty_foundation',
+        title: "Soft'lit Naturally Luminous Longwear Foundation - 235",
+        canonical_url: 'https://fentybeauty.com/products/softlit-naturally-luminous-longwear-foundation-235',
+        seed_data: {
+          brand: 'Fenty Beauty',
+          description:
+            'A foundation for complexion coverage, shade matching, finish control, and longer-wear makeup routines.',
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_fenty_foundation',
+        sellable_item_group_id: 'sig_fenty_foundation',
+      },
+      generatedAt: '2026-05-24T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+    const highlighterBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_fenty_highlighter',
+        title: "Demi'glow Light-Diffusing Highlighter - Java Jitt'rs",
+        canonical_url: 'https://fentybeauty.com/products/demiglow-light-diffusing-highlighter-java-jittrs',
+        seed_data: {
+          brand: 'Fenty Beauty',
+          description:
+            'A limited-edition skin tone-based highlighter with a silky-soft feel infused with superfine pearls designed to give a lowkey glow for every tone.',
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_fenty_highlighter',
+        sellable_item_group_id: 'sig_fenty_highlighter',
+      },
+      generatedAt: '2026-05-24T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+    const cleanserBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_fenty_cleanser',
+        title: 'Melt Awf Jelly Oil Makeup-Melting Cleanser',
+        canonical_url: 'https://fentybeauty.com/products/melt-awf-jelly-oil-makeup-melting-cleanser',
+        seed_data: {
+          brand: 'Fenty Beauty',
+          description:
+            "Deeply purify pores without stripping with Fenty Skin's cleanser collection. Made to remove all types of makeup + quench skin with skin-loving ingredients.",
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_fenty_cleanser',
+        sellable_item_group_id: 'sig_fenty_cleanser',
+      },
+      generatedAt: '2026-05-24T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+    const stylingEssentialsBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_fenty_styling',
+        title: 'Slick-Back Styling Essentials',
+        canonical_url: 'https://fentybeauty.com/products/slick-back-styling-essentials',
+        seed_data: {
+          brand: 'Fenty Beauty',
+          description:
+            'A hair styling gel built around ectoin/bisabolol-style soothing support for hold, shape control, and styling definition in hair styling routines.',
+          raw_ingredient_text_clean:
+            'Amber Bouquet. Fenty Hair’s signature fragrance drips you in notes of warm florals, amber, yuzu, coconut, vanilla + sandalwood.',
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_fenty_styling',
+        sellable_item_group_id: 'sig_fenty_styling',
+      },
+      generatedAt: '2026-05-24T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+
+    expect(foundationBundle.shopping_card.highlight).toBe('Luminous longwear base');
+    expect(highlighterBundle.shopping_card.highlight).toBe('Light-diffusing glow');
+    expect(cleanserBundle.shopping_card.highlight).toBe('Jelly-oil makeup melt');
+    expect(stylingEssentialsBundle.evidence_profile).toBe('official_pdp_seed');
+    expect(JSON.stringify(stylingEssentialsBundle)).not.toMatch(/Formula context captured|signature fragrance drips/i);
+  });
+
   test('does not fall back to a Tom Ford brand when seed brand metadata is missing', () => {
     const bundle = buildBundle({
       seed: {

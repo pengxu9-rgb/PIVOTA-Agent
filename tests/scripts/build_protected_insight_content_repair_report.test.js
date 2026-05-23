@@ -243,6 +243,61 @@ describe('protected insight content repair report', () => {
     expect(row.selected.bundle.product_intel_core.what_it_is.body).not.toMatch(/Cleanser 15ml|Lotion 15ml/);
   });
 
+  test('repairs Fenty protected community rows without Pixi wording or generic product copy', () => {
+    const row = buildContentRepairRow(
+      seedRow({
+        external_product_id: 'ext_fenty_water_boi',
+        title: 'The Water Boi Reparative Leave-In Detangling Conditioner Spray',
+        canonical_url: 'https://fentybeauty.com/products/the-water-boi-reparative-leave-in-conditioner-spray',
+        destination_url: 'https://fentybeauty.com/products/the-water-boi-reparative-leave-in-conditioner-spray',
+        seed_data: {
+          brand: 'Fenty Beauty',
+          description:
+            'A leave-in conditioner spray for detangling, conditioning, and supporting smoother-feeling hair routines.',
+          snapshot: {
+            review_summary: {
+              rating: 4.7,
+              scale: 5,
+              review_count: 84,
+            },
+            raw_ingredient_text_clean:
+              'Aqua/Water/Eau, Glycerin, Cetearyl Alcohol, Behentrimonium Chloride, Panthenol, Fragrance.',
+          },
+        },
+      }),
+      {
+        ...kbRow(
+          protectedBundle({
+            canonical_product_ref: {
+              merchant_id: 'external_seed',
+              product_id: 'ext_fenty_water_boi',
+            },
+          }),
+        ),
+        kb_key: 'product:ext_fenty_water_boi',
+      },
+      {
+        reviewer: 'codex_quality_reviewer',
+        reviewedAt: '2026-05-24T00:00:00.000Z',
+      },
+    );
+
+    expect(row.skipped).toBeUndefined();
+    const bundle = row.selected.bundle;
+    expect(bundle.evidence_profile).toBe('community_supported');
+    expect(bundle.shopping_card.subtitle).toBe('Leave-in conditioner spray');
+    expect(bundle.shopping_card.highlight).toBe('Detangling leave-in spray');
+    expect(bundle.product_intel_core.what_it_is.body).toContain('A Fenty Beauty leave-in conditioner spray');
+    expect(bundle.product_intel_core.what_it_is.body).not.toMatch(/A Pixi|beauty product listed/i);
+    expect(classifyProductIntelKbRow(
+      {
+        kb_key: 'product:ext_fenty_water_boi',
+        analysis: { product_intel_v1: bundle },
+      },
+      { productId: 'ext_fenty_water_boi' },
+    ).blocking_issues).toEqual([]);
+  });
+
   test('skips non-protected seller-only rows and separates skipped rows in the report', () => {
     const sellerOnly = protectedBundle({
       evidence_profile: 'seller_only',

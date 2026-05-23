@@ -174,12 +174,46 @@ function sentenceFragment(value) {
   return text(value).replace(/[.!?]+$/g, '').trim();
 }
 
+function articleFor(value) {
+  return /^[aeiou]/i.test(text(value)) ? 'An' : 'A';
+}
+
 function readSeedData(seedRow) {
   const seedData = asObject(seedRow.seed_data);
   return {
     seedData,
     snapshot: asObject(seedData.snapshot),
   };
+}
+
+function displayBrandName(value) {
+  const raw = text(value);
+  if (!raw) return '';
+  const known = {
+    'fenty beauty': 'Fenty Beauty',
+    'fenty skin': 'Fenty Skin',
+    pixi: 'Pixi',
+    'pixi beauty': 'Pixi',
+    pixibeauty: 'Pixi',
+  };
+  const normalized = raw.toLowerCase();
+  if (known[normalized]) return known[normalized];
+  return raw
+    .split(/\s+/)
+    .map((part) => (part ? `${part.charAt(0).toUpperCase()}${part.slice(1).toLowerCase()}` : part))
+    .join(' ');
+}
+
+function brandName(seedRow) {
+  const { seedData, snapshot } = readSeedData(seedRow);
+  return displayBrandName(
+    asObject(seedData.brand).name ||
+      seedData.brand ||
+      seedData.brand_name ||
+      asObject(snapshot.brand).name ||
+      snapshot.brand ||
+      snapshot.brand_name,
+  );
 }
 
 function readOfficialDescription(seedRow) {
@@ -247,6 +281,114 @@ function isMultiItemText(value) {
 
 function classifyTitle(title) {
   const lower = text(title).toLowerCase();
+  if (/\b(?:leave[-\s]?in|detangling)\b/.test(lower) && /\b(?:conditioner|spray)\b/.test(lower)) {
+    return {
+      label: 'leave-in conditioner spray',
+      headline: 'Leave-in conditioner spray',
+      highlight: 'Detangling leave-in spray',
+      step: 'hair_care',
+      bestFor: [
+        { tag: 'detangling_hair_care', label: 'Detangling hair-care routines', confidence: 'moderate' },
+        { tag: 'leave_in_conditioner', label: 'Leave-in conditioner shoppers', confidence: 'moderate' },
+      ],
+    };
+  }
+  if (/\b(?:clay|pore|detox)\b/.test(lower) && /\bmask\b/.test(lower)) {
+    return {
+      label: 'clay face mask',
+      headline: 'Clay face mask',
+      highlight: 'Clay pore mask',
+      step: 'mask',
+      bestFor: [
+        { tag: 'clay_mask', label: 'Clay mask routines', confidence: 'moderate' },
+        { tag: 'pore_care', label: 'Pore-care shoppers', confidence: 'moderate' },
+      ],
+    };
+  }
+  if (/\b(?:body cream|butta drop|whipped oil body cream)\b/.test(lower)) {
+    return {
+      label: 'body cream',
+      headline: 'Body cream',
+      highlight: 'Whipped body cream',
+      step: 'body_care',
+      bestFor: [
+        { tag: 'body_moisturizer', label: 'Body moisturizer routines', confidence: 'moderate' },
+        { tag: 'body_glow', label: 'Body glow shoppers', confidence: 'moderate' },
+      ],
+    };
+  }
+  if (/\b(?:lip[-\s]?loving scrubstick|lip scrub|scrubstick)\b/.test(lower)) {
+    return {
+      label: 'lip scrub',
+      headline: 'Lip scrub',
+      highlight: 'Lip scrub stick',
+      step: 'lip_care',
+      bestFor: [
+        { tag: 'lip_prep', label: 'Lip-prep routines', confidence: 'moderate' },
+        { tag: 'lip_care', label: 'Lip-care shoppers', confidence: 'moderate' },
+      ],
+    };
+  }
+  if (/\b(?:fat water|toner essence|milky toner essence)\b/.test(lower)) {
+    return {
+      label: 'toner essence',
+      headline: 'Toner essence',
+      highlight: 'Toner-essence step',
+      step: 'toner',
+      bestFor: [
+        { tag: 'toner_essence', label: 'Toner-essence routines', confidence: 'moderate' },
+        { tag: 'hydrating_toner', label: 'Hydrating toner shoppers', confidence: 'moderate' },
+      ],
+    };
+  }
+  if (/\bmascara\b/.test(lower)) {
+    return {
+      label: 'mascara',
+      headline: 'Mascara',
+      highlight: 'Volumizing mascara',
+      step: 'eye_makeup',
+      bestFor: [
+        { tag: 'mascara_shoppers', label: 'Mascara shoppers', confidence: 'moderate' },
+        { tag: 'eye_makeup', label: 'Eye-makeup routines', confidence: 'moderate' },
+      ],
+    };
+  }
+  if (/\b(?:setting|blotting|brightening|blurring)\b/.test(lower) && /\bpowder\b/.test(lower)) {
+    return {
+      label: 'face powder',
+      headline: 'Face powder',
+      highlight: /blotting/.test(lower) ? 'Blotting powder compact' : 'Blurring setting powder',
+      step: 'complexion',
+      bestFor: [
+        { tag: 'setting_powder', label: 'Setting-powder routines', confidence: 'moderate' },
+        { tag: 'complexion_finish', label: 'Complexion finish shoppers', confidence: 'moderate' },
+      ],
+    };
+  }
+  if (/\bprimer\b/.test(lower)) {
+    return {
+      label: 'makeup primer',
+      headline: 'Makeup primer',
+      highlight: /hydrat/.test(lower) ? 'Hydrating primer base' : 'Complexion primer base',
+      step: 'complexion',
+      bestFor: [
+        { tag: 'primer_shoppers', label: 'Primer shoppers', confidence: 'moderate' },
+        { tag: 'complexion_prep', label: 'Complexion-prep routines', confidence: 'moderate' },
+      ],
+    };
+  }
+  if (/\b(?:match stix|skinstick)\b/.test(lower)) {
+    return {
+      label: 'glow skinstick',
+      headline: 'Glow skinstick',
+      highlight: 'Cream glow skinstick',
+      step: 'complexion',
+      bestFor: [
+        { tag: 'cream_highlighter', label: 'Cream highlighter shoppers', confidence: 'moderate' },
+        { tag: 'complexion_glow', label: 'Complexion glow routines', confidence: 'moderate' },
+      ],
+    };
+  }
   if (/\bhydrating\s+milky\s+mist\b/.test(lower)) {
     return {
       label: 'facial mist',
@@ -406,7 +548,9 @@ function buildCandidateBundle({ seedRow, kbRow, reviewedAt, reviewer }) {
   const previousBundleHash = hashJson(existing);
   const coverage = sourceCoverage(seedRow, existing);
   const sourceUrl = text(seedRow.canonical_url || seedRow.destination_url);
-  const whatItIsBody = `A Pixi ${kind.label} listed on the official source page as ${title}. The official description says: ${descriptionSentence}`;
+  const brand = brandName(seedRow);
+  const productLabel = text(`${brand} ${kind.label}`) || kind.label;
+  const whatItIsBody = `${articleFor(productLabel)} ${productLabel} listed on the official source page as ${title}. The official description says: ${descriptionSentence}`;
   const why = [
     {
       headline: 'Official product detail',
