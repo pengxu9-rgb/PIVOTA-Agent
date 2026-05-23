@@ -206,6 +206,42 @@ describe('official PDP manual insight review', () => {
     expect(bundle.product_intel_core.why_it_stands_out.map((item) => item.headline)).not.toContain('Official product detail');
   });
 
+  test('allows Fenty SPF rows through the reviewed official-PDP template', () => {
+    const plan = buildPlan(
+      row({
+        external_product_id: 'ext_fenty_spf',
+        title: 'Hydra Vizor Invisible Moisturizer SPF 30 with Niacinamide + Kalahari Melon',
+        brand: 'FENTY SKIN',
+        canonical_url: 'https://fentybeauty.com/products/hydra-vizor-invisible-moisturizer-spf-30',
+        seed_data: {
+          brand: 'FENTY SKIN',
+          pdp_description_raw: 'YOUR DONE-IN-ONE MOISTURIZER: HYDRATES, BRIGHTENS, SMOOTHS + PROTECTS STRAIGHT UP: A lightweight daily moisturizer with SPF 30, niacinamide, and Kalahari melon for a hydrating sunscreen step. THE LOWDOWN: Instantly hydrates.',
+          pdp_active_ingredients_raw: 'Active Ingredients: Avobenzone 3%; Homosalate 9%; Octisalate 4.5%.',
+          pdp_ingredients_raw: 'Ingredients: Water, Homosalate, Glycerin, Avobenzone, Octisalate, Niacinamide.',
+          pdp_how_to_use_raw: 'Apply generously 15 minutes before sun exposure as the last step in your skincare routine.',
+          variants: [
+            {
+              title: '50 ml',
+              options: [{ name: 'Size', value: '50 ml' }],
+            },
+          ],
+        },
+        product_key: 'pk_fenty_spf',
+        pivota_signature_id: 'sig_fenty_spf',
+      }),
+      { brand: 'Fenty Skin', includeStrong: false },
+    );
+
+    expect(plan.blocked).toBe(false);
+    expect(plan.changed).toBe(true);
+    expect(plan.evidence_profile).toBe('official_pdp_reviewed_formula_and_usage');
+    expect(plan.preview.headline).toBe('Daily sunscreen');
+    expect(plan.preview.what_it_is).toContain('Fenty Skin');
+    expect(plan.preview.what_it_is).not.toContain('STRAIGHT UP');
+    expect(plan.preview.what_it_is).not.toContain('THE LOWDOWN');
+    expect(plan.preview.why_it_stands_out.map((item) => item.headline)).toContain('Ingredient list is available');
+  });
+
   test('treats previous generic reviewed bundles as weak and replaceable', () => {
     expect(isWeakExistingInsight(kbEntry(weakBundle()))).toBe(true);
 
