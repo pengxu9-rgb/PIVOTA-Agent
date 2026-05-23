@@ -38,6 +38,25 @@ function safeReviewedSingleton(overrides = {}) {
   };
 }
 
+function safeOfficialUrlExactConflict(overrides = {}) {
+  return safeReviewedSingleton({
+    source_product_id: 'ext_conflict',
+    source_listing_ref: 'external_seed:ext_conflict',
+    title: 'PixiPerfume Eau de Parfum - PixiFig',
+    seed_title: 'PixiPerfume Eau de Parfum - PixiFig',
+    brand: 'PIXI BEAUTY',
+    canonical_url: 'https://pixibeauty.com/products/pixiperfume-eau-de-parfum-pixifig',
+    seed_canonical_url: 'https://pixibeauty.com/products/pixiperfume-eau-de-parfum-pixifig',
+    destination_url: 'https://pixibeauty.com/products/pixiperfume-eau-de-parfum-pixifig',
+    official_url: 'https://pixibeauty.com/products/pixiperfume-eau-de-parfum-pixifig?variant=456',
+    review_reason_codes: ['conflicting_official_url'],
+    matched_by_rule: 'manual_reviewed_default_title_axis_cleanup',
+    variant_axes: { multi_variant: false },
+    seed_data: { snapshot: {} },
+    ...overrides,
+  });
+}
+
 describe('align-external-seed-identity-to-catalog-sig reviewed singleton guard', () => {
   test('keeps review-required rows blocked by default', () => {
     const [plan] = buildPlans([safeReviewedSingleton()]);
@@ -89,5 +108,53 @@ describe('align-external-seed-identity-to-catalog-sig reviewed singleton guard',
 
     expect(plan.action).toBe('hold');
     expect(plan.blockers).toContain('reviewed_product_line_singleton_terminal_hold_present');
+  });
+
+  test('allows exact official-url conflict cleanup behind an explicit flag', () => {
+    const [plan] = buildPlans([safeOfficialUrlExactConflict()], {
+      allowOfficialUrlExactConflictCleanup: true,
+    });
+
+    expect(plan.action).toBe('align_ready');
+    expect(plan.needs_update).toBe(true);
+    expect(plan.blockers).toEqual([]);
+    expect(plan.reviewed_official_url_exact_conflict_cleanup.eligible).toBe(true);
+  });
+
+  test('keeps exact official-url conflict cleanup blocked by default', () => {
+    const [plan] = buildPlans([safeOfficialUrlExactConflict()]);
+
+    expect(plan.action).toBe('hold');
+    expect(plan.blockers).toEqual(['identity_review_required']);
+  });
+
+  test('blocks exact official-url conflict cleanup when extra review reasons are present', () => {
+    const [plan] = buildPlans(
+      [
+        safeOfficialUrlExactConflict({
+          review_reason_codes: ['conflicting_official_url', 'ambiguous_variant_axis'],
+        }),
+      ],
+      { allowOfficialUrlExactConflictCleanup: true },
+    );
+
+    expect(plan.action).toBe('hold');
+    expect(plan.blockers).toContain(
+      'reviewed_official_url_exact_conflict_cleanup_unsupported_review_reason_codes',
+    );
+  });
+
+  test('blocks exact official-url conflict cleanup when the official URL drifts', () => {
+    const [plan] = buildPlans(
+      [
+        safeOfficialUrlExactConflict({
+          official_url: 'https://pixibeauty.com/products/pixiperfume-eau-de-parfum-pixirose',
+        }),
+      ],
+      { allowOfficialUrlExactConflictCleanup: true },
+    );
+
+    expect(plan.action).toBe('hold');
+    expect(plan.blockers).toContain('reviewed_official_url_exact_conflict_cleanup_official_url_mismatch');
   });
 });
