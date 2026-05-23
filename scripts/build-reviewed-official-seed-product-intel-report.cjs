@@ -87,7 +87,43 @@ function sanitizePublicSourceText(value) {
     .replace(/\bformulated for all skin types\b/gi, 'described by the official page as a gentle formula')
     .replace(/\bfor all skin types\b/gi, 'with broad routine positioning')
     .replace(/\ball skin types\b/gi, 'broad skin-type positioning')
+    .replace(
+      /\bsuitable\s+with broad routine positioning,\s+including\s+sensitive skin\b/gi,
+      'positioned by the official page for broad routine use, including sensitive skin',
+    )
+    .replace(
+      /\bsuitable\s+with broad routine positioning\b/gi,
+      'positioned by the official page for broad routine use',
+    )
     .replace(/\.\s*with broad routine positioning\b/gi, ' with broad routine positioning')
+    .replace(
+      /\bby choosing this\s+([^.!?]*?)\s+you help plant\s+\d+(?:\.\d+)?\s*m(?:2|²)\s+of\s+biodiverse forest\b/gi,
+      '$1',
+    )
+    .replace(/\byou help plant\s+\d+(?:\.\d+)?\s*m(?:2|²)\s+of\s+biodiverse forest\b/gi, '')
+    .replace(/\brelief of inflammatory skin conditions\b/gi, 'calming skin-comfort positioning')
+    .replace(/\breduce redness\b/gi, 'support the look of calmer skin')
+    .replace(/\breduces redness\b/gi, 'supports the look of calmer skin')
+    .replace(/\breducing redness\b/gi, 'supporting the look of calmer skin')
+    .replace(/\btackle dark spots\b/gi, 'address the look of uneven tone')
+    .replace(/\btackles dark spots\b/gi, 'addresses the look of uneven tone')
+    .replace(/\btarget discolou?ration,\s*age spots and fine lines\b/gi, 'address the look of uneven tone and fine lines')
+    .replace(/\btargets discolou?ration,\s*age spots and fine lines\b/gi, 'addresses the look of uneven tone and fine lines')
+    .replace(/\btargeting discolou?ration,\s*age spots and fine lines\b/gi, 'addressing the look of uneven tone and fine lines')
+    .replace(/\btarget age spots\b/gi, 'address the look of uneven tone')
+    .replace(/\btargets age spots\b/gi, 'addresses the look of uneven tone')
+    .replace(/\btargeting age spots\b/gi, 'addressing the look of uneven tone')
+    .replace(/\bage spots\b/gi, 'uneven tone')
+    .replace(
+      /,\s*address the look of uneven tone\s+and\s+address the look of uneven tone\b/gi,
+      ' and address the look of uneven tone',
+    )
+    .replace(/\banti[-\s]?ageing benefits\b/gi, 'skin-conditioning benefits')
+    .replace(/\banti[-\s]?aging benefits\b/gi, 'skin-conditioning benefits')
+    .replace(/\bthinning hair density\b/gi, 'hair density concerns')
+    .replace(/\bexcessive shedding\b/gi, 'shedding concerns')
+    .replace(/\bRestore damaged, dehydrated and overly processed hair\b/g, 'Supports damaged-feeling, dehydrated, or overly processed hair')
+    .replace(/\brestore damaged, dehydrated and overly processed hair\b/g, 'support damaged-feeling, dehydrated, or overly processed hair')
     .replace(/\b(?:combat|reduce|reducing|target)\s+cellulite\b/gi, 'support body-smoothing positioning')
     .replace(/\bstimulate\s+fat\s+burning\b/gi, 'support firming and toning positioning')
     .replace(/,\s*while preventing the formation of new cells\b/gi, '')
@@ -214,6 +250,7 @@ function inferSetKind(titleCategoryText, descriptionText) {
 
 function inferKind(title, category, categoryPath, description = '') {
   const titleCategoryText = `${title} ${category} ${categoryPath}`.toLowerCase();
+  const titleDescriptionText = `${title} ${description}`.toLowerCase();
   const descriptionText = `${description}`.toLowerCase();
   const haystack = `${titleCategoryText} ${descriptionText}`;
   const brushCareTitlePattern =
@@ -245,12 +282,34 @@ function inferKind(title, category, categoryPath, description = '') {
     return 'brush';
   }
   if (/\bapplicator\b/.test(titleCategoryText) && !/\b(?:roll[-\s]?on|serum)\b/.test(titleCategoryText)) return 'brush';
+  if (/\bdry\s+shampoo\b/.test(haystack)) return 'dry_shampoo';
+  if (/\bhair\s+mask\b/.test(titleDescriptionText)) return 'hair_mask';
+  if (/\b(?:scalp\s+scrub\s+shampoo|scrub\s+shampoo)\b/.test(titleDescriptionText)) return 'shampoo';
+  if (/\b(?:leave[-\s]?in(?:\s+conditioning)?|conditioning\s+hair\s+milk|hair\s+milk)\b/.test(titleDescriptionText)) {
+    return 'leave_in_conditioner';
+  }
+  if (/\b(?:conditioner|hair\s+conditioning\s+concentrate)\b/.test(titleDescriptionText)) return 'conditioner';
+  if (/\b(?:shampoo|hair\s+cleanse\s+concentrate)\b/.test(titleDescriptionText)) return 'shampoo';
+  if (/\b(?:scalp\s+serum|hair\s+density[^.!?]{0,40}\bserum|hair[^.!?]{0,30}\bscalp\s+serum)\b/.test(titleDescriptionText)) {
+    return 'scalp_serum';
+  }
+  if (/\b(?:scalp\s+(?:treatment\s+)?oil|scalp\s*&\s*hair\s+oil|scalp\s+and\s+hair\s+oil)\b/.test(titleDescriptionText)) {
+    return 'scalp_oil';
+  }
+  if (/\b(?:pre[-\s]?wash\s+hair\s+oil|hair\s+oil)\b/.test(titleDescriptionText)) return 'hair_oil';
+  if (
+    /\b(?:hair\s+shine|glass\s+rinse|hair\s+rinse|apple\s+cider\s+vinegar\s+rinse|acv[^.!?]{0,40}\brinse)\b/.test(
+      titleDescriptionText,
+    ) ||
+    /\brinse\b[^.!?]{0,40}\bhair\b/.test(titleDescriptionText)
+  ) {
+    return 'hair_rinse';
+  }
   if (/\b(?:foundation|skin tint|skintint|skin-tint)\b/.test(haystack)) return 'foundation';
   if (/\bconcealer\b/.test(haystack)) return 'concealer';
   if (/\b(?:primer|poreless)\b/.test(haystack)) return 'primer';
   if (/\b(?:lipstick|lip color|lip balm|lip butter|butter balm|balm stick|lip oil|lip gloss|lipgloss|lip glaze|lip treatment|lip mask|lip liner|lip pencil|lip luxe|lip patch|lippatch|gloss|pout|kiss)\b/.test(haystack)) return 'lip';
   if (/\b(?:candle)\b/.test(haystack)) return 'home_fragrance';
-  if (/\bdry\s+shampoo\b/.test(haystack)) return 'dry_shampoo';
   if (/\bdeodorant\b/.test(haystack)) return 'deodorant';
   if (/\b(?:shower\s+gel|body\s+wash|hand\s*&\s*body\s+wash|hand\s+and\s+body\s+wash)\b/.test(titleCategoryText)) return 'body_wash';
   if (/\bhand\s+wash\b/.test(haystack)) return 'hand_wash';
@@ -308,6 +367,13 @@ function kindLabel(kind, category) {
     face_powder: 'face powder',
     body_oil: 'body oil',
     dry_shampoo: 'dry shampoo',
+    shampoo: 'shampoo',
+    conditioner: 'hair conditioner',
+    leave_in_conditioner: 'leave-in conditioner',
+    hair_oil: 'hair oil',
+    scalp_oil: 'scalp treatment oil',
+    hair_rinse: 'hair rinse',
+    scalp_serum: 'scalp serum',
     deodorant: 'deodorant',
     body_wash: 'body wash',
     hand_wash: 'hand wash',
@@ -357,6 +423,13 @@ function displayCategoryForKind(kind, category) {
     face_powder: 'Face Powder',
     body_oil: 'Body Oil',
     dry_shampoo: 'Dry Shampoo',
+    shampoo: 'Shampoo',
+    conditioner: 'Conditioner',
+    leave_in_conditioner: 'Leave-In Conditioner',
+    hair_oil: 'Hair Oil',
+    scalp_oil: 'Scalp Treatment Oil',
+    hair_rinse: 'Hair Rinse',
+    scalp_serum: 'Scalp Serum',
     deodorant: 'Deodorant',
     body_wash: 'Body Wash',
     hand_wash: 'Hand Wash',
@@ -397,6 +470,13 @@ function displayCategoryForKind(kind, category) {
     'eye_care_set',
     'body_mist',
     'dry_shampoo',
+    'shampoo',
+    'conditioner',
+    'leave_in_conditioner',
+    'hair_oil',
+    'scalp_oil',
+    'hair_rinse',
+    'scalp_serum',
     'deodorant',
     'body_wash',
     'hand_wash',
@@ -435,6 +515,13 @@ function routineStep(kind) {
     face_powder: 'complexion',
     body_oil: 'body_care',
     dry_shampoo: 'hair_refresh',
+    shampoo: 'hair_cleanse',
+    conditioner: 'hair_care',
+    leave_in_conditioner: 'hair_care',
+    hair_oil: 'hair_care',
+    scalp_oil: 'scalp_care',
+    hair_rinse: 'hair_care',
+    scalp_serum: 'scalp_care',
     deodorant: 'body_care',
     body_wash: 'body_cleanse',
     hand_wash: 'hand_cleanse',
@@ -639,6 +726,13 @@ function buildHighlightPhrase(kind, category, description, title = '') {
   if (kind === 'face_powder') return 'Complexion powder detail';
   if (kind === 'body_oil') return 'Body oil formula detail';
   if (kind === 'dry_shampoo') return 'Post-workout dry shampoo';
+  if (kind === 'shampoo') return /scalp|scrub/.test(titleText) ? 'Scalp shampoo format detail' : 'Shampoo format detail';
+  if (kind === 'conditioner') return 'Conditioner format detail';
+  if (kind === 'leave_in_conditioner') return 'Leave-in conditioner detail';
+  if (kind === 'hair_oil') return /pre[-\s]?wash/.test(signalText) ? 'Pre-wash hair oil detail' : 'Hair oil format detail';
+  if (kind === 'scalp_oil') return 'Scalp oil format detail';
+  if (kind === 'hair_rinse') return 'Hair rinse format detail';
+  if (kind === 'scalp_serum') return /peptide|density/.test(signalText) ? 'Scalp serum format detail' : 'Scalp serum detail';
   if (kind === 'deodorant') {
     if (/after\s+workout/.test(signalText)) return 'Post-workout deodorant';
     if (/sensitive\s+skin/.test(signalText)) return 'Sensitive deodorant detail';
