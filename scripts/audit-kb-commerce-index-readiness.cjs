@@ -161,7 +161,7 @@ async function queryRows(sql, params = [], { optional = false, label = 'query' }
     const result = await query(sql, params);
     return { rows: result.rows || [], warning: null };
   } catch (error) {
-    if (optional && (relationMissing(error) || error?.code === '57014')) {
+    if (optional && relationMissing(error)) {
       return {
         rows: [],
         warning: {
@@ -527,7 +527,19 @@ function terminalHoldContract(value) {
   return { held: false, reason: '' };
 }
 
-function terminalHoldStatus(row) {
+function indexTerminalHoldStatus(indexState = null) {
+  const row = asObject(indexState);
+  const blockerCode = lower(row.blocker_code);
+  if (blockerCode === 'non_core_product') {
+    return {
+      held: true,
+      reason: asString(row.blocker_detail) || 'non_core_product',
+    };
+  }
+  return { held: false, reason: '' };
+}
+
+function terminalHoldStatus(row, indexState = null) {
   const seedData = asObject(row?.seed_data);
   const snapshot = asObject(seedData.snapshot);
   const family = lower(
@@ -557,6 +569,8 @@ function terminalHoldStatus(row) {
     const status = terminalHoldContract(contract);
     if (status.held) return status;
   }
+  const indexStatus = indexTerminalHoldStatus(indexState);
+  if (indexStatus.held) return indexStatus;
   return { held: false, reason: '' };
 }
 
@@ -668,7 +682,7 @@ function buildInventoryRows({
     const indexState = catalog?.content_key ? indexByContentKey.get(catalog.content_key) : null;
     const doc = sourceRef ? docBySourceRef.get(sourceRef) : null;
     const seedFacts = missingSeedFields(seed);
-    const terminalHold = terminalHoldStatus(seed);
+    const terminalHold = terminalHoldStatus(seed, indexState);
     const identityGate = identityStatus(identity);
     const kbGate = kbMainStatus(readiness);
     const hasPublicDoc = Boolean(doc && asString(doc.publish_state) === 'public');
@@ -1246,7 +1260,7 @@ async function main() {
   writeCsv(path.join(outDir, 'commerce_index_kb_readiness_inventory.csv'), inventoryRows, inventoryColumns);
   writeCsv(path.join(outDir, 'domain_rollup.csv'), domainRollup, rollupColumns);
   const gapRows = sortBacklogRows(
-    inventoryRows.filter((row) => !isDbServingReadyBlocker(row.main_blocker)),
+    inventoryRows.filter((row) => !isDbServingReadyBlocker(row.main_blocker) && row.main_blocker !== 'terminal_hold'),
     domainRollup,
   );
   writeCsv(
