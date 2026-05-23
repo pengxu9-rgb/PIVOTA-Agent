@@ -16,10 +16,14 @@ const COLLECTION_BUNDLE_RE =
 const COLLECTION_MEMBER_RE = /\bcollection\s*:\s*[^\n]+/i;
 const FORMULA_PRODUCT_RE =
   /\b(skincare|skin care|makeup|cosmetic|haircare|hair care|fragrance|perfume|parfum|cologne|cleanser|cleansing|toner|essence|serum|ampoule|solution|suspension|emulsion|moisturi[sz]er|cream|lotion|balm|mask|patch(?:es)?|peel|exfoliant|exfoliator|treatment|oil|acid|acne control|sunscreen|spf|foundation|concealer|mascara|lash|lip(?:stick| gloss| balm| oil)?|gloss stick|match stix|skinstick|contour|packette|blush|bronzer|powder|highlighter|eyeshadow|eyeliner|brow|primer|setting spray|shampoo|conditioner|body wash|body lotion)\b/i;
+const FORMULA_VARIANT_TITLE_RE =
+  /\b(?:foundation|concealer|mascara|lipstick|lip\s+gloss|lip\s+balm|lip\s+oil|blush|bronzer|powder|highlighter|eyeshadow|eyeliner|brow|primer|setting\s+spray)\b[\s\S]{0,120}(?:[—–-]\s*#?[a-z0-9][\w.-]*|#\s*[a-z0-9][\w.-]*)\b/i;
 const SET_PHRASE_FORMULA_RE = /\bset\s+it\s+down\b/i;
 const FORMULA_REFILL_PACKAGING_RE = /\b(?:refill\s+pouch|refill\s+pack|refill\s+pod)\b/i;
 const FORMULA_CATEGORY_PATH_RE =
   /^beauty\/(?:skincare|skin-care|makeup\/(?:face|lip|eye|cheek|complexion|base)|fragrance|hair|haircare|body)(?:\/|$)/i;
+const FORMULA_CATEGORY_TEXT_RE =
+  /\b(?:skincare|skin care|makeup|cosmetics?|haircare|hair care|fragrance|perfumes?|parfums?|colognes?|cleansers?|toners?|essences?|serums?|ampoules?|solutions?|suspensions?|emulsions?|moisturi[sz]ers?|creams?|lotions?|balms?|masks?|patches|peels?|exfoliants?|exfoliators?|treatments?|oils?|acids?|sunscreens?|spf|foundations?|concealers?|foundations?\s*&\s*concealers?|mascaras?|lashes?|lipsticks?|lip\s+gloss(?:es)?|lip\s+balms?|lip\s+oils?|blush(?:es)?|bronzers?|powders?|highlighters?|eyeshadows?|eyeliners?|brows?|primers?|setting\s+sprays?|shampoos?|conditioners?|body\s+washes?|body\s+lotions?)\b/i;
 const TOOL_CATEGORY_PATH_RE = /^beauty\/(?:tools?|beauty-tools)(?:\/|$)/i;
 
 function asPlainObject(value) {
@@ -116,6 +120,30 @@ function collectExternalSeedProductKindPrimaryContentText(input = {}) {
     .join(' ');
 }
 
+function collectCategoryTextCandidates(input = {}) {
+  const seedData = asPlainObject(input.seed_data);
+  const snapshot = asPlainObject(seedData.snapshot);
+  return [
+    input.category,
+    input.product_type,
+    input.productType,
+    input.catalog_category,
+    input.catalogCategory,
+    seedData.category,
+    seedData.product_type,
+    seedData.productType,
+    seedData.catalog_category,
+    seedData.catalogCategory,
+    snapshot.category,
+    snapshot.product_type,
+    snapshot.productType,
+    snapshot.catalog_category,
+    snapshot.catalogCategory,
+  ]
+    .map(asString)
+    .filter(Boolean);
+}
+
 function normalizeExplicitProductFamily(value) {
   const normalized = asString(value).toLowerCase().replace(/[\s-]+/g, '_');
   if (!normalized) return '';
@@ -186,6 +214,10 @@ function hasFormulaCategoryPath(input = {}) {
   );
 }
 
+function hasFormulaCategoryText(input = {}) {
+  return collectCategoryTextCandidates(input).some((value) => FORMULA_CATEGORY_TEXT_RE.test(value));
+}
+
 function hasToolCategoryPath(input = {}) {
   return collectCategoryPathCandidates(input).some((value) =>
     TOOL_CATEGORY_PATH_RE.test(normalizeCategoryPath(value)),
@@ -221,6 +253,8 @@ function classifyExternalSeedProductKind(input = {}) {
     STRONG_BUNDLE_RE.test(primaryContentText) ||
     (COLLECTION_BUNDLE_RE.test(primaryContentText) && !COLLECTION_MEMBER_RE.test(primaryContentText));
   const formulaCategoryPathSignal = hasFormulaCategoryPath(input);
+  const formulaCategoryTextSignal = hasFormulaCategoryText(input);
+  const formulaVariantTitleSignal = FORMULA_VARIANT_TITLE_RE.test(primaryContentText);
   if (
     explicitFamily?.family === 'single_formula' &&
     !SET_PHRASE_FORMULA_RE.test(text) &&
@@ -235,13 +269,19 @@ function classifyExternalSeedProductKind(input = {}) {
   }
   if (
     explicitFamily?.family === 'set_or_collection' &&
-    formulaCategoryPathSignal &&
+    (formulaCategoryPathSignal || formulaCategoryTextSignal || formulaVariantTitleSignal) &&
     FORMULA_PRODUCT_RE.test(text) &&
     !primaryBundleContentSignal &&
     (!strongBundleContentSignal || FORMULA_PRODUCT_RE.test(primaryContentText)) &&
     (!collectionBundleContentSignal || FORMULA_PRODUCT_RE.test(primaryContentText))
   ) {
-    reasons.push('stale_bundle_kind_overridden_by_formula_category');
+    reasons.push(
+      formulaCategoryPathSignal
+        ? 'stale_bundle_kind_overridden_by_formula_category'
+        : formulaCategoryTextSignal
+          ? 'stale_bundle_kind_overridden_by_formula_category_text'
+          : 'stale_bundle_kind_overridden_by_formula_variant_title',
+    );
     return { family: 'single_formula', reasons };
   }
   if (
@@ -320,12 +360,15 @@ module.exports = {
   COLLECTION_BUNDLE_RE,
   COLLECTION_MEMBER_RE,
   FORMULA_PRODUCT_RE,
+  FORMULA_CATEGORY_TEXT_RE,
+  FORMULA_VARIANT_TITLE_RE,
   FORMULA_REFILL_PACKAGING_RE,
   FALSE_LASH_ACCESSORY_RE,
   SET_PHRASE_FORMULA_RE,
   STICKER_ACCESSORY_RE,
   TREATMENT_STICKER_RE,
   classifyExternalSeedProductKind,
+  collectCategoryTextCandidates,
   collectExternalSeedProductKindText,
   isIngredientAuthorityEligibleExternalSeed,
   isSingleFormulaExternalSeed,

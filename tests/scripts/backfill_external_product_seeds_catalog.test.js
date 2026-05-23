@@ -3104,6 +3104,50 @@ Contains four types of peptides`,
     expect(payload.nextRow.seed_data.snapshot.bundle_components).toBeUndefined();
   });
 
+  test('does not preserve bundle kind from ordinary makeup setting instructions', () => {
+    const row = {
+      id: 'eps_fenty_concealer_210',
+      title: "Pro Filt'r Instant Retouch Concealer — #210",
+      canonical_url: 'https://fentybeauty.com/products/pro-filtr-instant-retouch-concealer-420-concealer',
+      destination_url: 'https://fentybeauty.com/products/pro-filtr-instant-retouch-concealer-420-concealer',
+      image_url: 'https://cdn.example.com/concealer-210.jpg',
+      price_amount: 29,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        product_kind: 'bundle',
+        category: 'Foundations & Concealers',
+        snapshot: {
+          product_kind: 'bundle',
+          category: 'Foundations & Concealers',
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: row.title,
+            url: row.canonical_url,
+            category: 'Foundations & Concealers',
+            description_raw:
+              "Apply directly under eyes or over blemishes and blend. Rihanna likes to set as the very last step with Pro Filt'r Instant Retouch Setting Powder.",
+            product_kind: 'bundle',
+            variants: [{ id: 'v210', sku: '32633', price: '29.00', currency: 'USD', stock: 'In Stock' }],
+          },
+        ],
+        variants: [],
+        diagnostics: { failure_category: null },
+      },
+      row.canonical_url,
+    );
+
+    expect(payload.nextRow.seed_data.product_kind).toBeUndefined();
+    expect(payload.nextRow.seed_data.snapshot.product_kind).toBeUndefined();
+  });
+
   test('marks refreshed snapshots authoritative and clears legacy PDP shadow fields on writeback', () => {
     const row = {
       id: 'eps_refresh_authoritative',
