@@ -1300,6 +1300,152 @@ describe('external seed product detail hydration', () => {
     );
   });
 
+  test('get_pdp_v2 skips live identity graph for rich direct external_seed same-merchant groups', async () => {
+    const { app, db } = loadServerWithDb({
+      PIVOTA_API_BASE: 'https://backend.test',
+      PIVOTA_API_KEY: 'test-token',
+    });
+
+    const productKey = 'prod::external_seed::external_seed::ext_tf_concealer_1';
+    const groupRows = [
+      {
+        content_key: 'content::tom-ford::traceless-soft-matte-concealer',
+        product_key: productKey,
+        merchant_id: 'external_seed',
+        platform: 'external_seed',
+        source_product_id: 'ext_tf_concealer_1',
+        product_title: 'Traceless Soft Matte Concealer',
+        brand: 'Tom Ford',
+        canonical_url: 'https://www.tomfordbeauty.com/product/traceless-soft-matte-concealer',
+        product_image_url: 'https://cdn.example.com/tf-concealer.jpg',
+        pdp_lifecycle_stage: 'published',
+        pivota_signature_id: 'sig_tfconcealer',
+        pivota_signature_minted_at: '2026-05-01T00:00:00.000Z',
+        merchant_name: 'Tom Ford Beauty',
+        internal_product_group_id: 'pg_tf_concealer',
+        is_primary: true,
+        offer_count: 1,
+      },
+      {
+        content_key: 'content::tom-ford::traceless-soft-matte-concealer',
+        product_key: 'prod::external_seed::external_seed::ext_tf_concealer_2',
+        merchant_id: 'external_seed',
+        platform: 'external_seed',
+        source_product_id: 'ext_tf_concealer_2',
+        product_title: 'Traceless Soft Matte Concealer',
+        brand: 'Tom Ford',
+        canonical_url: 'https://www.tomfordbeauty.com/product/traceless-soft-matte-concealer',
+        product_image_url: 'https://cdn.example.com/tf-concealer-2.jpg',
+        pdp_lifecycle_stage: 'published',
+        pivota_signature_id: 'sig_tfconcealer2',
+        pivota_signature_minted_at: '2026-05-02T00:00:00.000Z',
+        merchant_name: 'Tom Ford Beauty',
+        internal_product_group_id: 'pg_tf_concealer',
+        is_primary: false,
+        offer_count: 1,
+      },
+    ];
+    const statusRow = {
+      id: 'eps_tf_concealer_1',
+      external_product_id: 'ext_tf_concealer_1',
+      status: 'active',
+    };
+    const detailRow = {
+      ...statusRow,
+      canonical_url: 'https://www.tomfordbeauty.com/product/traceless-soft-matte-concealer',
+      destination_url: 'https://www.tomfordbeauty.com/product/traceless-soft-matte-concealer',
+      title: 'Traceless Soft Matte Concealer',
+      image_url: 'https://cdn.example.com/tf-concealer.jpg',
+      price_amount: '60.00',
+      price_currency: 'USD',
+      availability: 'In Stock',
+      seed_data: {
+        brand: 'Tom Ford',
+        pdp_how_to_use_raw: 'Apply to areas that need coverage and blend with fingertips or a brush.',
+        pdp_details_sections: [
+          { heading: 'Details', body: 'A soft matte liquid concealer with buildable coverage.' },
+        ],
+        snapshot: {
+          canonical_url: 'https://www.tomfordbeauty.com/product/traceless-soft-matte-concealer',
+          variants: [
+            {
+              variant_id: 'tf-concealer-1w0',
+              title: '1W0 Porcelain',
+              display_label: 'Shade: 1W0 Porcelain',
+              price: '60.00',
+              currency: 'USD',
+              stock: 'In Stock',
+            },
+          ],
+        },
+      },
+    };
+
+    db.query.mockImplementation((sql) => {
+      const text = String(sql || '');
+      if (text.includes('WITH offer_stats AS')) {
+        return Promise.resolve({ rows: groupRows });
+      }
+      if (text.includes('FROM catalog_products cp') && text.includes('LEFT JOIN pdp_identity_listing')) {
+        return Promise.resolve({
+          rows: [
+            {
+              merchant_id: 'external_seed',
+              platform: 'external_seed',
+              source_product_id: 'ext_tf_concealer_1',
+              product_key: productKey,
+              pivota_signature_id: 'sig_tfconcealer',
+              category_path: 'beauty/makeup/face/concealer',
+              sellable_item_group_id: 'sig_tfconcealer',
+              product_line_id: 'line_tf_traceless_soft_matte_concealer',
+              review_family_id: 'line_tf_traceless_soft_matte_concealer',
+              identity_confidence: 0.98,
+              match_basis: ['catalog_signature'],
+              identity_status: 'reviewed',
+            },
+          ],
+        });
+      }
+      if (text.includes('FROM external_product_seeds') && text.includes('destination_url')) {
+        return Promise.resolve({ rows: [detailRow] });
+      }
+      if (text.includes('FROM external_product_seeds') && text.includes('status')) {
+        return Promise.resolve({ rows: [statusRow] });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'get_pdp_v2',
+        payload: {
+          product_ref: {
+            merchant_id: 'external_seed',
+            product_id: 'ext_tf_concealer_1',
+          },
+          options: {
+            allow_ineligible: true,
+          },
+        },
+      })
+      .expect(200);
+
+    expect(res.body.metadata.route_health.product_group_resolve_mode).toBe('not_needed');
+    expect(res.body.metadata.route_health.identity_graph_live_mode).toBe(
+      'skipped_direct_external_seed_same_merchant_group',
+    );
+    expect(res.body.metadata.identity_resolution).toEqual(
+      expect.objectContaining({
+        requested_product_id: 'ext_tf_concealer_1',
+        resolved_product_id: 'ext_tf_concealer_1',
+        resolved_merchant_id: 'external_seed',
+        canonicalization_applied: false,
+        resolution_source: 'canonical_catalog_product_group',
+      }),
+    );
+  });
+
   test('preserves rich external seed PDP content when identity graph synthetic product is thinner', () => {
     const { debug } = loadServerWithDb();
     const richProduct = {
