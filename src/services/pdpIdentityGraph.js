@@ -4583,11 +4583,11 @@ async function fetchBackfillProducts({
     }
   }
 
-  const externalParams = [];
-  const externalWhere = [`status = 'active'`];
+  const externalParams = [EXTERNAL_SEED_MERCHANT_ID];
+  const externalWhere = [`e.status = 'active'`];
   if (exactExternalProductIds.length) {
     externalParams.push(exactExternalProductIds);
-    externalWhere.push(`external_product_id = ANY($${externalParams.length}::text[])`);
+    externalWhere.push(`e.external_product_id = ANY($${externalParams.length}::text[])`);
   }
   if (compactBrandVariants.length) {
     externalParams.push(compactBrandVariants);
@@ -4597,15 +4597,15 @@ async function fetchBackfillProducts({
     externalWhere.push(`
       (
         regexp_replace(lower(trim(coalesce(
-          seed_data #>> '{brand,name}',
-          seed_data->>'brand',
-          seed_data->>'brand_name',
-          seed_data->>'vendor',
-          seed_data->>'vendor_name',
+          e.seed_data #>> '{brand,name}',
+          e.seed_data->>'brand',
+          e.seed_data->>'brand_name',
+          e.seed_data->>'vendor',
+          e.seed_data->>'vendor_name',
           ''
         ))), '[^[:alnum:]]+', '', 'g') = ANY(${brandParam}::text[])
-        OR regexp_replace(lower(coalesce(title, seed_data->>'title', seed_data->>'name', '')), '[^[:alnum:]]+', '', 'g') LIKE ANY(${titleParam}::text[])
-        OR regexp_replace(lower(coalesce(domain, '')), '[^[:alnum:]]+', '', 'g') LIKE ANY(${titleParam}::text[])
+        OR regexp_replace(lower(coalesce(e.title, e.seed_data->>'title', e.seed_data->>'name', '')), '[^[:alnum:]]+', '', 'g') LIKE ANY(${titleParam}::text[])
+        OR regexp_replace(lower(coalesce(e.domain, '')), '[^[:alnum:]]+', '', 'g') LIKE ANY(${titleParam}::text[])
       )
     `);
   }
@@ -4615,24 +4615,41 @@ async function fetchBackfillProducts({
   const externalRes = await queryFn(
     `
       SELECT
-        id,
-        external_product_id,
-        market,
-        tool,
-        destination_url,
-        canonical_url,
-        domain,
-        title,
-        image_url,
-        price_amount,
-        price_currency,
-        availability,
-        seed_data,
-        created_at,
-        updated_at
-      FROM external_product_seeds
+        e.id,
+        e.external_product_id,
+        e.market,
+        e.tool,
+        e.destination_url,
+        e.canonical_url,
+        e.domain,
+        e.title,
+        e.image_url,
+        e.price_amount,
+        e.price_currency,
+        e.availability,
+        e.seed_data,
+        e.created_at,
+        e.updated_at,
+        e.attached_product_key,
+        cp.content_key AS catalog_content_key,
+        cp.product_key AS catalog_product_key,
+        cp.pivota_signature_id AS catalog_pivota_signature_id,
+        cp.sync_status AS catalog_sync_status,
+        cp.pdp_lifecycle_stage AS catalog_pdp_lifecycle_stage,
+        ips.serving_eligible AS index_serving_eligible,
+        ips.pipeline_stage AS index_pipeline_stage,
+        ips.blocker_code AS index_blocker_code,
+        ips.blocker_detail AS index_blocker_detail,
+        ips.content_quality_score AS index_content_quality_score
+      FROM external_product_seeds e
+      LEFT JOIN catalog_products cp
+        ON cp.product_key = e.attached_product_key
+       AND cp.merchant_id = $1
+       AND cp.platform = $1
+      LEFT JOIN index_pipeline_state ips
+        ON ips.content_key = cp.content_key
       WHERE ${externalWhere.join(' AND ')}
-      ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+      ORDER BY e.updated_at DESC NULLS LAST, e.created_at DESC NULLS LAST
       LIMIT ${externalLimitParam}
     `,
     externalParams,
@@ -4662,11 +4679,26 @@ async function fetchBackfillProducts({
       product_id: productId,
       source_kind: 'external_seed',
       product,
+      serving_eligible: row?.index_serving_eligible === true,
+      index_pipeline_state: {
+        serving_eligible: row?.index_serving_eligible === true,
+        pipeline_stage: row?.index_pipeline_stage || null,
+        blocker_code: row?.index_blocker_code || null,
+        blocker_detail: row?.index_blocker_detail || null,
+        content_quality_score: row?.index_content_quality_score ?? null,
+        content_key: row?.catalog_content_key || null,
+      },
       source_meta: {
         external_seed_id: row?.id || null,
         market: row?.market || null,
         tool: row?.tool || null,
         updated_at: row?.updated_at || null,
+        attached_product_key: row?.attached_product_key || null,
+        catalog_product_key: row?.catalog_product_key || null,
+        catalog_content_key: row?.catalog_content_key || null,
+        catalog_pivota_signature_id: row?.catalog_pivota_signature_id || null,
+        catalog_sync_status: row?.catalog_sync_status || null,
+        catalog_pdp_lifecycle_stage: row?.catalog_pdp_lifecycle_stage || null,
       },
     });
   }
