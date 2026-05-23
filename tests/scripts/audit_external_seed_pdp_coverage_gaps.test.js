@@ -298,6 +298,55 @@ describe('audit-external-seed-pdp-coverage-gaps helpers', () => {
     expect(result.actionable_fields).not.toContain('inci');
   });
 
+  test('does not count reviewed INCI not-applicable fragrance candles as actionable gaps', () => {
+    const result = classifyRow(
+      row({
+        external_product_id: 'ext_candle',
+        title: 'Customizable Scented Candle',
+        canonical_url: 'https://example.com/products/customizable-scented-candle',
+        destination_url: 'https://example.com/products/customizable-scented-candle',
+        seed_data: {
+          product_family: 'accessory',
+          product_type: 'candle_home_fragrance',
+          ingredient_intel: {
+            not_applicable: true,
+            inci_applicability: {
+              status: 'not_applicable',
+              review_state: 'reviewed',
+              source_quality_status: 'high',
+            },
+          },
+          ingredient_remediation_v1: {
+            field: 'ingredients_inci',
+            action: 'mark_inci_not_applicable',
+            source_quality_status: 'reviewed_not_applicable',
+          },
+          snapshot: {
+            product_family: 'accessory',
+            product_type: 'candle_home_fragrance',
+            ingredient_intel: {
+              not_applicable: true,
+              inci_applicability: {
+                status: 'not_applicable',
+                review_state: 'reviewed',
+                source_quality_status: 'high',
+              },
+            },
+            ingredient_remediation_v1: {
+              field: 'ingredients_inci',
+              action: 'mark_inci_not_applicable',
+              source_quality_status: 'reviewed_not_applicable',
+            },
+          },
+        },
+      }),
+    );
+
+    expect(result.product_context.product_family).toBe('fragrance');
+    expect(result.field_status.inci).toBe('reviewed_not_applicable');
+    expect(result.actionable_fields).not.toContain('inci');
+  });
+
   test('context classifier keeps formula products distinct from accessories', () => {
     expect(
       classifyProductContext(

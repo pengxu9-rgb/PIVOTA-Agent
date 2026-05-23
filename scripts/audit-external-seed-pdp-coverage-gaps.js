@@ -210,6 +210,45 @@ function getSeedCoverage(row = {}) {
   };
 }
 
+function hasReviewedInciNotApplicable(row = {}) {
+  const seedData = ensureJsonObject(row.seed_data);
+  const snapshot = ensureJsonObject(seedData.snapshot);
+  const rootIntel = asObject(seedData.ingredient_intel);
+  const snapshotIntel = asObject(snapshot.ingredient_intel);
+  const applicability = {
+    ...asObject(snapshotIntel.inci_applicability),
+    ...asObject(rootIntel.inci_applicability),
+  };
+  const rootRemediation = asObject(seedData.ingredient_remediation_v1);
+  const snapshotRemediation = asObject(snapshot.ingredient_remediation_v1);
+  const remediation = {
+    ...snapshotRemediation,
+    ...rootRemediation,
+  };
+  const qualitySummary = {
+    ...asObject(snapshot.pdp_field_quality_summary),
+    ...asObject(seedData.pdp_field_quality_summary),
+  };
+  const inciQuality = asObject(qualitySummary.ingredients_inci);
+  const status = normalizeNonEmptyString(applicability.status).toLowerCase();
+  const reviewState = normalizeNonEmptyString(applicability.review_state || remediation.review_state).toLowerCase();
+  const sourceQuality = normalizeNonEmptyString(
+    applicability.source_quality_status || remediation.source_quality_status || inciQuality.source_quality_status,
+  ).toLowerCase();
+
+  return (
+    status === 'not_applicable' &&
+    (
+      rootIntel.not_applicable === true ||
+      snapshotIntel.not_applicable === true ||
+      remediation.action === 'mark_inci_not_applicable' ||
+      reviewState.includes('review') ||
+      sourceQuality.includes('reviewed_not_applicable') ||
+      sourceQuality === 'not_applicable'
+    )
+  );
+}
+
 function hasEnoughSeedContentForKb(coverage = {}) {
   return (
     coverage.details_sections_count > 0 ||
@@ -230,6 +269,10 @@ function isFieldApplicable(field, context = {}) {
 }
 
 function classifyMissingField({ field, row, context, coverage, hasProductKeyKb, hasIdentity }) {
+  if (field === 'inci' && hasReviewedInciNotApplicable(row)) {
+    return 'reviewed_not_applicable';
+  }
+
   if (!isFieldApplicable(field, context)) {
     if (field === 'faq') return 'source_optional_or_needs_truth_check';
     if (field === 'active_ingredients' && !context.regulatory_active_expected) {
@@ -614,6 +657,7 @@ module.exports = {
   FIELD_NAMES,
   classifyProductContext,
   getSeedCoverage,
+  hasReviewedInciNotApplicable,
   classifyMissingField,
   classifyRow,
   isActionableStatus,
