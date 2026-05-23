@@ -7,6 +7,7 @@ const path = require('node:path');
 const { query, closePool, withClient } = require('../src/db');
 
 const CONFIRM_TOKEN = 'APPLY_REVIEWED_EXTERNAL_SEED_CATEGORY_PATCH';
+const OVERWRITE_CONFIRM_TOKEN = 'APPLY_REVIEWED_EXTERNAL_SEED_CATEGORY_OVERWRITE';
 const CATEGORY_CONTRACT_VERSION = 'external_seed.reviewed_category_patch.v1';
 const SNAPSHOT_CONTRACT_VERSION = 'external_seed.snapshot_contract.v1';
 
@@ -490,11 +491,12 @@ async function main() {
   const write = hasFlag('write');
   const allowOverwrite = hasFlag('allow-overwrite');
   const confirm = argValue('confirm');
+  const confirmOverwrite = argValue('confirm-overwrite');
   if (write && confirm !== CONFIRM_TOKEN) {
     throw new Error(`--write requires --confirm ${CONFIRM_TOKEN}`);
   }
-  if (write && allowOverwrite) {
-    throw new Error('--allow-overwrite is not permitted in write mode');
+  if (write && allowOverwrite && confirmOverwrite !== OVERWRITE_CONFIRM_TOKEN) {
+    throw new Error(`--allow-overwrite in write mode requires --confirm-overwrite ${OVERWRITE_CONFIRM_TOKEN}`);
   }
 
   const entries = readManifestEntries(readJson(manifestPath));
@@ -551,6 +553,7 @@ async function main() {
     manifest: manifestPath,
     market,
     allow_overwrite: allowOverwrite,
+    overwrite_confirmed: Boolean(write && allowOverwrite),
     summary,
     apply_results: applyResults,
     plans: plans.map(({ next_seed_data: _nextSeedData, ...plan }) => plan),

@@ -23494,6 +23494,7 @@ async function hydrateVisibleSimilarProductSigIdsFromCatalog(products) {
   );
   if (!unresolvedExternalIds.length) return promoted;
 
+  const sigBySourceProductId = new Map();
   try {
     const result = await query(
       `
@@ -23506,15 +23507,62 @@ async function hydrateVisibleSimilarProductSigIdsFromCatalog(products) {
       `,
       [EXTERNAL_SEED_MERCHANT_ID, unresolvedExternalIds],
     );
-    const sigBySourceProductId = new Map(
-      (result?.rows || [])
-        .map((row) => [
-          firstNonEmptyString(row.source_product_id),
-          firstNonEmptyString(row.pivota_signature_id),
-        ])
-        .filter(([sourceProductId, sigId]) => sourceProductId && /^sig[_:]/i.test(sigId)),
+    for (const row of result?.rows || []) {
+      const sourceProductId = firstNonEmptyString(row.source_product_id);
+      const sigId = firstNonEmptyString(row.pivota_signature_id);
+      if (sourceProductId && /^sig[_:]/i.test(sigId)) {
+        sigBySourceProductId.set(sourceProductId, sigId);
+      }
+    }
+  } catch (err) {
+    logger.warn(
+      {
+        err: err?.message || String(err),
+        count: unresolvedExternalIds.length,
+      },
+      'similar visible sig id catalog hydration failed',
     );
-    if (!sigBySourceProductId.size) return promoted;
+  }
+
+  const identityFallbackIds = unresolvedExternalIds.filter((productId) => !sigBySourceProductId.has(productId));
+  if (identityFallbackIds.length > 0) {
+    try {
+      const identityResult = await query(
+        `
+          SELECT pil.product_id, pil.sellable_item_group_id
+          FROM pdp_identity_listing pil
+          JOIN external_product_seeds eps
+            ON eps.external_product_id = pil.product_id
+           AND eps.status = 'active'
+          WHERE pil.source_listing_ref = ANY($1::text[])
+            AND pil.source_kind = 'external_seed'
+            AND NULLIF(pil.sellable_item_group_id, '') IS NOT NULL
+            AND pil.identity_status = 'approved'
+            AND pil.live_read_enabled IS TRUE
+            AND COALESCE(pil.review_required, false) IS NOT TRUE
+        `,
+        [identityFallbackIds.map((productId) => `external_seed:${productId}`)],
+      );
+      for (const row of identityResult?.rows || []) {
+        const sourceProductId = firstNonEmptyString(row.product_id);
+        const sigId = firstNonEmptyString(row.sellable_item_group_id);
+        if (sourceProductId && /^sig[_:]/i.test(sigId)) {
+          sigBySourceProductId.set(sourceProductId, sigId);
+        }
+      }
+    } catch (err) {
+      logger.warn(
+        {
+          err: err?.message || String(err),
+          count: identityFallbackIds.length,
+        },
+        'similar visible sig id identity fallback failed',
+      );
+    }
+  }
+
+  if (!sigBySourceProductId.size) return promoted;
+  try {
     return promoted.map((product) => {
       const sigId = collectExternalSeedIdCandidatesForVisibleCatalogHydration(product)
         .map((productId) => sigBySourceProductId.get(productId))
@@ -23532,7 +23580,7 @@ async function hydrateVisibleSimilarProductSigIdsFromCatalog(products) {
         err: err?.message || String(err),
         count: unresolvedExternalIds.length,
       },
-      'similar visible sig id catalog hydration failed',
+      'similar visible sig id promotion failed',
     );
     return promoted;
   }
