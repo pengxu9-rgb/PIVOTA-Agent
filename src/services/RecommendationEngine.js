@@ -382,6 +382,7 @@ const IDENTITY_COLLAPSE_PROTECTION_CATEGORIES = new Set([
   'skin tint',
   'tinted moisturizer',
 ]);
+const TITLE_BACKED_SIMILAR_INTENT_FAMILIES = new Set(['face_oil']);
 
 const SIMILAR_INTENT_FAMILY_RULES = Object.freeze([
   {
@@ -2362,6 +2363,10 @@ function requiresIdentityCollapseProtectionForExternalRecall({ categoryHint = ''
   );
 }
 
+function requiresTitleBackedSimilarIntentFamily(intentFamily) {
+  return TITLE_BACKED_SIMILAR_INTENT_FAMILIES.has(String(intentFamily || '').trim());
+}
+
 function focusedRecallTargetCount(safeMinFocusedCandidates) {
   return Math.max(
     PDP_RECS_READY_MIN_COUNT,
@@ -2615,6 +2620,7 @@ function hasSharedSimilarIntentFamily(baseFeatures, candidateFeatures) {
   if (!baseFamily) return false;
   const candidateTitleFamily = getSimilarIntentFamilyFromFeatures(candidateFeatures, { titleOnly: true });
   if (candidateTitleFamily) return candidateTitleFamily === baseFamily;
+  if (requiresTitleBackedSimilarIntentFamily(baseFamily)) return false;
   if (!titleSupportsLeafCategory(candidateFeatures)) return false;
   return getSimilarIntentFamilyFromFeatures(candidateFeatures) === baseFamily;
 }
@@ -3436,10 +3442,13 @@ async function fetchExternalCandidates({
   const intentFamilyLikePatterns = getSimilarIntentFamilySqlLikePatterns(intentFamily);
   const strictIntentFamilyRecall = Boolean(
     intentFamily &&
-      requiresStrictExternalSameBrandIntent({
-        normalizedTitle: intentFamily,
-        leafCategory: category,
-      }),
+      (
+        requiresTitleBackedSimilarIntentFamily(intentFamily) ||
+        requiresStrictExternalSameBrandIntent({
+          normalizedTitle: intentFamily,
+          leafCategory: category,
+        })
+      ),
   );
   const identityCollapseProtection = requiresIdentityCollapseProtectionForExternalRecall({
     categoryHint: category,
@@ -3462,6 +3471,7 @@ async function fetchExternalCandidates({
                 ''
               )) NOT IN ('out_of_stock', 'sold_out', 'unavailable', 'discontinued')
   `;
+  const attachedSeedRecallFilterSql = deepDomainRecall ? '' : 'AND attached_product_key IS NULL';
 
   function boundedRecallCap(multiplier, floor = 24) {
     return Math.min(
@@ -3506,6 +3516,7 @@ async function fetchExternalCandidates({
     vertical_hint: vertical || null,
     intent_family_hint: intentFamily || null,
     domain_hint_count: normalizedDomainHints.length,
+    include_attached_seed_rows: Boolean(deepDomainRecall),
     stages: [],
   };
 
@@ -3558,7 +3569,7 @@ async function fetchExternalCandidates({
             WHERE status = 'active'
               AND market = $1
               AND (tool = '*' OR tool = $2)
-              AND attached_product_key IS NULL
+              ${attachedSeedRecallFilterSql}
               ${sellableExternalSeedSql}
               ${whereSql}
             ORDER BY updated_at DESC, created_at DESC
@@ -3598,7 +3609,7 @@ ${EXTERNAL_SEED_LIGHT_RECOMMENDATION_SELECT}
             WHERE status = 'active'
               AND market = $1
               AND (tool = '*' OR tool = $2)
-              AND attached_product_key IS NULL
+              ${attachedSeedRecallFilterSql}
               AND domain = ANY($4)
               ${sellableExternalSeedSql}
             ORDER BY updated_at DESC, created_at DESC
@@ -3640,7 +3651,7 @@ ${EXTERNAL_SEED_LIGHT_RECOMMENDATION_SELECT}
           WHERE status = 'active'
             AND market = $1
             AND (tool = '*' OR tool = $2)
-            AND attached_product_key IS NULL
+            ${attachedSeedRecallFilterSql}
             AND domain = ANY($4)
             ${sellableExternalSeedSql}
             AND ${externalSeedCategoryAliasPredicate(5)}
@@ -3678,7 +3689,7 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
           WHERE status = 'active'
             AND market = $1
             AND (tool = '*' OR tool = $2)
-            AND attached_product_key IS NULL
+            ${attachedSeedRecallFilterSql}
             AND domain = ANY($4)
             ${sellableExternalSeedSql}
             AND lower(coalesce(title, '')) LIKE ANY($5::text[])
