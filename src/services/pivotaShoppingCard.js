@@ -326,6 +326,7 @@ function inferTitleSpecialtyCompactSubtitle(product) {
   if (/\b(?:brow|kybrow)\b/.test(text)) return 'Brow Gel';
   if (/\b(?:lip liner|pout liner)\b/.test(text)) return 'Lip Liner';
   if (/\b(?:lip oil)\b/.test(text)) return 'Lip Oil';
+  if (/\b(?:lip cream|lip cr[eè]me)\b/.test(text)) return 'Lip Cream';
   if (/\b(?:lip glaze|lip gloss|gloss drip|plumping gloss|gloss bomb heat|gloss bomb universal|lip luminizer|plumper)\b/.test(text)) return 'Lip Gloss';
   if (/\b(?:lip brightener|vit lip brightener|\+c vit lip brightener)\b/.test(text)) return 'Lip Brightener';
   if (/\b(?:lipstick|lip stick)\b/.test(text)) return 'Lipstick';
@@ -497,6 +498,7 @@ function buildCompactSubtitle({ product, bundle }) {
       'Lip Set',
       'Lip Mask',
       'Lip Gloss',
+      'Lip Cream',
       'Lip Oil',
       'Bronzer',
       'Highlighter',

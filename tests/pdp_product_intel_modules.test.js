@@ -105,6 +105,12 @@ describe('pdp product intel bundle shaping', () => {
         category: 'Sunscreen',
       }),
     ).toBe('Sun Stick SPF');
+    expect(
+      inferTitleSpecialtyCompactSubtitle({
+        title: 'Lip Cream',
+        category: 'Lip Gloss',
+      }),
+    ).toBe('Lip Cream');
   });
 
   test('shopping card subtitle preserves specialty format over generic routine step', () => {
