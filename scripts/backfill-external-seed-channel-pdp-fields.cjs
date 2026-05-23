@@ -11,6 +11,8 @@ const PDP_CONTENT_ASSET_VERSION = 'pivota.pdp_content_asset.v1';
 const SNAPSHOT_CONTRACT_VERSION = 'external_seed.snapshot_contract.v1';
 const TRUSTED_CHANNEL_HOSTS = new Set([
   'sokoglam.com',
+  'guerlain.com',
+  'tomfordbeauty.com',
   'ohlolly.com',
   'bloomingkoco.com',
   'stylekorean.com',
@@ -18,9 +20,20 @@ const TRUSTED_CHANNEL_HOSTS = new Set([
   'oliveyoung.com',
   'ulta.com',
   'sephora.com',
+  'sephora.co.uk',
   'boots.com',
   'iherb.com',
   'peachandlily.com',
+  'harveynichols.com',
+  'parfymeri.no',
+  'douglas.nl',
+  'douglas.cz',
+  'douglas.hu',
+  'isolee.com',
+  'spacenk.com',
+  'violetgrey.com',
+  'costco.com',
+  'harrods.com',
 ]);
 
 function argValue(name) {
@@ -144,7 +157,7 @@ function looksLikeFullInci(value) {
   if (text.length < 80) return false;
   const items = text.split(/,\s*/).map((item) => item.trim()).filter(Boolean);
   if (items.length < 6) return false;
-  if (!/\b(water|aqua|glycerin|glycol|niacinamide|panthenol|ceramide|hyaluronate|acid|extract|dimethicone|squalane)\b/i.test(text)) {
+  if (!/\b(water|aqua|glycerin|glycol|niacinamide|panthenol|ceramide|hyaluronate|acid|extract|dimethicone|squalane|alcohol|fragrance|parfum|limonene|linalool|coumarin|salicylate|ionone|cinnamal|eugenol|tocopherol|wax|oil|acetate)\b/i.test(text)) {
     return false;
   }
   if (/\b(add to cart|shop now|you may also like|customer reviews|soko rewards|guarantee)\b/i.test(text)) return false;
@@ -154,7 +167,7 @@ function looksLikeFullInci(value) {
 function looksLikeHowToUse(value) {
   const text = normalizeText(value);
   if (text.length < 20 || text.length > 900) return false;
-  if (!/\b(apply|use|pour|wipe|massage|spread|dispense|cleanse|rinse)\b/i.test(text)) return false;
+  if (!/\b(apply|use|pour|wipe|massage|spread|dispense|cleanse|rinse|spray|spritz|burn|trim|light|line|blend)\b/i.test(text)) return false;
   if (/\b(add to cart|shop now|customer reviews|wishlist|soko rewards)\b/i.test(text)) return false;
   return true;
 }
@@ -178,6 +191,9 @@ function readCandidateMappings() {
       pdp_active_ingredients_raw: item.pdp_active_ingredients_raw || '',
       pdp_how_to_use_raw: item.pdp_how_to_use_raw || '',
       pdp_details_sections: asArray(item.pdp_details_sections),
+      source_origin: item.source_origin || item.sourceOrigin || '',
+      source_quality_status: item.source_quality_status || item.sourceQualityStatus || '',
+      reason_code: item.reason_code || item.reasonCode || '',
     })).filter((item) => item.target_id && item.source_url);
   }
   if (candidateBoard) {
@@ -382,12 +398,14 @@ function manualSourceFieldsFromMapping(mapping) {
   };
 }
 
-function readExistingQuality(seedData, snapshot, summaryKey, assetKey = summaryKey) {
+function readExistingQuality(seedData, snapshot, summaryKey, assetKey = summaryKey, productPayload = {}) {
   const summaries = [
     ensureObject(seedData.pdp_field_quality_summary),
     ensureObject(snapshot.pdp_field_quality_summary),
-    ensureObject(seedData.pdp_content_asset_v1).fields,
-    ensureObject(snapshot.pdp_content_asset_v1).fields,
+    ensureObject(productPayload.pdp_field_quality_summary),
+    ensureObject(ensureObject(seedData.pdp_content_asset_v1).fields),
+    ensureObject(ensureObject(snapshot.pdp_content_asset_v1).fields),
+    ensureObject(ensureObject(productPayload.pdp_content_asset_v1).fields),
   ];
   for (const summary of summaries) {
     const item = ensureObject(summary?.[summaryKey] || summary?.[assetKey]);
@@ -398,8 +416,8 @@ function readExistingQuality(seedData, snapshot, summaryKey, assetKey = summaryK
   return { status: '', origin: '' };
 }
 
-function isForceFilledExisting(seedData, snapshot, summaryKey, assetKey = summaryKey) {
-  const quality = readExistingQuality(seedData, snapshot, summaryKey, assetKey);
+function isForceFilledExisting(seedData, snapshot, summaryKey, assetKey = summaryKey, productPayload = {}) {
+  const quality = readExistingQuality(seedData, snapshot, summaryKey, assetKey, productPayload);
   return quality.status.startsWith('force_filled') || /pivota_force_fill|force_fill/.test(quality.origin);
 }
 
@@ -416,16 +434,19 @@ function buildSnapshotContract(existing) {
   };
 }
 
-function mergeQualitySummary(existing, patchKeys, sourceUrl) {
+function mergeQualitySummary(existing, patchKeys, sourceUrl, options = {}) {
   const next = { ...ensureObject(existing) };
   const now = new Date().toISOString();
+  const sourceOrigin = normalizeText(options.sourceOrigin) || 'retail_pdp';
+  const sourceQualityStatus = normalizeText(options.sourceQualityStatus) || 'medium';
+  const reasonCode = normalizeText(options.reasonCode) || 'exact_title_retailer_pdp_secondary_authority';
   const set = (key, sourceKind) => {
     next[key] = {
-      source_origin: 'retail_pdp',
-      source_quality_status: 'medium',
+      source_origin: sourceOrigin,
+      source_quality_status: sourceQualityStatus,
       source_kinds: [sourceKind],
       source_url: sourceUrl,
-      reason_codes: ['exact_title_retailer_pdp_secondary_authority'],
+      reason_codes: [reasonCode],
       updated_at: now,
     };
   };
@@ -436,19 +457,21 @@ function mergeQualitySummary(existing, patchKeys, sourceUrl) {
   return next;
 }
 
-function mergeContentAsset(existing, extracted, sourceUrl) {
+function mergeContentAsset(existing, extracted, sourceUrl, options = {}) {
   const next = {
     contract_version: PDP_CONTENT_ASSET_VERSION,
     owner: 'pivota',
     fields: { ...ensureObject(ensureObject(existing).fields) },
   };
   const now = new Date().toISOString();
+  const sourceOrigin = normalizeText(options.sourceOrigin) || 'retail_pdp';
+  const sourceQualityStatus = normalizeText(options.sourceQualityStatus) || 'medium';
   const set = (fieldKey, value, sourceKind) => {
     next.fields[fieldKey] = {
       review_state: 'assistant_reviewed',
       overwrite_policy: 'preserve_best_available',
-      source_quality_status: 'medium',
-      source_origin: 'retail_pdp',
+      source_quality_status: sourceQualityStatus,
+      source_origin: sourceOrigin,
       source_kind: sourceKind,
       source_url: sourceUrl,
       content_hash: hashContent(value),
@@ -509,21 +532,22 @@ function mergeReviewSummary(existing, incoming, sourceUrl) {
 function buildSeedDataPatch(row, extracted, sourceUrl, options = {}) {
   const seedData = JSON.parse(JSON.stringify(ensureObject(row.seed_data)));
   const snapshot = ensureObject(seedData.snapshot);
+  const productPayload = ensureObject(row.product_payload);
   const patchKeys = [];
   const missingFieldsOnly = options.missingFieldsOnly !== false;
   const hasExisting = (fieldKey) => {
     if (!missingFieldsOnly) return false;
     if (fieldKey === 'pdp_ingredients_raw') {
-      if (isForceFilledExisting(seedData, snapshot, 'ingredients_raw')) return false;
+      if (isForceFilledExisting(seedData, snapshot, 'ingredients_raw', 'ingredients_inci', productPayload)) return false;
       return looksLikeFullInci(seedData.pdp_ingredients_raw || snapshot.pdp_ingredients_raw || seedData.raw_ingredient_text_clean || snapshot.raw_ingredient_text_clean);
     }
     if (fieldKey === 'pdp_active_ingredients_raw') {
-      if (isForceFilledExisting(seedData, snapshot, 'active_ingredients_raw')) return false;
+      if (isForceFilledExisting(seedData, snapshot, 'active_ingredients_raw', 'active_ingredients_raw', productPayload)) return false;
       return normalizeText(seedData.pdp_active_ingredients_raw || snapshot.pdp_active_ingredients_raw).length >= 20 ||
         asArray(seedData.active_ingredients || snapshot.active_ingredients).length > 0;
     }
     if (fieldKey === 'pdp_how_to_use_raw') {
-      if (isForceFilledExisting(seedData, snapshot, 'how_to_use_raw')) return false;
+      if (isForceFilledExisting(seedData, snapshot, 'how_to_use_raw', 'how_to_use_raw', productPayload)) return false;
       return looksLikeHowToUse(seedData.pdp_how_to_use_raw || snapshot.pdp_how_to_use_raw);
     }
     if (fieldKey === 'pdp_details_sections') {
@@ -570,10 +594,17 @@ function buildSeedDataPatch(row, extracted, sourceUrl, options = {}) {
   }
 
   if (patchKeys.some((key) => key !== 'review_summary')) {
-    const quality = mergeQualitySummary(seedData.pdp_field_quality_summary || snapshot.pdp_field_quality_summary, patchKeys, sourceUrl);
+    const quality = mergeQualitySummary(seedData.pdp_field_quality_summary || snapshot.pdp_field_quality_summary, patchKeys, sourceUrl, {
+      sourceOrigin: options.sourceOrigin,
+      sourceQualityStatus: options.sourceQualityStatus,
+      reasonCode: options.reasonCode,
+    });
     seedData.pdp_field_quality_summary = quality;
     snapshot.pdp_field_quality_summary = quality;
-    seedData.pdp_content_asset_v1 = mergeContentAsset(seedData.pdp_content_asset_v1 || snapshot.pdp_content_asset_v1, extracted, sourceUrl);
+    seedData.pdp_content_asset_v1 = mergeContentAsset(seedData.pdp_content_asset_v1 || snapshot.pdp_content_asset_v1, extracted, sourceUrl, {
+      sourceOrigin: options.sourceOrigin,
+      sourceQualityStatus: options.sourceQualityStatus,
+    });
     snapshot.pdp_content_asset_v1 = seedData.pdp_content_asset_v1;
     seedData.external_seed_snapshot_contract = buildSnapshotContract(seedData.external_seed_snapshot_contract);
     snapshot.external_seed_snapshot_contract = buildSnapshotContract(snapshot.external_seed_snapshot_contract);
@@ -582,11 +613,13 @@ function buildSeedDataPatch(row, extracted, sourceUrl, options = {}) {
   if (patchKeys.length) {
     const marker = {
       contract_version: CONTRACT_VERSION,
-      source_origin: 'retail_pdp',
+      source_origin: normalizeText(options.sourceOrigin) || 'retail_pdp',
       source_url: sourceUrl,
       updated_at: new Date().toISOString(),
       fields: patchKeys,
-      authority_scope: 'secondary_content_authority_exact_product_match',
+      authority_scope: normalizeText(options.sourceOrigin) === 'official_pdp'
+        ? 'official_pdp_exact_product_match'
+        : 'secondary_content_authority_exact_product_match',
     };
     seedData.channel_pdp_fields_v1 = marker;
     snapshot.channel_pdp_fields_v1 = marker;
@@ -612,11 +645,25 @@ async function fetchHtml(url) {
 async function fetchRows(ids, market) {
   const result = await query(
     `
-      SELECT id, external_product_id, title, domain, market, canonical_url, destination_url, price_currency, seed_data
-      FROM external_product_seeds
-      WHERE external_product_id = ANY($1::text[])
-        AND ($2::text = '' OR market = $2::text)
-      ORDER BY array_position($1::text[], external_product_id::text)
+      SELECT
+        eps.id,
+        eps.external_product_id,
+        eps.title,
+        eps.domain,
+        eps.market,
+        eps.canonical_url,
+        eps.destination_url,
+        eps.price_currency,
+        eps.seed_data,
+        cp.product_payload
+      FROM external_product_seeds eps
+      LEFT JOIN catalog_products cp
+        ON cp.merchant_id = 'external_seed'
+       AND cp.platform = 'external_seed'
+       AND cp.source_product_id = eps.external_product_id
+      WHERE eps.external_product_id = ANY($1::text[])
+        AND ($2::text = '' OR eps.market = $2::text)
+      ORDER BY array_position($1::text[], eps.external_product_id::text)
     `,
     [ids, market],
   );
@@ -758,7 +805,12 @@ async function main() {
         results.push(result);
         continue;
       }
-      const { seedData, patchKeys } = buildSeedDataPatch(row, extracted, sourceUrl, { missingFieldsOnly: true });
+      const { seedData, patchKeys } = buildSeedDataPatch(row, extracted, sourceUrl, {
+        missingFieldsOnly: true,
+        sourceOrigin: mapping.source_origin,
+        sourceQualityStatus: mapping.source_quality_status,
+        reasonCode: mapping.reason_code,
+      });
       result.patch_keys = patchKeys;
       if (!patchKeys.length) {
         result.reason = 'no_missing_channel_fields';

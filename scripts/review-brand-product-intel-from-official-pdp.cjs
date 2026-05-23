@@ -103,12 +103,19 @@ function isLowSignalMarketingSentence(value) {
 }
 
 function firstUsefulSentence(value, limit = 260) {
-  const text = stripHtml(value);
+  let text = stripHtml(value);
+  const merchandisingMarker = /\bSkin\s+Type\s+Skin\s+Concern\s+Finish\s+Coverage\b/i;
+  if (merchandisingMarker.test(text)) {
+    const afterMarker = text.split(merchandisingMarker).pop();
+    if (stripHtml(afterMarker).length >= 32) text = stripHtml(afterMarker);
+  }
   if (!text) return '';
+  if (/^[A-Z0-9\s&'’.,-]+$/.test(text) && text.length < 70) return '';
   const sentences = text.match(/[^.!?]+[.!?]?/g) || [];
   for (const raw of sentences) {
     const current = stripHtml(raw);
     if (current.length < 32) continue;
+    if (/^key\s+notes?\b/i.test(current) && current.length > 140) continue;
     if (isLowSignalMarketingSentence(current)) continue;
     return sentence(compactText(current, limit));
   }
@@ -141,6 +148,8 @@ function parseListish(value) {
     return uniq(value.flatMap((item) => {
       if (typeof item === 'string') return item;
       if (item && typeof item === 'object') {
+        const body = asString(item.body || item.content || item.text || item.description);
+        if (body) return body;
         return [
           item.heading,
           item.title,
@@ -148,9 +157,6 @@ function parseListish(value) {
           item.label,
           item.ingredient,
           item.value,
-          item.text,
-          item.description,
-          item.body,
         ].filter(Boolean).join(' ');
       }
       return '';
@@ -316,6 +322,7 @@ function inferRole(facts) {
   const text = combinedText(facts).toLowerCase();
   if (/\bcandle\b/.test(text)) return { label: 'Scented candle', step: 'home fragrance', amPm: ['as_needed'] };
   if (/\bbody\s+spray\b/.test(text)) return { label: 'Body fragrance spray', step: 'body fragrance', amPm: ['as_needed'] };
+  if (/\bbrush\b/.test(text)) return { label: 'Makeup brush', step: 'application tool', amPm: ['as_needed'] };
   if (/\bbrow\s+pencil|eyebrow|brow\b/.test(text)) return { label: 'Brow pencil', step: 'brow definition', amPm: ['as_needed'] };
   if (/\blip\s+pencil|contour\s+g\b/.test(text)) return { label: 'Lip liner', step: 'lip definition', amPm: ['as_needed'] };
   if (/\blipstick|lip color|rouge g|kisskiss|lip colour\b/.test(text)) return { label: 'Lip color', step: 'lip color', amPm: ['as_needed'] };
@@ -324,7 +331,6 @@ function inferRole(facts) {
   if (/\bprimer|base perfecting|pore prep\b/.test(text)) return { label: 'Makeup primer', step: 'primer', amPm: ['as_needed'] };
   if (/\bpowder|bronzer|blush|highlighter\b/.test(text)) return { label: 'Face color makeup', step: 'face color', amPm: ['as_needed'] };
   if (/\bmascara|eyeshadow|eye color|eyeliner\b/.test(text)) return { label: 'Eye makeup', step: 'eye makeup', amPm: ['as_needed'] };
-  if (/\bbrush\b/.test(text)) return { label: 'Makeup brush', step: 'application tool', amPm: ['as_needed'] };
   if (/\bserum|cream|moisturizer|lotion|cleanser|mask|spf|sunscreen|treatment\b/.test(text)) {
     if (/\bcleanser\b/.test(text)) return { label: 'Cleanser', step: 'cleanser', amPm: ['am', 'pm'] };
     if (/\bspf|sunscreen\b/.test(text)) return { label: 'Daily sunscreen', step: 'sunscreen', amPm: ['am'] };
@@ -364,7 +370,7 @@ function inferAnchors(facts, role) {
       ['citrus', /\bcitrus|bergamot|mandarin|orange|lemon\b/],
     ])
     : [];
-  const productAnchors = findTokens(text, [
+  let productAnchors = findTokens(text, [
     ['honey', /\bhoney|royal jelly|bee\b/],
     ['orchid', /\borchid\b/],
     ['hyaluronic acid', /\bhyaluronic\b/],
@@ -379,8 +385,21 @@ function inferAnchors(facts, role) {
     ['refillable format', /\brefill|case\b/],
     ['shade range', /\bshade|color|colour\b/],
   ]);
-  const anchors = [...scentAnchors, ...productAnchors];
-  if (facts.variants.sizeLike.length) anchors.push(...facts.variants.sizeLike);
+  if (role.step === 'home fragrance' || role.step === 'fragrance' || role.step === 'body fragrance') {
+    productAnchors = productAnchors.filter((item) => !['shade range', 'honey', 'orchid'].includes(item));
+  }
+  if (role.step === 'application tool') {
+    productAnchors = findTokens(text, [
+      ['synthetic bristles', /\bsynthetic\s+hair|synthetic\s+bristles\b/],
+      ['precision application', /\bprecise|precision|contour|concealer|eyeshadow|cheek|foundation|brush\b/],
+      ['face blending', /\bblend|blending|buff|diffuse|seamless\b/],
+    ]);
+  }
+  const normalizeAnchorLabel = (value) =>
+    asString(value).replace(/^(?:size|shade|format|scent|jar):\s*/i, '').trim();
+  const anchors = [...scentAnchors, ...productAnchors].map(normalizeAnchorLabel);
+  const meaningfulSizeLabels = facts.variants.sizeLike.filter((label) => !/^format:\s*one piece$|^one piece$/i.test(label));
+  if (meaningfulSizeLabels.length) anchors.push(...meaningfulSizeLabels.map(normalizeAnchorLabel));
   if (role.step === 'lip color' && facts.variants.shadeLike.length) anchors.push('shade clarity');
   if (facts.rawIngredients.length) anchors.push('full INCI available');
   return uniq(anchors).slice(0, 6);
@@ -455,8 +474,18 @@ function cleanInstruction(value, limit = 170) {
   return compactText(text, limit);
 }
 
+function sourceInstructionsForRole(facts, role) {
+  return facts.howTo
+    .map((item) => cleanInstruction(item, 180))
+    .filter((item) => {
+      if (!item) return false;
+      if (role.step === 'application tool' && /\bhair|scalp|rinse|style\b/i.test(item)) return false;
+      return true;
+    });
+}
+
 function buildPairingNotes(facts, role) {
-  const howTo = facts.howTo.map((item) => cleanInstruction(item, 180)).filter(Boolean);
+  const howTo = sourceInstructionsForRole(facts, role);
   if (howTo.length) return howTo.slice(0, 2);
   if (role.step === 'fragrance') return ['Apply to pulse points or clothing as appropriate for the fragrance format.'];
   if (role.step === 'body fragrance') return ['Use as a lighter body-fragrance layer, then pair with matching scent formats if desired.'];
@@ -469,7 +498,7 @@ function buildPairingNotes(facts, role) {
 }
 
 function buildCompleteHighlight(values, fallback) {
-  const items = uniq(values).filter(Boolean);
+  const items = uniq(values.map((value) => asString(value).replace(/^(?:size|shade|format|scent|jar):\s*/i, '').trim())).filter(Boolean);
   let out = '';
   for (const item of items) {
     const text = item.replace(/^shade:\s*/i, '').replace(/^size:\s*/i, '').trim();
@@ -488,7 +517,7 @@ function firstUsefulDetail(details) {
     if (/^product\s+type\b/i.test(text)) continue;
     if (/^ingredients?:/i.test(text)) continue;
     if (isLowSignalMarketingSentence(text)) continue;
-    return text;
+    return firstUsefulSentence(text, 220) || text;
   }
   return '';
 }
@@ -536,17 +565,22 @@ function buildWhyItStandsOut(facts, role, anchors) {
       evidence_strength: 'official_pdp_reviewed',
     });
   }
-  if (facts.variants.count > 0 && facts.variants.labels.length) {
+  const meaningfulVariantLabels = facts.variants.labels.filter((label) => !/^format:\s*one piece$|^one piece$/i.test(label));
+  const shouldExplainVariants =
+    meaningfulVariantLabels.length > 0 &&
+    (role.step !== 'application tool' || meaningfulVariantLabels.some((label) => /\b(size|shade|color|colour|scent|jar|ml|oz|g)\b/i.test(label)));
+  if (facts.variants.count > 0 && shouldExplainVariants) {
     why.push({
-      headline: 'Shade and size are explicit',
-      body: sentence(`Variant labels such as ${facts.variants.labels.slice(0, 4).join(', ')} are visible, reducing ambiguity around shade, size, or format before a shopper clicks through`),
+      headline: role.step === 'home fragrance' ? 'Configuration is explicit' : 'Shade and size are explicit',
+      body: sentence(`Variant labels such as ${meaningfulVariantLabels.slice(0, 4).join(', ')} are visible, reducing ambiguity around shade, size, scent, or format before a shopper clicks through`),
       evidence_strength: 'official_pdp_reviewed',
     });
   }
-  if (facts.howTo.length) {
+  const howTo = sourceInstructionsForRole(facts, role);
+  if (howTo.length) {
     why.push({
       headline: 'Usage instructions available',
-      body: sentence(`Official directions are present, including: ${cleanInstruction(facts.howTo[0], 170)}`),
+      body: sentence(`Official directions are present, including: ${howTo[0]}`),
       evidence_strength: 'official_pdp_reviewed',
     });
   }
