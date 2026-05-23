@@ -208,6 +208,93 @@ function pickImageUrls(row) {
   );
 }
 
+function titleCategoryText(row) {
+  const seedData = pickSeedData(row);
+  const snapshot = pickSnapshot(row);
+  return [
+    row.title,
+    row.domain,
+    seedData.title,
+    seedData.category,
+    seedData.leaf_category,
+    seedData.product_type,
+    seedData.category_path,
+    seedData.description,
+    snapshot.title,
+    snapshot.category,
+    snapshot.leaf_category,
+    snapshot.product_type,
+    snapshot.category_path,
+    snapshot.description,
+  ]
+    .map(asString)
+    .join(' ')
+    .toLowerCase();
+}
+
+function normalizeCategoryToken(value) {
+  return asString(value)
+    .toLowerCase()
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function inferCatalogMirrorCategory(row) {
+  const seedData = pickSeedData(row);
+  const snapshot = pickSnapshot(row);
+  const explicitCategory = normalizeCategoryToken(
+    seedData.leaf_category ||
+      seedData.product_type ||
+      seedData.category ||
+      snapshot.leaf_category ||
+      snapshot.product_type ||
+      snapshot.category,
+  );
+  const haystack = `${explicitCategory} ${titleCategoryText(row)}`;
+
+  if (/\b(?:blush|blusher)\b/.test(haystack)) {
+    return { productType: 'Blush', category: 'Blush', categoryPath: 'beauty/makeup/blush' };
+  }
+  if (/\b(?:toner|tonic|tonik|toning mist|face mist|rose water)\b/.test(haystack) && !/\bscalp tonic\b/.test(haystack)) {
+    return { productType: 'Toner', category: 'Toner', categoryPath: 'beauty/skincare/toner' };
+  }
+  if (/\b(?:eye serum|eye cream|eye treatment|all in eye|lash serum|brow serum|eyebrow)\b/.test(haystack)) {
+    return { productType: 'Eye Treatment', category: 'Eye Treatment', categoryPath: 'beauty/skincare/eye-care' };
+  }
+  if (/\b(?:face oil|facial oil|oil serum)\b/.test(haystack)) {
+    return { productType: 'Face Oil', category: 'Face Oil', categoryPath: 'beauty/skincare/face-oil' };
+  }
+  if (/\b(?:cleansing oil|cleanser|oil to milk)\b/.test(haystack)) {
+    return { productType: 'Cleanser', category: 'Cleanser', categoryPath: 'beauty/skincare/cleanser' };
+  }
+  if (/\b(?:face mask|herbal face mask|recovery mask)\b/.test(haystack)) {
+    return { productType: 'Face Mask', category: 'Face Mask', categoryPath: 'beauty/skincare/mask' };
+  }
+  if (/\b(?:facial emulsion|face emulsion|moisturizer|moisturiser|cream)\b/.test(haystack)) {
+    return { productType: 'Moisturizer', category: 'Moisturizer', categoryPath: 'beauty/skincare/moisturizer' };
+  }
+  if (/\b(?:hair mask)\b/.test(haystack)) {
+    return { productType: 'Hair Mask', category: 'Hair Mask', categoryPath: 'beauty/haircare/mask' };
+  }
+  if (/\b(?:shampoo|conditioner|hair milk|hair oil|scalp|hair density|hair shine)\b/.test(haystack)) {
+    return { productType: 'Haircare', category: 'Haircare', categoryPath: 'beauty/haircare' };
+  }
+  if (/\b(?:serum|ampoule)\b/.test(haystack)) {
+    return { productType: 'Serum', category: 'Serum', categoryPath: 'beauty/skincare/serum' };
+  }
+
+  const explicitTitle = explicitCategory
+    ? explicitCategory.replace(/\b\w/g, (char) => char.toUpperCase())
+    : 'Beauty Product';
+  return {
+    productType: explicitTitle,
+    category: explicitTitle,
+    categoryPath: asString(seedData.category_path || snapshot.category_path) || 'beauty',
+  };
+}
+
 function variantOptionMap(variant) {
   const attrs = {};
   const labels = {};
@@ -445,6 +532,7 @@ function buildMirror(row) {
   const imageUrl = pickImageUrl(row);
   const imageUrls = pickImageUrls(row);
   const description = pickDescription(row);
+  const categoryShape = inferCatalogMirrorCategory(row);
   const identity = asObject(row.identity_listing);
   const sigId = isSig(identity.sellable_item_group_id)
     ? asString(identity.sellable_item_group_id)
@@ -483,6 +571,8 @@ function buildMirror(row) {
     title,
     description,
     product_name: title,
+    product_type: categoryShape.productType,
+    category: categoryShape.category,
     external_product_id: externalProductId,
     canonical_url: canonicalUrl,
     destination_url: canonicalUrl,
@@ -492,7 +582,7 @@ function buildMirror(row) {
     price_amount: pickVariantPrice(variants[0]?.raw || {}, row),
     price_currency: pickVariantCurrency(variants[0]?.raw || {}, row),
     availability: pickVariantAvailability(variants[0]?.raw || {}, row),
-    category_path: asString(seedData.category_path || snapshot.category_path) || 'beauty',
+    category_path: categoryShape.categoryPath,
     commerce_facts_v1: facts || seedData.commerce_facts_v1 || snapshot.commerce_facts_v1 || null,
     ...(agentSafeCommerceFacts ? { agent_safe_commerce_facts: agentSafeCommerceFacts } : {}),
     commerce_facts_gate: gate,
@@ -503,12 +593,15 @@ function buildMirror(row) {
       title,
       description,
       product_name: title,
+      product_type: categoryShape.productType,
+      category: categoryShape.category,
       external_product_id: externalProductId,
       canonical_url: canonicalUrl,
       destination_url: canonicalUrl,
       image_url: imageUrl,
       image_urls: imageUrls,
       images: imageUrls,
+      category_path: categoryShape.categoryPath,
       commerce_facts_v1: facts || snapshot.commerce_facts_v1 || seedData.commerce_facts_v1 || null,
       ...(agentSafeCommerceFacts ? { agent_safe_commerce_facts: agentSafeCommerceFacts } : {}),
       commerce_facts_gate: gate,
@@ -618,13 +711,13 @@ function buildMirror(row) {
       title,
       description,
       brand,
-      product_type: asString(seedData.product_type || snapshot.product_type || 'beauty_product'),
-      category: 'beauty',
+      product_type: categoryShape.productType,
+      category: categoryShape.category,
       canonical_url: canonicalUrl,
       image_url: imageUrl,
       product_payload: productPayload,
       freshness_json: freshness,
-      category_path: asString(seedData.category_path || snapshot.category_path) || 'beauty',
+      category_path: categoryShape.categoryPath,
       category_confidence: 0.85,
       category_label_source: 'reviewed_ext_seed_mirror',
       pdp_scope: 'multi_merchant_canonical',
@@ -1166,6 +1259,9 @@ async function run() {
       product_group_id: mirror.productGroupId,
       title: mirror.product.title,
       brand: mirror.product.brand,
+      product_type: mirror.product.product_type,
+      category: mirror.product.category,
+      category_path: mirror.product.category_path,
       canonical_url: mirror.product.canonical_url,
       pivota_signature_id: mirror.product.pivota_signature_id,
       sku_rows: mirror.skus.length,
