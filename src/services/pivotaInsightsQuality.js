@@ -41,7 +41,7 @@ const EVIDENCE_PROFILE_RANK = new Map([
 ]);
 
 const COMMERCE_TRUTH_CLAIM_RE =
-  /(?:[$€£¥]\s*\d|\b\d+(?:\.\d{2})?\s*(?:usd|eur|gbp|jpy|cny|rmb)\b|\b\d{1,3}%\s*off\b|\b(?:discount|sale|clearance|promo|promotion)\b|\b(?:in stock|out of stock|sold out|ships?|shipping|checkout|buy now|add to cart)\b)/i;
+  /(?:[$€£¥]\s*\d|\b\d+(?:\.\d{2})?\s*(?:usd|eur|gbp|jpy|cny|rmb)\b|\bsave\s+\d{1,3}%|\b\d{1,3}%\s*(?:off|savings?)\b|\b(?:discount|sale|clearance|promo|promotion)\b|\b(?:in stock|out of stock|sold out|ships?|shipping|checkout|buy now|add to cart)\b)/i;
 
 const LANE_PRIORITY = new Map([
   [QUALITY_LANES.REGENERATE, 90],
