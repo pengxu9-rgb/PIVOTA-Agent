@@ -16,6 +16,7 @@ const {
   getCatalogServingIndexConfig,
   _internals: {
     hydrateCatalogServingSourceRowsWithProductIntel,
+    hydrateCatalogServingSourceRowsWithEligibility,
   },
 } = require('../src/services/catalogServingIndex');
 const {
@@ -345,6 +346,18 @@ function buildSourceRows(seedRows) {
     }
   }
   return { rows, failures };
+}
+
+function buildEligibleSourceKeys({ seedRows = [], catalogByProductKey = new Map(), indexByContentKey = new Map() } = {}) {
+  const keys = new Set();
+  for (const seed of seedRows) {
+    const catalog = seed?.attached_product_key ? catalogByProductKey.get(seed.attached_product_key) : null;
+    const indexState = catalog?.content_key ? indexByContentKey.get(catalog.content_key) : null;
+    if (indexState?.serving_eligible === true) {
+      keys.add(`${EXTERNAL_SEED_MERCHANT_ID}::${asString(seed.external_product_id)}`);
+    }
+  }
+  return keys;
 }
 
 function buildLiteExternalSeedProduct(row) {
@@ -1074,8 +1087,13 @@ async function main() {
   logStage('build market-filtered source rows for commerce public dry-run');
   const sourcePayload = buildSourceRows(seedRows);
   logStage(`source rows=${sourcePayload.rows.length} source_build_failures=${sourcePayload.failures.length}`);
+  const eligibleSourceKeys = buildEligibleSourceKeys({ seedRows, catalogByProductKey, indexByContentKey });
+  const eligibilityHydratedSourceRows = hydrateCatalogServingSourceRowsWithEligibility(
+    sourcePayload.rows,
+    eligibleSourceKeys,
+  );
   logStage('hydrate source rows from high-quality product-intel KB for commerce dry-run');
-  const hydratedSourceRows = await hydrateCatalogServingSourceRowsWithProductIntel(sourcePayload.rows, {
+  const hydratedSourceRows = await hydrateCatalogServingSourceRowsWithProductIntel(eligibilityHydratedSourceRows, {
     queryFn: query,
     env: process.env,
   });
@@ -1288,6 +1306,7 @@ if (require.main === module) {
 
 module.exports = {
   _internals: {
+    buildEligibleSourceKeys,
     buildInventoryRows,
     missingSeedFields,
     recommendedLane,

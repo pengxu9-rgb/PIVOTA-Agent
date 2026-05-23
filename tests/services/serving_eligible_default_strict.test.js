@@ -254,6 +254,62 @@ describe('serving eligibility default-strict behavior', () => {
     );
   });
 
+  test('catalog serving local eligible-only search carries IPS eligibility into public docs', async () => {
+    const { searchCatalogServingIndex } = require('../../src/services/catalogServingIndex');
+    const fetchBackfillProductsFn = jest.fn(async () => [
+      {
+        merchant_id: 'external_seed',
+        product_id: 'prod_a',
+        source_kind: 'external_seed',
+        product: {
+          product_id: 'prod_a',
+          title: 'Eligible Only Serum',
+          brand: 'Example Beauty',
+          category: 'Serum',
+          canonical_url: 'https://example.test/products/eligible-only-serum',
+          image_url: 'https://example.test/eligible-only-serum.jpg',
+          price: 24,
+        },
+        source_meta: { market: 'US' },
+      },
+    ]);
+    const queryFn = jest.fn(async () => ({
+      rows: [{ merchant_id: 'external_seed', source_product_id: 'prod_a' }],
+    }));
+
+    const result = await searchCatalogServingIndex(
+      { query_text: 'eligible serum', local_scan_limit: 50, market: 'US' },
+      {
+        env: { DATABASE_URL: 'postgres://example/test' },
+        allowLocalShadow: true,
+        servingEligibleOnly: true,
+        fetchBackfillProductsFn,
+        queryFn,
+        identityRowsResolverFn: jest.fn(async () => [
+          {
+            source_listing_ref: 'external_seed:prod_a',
+            sellable_item_group_id: 'sig_prod_a',
+            product_line_id: 'pl_prod_a',
+            review_family_id: 'rf_prod_a',
+            identity_status: 'approved',
+            live_read_enabled: true,
+            review_required: false,
+          },
+        ]),
+        productIntelSummariesResolverFn: jest.fn(async () => new Map()),
+      },
+    );
+
+    expect(result.source).toBe('local_shadow');
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        sellable_item_group_id: 'sig_prod_a',
+        title: 'Eligible Only Serum',
+        publish_state: 'public',
+      }),
+    ]);
+  });
+
   test('catalog serving public docs require serving_eligible by default', () => {
     const { _internals } = require('../../src/services/catalogServingIndex');
 

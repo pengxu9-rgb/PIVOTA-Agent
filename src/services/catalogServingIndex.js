@@ -33,6 +33,51 @@ function catalogServingFailOpenOnIpsMiss(env = process.env) {
   return isTruthyEnvFlag(env.CATALOG_SERVING_FAIL_OPEN_ON_IPS_MISS);
 }
 
+async function fetchCatalogServingEligibleSourceSet(queryFn) {
+  const eligibleRes = await queryFn(
+    `SELECT cp.merchant_id, cp.source_product_id
+     FROM index_pipeline_state ips
+     JOIN catalog_products cp ON cp.content_key = ips.content_key
+     WHERE ips.serving_eligible = TRUE`,
+    [],
+  );
+  return new Set(
+    (eligibleRes.rows || []).map(
+      (row) => `${asString(row?.merchant_id)}::${asString(row?.source_product_id)}`,
+    ),
+  );
+}
+
+function markCatalogServingSourceRowEligible(row = {}) {
+  return {
+    ...row,
+    serving_eligible: true,
+    pipeline_state: {
+      ...asPlainObject(row?.pipeline_state),
+      serving_eligible: true,
+    },
+    index_pipeline_state: {
+      ...asPlainObject(row?.index_pipeline_state),
+      serving_eligible: true,
+    },
+    product: {
+      ...asPlainObject(row?.product),
+      serving_eligible: true,
+    },
+  };
+}
+
+function hydrateCatalogServingSourceRowsWithEligibility(sourceRows = [], eligibleSet, { filterToEligible = false } = {}) {
+  const rows = [];
+  for (const row of asArray(sourceRows)) {
+    const key = `${asString(row?.merchant_id)}::${asString(row?.product_id)}`;
+    const eligible = eligibleSet instanceof Set && eligibleSet.has(key);
+    if (!eligible && filterToEligible) continue;
+    rows.push(eligible ? markCatalogServingSourceRowEligible(row) : row);
+  }
+  return rows;
+}
+
 function asNumber(value) {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : null;
@@ -847,11 +892,25 @@ async function backfillCatalogServingIndex(
     env = process.env,
   } = {},
 ) {
-  const rawSourceRows = await fetchBackfillProductsFn({
+  let rawSourceRows = await fetchBackfillProductsFn({
     limit,
     brandFilter: brand,
     ...(typeof queryFn === 'function' ? { queryFn } : {}),
   });
+  if (typeof queryFn === 'function' && rawSourceRows.length > 0) {
+    try {
+      const eligibleSet = await fetchCatalogServingEligibleSourceSet(queryFn);
+      rawSourceRows = hydrateCatalogServingSourceRowsWithEligibility(rawSourceRows, eligibleSet);
+    } catch (err) {
+      logger.error(
+        {
+          event: 'catalog_serving_index_pipeline_state_hydration_failed',
+          error: err?.message || String(err),
+        },
+        'catalog serving index pipeline state hydration failed',
+      );
+    }
+  }
   const sourceRows = await hydrateCatalogServingSourceRowsWithProductIntel(rawSourceRows, {
     queryFn,
     env,
@@ -1146,24 +1205,10 @@ async function searchCatalogServingIndex(params = {}, {
     // Falls back to no filter if index_pipeline_state isn't available yet.
     if (servingEligibleOnly && typeof queryFn === 'function' && sourceRows.length > 0) {
       try {
-        const eligibleRes = await queryFn(
-          `SELECT cp.merchant_id, cp.source_product_id
-           FROM index_pipeline_state ips
-           JOIN catalog_products cp ON cp.content_key = ips.content_key
-           WHERE ips.serving_eligible = TRUE`,
-          [],
-        );
-        const eligibleSet = new Set(
-          (eligibleRes.rows || []).map(
-            (r) => `${r.merchant_id || ''}::${r.source_product_id || ''}`,
-          ),
-        );
-        // Filter sourceRows: keep rows where merchant_id + product_id matches an eligible pair
-        const filtered = sourceRows.filter((row) => {
-          const key = `${row.merchant_id || ''}::${row.product_id || ''}`;
-          return eligibleSet.has(key);
+        const eligibleSet = await fetchCatalogServingEligibleSourceSet(queryFn);
+        const filtered = hydrateCatalogServingSourceRowsWithEligibility(sourceRows, eligibleSet, {
+          filterToEligible: true,
         });
-        // Overwrite sourceRows reference; use filtered for all downstream steps
         sourceRows.length = 0;
         for (const row of filtered) sourceRows.push(row);
       } catch (err) {
@@ -1346,7 +1391,10 @@ module.exports = {
     compareCatalogServingLocalSortTuples,
     filterLocalCatalogServingDocs,
     getCatalogServingLocalSortTuple,
+    fetchCatalogServingEligibleSourceSet,
+    hydrateCatalogServingSourceRowsWithEligibility,
     hydrateCatalogServingSourceRowsWithProductIntel,
+    markCatalogServingSourceRowEligible,
     catalogServingFailOpenOnIpsMiss,
     catalogServingPublicDocRequiresEligibility,
     resolveBackfillPublishState,
