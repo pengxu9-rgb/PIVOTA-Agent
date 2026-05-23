@@ -109,4 +109,122 @@ describe('apply-reviewed-external-seed-pdp-content-patch', () => {
       }),
     );
   });
+
+  test('preserves reviewed detail sections from manifest entries', () => {
+    const [entry] = readManifestEntries({
+      reviewed_by: 'codex',
+      evidence: 'Brand PDP details were reviewed and rewritten.',
+      source_url: 'https://brand.example/products/sample',
+      source_kind: 'official_component_source_pdp',
+      entries: [
+        {
+          external_product_id: 'ext_reviewed_sections',
+          pdp_details_sections: [
+            {
+              heading: 'Formula cues',
+              body: 'Brand source highlights a cream-to-lather cleanser format with non-stripping cleansing context.',
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(validateEntry(entry)).toEqual([]);
+
+    const result = buildNextSeedData(
+      { external_product_id: 'ext_reviewed_sections', seed_data: { snapshot: {} } },
+      entry,
+      '2026-05-24T00:00:00.000Z',
+    );
+
+    expect(result.blocked).toEqual([]);
+    expect(result.fields).toEqual(['pdp_details_sections']);
+    expect(result.seedData.pdp_details_sections).toEqual([
+      expect.objectContaining({
+        heading: 'Formula cues',
+        body: 'Brand source highlights a cream-to-lather cleanser format with non-stripping cleansing context.',
+        source_origin: 'reviewed_source_backed_pdp_content_patch',
+        source_quality_status: 'high',
+      }),
+    ]);
+  });
+
+  test('protects existing high-quality description while filling missing ingredients', () => {
+    const [entry] = readManifestEntries({
+      reviewed_by: 'codex',
+      evidence: 'Retailer ingredients were reviewed from the current product detail page.',
+      source_url: 'https://retailer.example/products/lip',
+      source_kind: 'verified_retailer_pdp_ingredients',
+      entries: [
+        {
+          external_product_id: 'ext_keep_description',
+          description: 'A shorter retailer description that should not replace the brand authored content.',
+          pdp_ingredients_raw:
+            'Dimethicone, Silica, Trimethylsiloxysilicate, Polyisobutene, Polyethylene, Ozokerite, Titanium Dioxide.',
+        },
+      ],
+    });
+
+    const row = {
+      external_product_id: 'ext_keep_description',
+      seed_data: {
+        description: 'Brand-authored long-form product description from the PDP that should remain in place.',
+        snapshot: {
+          description: 'Brand-authored long-form product description from the PDP that should remain in place.',
+        },
+        pdp_field_quality_summary: {
+          description_raw: {
+            source_origin: 'official_pdp',
+            source_quality_status: 'high',
+          },
+          ingredients_raw: {
+            source_origin: 'unknown',
+            source_quality_status: 'low',
+          },
+        },
+      },
+    };
+
+    const result = buildNextSeedData(row, entry, '2026-05-24T00:00:00.000Z');
+
+    expect(result.blocked).toEqual([]);
+    expect(result.skipped_fields).toEqual(expect.arrayContaining(['blocked_protect_high_quality_description']));
+    expect(result.fields).toEqual(expect.arrayContaining(['pdp_ingredients_raw']));
+    expect(result.seedData.description).toBe(row.seed_data.description);
+    expect(result.seedData.pdp_ingredients_raw).toBe(entry.pdp_ingredients_raw);
+  });
+
+  test('blocks a description-only patch when existing description is high quality', () => {
+    const [entry] = readManifestEntries({
+      reviewed_by: 'codex',
+      evidence: 'Retailer description was reviewed from the current product detail page.',
+      source_url: 'https://retailer.example/products/lip',
+      source_kind: 'verified_retailer_pdp_description',
+      entries: [
+        {
+          external_product_id: 'ext_block_description',
+          description: 'A retailer description that is long enough but weaker than the brand-authored copy.',
+        },
+      ],
+    });
+
+    const row = {
+      external_product_id: 'ext_block_description',
+      seed_data: {
+        description: 'Brand-authored long-form product description from the PDP that should remain in place.',
+        snapshot: {},
+        pdp_field_quality_summary: {
+          description_raw: {
+            source_origin: 'official_pdp',
+            source_quality_status: 'high',
+          },
+        },
+      },
+    };
+
+    const result = buildNextSeedData(row, entry, '2026-05-24T00:00:00.000Z');
+
+    expect(result.changed).toBe(false);
+    expect(result.blocked).toEqual(['blocked_protect_high_quality_description']);
+  });
 });

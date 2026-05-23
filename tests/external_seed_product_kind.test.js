@@ -82,6 +82,46 @@ describe('external seed product kind classification', () => {
         reasons: expect.arrayContaining(['explicit_product_family_signal']),
       }),
     );
+    expect(
+      classifyExternalSeedProductKind({
+        title: 'Fenty Skin Cleansing Cuffs',
+        product_type: 'Skincare accessory',
+        category_path: 'beauty/skincare/cleansing',
+        seed_data: {
+          product_family: 'accessory',
+          product_type: 'Skincare accessory',
+          ingredient_intel: {
+            not_applicable: true,
+            inci_applicability: {
+              status: 'not_applicable',
+              review_state: 'reviewed',
+            },
+          },
+          ingredient_remediation_v1: {
+            action: 'mark_inci_not_applicable',
+            source_quality_status: 'reviewed_not_applicable',
+          },
+          snapshot: {
+            product_family: 'accessory',
+            product_type: 'Skincare accessory',
+            ingredient_intel: {
+              not_applicable: true,
+              inci_applicability: {
+                status: 'not_applicable',
+              },
+            },
+            ingredient_remediation_v1: {
+              action: 'mark_inci_not_applicable',
+            },
+          },
+        },
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        family: 'accessory',
+        reasons: expect.arrayContaining(['reviewed_ingredient_not_applicable_signal']),
+      }),
+    );
   });
 
   test('classifies skincare duo or set as collection even with formula category path', () => {

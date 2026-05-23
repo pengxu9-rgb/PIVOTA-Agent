@@ -5485,6 +5485,17 @@ function normalizePdpServingEligibilityRow(row) {
     sourceSystem === 'external_product_seeds_mirror_v1' &&
     blockerCode === 'no_seed' &&
     hasActiveExternalSeedSourceMatch;
+  const missingPriceDirectPdpOverride =
+    sourceSystem === 'external_product_seeds_mirror_v1' &&
+    blockerCode === 'missing_price' &&
+    hasActiveExternalSeedSourceMatch &&
+    Number(row.content_quality_score || 0) >= 50 &&
+    Boolean(
+      firstNonEmptyString(row.catalog_image_url) ||
+        Number(row.catalog_image_urls_count || 0) > 0 ||
+        firstNonEmptyString(row.catalog_description),
+    );
+  const pdpGateOverride = staleNoSeedBlocker || missingPriceDirectPdpOverride;
   return {
     catalog_row_found: true,
     content_key: firstNonEmptyString(row.content_key) || null,
@@ -5492,18 +5503,22 @@ function normalizePdpServingEligibilityRow(row) {
     pivota_signature_id: firstNonEmptyString(row.pivota_signature_id) || null,
     sync_status: firstNonEmptyString(row.sync_status) || null,
     pdp_lifecycle_stage: firstNonEmptyString(row.pdp_lifecycle_stage) || null,
-    serving_eligible: row.serving_eligible === true || staleNoSeedBlocker,
+    serving_eligible: row.serving_eligible === true || pdpGateOverride,
     index_row_found: row.serving_eligible !== null && row.serving_eligible !== undefined,
-    pipeline_stage: staleNoSeedBlocker
+    pipeline_stage: pdpGateOverride
       ? 'ready'
       : firstNonEmptyString(row.pipeline_stage) || null,
-    blocker_code: staleNoSeedBlocker ? null : blockerCode,
-    blocker_detail: staleNoSeedBlocker ? null : firstNonEmptyString(row.blocker_detail) || null,
+    blocker_code: pdpGateOverride ? null : blockerCode,
+    blocker_detail: pdpGateOverride ? null : firstNonEmptyString(row.blocker_detail) || null,
     content_quality_score: Number.isFinite(Number(row.content_quality_score))
       ? Number(row.content_quality_score)
       : null,
     active_external_seed_source_match: hasActiveExternalSeedSourceMatch,
-    eligibility_override_reason: staleNoSeedBlocker ? 'active_external_seed_source_match' : null,
+    eligibility_override_reason: staleNoSeedBlocker
+      ? 'active_external_seed_source_match'
+      : missingPriceDirectPdpOverride
+        ? 'active_external_seed_missing_price_direct_pdp'
+        : null,
   };
 }
 
@@ -5523,6 +5538,15 @@ async function fetchPdpServingEligibilityFromDb(args = {}) {
           cp.source_system,
           cp.source_product_id,
           cp.pivota_signature_id,
+          cp.image_url AS catalog_image_url,
+          cp.description AS catalog_description,
+          CASE
+            WHEN jsonb_typeof(cp.product_payload->'image_urls') = 'array'
+              THEN jsonb_array_length(cp.product_payload->'image_urls')
+            WHEN jsonb_typeof(cp.product_payload->'images') = 'array'
+              THEN jsonb_array_length(cp.product_payload->'images')
+            ELSE 0
+          END AS catalog_image_urls_count,
           cp.sync_status,
           cp.pdp_lifecycle_stage,
           ips.serving_eligible,
