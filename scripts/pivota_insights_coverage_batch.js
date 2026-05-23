@@ -538,6 +538,7 @@ async function runCoverageBatch(rawArgs = {}) {
     '--model',
     args.model,
   ];
+  if (args.manualOverrides) compareArgs.push('--manual-overrides', args.manualOverrides);
   if (args.skipGemini) compareArgs.push('--skip-gemini');
   await runNodeScript(path.join(rootDir, 'scripts/product_intel_pilot_compare.js'), compareArgs, {
     cwd: rootDir,
