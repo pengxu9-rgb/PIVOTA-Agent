@@ -63,6 +63,22 @@ function resolveOutPath(filePath) {
   return target ? (path.isAbsolute(target) ? target : path.join(process.cwd(), target)) : '';
 }
 
+function normalizeBatchSize(value) {
+  const numeric = Number(value || 0);
+  if (!Number.isFinite(numeric) || numeric <= 0) return 0;
+  return Math.max(1, Math.min(500, Math.floor(numeric)));
+}
+
+function chunkArray(items, size) {
+  if (!items.length) return [];
+  if (!size || items.length <= size) return [items];
+  const batches = [];
+  for (let index = 0; index < items.length; index += size) {
+    batches.push(items.slice(index, index + size));
+  }
+  return batches;
+}
+
 function stableHash(prefix, parts, length = 32) {
   const hash = crypto
     .createHash('sha256')
@@ -836,11 +852,15 @@ async function existingCounts(mirrors) {
   };
 }
 
-async function applyMirrors(mirrors, dryRun, { upsertServingState = false } = {}) {
+async function applyMirrors(mirrors, dryRun, { upsertServingState = false, batchSize = 0 } = {}) {
   const existingBefore = await existingCounts(mirrors);
+  const normalizedBatchSize = normalizeBatchSize(batchSize);
+  const batches = chunkArray(mirrors, normalizedBatchSize);
   const totals = {
     mode: dryRun ? 'dry_run' : 'apply',
     existing_before: existingBefore,
+    batch_size: normalizedBatchSize || null,
+    batches: batches.length,
     product_upserts: 0,
     sku_upserts: 0,
     offer_upserts: 0,
@@ -848,14 +868,19 @@ async function applyMirrors(mirrors, dryRun, { upsertServingState = false } = {}
     group_member_preserved_existing_merges: 0,
     seed_attachment_updates: 0,
     index_state_upserts: 0,
+    identity_live_read_updates: 0,
   };
   if (dryRun) return totals;
-  await withClient(async (client) => {
-    await client.query('BEGIN');
-    try {
-      await client.query(`SET LOCAL lock_timeout = '5s'`);
-      await client.query(`SET LOCAL statement_timeout = '60s'`);
-      for (const mirror of mirrors) {
+  if (!mirrors.length) return totals;
+  let processed = 0;
+  for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
+    const batch = batches[batchIndex];
+    await withClient(async (client) => {
+      await client.query('BEGIN');
+      try {
+        await client.query(`SET LOCAL lock_timeout = '5s'`);
+        await client.query(`SET LOCAL statement_timeout = '60s'`);
+        for (const mirror of batch) {
         const p = mirror.product;
         const productRes = await client.query(
           `
@@ -1042,6 +1067,28 @@ async function applyMirrors(mirrors, dryRun, { upsertServingState = false } = {}
             ],
           );
           totals.index_state_upserts += Number(indexRes.rowCount || 0);
+
+          if (readiness.servingEligible === true) {
+            const identityRes = await client.query(
+              `
+                UPDATE pdp_identity_listing
+                SET
+                  live_read_enabled = true,
+                  identity_status = 'approved',
+                  review_required = false,
+                  updated_at = now()
+                WHERE merchant_id = $1
+                  AND product_id = $2
+                  AND identity_status = 'approved'
+                  AND review_required = false
+                  AND coalesce(sellable_item_group_id, '') <> ''
+                  AND coalesce(live_read_enabled, false) = false
+                RETURNING source_listing_ref
+              `,
+              [MERCHANT_ID, mirror.row.external_product_id],
+            );
+            totals.identity_live_read_updates += Number(identityRes.rowCount || 0);
+          }
         }
 
         for (const skuMirror of mirror.skus) {
@@ -1190,13 +1237,21 @@ async function applyMirrors(mirrors, dryRun, { upsertServingState = false } = {}
         if (groupRes.rows?.[0]?.preserved_existing_group) {
           totals.group_member_preserved_existing_merges += 1;
         }
+        }
+        await client.query('COMMIT');
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
       }
-      await client.query('COMMIT');
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
+    });
+    processed += batch.length;
+    if (batches.length > 1) {
+      process.stderr.write(
+        `sync-external-seeds-to-catalog apply batch ${batchIndex + 1}/${batches.length}: ` +
+          `${processed}/${mirrors.length} mirrors committed\n`,
+      );
     }
-  });
+  }
   return totals;
 }
 
@@ -1235,6 +1290,7 @@ async function run() {
   const allowRandom = hasFlag('allow-random');
   const allowDuplicateCanonical = hasFlag('allow-duplicate-canonical');
   const upsertServingState = hasFlag('upsert-serving-state') || hasFlag('upsertServingState');
+  const batchSize = normalizeBatchSize(argValue('batch-size') || argValue('batchSize'));
   if (!ids.length) throw new Error('missing_external_product_ids');
   const rows = await fetchRows(ids, market);
   const missingIds = ids.filter((id) => !rows.some((row) => asString(row.external_product_id) === id));
@@ -1282,10 +1338,11 @@ async function run() {
     }
     mirrors.push(mirror);
   }
-  const applied = await applyMirrors(mirrors, dryRun, { upsertServingState });
+  const applied = await applyMirrors(mirrors, dryRun, { upsertServingState, batchSize });
   const report = {
     generated_at: new Date().toISOString(),
     mode: dryRun ? 'dry_run' : 'apply',
+    batch_size: batchSize || null,
     requested_ids: ids.length,
     fetched_rows: rows.length,
     mirror_rows: mirrors.length,

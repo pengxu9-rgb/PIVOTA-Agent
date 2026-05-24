@@ -204,6 +204,15 @@ function buildActiveExternalSeedIdentityPredicate(alias = 'pdp_identity_listing'
     OR EXISTS (
       SELECT 1
       FROM external_product_seeds eps
+      JOIN catalog_products cp
+        ON cp.merchant_id = 'external_seed'
+       AND cp.platform = 'external_seed'
+       AND cp.source_system = 'external_product_seeds_mirror_v1'
+       AND cp.source_product_id = eps.external_product_id
+       AND cp.sync_status = 'live'
+      JOIN index_pipeline_state ips
+        ON ips.content_key = cp.content_key
+       AND ips.serving_eligible = TRUE
       WHERE eps.external_product_id = ${tableAlias}.product_id
         AND eps.status = 'active'
     )
@@ -1422,6 +1431,21 @@ function chooseSourceTier(product, sourceKind) {
   return 'merchant';
 }
 
+function resolveLiveReadEligibilityForIdentitySource(sourceKind, sourceMeta = {}) {
+  if (sourceKind !== 'external_seed') {
+    return { eligible: true, reason: null };
+  }
+  const meta = asPlainObject(sourceMeta) || {};
+  const indexState = asPlainObject(meta.index_pipeline_state) || {};
+  if (!asString(meta.catalog_product_key) || !asString(meta.catalog_content_key)) {
+    return { eligible: false, reason: 'missing_catalog_mirror' };
+  }
+  if (indexState.serving_eligible !== true && meta.serving_eligible !== true) {
+    return { eligible: false, reason: 'missing_serving_index' };
+  }
+  return { eligible: true, reason: null };
+}
+
 function buildIdentityListingFromProduct({
   merchantId,
   productId,
@@ -1532,6 +1556,11 @@ function buildIdentityListingFromProduct({
     asPlainObject(normalizedProduct.reviews_summary) ||
     asPlainObject(normalizedProduct.reviews?.summary) ||
     {};
+  const liveReadEligibility = resolveLiveReadEligibilityForIdentitySource(sourceKind, sourceMeta);
+  const liveReadEnabled =
+    PDP_IDENTITY_GRAPH_AUTO_ENABLE_LIVE &&
+    !reviewRequired &&
+    liveReadEligibility.eligible === true;
 
   return {
     source_listing_ref: sourceListingRef,
@@ -1539,7 +1568,7 @@ function buildIdentityListingFromProduct({
     product_id: pid,
     source_kind: asString(sourceKind || 'internal') || 'internal',
     source_tier: sourceTier,
-    live_read_enabled: PDP_IDENTITY_GRAPH_AUTO_ENABLE_LIVE && !reviewRequired,
+    live_read_enabled: liveReadEnabled,
     sellable_item_group_id: sellableItemGroupId,
     product_line_id: productLineId,
     review_family_id: reviewFamilyId,
@@ -1561,6 +1590,9 @@ function buildIdentityListingFromProduct({
     review_summary: reviewSummary,
     source_meta: {
       ...(asPlainObject(sourceMeta) || {}),
+      ...(liveReadEligibility.eligible === false
+        ? { live_read_blocker: liveReadEligibility.reason }
+        : {}),
       ...(variantFamily
         ? {
             variant_family: {
@@ -4693,6 +4725,15 @@ async function fetchBackfillProducts({
         market: row?.market || null,
         tool: row?.tool || null,
         updated_at: row?.updated_at || null,
+        serving_eligible: row?.index_serving_eligible === true,
+        index_pipeline_state: {
+          serving_eligible: row?.index_serving_eligible === true,
+          pipeline_stage: row?.index_pipeline_stage || null,
+          blocker_code: row?.index_blocker_code || null,
+          blocker_detail: row?.index_blocker_detail || null,
+          content_quality_score: row?.index_content_quality_score ?? null,
+          content_key: row?.catalog_content_key || null,
+        },
         attached_product_key: row?.attached_product_key || null,
         catalog_product_key: row?.catalog_product_key || null,
         catalog_content_key: row?.catalog_content_key || null,

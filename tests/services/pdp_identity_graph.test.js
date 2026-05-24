@@ -93,6 +93,51 @@ describe('pdpIdentityGraph', () => {
     expect(jumboListing.product_line_id).toBe(externalListing.product_line_id);
   });
 
+  test('buildIdentityListingFromProduct does not live-enable external seeds before catalog serving mirror is ready', () => {
+    process.env = {
+      ...ORIGINAL_ENV,
+      NODE_ENV: 'test',
+      PDP_IDENTITY_GRAPH_AUTO_ENABLE_LIVE: 'true',
+    };
+    jest.resetModules();
+    const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
+    const product = {
+      title: 'INTO YOU Tinted Repair Lip Serum TR88',
+      brand: 'INTO YOU',
+      source_url: 'https://www.intoyoucosmetics.com/products/into-you-tinted-repair-lip-serum-custom-shade-tr88',
+      variants: [{ variant_id: 'v_tr88', option_name: 'Color', option_value: 'TR88' }],
+    };
+
+    const missingMirror = buildIdentityListingFromProduct({
+      merchantId: 'external_seed',
+      productId: 'ext_into_you_tr88',
+      product,
+      sourceKind: 'external_seed',
+      sourceMeta: {
+        external_seed_id: 'eps_into_you_tr88',
+      },
+    });
+    const servingReady = buildIdentityListingFromProduct({
+      merchantId: 'external_seed',
+      productId: 'ext_into_you_tr88',
+      product,
+      sourceKind: 'external_seed',
+      sourceMeta: {
+        external_seed_id: 'eps_into_you_tr88',
+        catalog_product_key: 'prod::external_seed::external_seed::ext_into_you_tr88',
+        catalog_content_key: 'ck_into_you_tr88',
+        serving_eligible: true,
+        index_pipeline_state: { serving_eligible: true },
+      },
+    });
+
+    expect(missingMirror.identity_status).toBe('approved');
+    expect(missingMirror.live_read_enabled).toBe(false);
+    expect(missingMirror.source_meta.live_read_blocker).toBe('missing_catalog_mirror');
+    expect(servingReady.live_read_enabled).toBe(true);
+    expect(servingReady.source_meta.live_read_blocker).toBeUndefined();
+  });
+
   test('buildIdentityListingFromProduct classifies external seed source tier by brand-owned domain', () => {
     const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
 
