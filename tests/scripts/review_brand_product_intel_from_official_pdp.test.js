@@ -835,6 +835,30 @@ describe('official PDP manual insight review', () => {
     expect(plan.writes.find((write) => write.action === 'update').existing_weak).toBe(true);
   });
 
+  test('treats legacy Concrete product cues bundles as weak even when reviewed', () => {
+    const legacyConcrete = strongBundle();
+    legacyConcrete.product_intel_core.why_it_stands_out[0] = {
+      headline: 'Concrete product cues',
+      body: 'Cues such as hyaluronic acid, niacinamide, SPF, refillable format give shoppers specific comparison points within Fenty Beauty, instead of relying on generic category copy.',
+    };
+
+    expect(isWeakExistingInsight(kbEntry(legacyConcrete))).toBe(true);
+
+    const plan = buildPlan(
+      row({
+        ext_kb_key: 'product:ext_tf_lip',
+        ext_analysis: { product_intel_v1: legacyConcrete },
+        ext_source: 'aurora_product_intel_kb',
+        ext_source_meta: { quality_state: 'reviewed' },
+      }),
+      { brand: 'tom ford', includeStrong: false },
+    );
+
+    const extWrite = plan.writes.find((write) => write.kb_key === 'product:ext_tf_lip');
+    expect(extWrite.action).toBe('update');
+    expect(extWrite.existing_weak).toBe(true);
+  });
+
   test('protects strong existing reviewed content by default', () => {
     expect(isWeakExistingInsight(kbEntry(strongBundle()))).toBe(false);
 
