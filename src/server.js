@@ -24170,6 +24170,16 @@ function buildSimilarCatalogProductProjection(product = {}, catalogRow = {}) {
   );
   const merchantId = firstNonEmptyString(catalogRow.merchant_id, product.merchant_id, EXTERNAL_SEED_MERCHANT_ID);
   const platform = firstNonEmptyString(catalogRow.platform, product.platform, EXTERNAL_SEED_MERCHANT_ID);
+  const productKey = firstNonEmptyString(catalogRow.product_key, product.product_key);
+  const catalogProductRef = {
+    product_id: sigId,
+    id: sigId,
+    pivota_signature_id: sigId,
+    source: 'catalog_products',
+    entity_source: 'catalog_products',
+    product_identity_source: 'catalog_products',
+    ...(productKey ? { product_key: productKey, catalog_product_key: productKey } : {}),
+  };
   const cardHighlight = deriveCatalogSimilarCardHighlight({
     description,
     category,
@@ -24186,13 +24196,36 @@ function buildSimilarCatalogProductProjection(product = {}, catalogRow = {}) {
     sourceProductId: _sourceProductIdCamel,
     platform_product_id: _platformProductId,
     platformProductId: _platformProductIdCamel,
+    merchant_id: _merchantId,
+    merchantId: _merchantIdCamel,
+    platform: _platform,
+    source_kind: _sourceKind,
+    sourceKind: _sourceKindCamel,
+    canonical_product_ref: _canonicalProductRef,
+    canonicalProductRef: _canonicalProductRefCamel,
+    product_ref: _productRef,
+    productRef: _productRefCamel,
+    product_intel: rawProductIntel,
     ...catalogProductBase
   } = product;
+  const sourceProvenance = sourceProductId
+    ? {
+        kind: 'external_seed',
+        merchant_id: merchantId,
+        platform,
+        external_product_id: sourceProductId,
+      }
+    : null;
+  const productIntel = isPlainObject(rawProductIntel)
+    ? {
+        ...rawProductIntel,
+        canonical_product_ref: catalogProductRef,
+        source_provenance: sourceProvenance || rawProductIntel.source_provenance,
+      }
+    : rawProductIntel;
 
   return {
     ...catalogProductBase,
-    merchant_id: merchantId,
-    platform,
     product_id: sigId,
     id: sigId,
     pivota_signature_id: sigId,
@@ -24200,17 +24233,12 @@ function buildSimilarCatalogProductProjection(product = {}, catalogRow = {}) {
     source: 'catalog_products',
     entity_source: 'catalog_products',
     product_identity_source: 'catalog_products',
-    source_kind: product.source_kind || (sourceProductId ? 'external_seed' : undefined),
-    product_key: firstNonEmptyString(catalogRow.product_key, product.product_key),
-    catalog_product_key: firstNonEmptyString(catalogRow.product_key, product.catalog_product_key, product.product_key),
-    ...(sourceProductId
-      ? {
-          source_provenance: {
-            kind: 'external_seed',
-            external_product_id: sourceProductId,
-          },
-        }
-      : {}),
+    product_ref: catalogProductRef,
+    canonical_product_ref: catalogProductRef,
+    product_key: productKey,
+    catalog_product_key: firstNonEmptyString(productKey, product.catalog_product_key),
+    ...(productIntel ? { product_intel: productIntel } : {}),
+    ...(sourceProvenance ? { source_provenance: sourceProvenance } : {}),
     ...(title ? { title, name: title } : {}),
     ...(description ? { description } : {}),
     ...(category ? { category } : {}),

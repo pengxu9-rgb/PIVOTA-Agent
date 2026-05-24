@@ -574,9 +574,17 @@ describe('find_similar_products mainline wrapper', () => {
         product_id: 'ext_into_you_w725',
         external_product_id: 'ext_into_you_w725',
         merchant_id: 'external_seed',
+        platform: 'external_seed',
+        source_kind: 'external_seed',
         title: 'Seed Watery Lip Matt W725',
         card_highlight: 'Seed card copy',
         card_highlight_source: 'official_external_seed_card',
+        product_intel: {
+          canonical_product_ref: {
+            merchant_id: 'external_seed',
+            product_id: 'ext_into_you_w725',
+          },
+        },
       },
     ]);
 
@@ -591,6 +599,15 @@ describe('find_similar_products mainline wrapper', () => {
         source: 'catalog_products',
         entity_source: 'catalog_products',
         product_identity_source: 'catalog_products',
+        canonical_product_ref: expect.objectContaining({
+          product_id: 'sig_1a310126e75795655997ed9e',
+          pivota_signature_id: 'sig_1a310126e75795655997ed9e',
+          source: 'catalog_products',
+        }),
+        product_ref: expect.objectContaining({
+          product_id: 'sig_1a310126e75795655997ed9e',
+          source: 'catalog_products',
+        }),
         card_highlight: 'Catalog-owned display copy for W725',
         card_highlight_source: 'catalog_product',
         shopping_card: expect.objectContaining({
@@ -599,14 +616,29 @@ describe('find_similar_products mainline wrapper', () => {
         }),
         source_provenance: {
           kind: 'external_seed',
+          merchant_id: 'external_seed',
+          platform: 'external_seed',
           external_product_id: 'ext_into_you_w725',
         },
+        product_intel: expect.objectContaining({
+          canonical_product_ref: expect.objectContaining({
+            product_id: 'sig_1a310126e75795655997ed9e',
+            source: 'catalog_products',
+          }),
+          source_provenance: expect.objectContaining({
+            external_product_id: 'ext_into_you_w725',
+          }),
+        }),
         canonical_url: 'https://agent.pivota.cc/products/sig_1a310126e75795655997ed9e',
         destination_url: 'https://merchant.example.test/w725',
       }),
     );
     expect(out[0].external_product_id).toBeUndefined();
     expect(out[0].source_product_id).toBeUndefined();
+    expect(out[0].merchant_id).toBeUndefined();
+    expect(out[0].platform).toBeUndefined();
+    expect(out[0].source_kind).toBeUndefined();
+    expect(out[0].product_intel.canonical_product_ref.product_id).not.toBe('ext_into_you_w725');
   });
 
   it('collects only reviewed external seed component refs for PDP similar', async () => {
