@@ -194,6 +194,66 @@ describe('apply-reviewed-external-seed-pdp-content-patch', () => {
     expect(result.seedData.pdp_ingredients_raw).toBe(entry.pdp_ingredients_raw);
   });
 
+  test('materializes canonical ingredient fields when only legacy aliases are populated', () => {
+    const [entry] = readManifestEntries({
+      reviewed_by: 'codex',
+      evidence: 'Exact shade ingredients were reviewed from the current retailer product detail page.',
+      source_url: 'https://retailer.example/products/eyeliner-purple',
+      source_kind: 'verified_retailer_exact_shade_inci',
+      entries: [
+        {
+          external_product_id: 'ext_alias_only_inci',
+          pdp_ingredients_raw:
+            'Trisiloxane, Trimethylsiloxysilicate, Polyethylene, Dimethicone, Mica, Titanium Dioxide.',
+        },
+      ],
+    });
+
+    const row = {
+      external_product_id: 'ext_alias_only_inci',
+      seed_data: {
+        raw_ingredient_text_clean:
+          'TRISILOXANE, TRIMETHYLSILOXYSILICATE, POLYETHYLENE, DIMETHICONE, MICA, TITANIUM DIOXIDE.',
+        inci_list:
+          'TRISILOXANE, TRIMETHYLSILOXYSILICATE, POLYETHYLENE, DIMETHICONE, MICA, TITANIUM DIOXIDE.',
+        snapshot: {},
+        pdp_field_quality_summary: {
+          ingredients_raw: {
+            source_origin: 'unknown',
+            source_quality_status: 'low',
+          },
+        },
+      },
+    };
+
+    const result = buildNextSeedData(row, entry, '2026-05-24T00:00:00.000Z');
+
+    expect(result.blocked).toEqual([]);
+    expect(result.changed).toBe(true);
+    expect(result.fields).toEqual(expect.arrayContaining(['pdp_ingredients_raw', 'raw_ingredient_text_clean']));
+    expect(result.seedData.pdp_ingredients_raw).toBe(entry.pdp_ingredients_raw);
+    expect(result.seedData.snapshot.pdp_ingredients_raw).toBe(entry.pdp_ingredients_raw);
+    expect(result.seedData.ingredient_intel.raw_ingredient_text_clean).toBe(entry.pdp_ingredients_raw);
+    expect(result.seedData.pdp_field_quality_summary.ingredients_raw).toEqual(
+      expect.objectContaining({
+        source_origin: 'reviewed_source_backed_pdp_content_patch',
+        source_quality_status: 'high',
+        source_kinds: ['verified_retailer_exact_shade_inci'],
+      }),
+    );
+
+    const servingPatch = buildServingPatch(result.seedData, result.fields);
+    expect(servingPatch).toEqual(
+      expect.objectContaining({
+        pdp_ingredients_raw: entry.pdp_ingredients_raw,
+        raw_ingredient_text_clean: entry.pdp_ingredients_raw,
+        ingredient_intel: expect.objectContaining({
+          raw_ingredient_text_clean: entry.pdp_ingredients_raw,
+        }),
+      }),
+    );
+  });
+
   test('blocks a description-only patch when existing description is high quality', () => {
     const [entry] = readManifestEntries({
       reviewed_by: 'codex',
