@@ -22,6 +22,40 @@ const {
     selectInventoryRows,
   },
 } = require('../../scripts/build-reviewed-official-seed-product-intel-report.cjs');
+const {
+  classifyProductIntelKbRow,
+  detectPublicProductIntelQualityIssues,
+} = require('../../src/services/externalSeedPdpReadiness');
+
+function classifyGeneratedBundle(bundle) {
+  const productId = bundle.canonical_product_ref.product_id;
+  const reviewedBundle = {
+    ...bundle,
+    provenance: {
+      ...(bundle.provenance || {}),
+      review_status: 'completed',
+      review_decision: 'rewrite',
+      reviewer_kind: 'assistant',
+      review_tier: 'assistant_reviewed',
+    },
+  };
+  return classifyProductIntelKbRow(
+    {
+      kb_key: `product:${productId}`,
+      analysis: { product_intel_v1: reviewedBundle },
+      source: 'pivota_product_intel_pilot_selected',
+      source_meta: {
+        review_status: 'completed',
+        review_decision: 'rewrite',
+        reviewer_kind: 'assistant',
+        review_tier: 'assistant_reviewed',
+        quality_state: 'reviewed',
+        evidence_profile: reviewedBundle.evidence_profile,
+      },
+    },
+    { productId },
+  );
+}
 
 describe('build-reviewed-official-seed-product-intel-report', () => {
   test('keeps Pixi roll-on eye serum out of fragrance and brush buckets', () => {
@@ -908,6 +942,116 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     expect(bundle.shopping_card.highlight).toBe('Lip-and-cheek color set');
     expect(bundle.product_intel_core.what_it_is.headline).toBe('Makeup set identity');
     expect(JSON.stringify(bundle)).not.toMatch(/skincare set identity|daily moisturizer/i);
+  });
+
+  test('blocks reviewer-rejected Kylie public candidates before public-ready validation', () => {
+    const cosmicGiftSet = buildBundle({
+      seed: {
+        external_product_id: 'ext_kylie_cosmic_gift',
+        title: 'Cosmic Kylie Jenner Mini & Pen Spray Gift Set',
+        canonical_url: 'https://kyliecosmetics.com/products/cosmic-kylie-jenner-mini-pen-spray-gift-set',
+        seed_data: {
+          brand: 'Kylie Cosmetics',
+          description:
+            'Bring the sweet, warm, and elevated scent of Cosmic Kylie Jenner anywhere you go with my perfect-for-travel set, including a pen-spray and mini perfume.',
+          ingredient_tokens: [
+            'Cosmic Kylie Jenner Mini (5 ml) & Pen Spray Ingredients: Alcohol Denat., Parfum/Fragrance, Aqua/Water/Eau, Ethylhexyl Salicylate, Butyl.',
+          ],
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_kylie_cosmic_gift',
+        sellable_item_group_id: 'sig_kylie_cosmic_gift',
+      },
+      generatedAt: '2026-05-24T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+    const concealerBrushDuo = buildBundle({
+      seed: {
+        external_product_id: 'ext_kylie_concealer_brush',
+        title: 'Power Plush Concealer & Brush Duo',
+        canonical_url: 'https://kyliecosmetics.com/products/power-plush-concealer-brush-duo',
+        seed_data: {
+          brand: 'Kylie Cosmetics',
+          description: 'This duo is positioned for getting a flawless, streak-free finish.',
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_kylie_concealer_brush',
+        sellable_item_group_id: 'sig_kylie_concealer_brush',
+      },
+      generatedAt: '2026-05-24T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+    const foundationBrush = buildBundle({
+      seed: {
+        external_product_id: 'ext_kylie_foundation_brush',
+        title: 'Foundation Brush 01',
+        canonical_url: 'https://kyliecosmetics.com/products/foundation-brush-01',
+        seed_data: {
+          brand: 'Kylie Cosmetics',
+          description:
+            'My Foundation Brush 01 is a vegan and cruelty-free brush that blends and builds liquid or cream foundation, blush, bronzer, and highlighter.',
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_kylie_foundation_brush',
+        sellable_item_group_id: 'sig_kylie_foundation_brush',
+      },
+      generatedAt: '2026-05-24T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+    const plumpingGlossBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_kylie_plumping_gloss_bundle',
+        title: 'Plumping Gloss Bundle',
+        canonical_url: 'https://kyliecosmetics.com/products/plumping-gloss-bundle',
+        seed_data: {
+          brand: 'Kylie Cosmetics',
+          category: 'Skincare Set',
+          description:
+            'My plumping gloss bundle features my six go-to shades for a fuller, ultra-shiny pout: - bubbly (pastel crème with multicolored shimmer) - on neutral (nude beige) - not your bae (soft peach with multicolored shimmer) -.',
+          ingredient_tokens: [
+            'Plumping Complex with Portulaca Pilosa Extract, an Emollient & a Peptide Deliver a plumping effect and softness to the lips.',
+          ],
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_kylie_plumping_gloss_bundle',
+        sellable_item_group_id: 'sig_kylie_plumping_gloss_bundle',
+      },
+      generatedAt: '2026-05-24T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+
+    expect(detectPublicProductIntelQualityIssues(cosmicGiftSet)).toContain('public_generic_marketing_copy');
+    expect(classifyGeneratedBundle(cosmicGiftSet)).toMatchObject({
+      high_quality_ready: false,
+      blocking_issues: expect.arrayContaining(['public_generic_marketing_copy']),
+    });
+    expect(classifyGeneratedBundle(concealerBrushDuo)).toMatchObject({
+      high_quality_ready: false,
+      blocking_issues: expect.arrayContaining([
+        'public_generic_marketing_copy',
+        'public_category_mismatch',
+      ]),
+    });
+    expect(classifyGeneratedBundle(foundationBrush)).toMatchObject({
+      high_quality_ready: false,
+      blocking_issues: expect.arrayContaining(['public_sensitive_claim']),
+    });
+    expect(classifyGeneratedBundle(plumpingGlossBundle)).toMatchObject({
+      high_quality_ready: false,
+      blocking_issues: expect.arrayContaining([
+        'public_generic_marketing_copy',
+        'public_category_mismatch',
+        'public_truncated_copy',
+      ]),
+    });
   });
 
   test('sanitizes Sigma value, retailer, and ellipsis source text before public insight use', () => {
@@ -1851,6 +1995,66 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     expect(lipCreamBundle.shopping_card.highlight).toBe('Matte lip formula detail');
     expect(handCreamBundle.shopping_card.subtitle).toBe('Hand Cream');
     expect(handCreamBundle.shopping_card.highlight).toBe('Hand cream format detail');
+  });
+
+  test('blocks Rare Beauty cheek-lip category loss while keeping the approved eye duo shape', () => {
+    const cheekLipSet = buildBundle({
+      seed: {
+        external_product_id: 'ext_rare_cheek_lip_set',
+        title: 'Soft Pinch Mini Cheek & Lip Set',
+        canonical_url: 'https://rarebeauty.com/products/soft-pinch-mini-cheek-lip-set',
+        seed_data: {
+          brand: 'Rare Beauty',
+          description: 'Come alive with dewy, everyday looks that pop.',
+          ingredient_tokens: [
+            'Soft Pinch Liquid Blush Mini in Worth: Hydrogenated Polyisobutene, Hydrogenated Poly(C6-14 Olefin), Mica.',
+          ],
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_rare_cheek_lip_set',
+        sellable_item_group_id: 'sig_rare_cheek_lip_set',
+      },
+      generatedAt: '2026-05-24T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+    const eyeDuo = buildBundle({
+      seed: {
+        external_product_id: 'ext_rare_eye_duo',
+        title: "Selena's Essential Eye Duo",
+        canonical_url: 'https://rarebeauty.com/products/selenas-essential-eye-duo',
+        seed_data: {
+          brand: 'Rare Beauty',
+          description:
+            "A set of Selena's latest selected for creating a classic smokey eye, featuring a full-size All of the Above Weightless Eyeshadow Stick in set-exclusive shade Perspective (deep golden olive), and a mini Perfect Strokes.",
+          ingredient_tokens: [
+            'All of the Above Weightless Eyeshadow Stick in Perspective: Trisiloxane, Dimethicone, Synthetic Fluorphlogopite, Octyldodecanol.',
+          ],
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_rare_eye_duo',
+        sellable_item_group_id: 'sig_rare_eye_duo',
+      },
+      generatedAt: '2026-05-24T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+
+    expect(classifyGeneratedBundle(cheekLipSet)).toMatchObject({
+      high_quality_ready: false,
+      blocking_issues: expect.arrayContaining([
+        'public_generic_marketing_copy',
+        'public_category_mismatch',
+      ]),
+    });
+    expect(detectPublicProductIntelQualityIssues(eyeDuo)).toEqual([]);
+    expect(classifyGeneratedBundle(eyeDuo)).toMatchObject({
+      displayable: true,
+      high_quality_ready: true,
+      blocking_issues: [],
+    });
   });
 
   test('keeps Fenty essentials out of single-item batches and avoids generic highlights', () => {
