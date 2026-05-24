@@ -1962,6 +1962,7 @@ describe('external seed product detail hydration', () => {
       source_product_id: channelExt,
       product_key: `prod::external_seed::external_seed::${channelExt}`,
       pivota_signature_id: channelSig,
+      content_key: 'content::theordinary::alpha-arbutin',
       category_path: 'beauty/skincare/serum',
       external_seed_id: `eps_${channelExt}`,
       external_seed_external_product_id: channelExt,
@@ -2177,6 +2178,12 @@ describe('external seed product detail hydration', () => {
         product_id: channelExt,
       }),
     );
+    const servingGateCall = db.query.mock.calls.find(([sql]) =>
+      String(sql || '').includes('FROM catalog_products cp') &&
+      String(sql || '').includes('LEFT JOIN index_pipeline_state ips'),
+    );
+    expect(servingGateCall?.[1]?.[0]).toBe('content::theordinary::alpha-arbutin');
+    expect(servingGateCall?.[1]?.[3]).toBe(channelSig);
   });
 
   test('get_pdp_v2 skips live identity graph for rich direct external_seed same-merchant groups', async () => {

@@ -5849,9 +5849,10 @@ function normalizePdpServingEligibilityRow(row) {
 async function fetchPdpServingEligibilityFromDb(args = {}) {
   if (!process.env.DATABASE_URL) return null;
   const contentKey = String(args.contentKey || '').trim();
+  const pivotaSignatureId = String(args.pivotaSignatureId || '').trim();
   const merchantId = String(args.merchantId || '').trim();
   const productId = String(args.productId || '').trim();
-  if (!contentKey && (!merchantId || !productId)) return null;
+  if (!contentKey && !pivotaSignatureId && (!merchantId || !productId)) return null;
 
   try {
     const result = await query(
@@ -5896,6 +5897,7 @@ async function fetchPdpServingEligibilityFromDb(args = {}) {
          AND eps_active_seed.external_product_id = cp.source_product_id
         WHERE (
           ($1::text <> '' AND cp.content_key = $1)
+          OR ($4::text <> '' AND cp.pivota_signature_id = $4)
           OR (
             $2::text <> ''
             AND $3::text <> ''
@@ -5906,12 +5908,13 @@ async function fetchPdpServingEligibilityFromDb(args = {}) {
           AND ${activeCatalogProductSourceWhere('cp', 'cm')}
         ORDER BY
           CASE WHEN $1::text <> '' AND cp.content_key = $1 THEN 0 ELSE 1 END,
+          CASE WHEN $4::text <> '' AND cp.pivota_signature_id = $4 THEN 0 ELSE 1 END,
           CASE WHEN cp.source_system = 'external_product_seeds_mirror_v1' THEN 0 ELSE 1 END,
           cp.updated_at DESC NULLS LAST,
           cp.product_key ASC
         LIMIT 1
       `,
-      [contentKey, merchantId, productId],
+      [contentKey, merchantId, productId, pivotaSignatureId],
     );
     const row = Array.isArray(result?.rows) ? result.rows[0] : null;
     return normalizePdpServingEligibilityRow(row);
@@ -5930,6 +5933,7 @@ async function fetchPdpServingEligibilityFromDb(args = {}) {
       {
         err: err?.message || String(err),
         content_key: contentKey || null,
+        pivota_signature_id: pivotaSignatureId || null,
         merchant_id: merchantId || null,
         product_id: productId || null,
       },
@@ -33967,6 +33971,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   ...(signatureProductRef.product_key
                     ? { product_key: String(signatureProductRef.product_key).trim() }
                     : {}),
+                  ...(signatureProductRef.content_key
+                    ? { content_key: String(signatureProductRef.content_key).trim() }
+                    : {}),
                   ...(signatureProductRef.canonical_sig_id
                     ? { pivota_signature_id: String(signatureProductRef.canonical_sig_id).trim() }
                     : {}),
@@ -34624,6 +34631,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             const servingEligibilityStartedAt = Date.now();
             const servingEligibility = await fetchPdpServingEligibilityFromDb({
               contentKey: canonicalProductRef?.content_key || null,
+              pivotaSignatureId: requestedPivotaSignatureId || null,
               merchantId: canonicalProductRef?.merchant_id,
               productId: canonicalProductRef?.product_id,
             });
