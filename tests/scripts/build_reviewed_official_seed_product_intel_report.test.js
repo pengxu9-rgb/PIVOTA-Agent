@@ -1651,6 +1651,86 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     ).toBe('Niacinamide serum detail');
   });
 
+  test('classifies Rare Beauty luminizer, lip cream, and hand cream without generic fallback', () => {
+    expect(
+      inferKind(
+        'Positive Light Liquid Luminizer Mini',
+        '',
+        '',
+        'A mini version of our liquid highlighte r with a dewy glow that also nourish es.',
+      ),
+    ).toBe('highlighter');
+    expect(inferKind('Lip Soufflé Matte Lip Cream', '', '', 'A matte lip cream.')).toBe('lip');
+    expect(inferKind('Find Comfort Hydrating Hand Cream', '', '', 'A hydrating hand cream.')).toBe(
+      'hand_cream',
+    );
+
+    const luminizerBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_rare_luminizer',
+        title: 'Positive Light Liquid Luminizer Mini',
+        canonical_url: 'https://rarebeauty.com/products/positive-light-liquid-luminizer-mini',
+        seed_data: {
+          brand: 'Rare Beauty',
+          description:
+            'A mini version of our liquid highlighte r. Keep your skin looking on the bright side all day with a dewy, buildable glow that also nourish es.',
+          ingredient_tokens: ['Lotus Extract', 'Gardenia Extract', 'White Water Lily'],
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_rare_luminizer',
+        sellable_item_group_id: 'sig_rare_luminizer',
+      },
+      generatedAt: '2026-05-24T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+    const lipCreamBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_rare_lip_cream',
+        title: 'Lip Soufflé Matte Lip Cream',
+        canonical_url: 'https://rarebeauty.com/products/lip-souffle-matte-lip-cream',
+        seed_data: {
+          brand: 'Rare Beauty',
+          description: 'A weightless matte lip cream.',
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_rare_lip_cream',
+        sellable_item_group_id: 'sig_rare_lip_cream',
+      },
+      generatedAt: '2026-05-24T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+    const handCreamBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_rare_hand_cream',
+        title: 'Find Comfort Hydrating Hand Cream',
+        canonical_url: 'https://rarebeauty.com/products/find-comfort-hydrating-hand-cream',
+        seed_data: {
+          brand: 'Rare Beauty',
+          description: 'A hydrating hand cream for daily use.',
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_rare_hand_cream',
+        sellable_item_group_id: 'sig_rare_hand_cream',
+      },
+      generatedAt: '2026-05-24T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+
+    expect(luminizerBundle.shopping_card.subtitle).toBe('Highlighter');
+    expect(luminizerBundle.shopping_card.highlight).toBe('Light-diffusing glow');
+    expect(JSON.stringify(luminizerBundle)).not.toMatch(/beauty product|highlighte r|nourish es/i);
+    expect(lipCreamBundle.shopping_card.subtitle).toBe('Lip Product');
+    expect(lipCreamBundle.shopping_card.highlight).toBe('Matte lip formula detail');
+    expect(handCreamBundle.shopping_card.subtitle).toBe('Hand Cream');
+    expect(handCreamBundle.shopping_card.highlight).toBe('Hand cream format detail');
+  });
+
   test('keeps Fenty essentials out of single-item batches and avoids generic highlights', () => {
     const baseCandidate = {
       domain: 'fentybeauty.com',

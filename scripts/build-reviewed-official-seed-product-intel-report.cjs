@@ -122,6 +122,8 @@ function sanitizePublicSourceText(value) {
     .replace(/\baward[-\s]?winning\b(?!\s+brush\s+set)/gi, '')
     .replace(/\bdouble up and save with this jumbo size of our\b/gi, "This jumbo size is the brand's")
     .replace(/\b\d+(?:\.\d+)?\s*(?:fl\.?\s*oz|ml|oz)\b/gi, '')
+    .replace(/\bhighlighte\s+r\b/gi, 'highlighter')
+    .replace(/\bnourish\s+es\b/gi, 'nourishes')
     .replace(
       /\bAn?\s+acne[-\s]?fighting\s+spray\s+that\s+clears?\s+and\s+prevents?\s+blemishes\b/gi,
       'A blemish-focused body spray positioned for blemish-prone body care',
@@ -484,11 +486,12 @@ function inferKind(title, category, categoryPath, description = '') {
   if (/\b(?:foundation|skin tint|skintint|skin-tint)\b/.test(haystack)) return 'foundation';
   if (/\bconcealer\b/.test(haystack)) return 'concealer';
   if (/\b(?:primer|poreless)\b/.test(haystack)) return 'primer';
-  if (/\b(?:lipstick|lip color|lip tint|lip stain|lip balm|lip butter|butter balm|balm stick|lip oil|lip gloss|lipgloss|lip glaze|lip treatment|lip mask|lipmask|lip liner|lip pencil|lip luxe|lip patch|lippatch|gloss|pout)\b/.test(haystack)) return 'lip';
+  if (/\b(?:lipstick|lip color|lip tint|lip stain|lip balm|lip butter|butter balm|balm stick|lip oil|lip gloss|lipgloss|lip glaze|lip cream|lip souffl[eé]|lip treatment|lip mask|lipmask|lip liner|lip pencil|lip luxe|lip patch|lippatch|gloss|pout)\b/.test(haystack)) return 'lip';
   if (/\b(?:candle)\b/.test(haystack)) return 'home_fragrance';
   if (/\bdeodorant\b/.test(haystack)) return 'deodorant';
   if (/\b(?:shower\s+gel|body\s+wash|hand\s*&\s*body\s+wash|hand\s+and\s+body\s+wash)\b/.test(titleCategoryText)) return 'body_wash';
   if (/\bhand\s+wash\b/.test(haystack)) return 'hand_wash';
+  if (/\bhand\s+cream\b/.test(haystack)) return 'hand_cream';
   if (/\b(?:bath\s+soak|circulation\s+soak)\b/.test(haystack)) return 'bath_soak';
   if (/\b(?:hair\s+mask|hair\s+treatment)\b/.test(haystack)) return 'hair_mask';
   if (/\b(?:body\s+scrub|body\s+polish|body\s+exfoliant)\b/.test(haystack)) return 'body_scrub';
@@ -513,7 +516,7 @@ function inferKind(title, category, categoryPath, description = '') {
   if (/\b(?:eyeliner|mascara|false lashes|falsies|eyelashes|lashes|lash|eye color|eyeshadow|eye primer|palette)\b/.test(haystack)) return 'eye_makeup';
   if (/\b(?:blush)\b/.test(haystack)) return 'blush';
   if (/\b(?:bronzer|bronze|bronzing)\b/.test(haystack)) return 'bronzer';
-  if (/\b(?:highlighting|highlighter|illuminate)\b/.test(haystack)) return 'highlighter';
+  if (/\b(?:highlighting|highlighter|highlighte\s*r|luminizer|luminiser|illuminate)\b/.test(haystack)) return 'highlighter';
   if (/\bskinveil\b/.test(titleCategoryText) || /\b(?:loose water[-\s]?powder|setting makeup|velvet finish)\b/.test(haystack)) return 'face_powder';
   if (/\b(?:body oil|movement oil|universal oil)\b/.test(haystack)) return 'body_oil';
   if (/\b(?:oil blend|facial oil|face oil)\b/.test(haystack)) return 'face_oil';
@@ -570,6 +573,7 @@ function kindLabel(kind, category) {
     deodorant: 'deodorant',
     body_wash: 'body wash',
     hand_wash: 'hand wash',
+    hand_cream: 'hand cream',
     bath_soak: 'bath soak',
     hair_mask: 'hair mask',
     body_scrub: 'body scrub',
@@ -635,6 +639,7 @@ function displayCategoryForKind(kind, category) {
     deodorant: 'Deodorant',
     body_wash: 'Body Wash',
     hand_wash: 'Hand Wash',
+    hand_cream: 'Hand Cream',
     bath_soak: 'Bath Soak',
     hair_mask: 'Hair Mask',
     body_scrub: 'Body Scrub',
@@ -696,6 +701,7 @@ function displayCategoryForKind(kind, category) {
     'deodorant',
     'body_wash',
     'hand_wash',
+    'hand_cream',
     'bath_soak',
     'hair_mask',
     'body_scrub',
@@ -746,6 +752,7 @@ function routineStep(kind) {
     deodorant: 'body_care',
     body_wash: 'body_cleanse',
     hand_wash: 'hand_cleanse',
+    hand_cream: 'hand_care',
     bath_soak: 'body_care',
     hair_mask: 'hair_care',
     body_scrub: 'body_care',
@@ -988,6 +995,7 @@ function buildHighlightPhrase(kind, category, description, title = '') {
     return 'Body wash format detail';
   }
   if (kind === 'hand_wash') return 'Hand wash format detail';
+  if (kind === 'hand_cream') return 'Hand cream format detail';
   if (kind === 'bath_soak') return 'Bath soak format detail';
   if (kind === 'hair_mask') return 'Hair mask format detail';
   if (kind === 'body_scrub') return /salt|polish|exfoliat/.test(signalText) ? 'Body polish format detail' : 'Body scrub format detail';
