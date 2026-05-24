@@ -61,6 +61,25 @@ describe('external seed product kind classification', () => {
         reasons: expect.arrayContaining(['accessory_signal']),
       }),
     );
+    expect(
+      classifyExternalSeedProductKind({
+        title: '2-in-1 Konjac Body Sponge',
+        category_path: 'beauty/body/exfoliation-tool',
+        seed_data: {
+          category_path: 'beauty/body/exfoliation-tool',
+          product_type: 'Body Exfoliation Tool',
+          snapshot: {
+            category_path: 'beauty/body/exfoliation-tool',
+            product_type: 'Body Exfoliation Tool',
+          },
+        },
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        family: 'accessory',
+        reasons: expect.arrayContaining(['primary_accessory_overrides_formula_category_signal']),
+      }),
+    );
     expect(classifyExternalSeedProductKind({ title: 'Soft Pooch Blush Dog Toy - Faith' })).toEqual(
       expect.objectContaining({
         family: 'accessory',

@@ -1,0 +1,645 @@
+{
+  "generated_at": "2026-05-24T05:06:33.348Z",
+  "guardrails_observed": {
+    "railway_up": false,
+    "git_push": false,
+    "db_apply_or_production_write": false,
+    "database_url_unset_for_seed_dry_run": true,
+    "write_scope": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2"
+  },
+  "totals": {
+    "brands": 7,
+    "extracted_product_count": 33,
+    "manifest_rows_before_curation": 25,
+    "structural_review_ok_brands": 4,
+    "structural_review_blocked_brands": 3,
+    "structural_accepted_rows": 25,
+    "held_rows": 22,
+    "db_ready_candidate_rows_no_db_dedupe": 3,
+    "dry_run_scanned": 3,
+    "dry_run_would_insert_unverified": 3,
+    "dry_run_invalid": 0,
+    "dry_run_database_available": false
+  },
+  "holds_by_reason": {
+    "commerce_facts_gate_hold": 17,
+    "commerce_facts_problem:market_currency_mismatch": 17,
+    "non_us_currency:EUR": 17,
+    "regulated_wellness_supplement_claims_lane": 14,
+    "therapeutic_or_regulated_claims_text": 14,
+    "availability:out_of_stock": 2,
+    "wholesale_row": 4,
+    "non_topical_accessory_or_tool": 2
+  },
+  "db_ready_candidate_rows": [
+    {
+      "brand": "Seresilk",
+      "title": "Silk Night Cream",
+      "url": "https://seresilk.com.au/products/silk-night-cream",
+      "seed_id": "eps_44c1397b319a538f47b4ca1d",
+      "external_product_id": "ext_df8aac07d6c970d4c213b43f",
+      "price_amount": 79.97,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "dry_run_status": "would_insert_unverified",
+      "commerce_facts_gate_status": "pass",
+      "commerce_facts_problems": []
+    },
+    {
+      "brand": "Seresilk",
+      "title": "Silk Night Serum",
+      "url": "https://seresilk.com.au/products/silk-night-serum",
+      "seed_id": "eps_68187b19d2f43540ff7e1b59",
+      "external_product_id": "ext_438058253d57a2c8d75f5906",
+      "price_amount": 94.51,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "dry_run_status": "would_insert_unverified",
+      "commerce_facts_gate_status": "pass",
+      "commerce_facts_problems": []
+    },
+    {
+      "brand": "Seresilk",
+      "title": "Gentle Silk Cleanser",
+      "url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+      "seed_id": "eps_5ae568728c95aa19d64a9413",
+      "external_product_id": "ext_0d4ffd13b899460cabb1f392",
+      "price_amount": 54.52,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "dry_run_status": "would_insert_unverified",
+      "commerce_facts_gate_status": "pass",
+      "commerce_facts_problems": []
+    }
+  ],
+  "brands": [
+    {
+      "slug": "hello_mims",
+      "brand": "Hello Mims",
+      "domain": "hellomims.com",
+      "category": "P1 Wellness and Supplements",
+      "score": 77,
+      "signals": 6,
+      "diagnostics": [
+        {
+          "discovery_strategy": "shopify_json",
+          "failure_category": null,
+          "block_provider": null
+        }
+      ],
+      "extracted_product_count": 6,
+      "manifest_item_count": 6,
+      "review_ok_to_continue": true,
+      "review_blocker_reasons": [],
+      "structural_accepted_item_count": 6,
+      "curated_candidate_count": 0,
+      "held_count": 6,
+      "held_rows": [
+        {
+          "title": "Mims Wellness",
+          "url": "https://hellomims.com/products/mims-wellness",
+          "seed_id": "eps_260d5a533875c8cdc0486abf",
+          "external_product_id": "ext_a090b5987d5ac3853136be3b",
+          "reasons": [
+            "commerce_facts_gate_hold",
+            "commerce_facts_problem:market_currency_mismatch",
+            "non_us_currency:EUR",
+            "regulated_wellness_supplement_claims_lane",
+            "therapeutic_or_regulated_claims_text"
+          ]
+        },
+        {
+          "title": "Mims Immune Support Kids",
+          "url": "https://hellomims.com/products/mims-immune-support-kids",
+          "seed_id": "eps_3537f544f19eeaf6909595aa",
+          "external_product_id": "ext_ac8df0a73303d4759aaf0afa",
+          "reasons": [
+            "commerce_facts_gate_hold",
+            "commerce_facts_problem:market_currency_mismatch",
+            "non_us_currency:EUR",
+            "regulated_wellness_supplement_claims_lane",
+            "therapeutic_or_regulated_claims_text"
+          ]
+        },
+        {
+          "title": "Mims Immune Support",
+          "url": "https://hellomims.com/products/mims-immune-support",
+          "seed_id": "eps_203d4b7fda93413cc1566fbf",
+          "external_product_id": "ext_964f6135d954e4645ea0d3db",
+          "reasons": [
+            "commerce_facts_gate_hold",
+            "commerce_facts_problem:market_currency_mismatch",
+            "non_us_currency:EUR",
+            "regulated_wellness_supplement_claims_lane",
+            "therapeutic_or_regulated_claims_text"
+          ]
+        },
+        {
+          "title": "Mims Good Night",
+          "url": "https://hellomims.com/products/mims-good-night",
+          "seed_id": "eps_3d32ff950c8551818f6144ce",
+          "external_product_id": "ext_d8b9dad2392ef71627f0463d",
+          "reasons": [
+            "commerce_facts_gate_hold",
+            "commerce_facts_problem:market_currency_mismatch",
+            "non_us_currency:EUR",
+            "availability:out_of_stock",
+            "regulated_wellness_supplement_claims_lane",
+            "therapeutic_or_regulated_claims_text"
+          ]
+        },
+        {
+          "title": "Mims Concentration & Memory",
+          "url": "https://hellomims.com/products/mims-concentration-memory",
+          "seed_id": "eps_1e0ac6ad86fe1ea4b12b0d1e",
+          "external_product_id": "ext_fb4007f55dc6b9f395264ba6",
+          "reasons": [
+            "commerce_facts_gate_hold",
+            "commerce_facts_problem:market_currency_mismatch",
+            "non_us_currency:EUR",
+            "availability:out_of_stock",
+            "regulated_wellness_supplement_claims_lane",
+            "therapeutic_or_regulated_claims_text"
+          ]
+        },
+        {
+          "title": "Mims Beauty",
+          "url": "https://hellomims.com/products/mims-beauty",
+          "seed_id": "eps_af0896047e9adcfe7350025a",
+          "external_product_id": "ext_611e070f7f48d00f21dcbfe5",
+          "reasons": [
+            "commerce_facts_gate_hold",
+            "commerce_facts_problem:market_currency_mismatch",
+            "non_us_currency:EUR",
+            "regulated_wellness_supplement_claims_lane",
+            "therapeutic_or_regulated_claims_text"
+          ]
+        }
+      ],
+      "candidate_rows": [],
+      "paths": {
+        "manifest": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/manifests/hello_mims.json",
+        "review_json": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/reviews/hello_mims.json",
+        "review_csv": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/reviews/hello_mims.csv",
+        "accepted_manifest": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/accepted_manifests/hello_mims.json",
+        "curated_manifest": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/curated_manifests/hello_mims.json",
+        "dry_run": null
+      },
+      "next_steps": [
+        "Hold all rows for the regulated wellness/supplement claims lane and EUR-vs-US commerce mismatch review.",
+        "Exclude out-of-stock products unless a later extractor run confirms in-stock US availability."
+      ]
+    },
+    {
+      "slug": "khus_khus",
+      "brand": "KHUS KHUS modern herbal fusion",
+      "domain": "khus-khus.com",
+      "category": "P1 Skincare",
+      "score": 77,
+      "signals": 6,
+      "diagnostics": [
+        {
+          "discovery_strategy": null,
+          "failure_category": "bot_challenge",
+          "block_provider": "perimeterx"
+        }
+      ],
+      "extracted_product_count": 0,
+      "manifest_item_count": 0,
+      "review_ok_to_continue": false,
+      "review_blocker_reasons": [
+        "zero_accepted_items_from_extractor",
+        "anti_abuse_signal:perimeterx"
+      ],
+      "structural_accepted_item_count": 0,
+      "curated_candidate_count": 0,
+      "held_count": 0,
+      "held_rows": [],
+      "candidate_rows": [],
+      "paths": {
+        "manifest": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/manifests/khus_khus.json",
+        "review_json": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/reviews/khus_khus.json",
+        "review_csv": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/reviews/khus_khus.csv",
+        "accepted_manifest": null,
+        "curated_manifest": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/curated_manifests/khus_khus.json",
+        "dry_run": null
+      },
+      "next_steps": [
+        "Do not create seeds from this run; extractor returned zero rows behind PerimeterX bot challenge.",
+        "Use a managed-browser/catalog extractor follow-up or approved PDP list, then rerun manifest and review gate."
+      ]
+    },
+    {
+      "slug": "daeby",
+      "brand": "DAEBY",
+      "domain": "daebyskin.com",
+      "category": "P1 Skincare",
+      "score": 77,
+      "signals": 7,
+      "diagnostics": [
+        {
+          "discovery_strategy": "shopify_json",
+          "failure_category": null,
+          "block_provider": null
+        }
+      ],
+      "extracted_product_count": 7,
+      "manifest_item_count": 3,
+      "review_ok_to_continue": true,
+      "review_blocker_reasons": [],
+      "structural_accepted_item_count": 3,
+      "curated_candidate_count": 0,
+      "held_count": 3,
+      "held_rows": [
+        {
+          "title": "Exfoliating Facial Scrub",
+          "url": "https://daebyskin.com/products/gentle-scrub",
+          "seed_id": "eps_fc392be45ce04f8321849c46",
+          "external_product_id": "ext_81a4953ded17be5f84748629",
+          "reasons": [
+            "commerce_facts_gate_hold",
+            "commerce_facts_problem:market_currency_mismatch",
+            "non_us_currency:EUR"
+          ]
+        },
+        {
+          "title": "Facial Moisturiser SPF 50+",
+          "url": "https://daebyskin.com/products/facial-moisturiser",
+          "seed_id": "eps_f8e71b996d6cd5b213baf303",
+          "external_product_id": "ext_fbdbef3b6bd2807cc115c131",
+          "reasons": [
+            "commerce_facts_gate_hold",
+            "commerce_facts_problem:market_currency_mismatch",
+            "non_us_currency:EUR",
+            "therapeutic_or_regulated_claims_text"
+          ]
+        },
+        {
+          "title": "Daily Cleanser",
+          "url": "https://daebyskin.com/products/cleanser",
+          "seed_id": "eps_297e284d662efb525f368a09",
+          "external_product_id": "ext_ea90c9e8010722e068f23122",
+          "reasons": [
+            "commerce_facts_gate_hold",
+            "commerce_facts_problem:market_currency_mismatch",
+            "non_us_currency:EUR"
+          ]
+        }
+      ],
+      "candidate_rows": [],
+      "paths": {
+        "manifest": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/manifests/daeby.json",
+        "review_json": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/reviews/daeby.json",
+        "review_csv": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/reviews/daeby.csv",
+        "accepted_manifest": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/accepted_manifests/daeby.json",
+        "curated_manifest": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/curated_manifests/daeby.json",
+        "dry_run": null
+      },
+      "next_steps": [
+        "Hold all rows until the EUR seed-row currency is reconciled against US commerce facts.",
+        "Route the SPF 50+ product through sunscreen/regulated-claims review before DB apply consideration."
+      ]
+    },
+    {
+      "slug": "akasha_superfoods",
+      "brand": "Akasha Superfoods",
+      "domain": "akashasuperfoods.com",
+      "category": "P1 Wellness and Supplements",
+      "score": 77,
+      "signals": 10,
+      "diagnostics": [
+        {
+          "discovery_strategy": "shopify_json",
+          "failure_category": null,
+          "block_provider": null
+        }
+      ],
+      "extracted_product_count": 10,
+      "manifest_item_count": 8,
+      "review_ok_to_continue": true,
+      "review_blocker_reasons": [],
+      "structural_accepted_item_count": 8,
+      "curated_candidate_count": 0,
+      "held_count": 8,
+      "held_rows": [
+        {
+          "title": "Liposomal Sea Moss Gel(30ct)",
+          "url": "https://akashasuperfoods.com/products/liposomal-sea-moss-gel",
+          "seed_id": "eps_25258b1104e581bbe4acabd2",
+          "external_product_id": "ext_9ec4bc7c2b283d1dedfec965",
+          "reasons": [
+            "commerce_facts_gate_hold",
+            "commerce_facts_problem:market_currency_mismatch",
+            "non_us_currency:EUR",
+            "regulated_wellness_supplement_claims_lane",
+            "therapeutic_or_regulated_claims_text"
+          ]
+        },
+        {
+          "title": "Jellyfish Collagen",
+          "url": "https://akashasuperfoods.com/products/jellyfish-collagen-liposomal-packet",
+          "seed_id": "eps_ea76881781b5f2e2cd39dad9",
+          "external_product_id": "ext_0a10f084002e850e36666c9f",
+          "reasons": [
+            "commerce_facts_gate_hold",
+            "commerce_facts_problem:market_currency_mismatch",
+            "non_us_currency:EUR",
+            "regulated_wellness_supplement_claims_lane",
+            "therapeutic_or_regulated_claims_text"
+          ]
+        },
+        {
+          "title": "GROW Nourishing Prebiotic Scalp Mist",
+          "url": "https://akashasuperfoods.com/products/grow-nourishing-prebiotic-scalp-mist",
+          "seed_id": "eps_743d93bbd79ac8930b909933",
+          "external_product_id": "ext_56d4213491f7d0784e49810e",
+          "reasons": [
+            "commerce_facts_gate_hold",
+            "commerce_facts_problem:market_currency_mismatch",
+            "non_us_currency:EUR",
+            "regulated_wellness_supplement_claims_lane"
+          ]
+        },
+        {
+          "title": "Pearl Powder",
+          "url": "https://akashasuperfoods.com/products/pearl-powder",
+          "seed_id": "eps_326001cbcb91300b002581c6",
+          "external_product_id": "ext_07b25689833b3c1789e6b2ce",
+          "reasons": [
+            "commerce_facts_gate_hold",
+            "commerce_facts_problem:market_currency_mismatch",
+            "non_us_currency:EUR",
+            "regulated_wellness_supplement_claims_lane",
+            "therapeutic_or_regulated_claims_text"
+          ]
+        },
+        {
+          "title": "Astaxanthin Hair Gummies",
+          "url": "https://akashasuperfoods.com/products/grow-gummies",
+          "seed_id": "eps_e617c66945b2060e2cbe75f4",
+          "external_product_id": "ext_5015d7fe9a6790e4dfd536ff",
+          "reasons": [
+            "commerce_facts_gate_hold",
+            "commerce_facts_problem:market_currency_mismatch",
+            "non_us_currency:EUR",
+            "regulated_wellness_supplement_claims_lane",
+            "therapeutic_or_regulated_claims_text"
+          ]
+        },
+        {
+          "title": "Sea Moss GLOW Gummies",
+          "url": "https://akashasuperfoods.com/products/sea-moss-glow-gummies",
+          "seed_id": "eps_ff46402e5bd48bcda1899c78",
+          "external_product_id": "ext_05819bc76fb2cfed08fdf43c",
+          "reasons": [
+            "commerce_facts_gate_hold",
+            "commerce_facts_problem:market_currency_mismatch",
+            "non_us_currency:EUR",
+            "regulated_wellness_supplement_claims_lane",
+            "therapeutic_or_regulated_claims_text"
+          ]
+        },
+        {
+          "title": "Prebiotic Natural Skin Repair Mist",
+          "url": "https://akashasuperfoods.com/products/prebiotic-mist",
+          "seed_id": "eps_1b592ac236d72d46878a9637",
+          "external_product_id": "ext_bb27e08e106b5c79dda843fa",
+          "reasons": [
+            "commerce_facts_gate_hold",
+            "commerce_facts_problem:market_currency_mismatch",
+            "non_us_currency:EUR",
+            "regulated_wellness_supplement_claims_lane",
+            "therapeutic_or_regulated_claims_text"
+          ]
+        },
+        {
+          "title": "Sea Moss Vitality Blend Capsules",
+          "url": "https://akashasuperfoods.com/products/sea-moss-blend",
+          "seed_id": "eps_927231dcdc9eb76bf935d2f6",
+          "external_product_id": "ext_c1b9c195fefc57314da034aa",
+          "reasons": [
+            "commerce_facts_gate_hold",
+            "commerce_facts_problem:market_currency_mismatch",
+            "non_us_currency:EUR",
+            "regulated_wellness_supplement_claims_lane",
+            "therapeutic_or_regulated_claims_text"
+          ]
+        }
+      ],
+      "candidate_rows": [],
+      "paths": {
+        "manifest": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/manifests/akasha_superfoods.json",
+        "review_json": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/reviews/akasha_superfoods.json",
+        "review_csv": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/reviews/akasha_superfoods.csv",
+        "accepted_manifest": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/accepted_manifests/akasha_superfoods.json",
+        "curated_manifest": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/curated_manifests/akasha_superfoods.json",
+        "dry_run": null
+      },
+      "next_steps": [
+        "Hold all rows for wellness/supplement and therapeutic-claim review plus EUR-vs-US commerce mismatch review.",
+        "Only rerun dry-run after claims lane and US offer/currency normalization clear specific PDPs."
+      ]
+    },
+    {
+      "slug": "seresilk",
+      "brand": "Seresilk",
+      "domain": "seresilk.com.au",
+      "category": "P1 Skincare",
+      "score": 77,
+      "signals": 10,
+      "diagnostics": [
+        {
+          "discovery_strategy": "shopify_json",
+          "failure_category": null,
+          "block_provider": null
+        }
+      ],
+      "extracted_product_count": 10,
+      "manifest_item_count": 8,
+      "review_ok_to_continue": true,
+      "review_blocker_reasons": [],
+      "structural_accepted_item_count": 8,
+      "curated_candidate_count": 3,
+      "held_count": 5,
+      "held_rows": [
+        {
+          "title": "Silk Night Serum (WH)",
+          "url": "https://seresilk.com.au/products/silk-night-serum-wholesale",
+          "seed_id": "eps_17ff8005f096c0f94c3fb96a",
+          "external_product_id": "ext_aef878488afc2af71e259f10",
+          "reasons": [
+            "wholesale_row"
+          ]
+        },
+        {
+          "title": "Silk Night Cream (WH)",
+          "url": "https://seresilk.com.au/products/silk-night-cream-wholesale",
+          "seed_id": "eps_c60158a2e2e9951941bae7f6",
+          "external_product_id": "ext_07e5baa178851c0df5950621",
+          "reasons": [
+            "wholesale_row"
+          ]
+        },
+        {
+          "title": "Pure Silk Exfoliator (WH)",
+          "url": "https://seresilk.com.au/products/pure-silk-exfoliator-wholesale",
+          "seed_id": "eps_55253c1c886c3b9465d57193",
+          "external_product_id": "ext_2933a99217f5045907ec3130",
+          "reasons": [
+            "wholesale_row",
+            "non_topical_accessory_or_tool"
+          ]
+        },
+        {
+          "title": "Gentle Silk Cleanser (WH)",
+          "url": "https://seresilk.com.au/products/gentle-silk-cleanser-wholesale",
+          "seed_id": "eps_fcb5057e17959c503e0d0adf",
+          "external_product_id": "ext_791a4c57a024af2c9e0b5ab2",
+          "reasons": [
+            "wholesale_row"
+          ]
+        },
+        {
+          "title": "Pure Silk Exfoliator",
+          "url": "https://seresilk.com.au/products/pure-silk-exfoliator",
+          "seed_id": "eps_23e4ebbf8953e0c23fa7fca5",
+          "external_product_id": "ext_7c5f8c37e37a5f147672a9f2",
+          "reasons": [
+            "non_topical_accessory_or_tool"
+          ]
+        }
+      ],
+      "candidate_rows": [
+        {
+          "title": "Silk Night Cream",
+          "url": "https://seresilk.com.au/products/silk-night-cream",
+          "seed_id": "eps_44c1397b319a538f47b4ca1d",
+          "external_product_id": "ext_df8aac07d6c970d4c213b43f",
+          "price_amount": 79.97,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "dry_run_status": "would_insert_unverified",
+          "commerce_facts_gate_status": "pass",
+          "commerce_facts_problems": []
+        },
+        {
+          "title": "Silk Night Serum",
+          "url": "https://seresilk.com.au/products/silk-night-serum",
+          "seed_id": "eps_68187b19d2f43540ff7e1b59",
+          "external_product_id": "ext_438058253d57a2c8d75f5906",
+          "price_amount": 94.51,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "dry_run_status": "would_insert_unverified",
+          "commerce_facts_gate_status": "pass",
+          "commerce_facts_problems": []
+        },
+        {
+          "title": "Gentle Silk Cleanser",
+          "url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+          "seed_id": "eps_5ae568728c95aa19d64a9413",
+          "external_product_id": "ext_0d4ffd13b899460cabb1f392",
+          "price_amount": 54.52,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "dry_run_status": "would_insert_unverified",
+          "commerce_facts_gate_status": "pass",
+          "commerce_facts_problems": []
+        }
+      ],
+      "paths": {
+        "manifest": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/manifests/seresilk.json",
+        "review_json": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/reviews/seresilk.json",
+        "review_csv": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/reviews/seresilk.csv",
+        "accepted_manifest": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/accepted_manifests/seresilk.json",
+        "curated_manifest": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/curated_manifests/seresilk.json",
+        "dry_run": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/dry_runs/seresilk.json"
+      },
+      "next_steps": [
+        "Keep only the three retail topical skincare rows as DB-ready candidates from this no-DB dry-run.",
+        "Hold wholesale rows and the silk exfoliator accessory; before any apply, run DB duplicate/read check with approved production credentials."
+      ]
+    },
+    {
+      "slug": "akan_moringa",
+      "brand": "Akan Moringa",
+      "domain": "akan-moringa.com",
+      "category": "P1 Wellness and Supplements",
+      "score": 77,
+      "signals": 12,
+      "diagnostics": [
+        {
+          "discovery_strategy": "sitemap",
+          "failure_category": "timeout",
+          "block_provider": null
+        }
+      ],
+      "extracted_product_count": 0,
+      "manifest_item_count": 0,
+      "review_ok_to_continue": false,
+      "review_blocker_reasons": [
+        "zero_accepted_items_from_extractor"
+      ],
+      "structural_accepted_item_count": 0,
+      "curated_candidate_count": 0,
+      "held_count": 0,
+      "held_rows": [],
+      "candidate_rows": [],
+      "paths": {
+        "manifest": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/manifests/akan_moringa.json",
+        "review_json": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/reviews/akan_moringa.json",
+        "review_csv": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/reviews/akan_moringa.csv",
+        "accepted_manifest": null,
+        "curated_manifest": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/curated_manifests/akan_moringa.json",
+        "dry_run": null
+      },
+      "next_steps": [
+        "Do not create seeds from this run; extractor timed out after sitemap discovery with zero accepted rows.",
+        "Retry extractor diagnostics with narrower known PDP URLs or managed-browser support before any seed lane."
+      ]
+    },
+    {
+      "slug": "apiceuticals",
+      "brand": "Apiceuticals",
+      "domain": "apiceuticals.com",
+      "category": "P1 Skincare",
+      "score": 77,
+      "signals": 12,
+      "diagnostics": [
+        {
+          "discovery_strategy": "sitemap",
+          "failure_category": "timeout",
+          "block_provider": null
+        }
+      ],
+      "extracted_product_count": 0,
+      "manifest_item_count": 0,
+      "review_ok_to_continue": false,
+      "review_blocker_reasons": [
+        "zero_accepted_items_from_extractor"
+      ],
+      "structural_accepted_item_count": 0,
+      "curated_candidate_count": 0,
+      "held_count": 0,
+      "held_rows": [],
+      "candidate_rows": [],
+      "paths": {
+        "manifest": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/manifests/apiceuticals.json",
+        "review_json": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/reviews/apiceuticals.json",
+        "review_csv": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/reviews/apiceuticals.csv",
+        "accepted_manifest": null,
+        "curated_manifest": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/curated_manifests/apiceuticals.json",
+        "dry_run": null
+      },
+      "next_steps": [
+        "Do not create seeds from this run; extractor timed out after sitemap discovery with zero accepted rows.",
+        "Retry extractor diagnostics with narrower known PDP URLs or managed-browser support before any seed lane."
+      ]
+    }
+  ],
+  "artifacts": {
+    "curation_decisions": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/curation_decisions.json",
+    "batch_summary_json": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/batch_summary.json",
+    "batch_summary_md": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/batch_summary.md"
+  }
+}

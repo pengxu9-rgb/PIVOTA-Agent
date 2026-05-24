@@ -1,0 +1,389 @@
+{
+  "generated_at": "2026-05-24T05:10:24.147Z",
+  "assigned_output_dir": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5",
+  "guardrails": {
+    "db_apply_or_production_write": false,
+    "railway_up": false,
+    "git_push": false,
+    "database_url_unset_for_dry_run": true,
+    "note": "No DB apply/production write was run; no-DB dry-runs were executed only against empty curated manifests with DATABASE_URL unset."
+  },
+  "totals": {
+    "brand_count": 8,
+    "manifest_success_count": 7,
+    "manifest_blocked_count": 1,
+    "extracted_product_count": 358,
+    "manifest_item_count": 296,
+    "review_ok_brand_count": 3,
+    "review_blocked_brand_count": 5,
+    "review_structural_accepted_rows": 296,
+    "conservative_candidate_rows": 0,
+    "conservative_held_rows": 296,
+    "dry_run_candidate_rows": 0,
+    "global_hold_reason_counts": {
+      "commerce_facts_gate:hold": 296,
+      "commerce_problem:market_currency_mismatch": 296,
+      "non_us_seed_currency:EUR": 296,
+      "commerce_problem:commerce_facts_currency_mismatch": 235,
+      "commerce_problem:commerce_facts_market_switch_not_ok": 235,
+      "bundle_wholesale_duplicate_or_non_single_sku": 74,
+      "regulated_or_therapeutic_claim_lane": 49,
+      "anti_abuse_signal:perimeterx": 37,
+      "review_blocker:anti_abuse_signal:perimeterx": 37,
+      "accessory_or_non_core_beauty_merch": 33,
+      "out_of_stock": 12,
+      "wellness_supplement_claims_lane_review_required": 5
+    },
+    "db_ready_candidate_rows": 0,
+    "no_db_dry_run_rows": 0,
+    "no_db_dry_run_files": 3,
+    "next_steps": [
+      "Do not apply to DB from this batch as-is; conservative DB-ready candidate count is 0.",
+      "For Rutines, Suntribe AB, OUATE, and born to bio, verify a US sellable storefront or US-localized PDPs with USD seed currency and commerce_facts_gate status ok before re-running curation.",
+      "For Suntribe AB, resolve the PerimeterX extractor signal and split B2B box/POS/accessory rows from consumer single-SKU rows; sunscreen/SPF rows need the regulated claims lane.",
+      "For OUATE and born to bio, remove out-of-stock, gift card, travel/refill/imparfait, coffret/bundle, and claims-lane rows before any future dry-run.",
+      "For GinGingers, ADVANCED COSMETICA, Ilmma Beauty, and Vegan Fox, rerun extraction with direct PDPs, preferred titles, or catalog extractor fixes; Vegan Fox specifically timed out twice at 90 seconds."
+    ],
+    "no_db_dry_run_database_available": false
+  },
+  "brands": [
+    {
+      "brand": "GinGingers",
+      "slug": "gingingers",
+      "domain": "https://gingingers.co.uk",
+      "category": "P1 Skincare",
+      "score": 71,
+      "signals": 1,
+      "manifest_status": "completed",
+      "review_ok_to_continue": false,
+      "review_blocker_reasons": [
+        "zero_accepted_items_from_extractor"
+      ],
+      "extracted_product_count": 3,
+      "manifest_item_count": 0,
+      "review_accepted_item_count": 0,
+      "conservative_candidate_count": 0,
+      "conservative_hold_count": 0,
+      "top_hold_reasons": [],
+      "manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/manifests/gingingers.json",
+      "manifest_error_path": null,
+      "review_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/reviews/gingingers.json",
+      "curation_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/curation/gingingers.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/curated_manifests/gingingers.json",
+      "dry_run_path": null,
+      "next_steps": []
+    },
+    {
+      "brand": "Rutines",
+      "slug": "rutines",
+      "domain": "https://rutines.com",
+      "category": "P1 Wellness and Supplements",
+      "score": 71,
+      "signals": 8,
+      "manifest_status": "completed",
+      "review_ok_to_continue": true,
+      "review_blocker_reasons": [],
+      "extracted_product_count": 8,
+      "manifest_item_count": 5,
+      "review_accepted_item_count": 5,
+      "conservative_candidate_count": 0,
+      "conservative_hold_count": 5,
+      "top_hold_reasons": [
+        {
+          "reason": "accessory_or_non_core_beauty_merch",
+          "count": 5
+        },
+        {
+          "reason": "commerce_facts_gate:hold",
+          "count": 5
+        },
+        {
+          "reason": "commerce_problem:commerce_facts_currency_mismatch",
+          "count": 5
+        },
+        {
+          "reason": "commerce_problem:commerce_facts_market_switch_not_ok",
+          "count": 5
+        },
+        {
+          "reason": "commerce_problem:market_currency_mismatch",
+          "count": 5
+        },
+        {
+          "reason": "non_us_seed_currency:EUR",
+          "count": 5
+        },
+        {
+          "reason": "wellness_supplement_claims_lane_review_required",
+          "count": 5
+        }
+      ],
+      "manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/manifests/rutines.json",
+      "manifest_error_path": null,
+      "review_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/reviews/rutines.json",
+      "curation_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/curation/rutines.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/curated_manifests/rutines.json",
+      "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/dry_runs/rutines.json",
+      "next_steps": [],
+      "dry_run_database_available": false,
+      "dry_run_scanned": 0,
+      "dry_run_would_insert": 0,
+      "dry_run_would_insert_unverified": 0
+    },
+    {
+      "brand": "ADVANCED COSMETICA",
+      "slug": "advanced-cosmetica",
+      "domain": "https://advancedcosmetica.com.au",
+      "category": "P1 Haircare",
+      "score": 71,
+      "signals": 12,
+      "manifest_status": "completed",
+      "review_ok_to_continue": false,
+      "review_blocker_reasons": [
+        "zero_accepted_items_from_extractor"
+      ],
+      "extracted_product_count": 0,
+      "manifest_item_count": 0,
+      "review_accepted_item_count": 0,
+      "conservative_candidate_count": 0,
+      "conservative_hold_count": 0,
+      "top_hold_reasons": [],
+      "manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/manifests/advanced-cosmetica.json",
+      "manifest_error_path": null,
+      "review_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/reviews/advanced-cosmetica.json",
+      "curation_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/curation/advanced-cosmetica.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/curated_manifests/advanced-cosmetica.json",
+      "dry_run_path": null,
+      "next_steps": []
+    },
+    {
+      "brand": "Ilmma Beauty",
+      "slug": "ilmma-beauty",
+      "domain": "https://ilmmabeauty.com",
+      "category": "P1 Skincare",
+      "score": 71,
+      "signals": 12,
+      "manifest_status": "completed",
+      "review_ok_to_continue": false,
+      "review_blocker_reasons": [
+        "zero_accepted_items_from_extractor"
+      ],
+      "extracted_product_count": 0,
+      "manifest_item_count": 0,
+      "review_accepted_item_count": 0,
+      "conservative_candidate_count": 0,
+      "conservative_hold_count": 0,
+      "top_hold_reasons": [],
+      "manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/manifests/ilmma-beauty.json",
+      "manifest_error_path": null,
+      "review_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/reviews/ilmma-beauty.json",
+      "curation_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/curation/ilmma-beauty.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/curated_manifests/ilmma-beauty.json",
+      "dry_run_path": null,
+      "next_steps": []
+    },
+    {
+      "brand": "Vegan Fox",
+      "slug": "vegan-fox",
+      "domain": "https://vegan-fox.com",
+      "category": "P1 Skincare",
+      "score": 71,
+      "signals": 12,
+      "manifest_status": "blocked",
+      "review_ok_to_continue": false,
+      "review_blocker_reasons": [
+        "manifest_extraction_timeout"
+      ],
+      "extracted_product_count": 0,
+      "manifest_item_count": 0,
+      "review_accepted_item_count": 0,
+      "conservative_candidate_count": 0,
+      "conservative_hold_count": 0,
+      "top_hold_reasons": [],
+      "manifest_path": null,
+      "manifest_error_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/manifests/vegan-fox.error.json",
+      "review_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/reviews/vegan-fox.json",
+      "curation_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/curation/vegan-fox.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/curated_manifests/vegan-fox.json",
+      "dry_run_path": null,
+      "next_steps": []
+    },
+    {
+      "brand": "Suntribe AB",
+      "slug": "suntribe-ab",
+      "domain": "https://suntribesunscreen.com",
+      "category": "P1 Skincare/Sunscreen",
+      "score": 75,
+      "signals": 61,
+      "manifest_status": "completed",
+      "review_ok_to_continue": false,
+      "review_blocker_reasons": [
+        "anti_abuse_signal:perimeterx"
+      ],
+      "extracted_product_count": 62,
+      "manifest_item_count": 37,
+      "review_accepted_item_count": 37,
+      "conservative_candidate_count": 0,
+      "conservative_hold_count": 37,
+      "top_hold_reasons": [
+        {
+          "reason": "anti_abuse_signal:perimeterx",
+          "count": 37
+        },
+        {
+          "reason": "commerce_facts_gate:hold",
+          "count": 37
+        },
+        {
+          "reason": "commerce_problem:commerce_facts_currency_mismatch",
+          "count": 37
+        },
+        {
+          "reason": "commerce_problem:commerce_facts_market_switch_not_ok",
+          "count": 37
+        },
+        {
+          "reason": "commerce_problem:market_currency_mismatch",
+          "count": 37
+        },
+        {
+          "reason": "non_us_seed_currency:EUR",
+          "count": 37
+        },
+        {
+          "reason": "review_blocker:anti_abuse_signal:perimeterx",
+          "count": 37
+        },
+        {
+          "reason": "bundle_wholesale_duplicate_or_non_single_sku",
+          "count": 28
+        }
+      ],
+      "manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/manifests/suntribe-ab.json",
+      "manifest_error_path": null,
+      "review_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/reviews/suntribe-ab.json",
+      "curation_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/curation/suntribe-ab.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/curated_manifests/suntribe-ab.json",
+      "dry_run_path": null,
+      "next_steps": []
+    },
+    {
+      "brand": "OUATE",
+      "slug": "ouate",
+      "domain": "https://ouate-paris.com",
+      "category": "P1 Skincare",
+      "score": 75,
+      "signals": 90,
+      "manifest_status": "completed",
+      "review_ok_to_continue": true,
+      "review_blocker_reasons": [],
+      "extracted_product_count": 85,
+      "manifest_item_count": 61,
+      "review_accepted_item_count": 61,
+      "conservative_candidate_count": 0,
+      "conservative_hold_count": 61,
+      "top_hold_reasons": [
+        {
+          "reason": "commerce_facts_gate:hold",
+          "count": 61
+        },
+        {
+          "reason": "commerce_problem:market_currency_mismatch",
+          "count": 61
+        },
+        {
+          "reason": "non_us_seed_currency:EUR",
+          "count": 61
+        },
+        {
+          "reason": "bundle_wholesale_duplicate_or_non_single_sku",
+          "count": 35
+        },
+        {
+          "reason": "out_of_stock",
+          "count": 11
+        },
+        {
+          "reason": "regulated_or_therapeutic_claim_lane",
+          "count": 8
+        },
+        {
+          "reason": "accessory_or_non_core_beauty_merch",
+          "count": 6
+        }
+      ],
+      "manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/manifests/ouate.json",
+      "manifest_error_path": null,
+      "review_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/reviews/ouate.json",
+      "curation_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/curation/ouate.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/curated_manifests/ouate.json",
+      "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/dry_runs/ouate.json",
+      "next_steps": [],
+      "dry_run_database_available": false,
+      "dry_run_scanned": 0,
+      "dry_run_would_insert": 0,
+      "dry_run_would_insert_unverified": 0
+    },
+    {
+      "brand": "born to bio",
+      "slug": "born-to-bio",
+      "domain": "https://born-to-bio.com",
+      "category": "P1 Skincare",
+      "score": 75,
+      "signals": 250,
+      "manifest_status": "completed",
+      "review_ok_to_continue": true,
+      "review_blocker_reasons": [],
+      "extracted_product_count": 200,
+      "manifest_item_count": 193,
+      "review_accepted_item_count": 193,
+      "conservative_candidate_count": 0,
+      "conservative_hold_count": 193,
+      "top_hold_reasons": [
+        {
+          "reason": "commerce_facts_gate:hold",
+          "count": 193
+        },
+        {
+          "reason": "commerce_problem:commerce_facts_currency_mismatch",
+          "count": 193
+        },
+        {
+          "reason": "commerce_problem:commerce_facts_market_switch_not_ok",
+          "count": 193
+        },
+        {
+          "reason": "commerce_problem:market_currency_mismatch",
+          "count": 193
+        },
+        {
+          "reason": "non_us_seed_currency:EUR",
+          "count": 193
+        },
+        {
+          "reason": "accessory_or_non_core_beauty_merch",
+          "count": 19
+        },
+        {
+          "reason": "regulated_or_therapeutic_claim_lane",
+          "count": 16
+        },
+        {
+          "reason": "bundle_wholesale_duplicate_or_non_single_sku",
+          "count": 11
+        }
+      ],
+      "manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/manifests/born-to-bio.json",
+      "manifest_error_path": null,
+      "review_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/reviews/born-to-bio.json",
+      "curation_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/curation/born-to-bio.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/curated_manifests/born-to-bio.json",
+      "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/dry_runs/born-to-bio.json",
+      "next_steps": [],
+      "dry_run_database_available": false,
+      "dry_run_scanned": 0,
+      "dry_run_would_insert": 0,
+      "dry_run_would_insert_unverified": 0
+    }
+  ]
+}

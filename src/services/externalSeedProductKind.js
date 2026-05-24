@@ -390,6 +390,10 @@ function classifyExternalSeedProductKind(input = {}) {
     reasons.push('collection_bundle_signal');
     return { family: 'set_or_collection', reasons };
   }
+  if (formulaCategoryPathSignal && ACCESSORY_RE.test(primaryContentText) && !FORMULA_PRODUCT_RE.test(primaryContentText)) {
+    reasons.push('primary_accessory_overrides_formula_category_signal');
+    return { family: 'accessory', reasons };
+  }
   if (formulaCategoryPathSignal) {
     reasons.push('formula_category_path_signal');
     return { family: 'single_formula', reasons };

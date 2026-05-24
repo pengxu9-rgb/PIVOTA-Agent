@@ -1047,6 +1047,9 @@ function extractVariantAxes(product) {
     parseNamedAxisFromOptions(product, ['shade', 'tone', 'hue']) ||
     inferredGenericAxis.shade ||
     (!rawColor ? shadeFamily?.value : '');
+  const scent =
+    parseNamedAxisFromOptions(product, ['scent', 'scents', 'fragrance', 'fragrances']) ||
+    inferredGenericAxis.scent;
   const color = shouldSuppressColorAxisValue(product, rawColor) ? '' : rawColor;
   const shade = shouldSuppressColorAxisValue(product, rawShade) ? '' : rawShade;
   const normalized = {
@@ -1055,6 +1058,7 @@ function extractVariantAxes(product) {
     ...(pack ? { pack } : {}),
     ...(shade ? { shade } : {}),
     ...(color ? { color } : {}),
+    ...(scent ? { scent } : {}),
     multi_variant: variants.length > 1,
   };
   return normalized;
@@ -1062,7 +1066,7 @@ function extractVariantAxes(product) {
 
 function serializeVariantAxes(axes) {
   const source = asPlainObject(axes) || {};
-  const pairs = ['size', 'volume', 'pack', 'shade', 'color']
+  const pairs = ['size', 'volume', 'pack', 'shade', 'color', 'scent']
     .map((key) => [key, normalizeAxisValue(source[key])])
     .filter(([, value]) => Boolean(value));
   if (!pairs.length) return '';
@@ -1940,13 +1944,14 @@ function readListingSwatchData(listing, axis = '', value = '') {
   };
 }
 
-const PRODUCT_LINE_OPTION_AXIS_KEYS = Object.freeze(['shade', 'color', 'size', 'volume', 'pack']);
+const PRODUCT_LINE_OPTION_AXIS_KEYS = Object.freeze(['shade', 'color', 'size', 'volume', 'pack', 'scent']);
 const PRODUCT_LINE_OPTION_AXIS_LABELS = Object.freeze({
   shade: 'Shade',
   color: 'Color',
   size: 'Size',
   volume: 'Size',
   pack: 'Pack',
+  scent: 'Scent',
 });
 
 const IMPLICIT_FULL_SIZE_TRIGGER_VALUES = new Set(['mini', 'travel size', 'sample']);

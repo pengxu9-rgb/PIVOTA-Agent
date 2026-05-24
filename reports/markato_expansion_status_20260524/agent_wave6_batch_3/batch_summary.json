@@ -1,0 +1,575 @@
+{
+  "generated_at": "2026-05-24T05:10:56.414Z",
+  "guardrails_observed": {
+    "no_railway_up": true,
+    "no_git_push": true,
+    "no_db_apply_or_production_writes": true,
+    "dry_run_database_available": false,
+    "wrote_only_under_assigned_output_dir": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3"
+  },
+  "totals": {
+    "brands": 7,
+    "manifest_rows": 48,
+    "review_gate_passed_brands": 3,
+    "review_gate_blocked_brands": 4,
+    "review_gate_accepted_rows_when_ok": 38,
+    "curated_db_ready_candidates": 12,
+    "held_rows": 36,
+    "dry_run_scanned": 12,
+    "dry_run_would_insert_unverified": 12,
+    "dry_run_invalid": 0
+  },
+  "brands": [
+    {
+      "slug": "australias-manuka",
+      "brand": "Australia's Manuka",
+      "domain": "australiasmanuka.com.au",
+      "category": "P1 Wellness and Supplements",
+      "manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/manifests/australias-manuka.json",
+      "review_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/australias-manuka.json",
+      "review_csv_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/australias-manuka.csv",
+      "accepted_manifest_path": null,
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/curated_manifests/australias-manuka.json",
+      "dry_run_path": null,
+      "extractor": {
+        "extracted_product_count": 0,
+        "manifest_item_count": 0,
+        "diagnostics": [
+          {
+            "discovery_strategy": "seed_page",
+            "failure_category": "bot_challenge",
+            "block_provider": "cloudflare"
+          }
+        ],
+        "excluded_bundle_like_count": 0,
+        "excluded_non_product_page_count": 0,
+        "excluded_incomplete_transaction_count": 0,
+        "excluded_brand_scope_mismatch_count": 0
+      },
+      "review_gate": {
+        "ok_to_continue": false,
+        "blocker_reasons": [
+          "zero_accepted_items_from_extractor",
+          "anti_abuse_signal:cloudflare"
+        ],
+        "accepted_item_count": 0,
+        "blocked_item_count": 0,
+        "price_coverage_rate": 0,
+        "availability_coverage_rate": 0,
+        "image_coverage_rate": 0
+      },
+      "curation": {
+        "status": "hold",
+        "db_ready_candidate_count": 0,
+        "held_row_count": 0,
+        "hold_reason_counts": {},
+        "db_ready_candidate_rows": []
+      },
+      "dry_run": null,
+      "blockers": [
+        "zero_accepted_items_from_extractor",
+        "anti_abuse_signal:cloudflare",
+        "no_extracted_rows_available_for_curation"
+      ],
+      "next_steps": [
+        "Hold. Re-run manifest extraction only after Cloudflare/bot-challenge source access is resolved or an official product feed/fallback source is available.",
+        "Do not create seeds until extractor returns product rows and review gate passes."
+      ]
+    },
+    {
+      "slug": "chatelier",
+      "brand": "Chatelier",
+      "domain": "chateliercosmetics.com",
+      "category": "P1 Skincare",
+      "manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/manifests/chatelier.json",
+      "review_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/chatelier.json",
+      "review_csv_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/chatelier.csv",
+      "accepted_manifest_path": null,
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/curated_manifests/chatelier.json",
+      "dry_run_path": null,
+      "extractor": {
+        "extracted_product_count": 21,
+        "manifest_item_count": 10,
+        "diagnostics": [
+          {
+            "discovery_strategy": "shopify_json",
+            "failure_category": null,
+            "block_provider": "perimeterx"
+          }
+        ],
+        "excluded_bundle_like_count": 11,
+        "excluded_non_product_page_count": 0,
+        "excluded_incomplete_transaction_count": 0,
+        "excluded_brand_scope_mismatch_count": 0
+      },
+      "review_gate": {
+        "ok_to_continue": false,
+        "blocker_reasons": [
+          "anti_abuse_signal:perimeterx"
+        ],
+        "accepted_item_count": 10,
+        "blocked_item_count": 0,
+        "price_coverage_rate": 1,
+        "availability_coverage_rate": 1,
+        "image_coverage_rate": 1
+      },
+      "curation": {
+        "status": "hold",
+        "db_ready_candidate_count": 0,
+        "held_row_count": 10,
+        "hold_reason_counts": {
+          "non_us_currency_or_market_mismatch": 10,
+          "commerce_facts_gate_hold": 10,
+          "market_currency_mismatch": 10,
+          "review_gate_blocker:anti_abuse_signal:perimeterx": 10,
+          "bundle_accessory_or_set_like_row": 3,
+          "description_pollution_page_script": 7,
+          "out_of_stock_or_unavailable": 1
+        },
+        "db_ready_candidate_rows": []
+      },
+      "dry_run": null,
+      "blockers": [
+        "anti_abuse_signal:perimeterx"
+      ],
+      "next_steps": [
+        "Hold. Resolve PerimeterX/anti-abuse diagnostic, confirm a US-market/USD source, and filter remaining ritual/bundle/accessory rows.",
+        "Rebuild after product descriptions are not polluted by Shogun/script blobs; current rows have EUR seed currency and commerce gate market_currency_mismatch."
+      ]
+    },
+    {
+      "slug": "lime",
+      "brand": "LIME",
+      "domain": "en.limecosmetic.com",
+      "category": "P1 Makeup",
+      "manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/manifests/lime.json",
+      "review_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/lime.json",
+      "review_csv_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/lime.csv",
+      "accepted_manifest_path": null,
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/curated_manifests/lime.json",
+      "dry_run_path": null,
+      "extractor": {
+        "extracted_product_count": 0,
+        "manifest_item_count": 0,
+        "diagnostics": [
+          {
+            "discovery_strategy": "seed_page",
+            "failure_category": "bot_challenge",
+            "block_provider": null
+          }
+        ],
+        "excluded_bundle_like_count": 0,
+        "excluded_non_product_page_count": 0,
+        "excluded_incomplete_transaction_count": 0,
+        "excluded_brand_scope_mismatch_count": 0
+      },
+      "review_gate": {
+        "ok_to_continue": false,
+        "blocker_reasons": [
+          "zero_accepted_items_from_extractor"
+        ],
+        "accepted_item_count": 0,
+        "blocked_item_count": 0,
+        "price_coverage_rate": 0,
+        "availability_coverage_rate": 0,
+        "image_coverage_rate": 0
+      },
+      "curation": {
+        "status": "hold",
+        "db_ready_candidate_count": 0,
+        "held_row_count": 0,
+        "hold_reason_counts": {},
+        "db_ready_candidate_rows": []
+      },
+      "dry_run": null,
+      "blockers": [
+        "zero_accepted_items_from_extractor",
+        "no_extracted_rows_available_for_curation"
+      ],
+      "next_steps": [
+        "Hold. Re-run manifest extraction only after bot-challenge access is resolved or a clean official catalog endpoint/fallback source is available.",
+        "Do not seed until nonzero product rows pass review."
+      ]
+    },
+    {
+      "slug": "lazy-society",
+      "brand": "Lazy Society",
+      "domain": "lazysociety.co.kr",
+      "category": "P1 Skincare",
+      "manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/manifests/lazy-society.json",
+      "review_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/lazy-society.json",
+      "review_csv_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/lazy-society.csv",
+      "accepted_manifest_path": null,
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/curated_manifests/lazy-society.json",
+      "dry_run_path": null,
+      "extractor": {
+        "extracted_product_count": 0,
+        "manifest_item_count": 0,
+        "diagnostics": [
+          {
+            "discovery_strategy": "seed_page",
+            "failure_category": "timeout",
+            "block_provider": null
+          }
+        ],
+        "excluded_bundle_like_count": 0,
+        "excluded_non_product_page_count": 0,
+        "excluded_incomplete_transaction_count": 0,
+        "excluded_brand_scope_mismatch_count": 0
+      },
+      "review_gate": {
+        "ok_to_continue": false,
+        "blocker_reasons": [
+          "zero_accepted_items_from_extractor"
+        ],
+        "accepted_item_count": 0,
+        "blocked_item_count": 0,
+        "price_coverage_rate": 0,
+        "availability_coverage_rate": 0,
+        "image_coverage_rate": 0
+      },
+      "curation": {
+        "status": "hold",
+        "db_ready_candidate_count": 0,
+        "held_row_count": 0,
+        "hold_reason_counts": {},
+        "db_ready_candidate_rows": []
+      },
+      "dry_run": null,
+      "blockers": [
+        "zero_accepted_items_from_extractor",
+        "no_extracted_rows_available_for_curation"
+      ],
+      "next_steps": [
+        "Hold. Re-run with a reliable official source or extractor timeout remediation; current extraction timed out with zero rows.",
+        "Do not seed until nonzero product rows pass review."
+      ]
+    },
+    {
+      "slug": "apih",
+      "brand": "Apih",
+      "domain": "apihway.com",
+      "category": "P1 Wellness and Supplements",
+      "manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/manifests/apih.json",
+      "review_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/apih.json",
+      "review_csv_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/apih.csv",
+      "accepted_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/accepted_manifests/apih.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/curated_manifests/apih.json",
+      "dry_run_path": null,
+      "extractor": {
+        "extracted_product_count": 13,
+        "manifest_item_count": 10,
+        "diagnostics": [
+          {
+            "discovery_strategy": "shopify_json",
+            "failure_category": null,
+            "block_provider": null
+          }
+        ],
+        "excluded_bundle_like_count": 3,
+        "excluded_non_product_page_count": 0,
+        "excluded_incomplete_transaction_count": 0,
+        "excluded_brand_scope_mismatch_count": 0
+      },
+      "review_gate": {
+        "ok_to_continue": true,
+        "blocker_reasons": [],
+        "accepted_item_count": 10,
+        "blocked_item_count": 0,
+        "price_coverage_rate": 1,
+        "availability_coverage_rate": 1,
+        "image_coverage_rate": 1
+      },
+      "curation": {
+        "status": "hold",
+        "db_ready_candidate_count": 0,
+        "held_row_count": 10,
+        "hold_reason_counts": {
+          "regulated_wellness_supplement_or_therapeutic_claims_lane": 10,
+          "accessory_or_container_row": 1,
+          "non_english_or_health_claim_copy_for_us_review": 8,
+          "out_of_stock_or_unavailable": 1
+        },
+        "db_ready_candidate_rows": []
+      },
+      "dry_run": null,
+      "blockers": [],
+      "next_steps": [
+        "Hold for regulated wellness/supplement claims lane. Remove accessory/container rows and out-of-stock rows before any seed work.",
+        "Require US/English copy and claims review before reconsidering any DB-ready candidates."
+      ]
+    },
+    {
+      "slug": "afrakari",
+      "brand": "AFRAKARI",
+      "domain": "afrakari.com",
+      "category": "P1 Skincare",
+      "manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/manifests/afrakari.json",
+      "review_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/afrakari.json",
+      "review_csv_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/afrakari.csv",
+      "accepted_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/accepted_manifests/afrakari.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/curated_manifests/afrakari.json",
+      "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/dry_runs/afrakari.json",
+      "extractor": {
+        "extracted_product_count": 17,
+        "manifest_item_count": 15,
+        "diagnostics": [
+          {
+            "discovery_strategy": "shopify_json",
+            "failure_category": null,
+            "block_provider": null
+          }
+        ],
+        "excluded_bundle_like_count": 2,
+        "excluded_non_product_page_count": 0,
+        "excluded_incomplete_transaction_count": 0,
+        "excluded_brand_scope_mismatch_count": 0
+      },
+      "review_gate": {
+        "ok_to_continue": true,
+        "blocker_reasons": [],
+        "accepted_item_count": 15,
+        "blocked_item_count": 0,
+        "price_coverage_rate": 1,
+        "availability_coverage_rate": 1,
+        "image_coverage_rate": 1
+      },
+      "curation": {
+        "status": "ok_to_dry_run",
+        "db_ready_candidate_count": 12,
+        "held_row_count": 3,
+        "hold_reason_counts": {
+          "therapeutic_or_correction_claim": 1,
+          "regulated_cbd_claim_lane": 1,
+          "possible_sunscreen_regulatory_claim": 1
+        },
+        "db_ready_candidate_rows": [
+          {
+            "seed_id": "eps_2767ebd9da66c08f2bb81080",
+            "external_product_id": "ext_63426418919f510613d11dfc",
+            "title": "Radiance Elixir",
+            "url": "https://afrakari.com/products/radiance-elixir",
+            "price_amount": 1500,
+            "price_currency": "USD",
+            "availability": "in_stock",
+            "commerce_gate_status": "pass"
+          },
+          {
+            "seed_id": "eps_10f419ffd1e558d0fe8c1790",
+            "external_product_id": "ext_212d963582191d90a381b919",
+            "title": "Prickly Pear Elixir",
+            "url": "https://afrakari.com/products/prickly-pear-elixir",
+            "price_amount": 1000,
+            "price_currency": "USD",
+            "availability": "in_stock",
+            "commerce_gate_status": "pass"
+          },
+          {
+            "seed_id": "eps_fa2ac13757b056ce5e682c29",
+            "external_product_id": "ext_21c18dd88afe33fb11d9fbc6",
+            "title": "Recovery Cream",
+            "url": "https://afrakari.com/products/recovery-cream",
+            "price_amount": 2950,
+            "price_currency": "USD",
+            "availability": "in_stock",
+            "commerce_gate_status": "pass"
+          },
+          {
+            "seed_id": "eps_95518d4281bf9d450327fe8b",
+            "external_product_id": "ext_92fd955718af4577fe7a921f",
+            "title": "Recovery Serum",
+            "url": "https://afrakari.com/products/recovery-serum",
+            "price_amount": 2950,
+            "price_currency": "USD",
+            "availability": "in_stock",
+            "commerce_gate_status": "pass"
+          },
+          {
+            "seed_id": "eps_f89eb02ceed27a8f692279fb",
+            "external_product_id": "ext_f52a396425de7fce597534b1",
+            "title": "Gentle Cleansing Milk",
+            "url": "https://afrakari.com/products/gentle-cleansing-milk",
+            "price_amount": 900,
+            "price_currency": "USD",
+            "availability": "in_stock",
+            "commerce_gate_status": "pass"
+          },
+          {
+            "seed_id": "eps_f13752e8e836b8debd48845f",
+            "external_product_id": "ext_4d2036846dfde9236a2e5db9",
+            "title": "Kalahari Melon Seed Oil",
+            "url": "https://afrakari.com/products/kalahari-melon-seed-oil",
+            "price_amount": 900,
+            "price_currency": "USD",
+            "availability": "in_stock",
+            "commerce_gate_status": "pass"
+          },
+          {
+            "seed_id": "eps_186e29e1e6fd806125dece26",
+            "external_product_id": "ext_18f015be942fdeb3df68ad45",
+            "title": "Marula Hydrating Elixir",
+            "url": "https://afrakari.com/products/marula-hydrating-elixir",
+            "price_amount": 1400,
+            "price_currency": "USD",
+            "availability": "in_stock",
+            "commerce_gate_status": "pass"
+          },
+          {
+            "seed_id": "eps_347e8e61d70b03be347f97f1",
+            "external_product_id": "ext_d9acdecc612f64df18b8dda8",
+            "title": "Pure Marula Oil + Cape Chamomile",
+            "url": "https://afrakari.com/products/pure-marula-oil-cape-chamomile",
+            "price_amount": 1000,
+            "price_currency": "USD",
+            "availability": "in_stock",
+            "commerce_gate_status": "pass"
+          },
+          {
+            "seed_id": "eps_7f8a4c07e9c5b32c408cb824",
+            "external_product_id": "ext_d72da473fbf1b8456b2e9ab8",
+            "title": "Pure Marula Oil",
+            "url": "https://afrakari.com/products/pure-marula-oil",
+            "price_amount": 900,
+            "price_currency": "USD",
+            "availability": "in_stock",
+            "commerce_gate_status": "pass"
+          },
+          {
+            "seed_id": "eps_84b4b04897b97446519566d1",
+            "external_product_id": "ext_40353e5d40b9c6d3866bfb35",
+            "title": "Resurface + Restore Night Cream",
+            "url": "https://afrakari.com/products/resurface-restore-night-cream",
+            "price_amount": 2150,
+            "price_currency": "USD",
+            "availability": "in_stock",
+            "commerce_gate_status": "pass"
+          },
+          {
+            "seed_id": "eps_71b0cab4af5aae7e1fa52ecf",
+            "external_product_id": "ext_3d1d0b42b8eca59a501ff39e",
+            "title": "Renewal Facial Oil",
+            "url": "https://afrakari.com/products/renewal-facial-oil",
+            "price_amount": 1650,
+            "price_currency": "USD",
+            "availability": "in_stock",
+            "commerce_gate_status": "pass"
+          },
+          {
+            "seed_id": "eps_5e3c158d7dd82beaf3ca9cc4",
+            "external_product_id": "ext_81b379a35a0ad778e3650f0e",
+            "title": "Cape Kelp Hydrating Cleanser",
+            "url": "https://afrakari.com/products/cape-kelp-hydrating-cleanser",
+            "price_amount": 975,
+            "price_currency": "USD",
+            "availability": "in_stock",
+            "commerce_gate_status": "pass"
+          }
+        ]
+      },
+      "dry_run": {
+        "mode": "dry_run",
+        "database_available": false,
+        "scanned": 12,
+        "would_insert_unverified": 12,
+        "invalid": 0,
+        "requires_seed_correction_count": 0
+      },
+      "blockers": [],
+      "next_steps": [
+        "AFRAKARI curated manifest is dry-run ready: 12 rows passed no-DB validation as would_insert_unverified.",
+        "Before any apply, run a production DB-aware dry-run/read check for existing rows, manually approve high-price/market-switch-unknown commerce facts, and keep CBD/scar/broad-spectrum protection rows held."
+      ]
+    },
+    {
+      "slug": "fusspot-collagen-beauty-tea",
+      "brand": "Fusspot Collagen Beauty Tea",
+      "domain": "fusspottea.com",
+      "category": "P1 Wellness and Supplements",
+      "manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/manifests/fusspot-collagen-beauty-tea.json",
+      "review_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/fusspot-collagen-beauty-tea.json",
+      "review_csv_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/fusspot-collagen-beauty-tea.csv",
+      "accepted_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/accepted_manifests/fusspot-collagen-beauty-tea.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/curated_manifests/fusspot-collagen-beauty-tea.json",
+      "dry_run_path": null,
+      "extractor": {
+        "extracted_product_count": 19,
+        "manifest_item_count": 13,
+        "diagnostics": [
+          {
+            "discovery_strategy": "shopify_json",
+            "failure_category": null,
+            "block_provider": null
+          }
+        ],
+        "excluded_bundle_like_count": 6,
+        "excluded_non_product_page_count": 0,
+        "excluded_incomplete_transaction_count": 0,
+        "excluded_brand_scope_mismatch_count": 0
+      },
+      "review_gate": {
+        "ok_to_continue": true,
+        "blocker_reasons": [],
+        "accepted_item_count": 13,
+        "blocked_item_count": 0,
+        "price_coverage_rate": 1,
+        "availability_coverage_rate": 1,
+        "image_coverage_rate": 1
+      },
+      "curation": {
+        "status": "hold",
+        "db_ready_candidate_count": 0,
+        "held_row_count": 13,
+        "hold_reason_counts": {
+          "regulated_wellness_supplement_or_therapeutic_claims_lane": 12,
+          "therapeutic_or_body_function_claims": 12,
+          "out_of_stock_or_unavailable": 4,
+          "accessory_or_container_row": 1
+        },
+        "db_ready_candidate_rows": []
+      },
+      "dry_run": null,
+      "blockers": [],
+      "next_steps": [
+        "Hold for regulated wellness/supplement and therapeutic/body-function claims lane.",
+        "Remove out-of-stock and accessory rows, then require claims review before any seed creation."
+      ]
+    }
+  ],
+  "changed_files": [
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/manifests/australias-manuka.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/australias-manuka.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/australias-manuka.csv",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/curated_manifests/australias-manuka.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/manifests/chatelier.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/chatelier.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/chatelier.csv",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/curated_manifests/chatelier.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/manifests/lime.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/lime.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/lime.csv",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/curated_manifests/lime.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/manifests/lazy-society.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/lazy-society.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/lazy-society.csv",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/curated_manifests/lazy-society.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/manifests/apih.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/apih.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/apih.csv",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/accepted_manifests/apih.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/curated_manifests/apih.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/manifests/afrakari.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/afrakari.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/afrakari.csv",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/accepted_manifests/afrakari.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/curated_manifests/afrakari.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/dry_runs/afrakari.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/manifests/fusspot-collagen-beauty-tea.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/fusspot-collagen-beauty-tea.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/fusspot-collagen-beauty-tea.csv",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/accepted_manifests/fusspot-collagen-beauty-tea.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/curated_manifests/fusspot-collagen-beauty-tea.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/curation_decisions.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/batch_summary.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/batch_summary.md"
+  ]
+}

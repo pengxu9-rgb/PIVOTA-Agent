@@ -1184,6 +1184,41 @@ describe('externalSeedProducts helper', () => {
     expect(variant.display_label).toBe('Scent: Awaken Confidence');
   });
 
+  test('normalizes plural Scents option labels to a scent variant axis', () => {
+    const [variant] = normalizeSeedVariants(
+      {
+        variants: [
+          {
+            variant_id: '39951549431890',
+            title: 'Lavender',
+            option_name: 'Scents',
+            option_value: 'Lavender',
+            image_url: 'https://example.com/lavender-hand-balm.png',
+            price: '12',
+            currency: 'USD',
+          },
+        ],
+      },
+      {
+        title: 'NOURISHING HAND BALM',
+        category: 'Hand Balm',
+        product_type: 'Hand Balm',
+        canonical_url: 'https://coconutmatter.com/products/nourishing-hand-balm',
+      },
+    );
+
+    expect(variant).toEqual(
+      expect.objectContaining({
+        title: 'Lavender',
+        option_name: 'Scent',
+        option_value: 'Lavender',
+        axis_kind: 'scent',
+        display_label: 'Scent: Lavender',
+        source_quality_status: 'captured',
+      }),
+    );
+  });
+
   test('suppresses single Offer UPC variants from customer-facing options', () => {
     const [variant] = normalizeSeedVariants(
       {

@@ -1,0 +1,158 @@
+{
+  "generated_at": "2026-05-24T05:22:45.198Z",
+  "source_validation_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_overall_validation/overall_validation.json",
+  "hold_policy": "Tier B hard rework rows excluded from the next production DB dry-run manifest.",
+  "item_count": 10,
+  "candidates": [
+    {
+      "batch": 3,
+      "brand": "AFRAKARI",
+      "title": "Recovery Cream",
+      "canonical_url": "https://afrakari.com/products/recovery-cream",
+      "external_product_id": "ext_21c18dd88afe33fb11d9fbc6",
+      "safety_status": "blocked_or_needs_rework",
+      "safety_flags": [
+        "regulated_or_therapeutic_claim_cue"
+      ],
+      "needs_main_agent_review": [
+        "dry_run_sellable_region_unknown",
+        "dry_run_shipping_unknown"
+      ]
+    },
+    {
+      "batch": 3,
+      "brand": "AFRAKARI",
+      "title": "Gentle Cleansing Milk",
+      "canonical_url": "https://afrakari.com/products/gentle-cleansing-milk",
+      "external_product_id": "ext_f52a396425de7fce597534b1",
+      "safety_status": "blocked_or_needs_rework",
+      "safety_flags": [
+        "regulated_or_therapeutic_claim_cue"
+      ],
+      "needs_main_agent_review": [
+        "dry_run_sellable_region_unknown",
+        "dry_run_shipping_unknown"
+      ]
+    },
+    {
+      "batch": 3,
+      "brand": "AFRAKARI",
+      "title": "Marula Hydrating Elixir",
+      "canonical_url": "https://afrakari.com/products/marula-hydrating-elixir",
+      "external_product_id": "ext_18f015be942fdeb3df68ad45",
+      "safety_status": "blocked_or_needs_rework",
+      "safety_flags": [
+        "regulated_or_therapeutic_claim_cue"
+      ],
+      "needs_main_agent_review": [
+        "dry_run_sellable_region_unknown",
+        "dry_run_shipping_unknown"
+      ]
+    },
+    {
+      "batch": 3,
+      "brand": "AFRAKARI",
+      "title": "Pure Marula Oil + Cape Chamomile",
+      "canonical_url": "https://afrakari.com/products/pure-marula-oil-cape-chamomile",
+      "external_product_id": "ext_d9acdecc612f64df18b8dda8",
+      "safety_status": "blocked_or_needs_rework",
+      "safety_flags": [
+        "regulated_or_therapeutic_claim_cue"
+      ],
+      "needs_main_agent_review": [
+        "dry_run_sellable_region_unknown",
+        "dry_run_shipping_unknown"
+      ]
+    },
+    {
+      "batch": 3,
+      "brand": "AFRAKARI",
+      "title": "Resurface + Restore Night Cream",
+      "canonical_url": "https://afrakari.com/products/resurface-restore-night-cream",
+      "external_product_id": "ext_40353e5d40b9c6d3866bfb35",
+      "safety_status": "blocked_or_needs_rework",
+      "safety_flags": [
+        "regulated_or_therapeutic_claim_cue"
+      ],
+      "needs_main_agent_review": [
+        "dry_run_sellable_region_unknown",
+        "dry_run_shipping_unknown"
+      ]
+    },
+    {
+      "batch": 4,
+      "brand": "Lucamar Skin Care",
+      "title": "Baa Ram Ewe  Lanolin Skin Balm  120g UNSCENTED",
+      "canonical_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+      "external_product_id": "ext_c26547ca63d530592ed62d63",
+      "safety_status": "blocked_or_needs_rework",
+      "safety_flags": [
+        "regulated_or_therapeutic_claim_cue"
+      ],
+      "needs_main_agent_review": [
+        "dry_run_sellable_region_unknown",
+        "dry_run_shipping_unknown"
+      ]
+    },
+    {
+      "batch": 4,
+      "brand": "Lucamar Skin Care",
+      "title": "Musk: My Lips Are Sealed Lip Balm 10gms",
+      "canonical_url": "https://lucamarskincare.com/products/limited-edition-musk-flavoured-my-lips-are-sealed-lip-balm-10gms",
+      "external_product_id": "ext_74a7dddbe9cfad5b36ea4bc1",
+      "safety_status": "blocked_or_needs_rework",
+      "safety_flags": [
+        "regulated_or_therapeutic_claim_cue"
+      ],
+      "needs_main_agent_review": [
+        "dry_run_sellable_region_unknown",
+        "dry_run_shipping_unknown"
+      ]
+    },
+    {
+      "batch": 4,
+      "brand": "Lucamar Skin Care",
+      "title": "Baa Ram Ewe  Lanolin Skin Balm  120g",
+      "canonical_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+      "external_product_id": "ext_0836525e72365da8ecbcc3b5",
+      "safety_status": "blocked_or_needs_rework",
+      "safety_flags": [
+        "regulated_or_therapeutic_claim_cue"
+      ],
+      "needs_main_agent_review": [
+        "dry_run_sellable_region_unknown",
+        "dry_run_shipping_unknown"
+      ]
+    },
+    {
+      "batch": 4,
+      "brand": "Lucamar Skin Care",
+      "title": "Vanilla:   My Lips Are Sealed Natural Lip Balm 10gms",
+      "canonical_url": "https://lucamarskincare.com/products/my-lips-are-sealed-natural-lip-balm-vanilla",
+      "external_product_id": "ext_cfdd4c8d3521fe733d0fc75d",
+      "safety_status": "blocked_or_needs_rework",
+      "safety_flags": [
+        "regulated_or_therapeutic_claim_cue"
+      ],
+      "needs_main_agent_review": [
+        "dry_run_sellable_region_unknown",
+        "dry_run_shipping_unknown"
+      ]
+    },
+    {
+      "batch": 4,
+      "brand": "Lucamar Skin Care",
+      "title": "Baa Ram Ewe Lanolin Skin Balm 50g",
+      "canonical_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+      "external_product_id": "ext_edcf7e510314384ac432b385",
+      "safety_status": "blocked_or_needs_rework",
+      "safety_flags": [
+        "regulated_or_therapeutic_claim_cue"
+      ],
+      "needs_main_agent_review": [
+        "dry_run_sellable_region_unknown",
+        "dry_run_shipping_unknown"
+      ]
+    }
+  ]
+}

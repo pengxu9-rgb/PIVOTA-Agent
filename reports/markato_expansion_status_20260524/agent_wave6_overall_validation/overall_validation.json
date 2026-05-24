@@ -1,0 +1,3489 @@
+{
+  "generated_at": "2026-05-24T05:16:10.010Z",
+  "scope": "Wave6 Markato cross-batch validation, batches 1-5",
+  "source_batch_dirs": [
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5"
+  ],
+  "output_dir": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_overall_validation",
+  "guardrails": {
+    "performed_no_db_write": true,
+    "performed_no_git_push": true,
+    "performed_no_railway_up": true,
+    "validation_mode": "read existing worker outputs and write validation artifacts only"
+  },
+  "json_validation": {
+    "batch_summaries": [
+      {
+        "batch": 1,
+        "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/batch_summary.json",
+        "valid_json": true
+      },
+      {
+        "batch": 2,
+        "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/batch_summary.json",
+        "valid_json": true
+      },
+      {
+        "batch": 3,
+        "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/batch_summary.json",
+        "valid_json": true
+      },
+      {
+        "batch": 4,
+        "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/batch_summary.json",
+        "valid_json": true
+      },
+      {
+        "batch": 5,
+        "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/batch_summary.json",
+        "valid_json": true
+      }
+    ],
+    "dry_runs": [
+      {
+        "batch": 1,
+        "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/dry_runs/aetas.json",
+        "valid_json": true,
+        "mode": "dry_run",
+        "database_available": false,
+        "apply_summary_database_available": false,
+        "scanned": 1,
+        "would_insert": 0,
+        "would_insert_unverified": 1,
+        "invalid": 0,
+        "inserted": 0
+      },
+      {
+        "batch": 2,
+        "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/dry_runs/seresilk.json",
+        "valid_json": true,
+        "mode": "dry_run",
+        "database_available": false,
+        "apply_summary_database_available": false,
+        "scanned": 3,
+        "would_insert": 0,
+        "would_insert_unverified": 3,
+        "invalid": 0,
+        "inserted": 0
+      },
+      {
+        "batch": 3,
+        "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/dry_runs/afrakari.json",
+        "valid_json": true,
+        "mode": "dry_run",
+        "database_available": false,
+        "apply_summary_database_available": false,
+        "scanned": 12,
+        "would_insert": 0,
+        "would_insert_unverified": 12,
+        "invalid": 0,
+        "inserted": 0
+      },
+      {
+        "batch": 4,
+        "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/dry_runs/7journeys.json",
+        "valid_json": true,
+        "mode": "dry_run",
+        "database_available": false,
+        "apply_summary_database_available": false,
+        "scanned": 5,
+        "would_insert": 0,
+        "would_insert_unverified": 5,
+        "invalid": 0,
+        "inserted": 0
+      },
+      {
+        "batch": 4,
+        "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/dry_runs/lucamar-skin-care.json",
+        "valid_json": true,
+        "mode": "dry_run",
+        "database_available": false,
+        "apply_summary_database_available": false,
+        "scanned": 7,
+        "would_insert": 0,
+        "would_insert_unverified": 7,
+        "invalid": 0,
+        "inserted": 0
+      },
+      {
+        "batch": 4,
+        "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/dry_runs/rohr-remedy.json",
+        "valid_json": true,
+        "mode": "dry_run",
+        "database_available": false,
+        "apply_summary_database_available": false,
+        "scanned": 2,
+        "would_insert": 0,
+        "would_insert_unverified": 2,
+        "invalid": 0,
+        "inserted": 0
+      },
+      {
+        "batch": 5,
+        "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/dry_runs/born-to-bio.json",
+        "valid_json": true,
+        "mode": "dry_run",
+        "database_available": false,
+        "apply_summary_database_available": false,
+        "scanned": 0,
+        "would_insert": 0,
+        "would_insert_unverified": 0,
+        "invalid": 0,
+        "inserted": 0
+      },
+      {
+        "batch": 5,
+        "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/dry_runs/ouate.json",
+        "valid_json": true,
+        "mode": "dry_run",
+        "database_available": false,
+        "apply_summary_database_available": false,
+        "scanned": 0,
+        "would_insert": 0,
+        "would_insert_unverified": 0,
+        "invalid": 0,
+        "inserted": 0
+      },
+      {
+        "batch": 5,
+        "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/dry_runs/rutines.json",
+        "valid_json": true,
+        "mode": "dry_run",
+        "database_available": false,
+        "apply_summary_database_available": false,
+        "scanned": 0,
+        "would_insert": 0,
+        "would_insert_unverified": 0,
+        "invalid": 0,
+        "inserted": 0
+      }
+    ],
+    "all_json_files": {
+      "total": 167,
+      "valid": 165,
+      "invalid": [
+        {
+          "batch": 1,
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/logs/depuravita.manifest.stdout.json",
+          "error": "Unexpected end of JSON input"
+        },
+        {
+          "batch": 1,
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/logs/masami.manifest.stdout.json",
+          "error": "Unexpected end of JSON input"
+        }
+      ]
+    }
+  },
+  "reconciliation": {
+    "by_batch": {
+      "batch_1": {
+        "brands_processed": 7,
+        "manifest_rows": 132,
+        "extracted_products": 0,
+        "review_pass_brands": 4,
+        "review_blocked_brands": 3,
+        "review_accepted_rows": 131,
+        "conservative_holds": 131,
+        "db_ready_candidate_rows": 1,
+        "dry_run_scanned": 1,
+        "dry_run_would_insert_unverified": 1,
+        "dry_run_invalid": 0,
+        "dry_run_database_available_summary": null
+      },
+      "batch_2": {
+        "brands_processed": 7,
+        "manifest_rows": 25,
+        "extracted_products": 33,
+        "review_pass_brands": 4,
+        "review_blocked_brands": 3,
+        "review_accepted_rows": 25,
+        "conservative_holds": 22,
+        "db_ready_candidate_rows": 3,
+        "dry_run_scanned": 3,
+        "dry_run_would_insert_unverified": 3,
+        "dry_run_invalid": 0,
+        "dry_run_database_available_summary": false
+      },
+      "batch_3": {
+        "brands_processed": 7,
+        "manifest_rows": 48,
+        "extracted_products": 0,
+        "review_pass_brands": 3,
+        "review_blocked_brands": 4,
+        "review_accepted_rows": 38,
+        "conservative_holds": 36,
+        "db_ready_candidate_rows": 12,
+        "dry_run_scanned": 12,
+        "dry_run_would_insert_unverified": 12,
+        "dry_run_invalid": 0,
+        "dry_run_database_available_summary": null
+      },
+      "batch_4": {
+        "brands_processed": 7,
+        "manifest_rows": 97,
+        "extracted_products": 141,
+        "review_pass_brands": 5,
+        "review_blocked_brands": 2,
+        "review_accepted_rows": 96,
+        "conservative_holds": 83,
+        "db_ready_candidate_rows": 14,
+        "dry_run_scanned": 14,
+        "dry_run_would_insert_unverified": 14,
+        "dry_run_invalid": 0,
+        "dry_run_database_available_summary": null
+      },
+      "batch_5": {
+        "brands_processed": 8,
+        "manifest_rows": 296,
+        "extracted_products": 358,
+        "review_pass_brands": 3,
+        "review_blocked_brands": 5,
+        "review_accepted_rows": 296,
+        "conservative_holds": 296,
+        "db_ready_candidate_rows": 0,
+        "dry_run_scanned": 0,
+        "dry_run_would_insert_unverified": 0,
+        "dry_run_invalid": 0,
+        "dry_run_database_available_summary": false
+      }
+    },
+    "totals": {
+      "brands_processed": 36,
+      "manifest_rows": 598,
+      "extracted_products": 532,
+      "review_pass_brands": 19,
+      "review_blocked_brands": 17,
+      "review_accepted_rows": 586,
+      "conservative_holds": 568,
+      "db_ready_candidate_rows": 30,
+      "dry_run_scanned": 30,
+      "dry_run_would_insert_unverified": 30,
+      "dry_run_invalid": 0,
+      "actual_dry_run_files": 9,
+      "actual_dry_run_scanned": 30,
+      "actual_dry_run_would_insert_unverified": 30,
+      "actual_dry_run_invalid": 0
+    }
+  },
+  "dry_run_database_check": {
+    "dry_run_file_count": 9,
+    "all_database_available_false": true,
+    "inserted_rows_reported": 0,
+    "scanned": 30,
+    "would_insert": 0,
+    "would_insert_unverified": 30,
+    "invalid": 0
+  },
+  "candidate_summary": {
+    "total_rows": 30,
+    "by_batch": {
+      "1": 1,
+      "2": 3,
+      "3": 12,
+      "4": 14,
+      "5": 0
+    },
+    "by_brand": {
+      "Aetas": 1,
+      "Seresilk": 3,
+      "AFRAKARI": 12,
+      "Lucamar Skin Care": 7,
+      "7Journeys": 5,
+      "Rohr Remedy": 2
+    },
+    "dry_run_status_counts": {
+      "would_insert_unverified": 30
+    },
+    "safety_status_counts": {
+      "needs_main_agent_review": 20,
+      "blocked_or_needs_rework": 10
+    }
+  },
+  "consolidated_db_ready_candidates": [
+    {
+      "batch": 1,
+      "brand": "Aetas",
+      "slug": "aetas",
+      "title": "The Serum",
+      "source_url": "https://aetasofficial.com/products/serum",
+      "canonical_url": "https://aetasofficial.com/products/serum",
+      "external_product_id": "ext_38b10ae142ef283bdc0acca8",
+      "seed_id": "eps_00b1b6dc2b0d11c894a13934",
+      "price_amount": 60,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "source_role": "primary",
+      "source_domain": "https://aetasofficial.com",
+      "dry_run_status": "would_insert_unverified",
+      "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/dry_runs/aetas.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/curated_manifests/aetas.json",
+      "commerce_gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "ok",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "availability_status": "in_stock",
+        "problems": []
+      },
+      "safety_status": "needs_main_agent_review",
+      "safety_flags": [],
+      "needs_main_agent_review": [
+        "dry_run_sellable_region_unknown",
+        "dry_run_shipping_unknown"
+      ],
+      "note": "Dry-run insert candidate, but unresolved review fields prevent an unconditional safety pass."
+    },
+    {
+      "batch": 2,
+      "brand": "Seresilk",
+      "slug": "seresilk",
+      "title": "Silk Night Cream",
+      "source_url": "https://seresilk.com.au/products/silk-night-cream",
+      "canonical_url": "https://seresilk.com.au/products/silk-night-cream",
+      "external_product_id": "ext_df8aac07d6c970d4c213b43f",
+      "seed_id": "eps_44c1397b319a538f47b4ca1d",
+      "price_amount": 79.97,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "source_role": "primary",
+      "source_domain": "https://seresilk.com.au",
+      "dry_run_status": "would_insert_unverified",
+      "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/dry_runs/seresilk.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/curated_manifests/seresilk.json",
+      "commerce_gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "ok",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "availability_status": "in_stock",
+        "problems": []
+      },
+      "safety_status": "needs_main_agent_review",
+      "safety_flags": [],
+      "needs_main_agent_review": [
+        "dry_run_sellable_region_unknown",
+        "dry_run_shipping_unknown"
+      ],
+      "note": "Dry-run insert candidate, but unresolved review fields prevent an unconditional safety pass."
+    },
+    {
+      "batch": 2,
+      "brand": "Seresilk",
+      "slug": "seresilk",
+      "title": "Silk Night Serum",
+      "source_url": "https://seresilk.com.au/products/silk-night-serum",
+      "canonical_url": "https://seresilk.com.au/products/silk-night-serum",
+      "external_product_id": "ext_438058253d57a2c8d75f5906",
+      "seed_id": "eps_68187b19d2f43540ff7e1b59",
+      "price_amount": 94.51,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "source_role": "primary",
+      "source_domain": "https://seresilk.com.au",
+      "dry_run_status": "would_insert_unverified",
+      "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/dry_runs/seresilk.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/curated_manifests/seresilk.json",
+      "commerce_gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "ok",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "availability_status": "in_stock",
+        "problems": []
+      },
+      "safety_status": "needs_main_agent_review",
+      "safety_flags": [],
+      "needs_main_agent_review": [
+        "cosmetic_claim_language_needs_review",
+        "dry_run_sellable_region_unknown",
+        "dry_run_shipping_unknown"
+      ],
+      "note": "Dry-run insert candidate, but unresolved review fields prevent an unconditional safety pass."
+    },
+    {
+      "batch": 2,
+      "brand": "Seresilk",
+      "slug": "seresilk",
+      "title": "Gentle Silk Cleanser",
+      "source_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+      "canonical_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+      "external_product_id": "ext_0d4ffd13b899460cabb1f392",
+      "seed_id": "eps_5ae568728c95aa19d64a9413",
+      "price_amount": 54.52,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "source_role": "primary",
+      "source_domain": "https://seresilk.com.au",
+      "dry_run_status": "would_insert_unverified",
+      "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/dry_runs/seresilk.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/curated_manifests/seresilk.json",
+      "commerce_gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "ok",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "availability_status": "in_stock",
+        "problems": []
+      },
+      "safety_status": "needs_main_agent_review",
+      "safety_flags": [],
+      "needs_main_agent_review": [
+        "dry_run_sellable_region_unknown",
+        "dry_run_shipping_unknown"
+      ],
+      "note": "Dry-run insert candidate, but unresolved review fields prevent an unconditional safety pass."
+    },
+    {
+      "batch": 3,
+      "brand": "AFRAKARI",
+      "slug": "afrakari",
+      "title": "Radiance Elixir",
+      "source_url": "https://afrakari.com/products/radiance-elixir",
+      "canonical_url": "https://afrakari.com/products/radiance-elixir",
+      "external_product_id": "ext_63426418919f510613d11dfc",
+      "seed_id": "eps_2767ebd9da66c08f2bb81080",
+      "price_amount": 1500,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "source_role": "primary",
+      "source_domain": "https://afrakari.com",
+      "dry_run_status": "would_insert_unverified",
+      "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/dry_runs/afrakari.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/curated_manifests/afrakari.json",
+      "commerce_gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "unknown",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "availability_status": "in_stock",
+        "problems": []
+      },
+      "safety_status": "needs_main_agent_review",
+      "safety_flags": [],
+      "needs_main_agent_review": [
+        "cosmetic_claim_language_needs_review",
+        "dry_run_sellable_region_unknown",
+        "dry_run_shipping_unknown"
+      ],
+      "note": "Dry-run insert candidate, but unresolved review fields prevent an unconditional safety pass."
+    },
+    {
+      "batch": 3,
+      "brand": "AFRAKARI",
+      "slug": "afrakari",
+      "title": "Prickly Pear Elixir",
+      "source_url": "https://afrakari.com/products/prickly-pear-elixir",
+      "canonical_url": "https://afrakari.com/products/prickly-pear-elixir",
+      "external_product_id": "ext_212d963582191d90a381b919",
+      "seed_id": "eps_10f419ffd1e558d0fe8c1790",
+      "price_amount": 1000,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "source_role": "primary",
+      "source_domain": "https://afrakari.com",
+      "dry_run_status": "would_insert_unverified",
+      "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/dry_runs/afrakari.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/curated_manifests/afrakari.json",
+      "commerce_gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "unknown",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "availability_status": "in_stock",
+        "problems": []
+      },
+      "safety_status": "needs_main_agent_review",
+      "safety_flags": [],
+      "needs_main_agent_review": [
+        "dry_run_sellable_region_unknown",
+        "dry_run_shipping_unknown"
+      ],
+      "note": "Dry-run insert candidate, but unresolved review fields prevent an unconditional safety pass."
+    },
+    {
+      "batch": 3,
+      "brand": "AFRAKARI",
+      "slug": "afrakari",
+      "title": "Recovery Cream",
+      "source_url": "https://afrakari.com/products/recovery-cream",
+      "canonical_url": "https://afrakari.com/products/recovery-cream",
+      "external_product_id": "ext_21c18dd88afe33fb11d9fbc6",
+      "seed_id": "eps_fa2ac13757b056ce5e682c29",
+      "price_amount": 2950,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "source_role": "primary",
+      "source_domain": "https://afrakari.com",
+      "dry_run_status": "would_insert_unverified",
+      "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/dry_runs/afrakari.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/curated_manifests/afrakari.json",
+      "commerce_gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "unknown",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "availability_status": "in_stock",
+        "problems": []
+      },
+      "safety_status": "blocked_or_needs_rework",
+      "safety_flags": [
+        "regulated_or_therapeutic_claim_cue"
+      ],
+      "needs_main_agent_review": [
+        "dry_run_sellable_region_unknown",
+        "dry_run_shipping_unknown"
+      ],
+      "note": "Do not apply until flagged issues are cleared."
+    },
+    {
+      "batch": 3,
+      "brand": "AFRAKARI",
+      "slug": "afrakari",
+      "title": "Recovery Serum",
+      "source_url": "https://afrakari.com/products/recovery-serum",
+      "canonical_url": "https://afrakari.com/products/recovery-serum",
+      "external_product_id": "ext_92fd955718af4577fe7a921f",
+      "seed_id": "eps_95518d4281bf9d450327fe8b",
+      "price_amount": 2950,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "source_role": "primary",
+      "source_domain": "https://afrakari.com",
+      "dry_run_status": "would_insert_unverified",
+      "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/dry_runs/afrakari.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/curated_manifests/afrakari.json",
+      "commerce_gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "unknown",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "availability_status": "in_stock",
+        "problems": []
+      },
+      "safety_status": "needs_main_agent_review",
+      "safety_flags": [],
+      "needs_main_agent_review": [
+        "cosmetic_claim_language_needs_review",
+        "dry_run_sellable_region_unknown",
+        "dry_run_shipping_unknown"
+      ],
+      "note": "Dry-run insert candidate, but unresolved review fields prevent an unconditional safety pass."
+    },
+    {
+      "batch": 3,
+      "brand": "AFRAKARI",
+      "slug": "afrakari",
+      "title": "Gentle Cleansing Milk",
+      "source_url": "https://afrakari.com/products/gentle-cleansing-milk",
+      "canonical_url": "https://afrakari.com/products/gentle-cleansing-milk",
+      "external_product_id": "ext_f52a396425de7fce597534b1",
+      "seed_id": "eps_f89eb02ceed27a8f692279fb",
+      "price_amount": 900,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "source_role": "primary",
+      "source_domain": "https://afrakari.com",
+      "dry_run_status": "would_insert_unverified",
+      "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/dry_runs/afrakari.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/curated_manifests/afrakari.json",
+      "commerce_gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "unknown",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "availability_status": "in_stock",
+        "problems": []
+      },
+      "safety_status": "blocked_or_needs_rework",
+      "safety_flags": [
+        "regulated_or_therapeutic_claim_cue"
+      ],
+      "needs_main_agent_review": [
+        "dry_run_sellable_region_unknown",
+        "dry_run_shipping_unknown"
+      ],
+      "note": "Do not apply until flagged issues are cleared."
+    },
+    {
+      "batch": 3,
+      "brand": "AFRAKARI",
+      "slug": "afrakari",
+      "title": "Kalahari Melon Seed Oil",
+      "source_url": "https://afrakari.com/products/kalahari-melon-seed-oil",
+      "canonical_url": "https://afrakari.com/products/kalahari-melon-seed-oil",
+      "external_product_id": "ext_4d2036846dfde9236a2e5db9",
+      "seed_id": "eps_f13752e8e836b8debd48845f",
+      "price_amount": 900,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "source_role": "primary",
+      "source_domain": "https://afrakari.com",
+      "dry_run_status": "would_insert_unverified",
+      "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/dry_runs/afrakari.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/curated_manifests/afrakari.json",
+      "commerce_gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "unknown",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "availability_status": "in_stock",
+        "problems": []
+      },
+      "safety_status": "needs_main_agent_review",
+      "safety_flags": [],
+      "needs_main_agent_review": [
+        "cosmetic_claim_language_needs_review",
+        "dry_run_sellable_region_unknown",
+        "dry_run_shipping_unknown"
+      ],
+      "note": "Dry-run insert candidate, but unresolved review fields prevent an unconditional safety pass."
+    },
+    {
+      "batch": 3,
+      "brand": "AFRAKARI",
+      "slug": "afrakari",
+      "title": "Marula Hydrating Elixir",
+      "source_url": "https://afrakari.com/products/marula-hydrating-elixir",
+      "canonical_url": "https://afrakari.com/products/marula-hydrating-elixir",
+      "external_product_id": "ext_18f015be942fdeb3df68ad45",
+      "seed_id": "eps_186e29e1e6fd806125dece26",
+      "price_amount": 1400,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "source_role": "primary",
+      "source_domain": "https://afrakari.com",
+      "dry_run_status": "would_insert_unverified",
+      "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/dry_runs/afrakari.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/curated_manifests/afrakari.json",
+      "commerce_gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "unknown",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "availability_status": "in_stock",
+        "problems": []
+      },
+      "safety_status": "blocked_or_needs_rework",
+      "safety_flags": [
+        "regulated_or_therapeutic_claim_cue"
+      ],
+      "needs_main_agent_review": [
+        "dry_run_sellable_region_unknown",
+        "dry_run_shipping_unknown"
+      ],
+      "note": "Do not apply until flagged issues are cleared."
+    },
+    {
+      "batch": 3,
+      "brand": "AFRAKARI",
+      "slug": "afrakari",
+      "title": "Pure Marula Oil + Cape Chamomile",
+      "source_url": "https://afrakari.com/products/pure-marula-oil-cape-chamomile",
+      "canonical_url": "https://afrakari.com/products/pure-marula-oil-cape-chamomile",
+      "external_product_id": "ext_d9acdecc612f64df18b8dda8",
+      "seed_id": "eps_347e8e61d70b03be347f97f1",
+      "price_amount": 1000,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "source_role": "primary",
+      "source_domain": "https://afrakari.com",
+      "dry_run_status": "would_insert_unverified",
+      "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/dry_runs/afrakari.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/curated_manifests/afrakari.json",
+      "commerce_gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "unknown",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "availability_status": "in_stock",
+        "problems": []
+      },
+      "safety_status": "blocked_or_needs_rework",
+      "safety_flags": [
+        "regulated_or_therapeutic_claim_cue"
+      ],
+      "needs_main_agent_review": [
+        "dry_run_sellable_region_unknown",
+        "dry_run_shipping_unknown"
+      ],
+      "note": "Do not apply until flagged issues are cleared."
+    },
+    {
+      "batch": 3,
+      "brand": "AFRAKARI",
+      "slug": "afrakari",
+      "title": "Pure Marula Oil",
+      "source_url": "https://afrakari.com/products/pure-marula-oil",
+      "canonical_url": "https://afrakari.com/products/pure-marula-oil",
+      "external_product_id": "ext_d72da473fbf1b8456b2e9ab8",
+      "seed_id": "eps_7f8a4c07e9c5b32c408cb824",
+      "price_amount": 900,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "source_role": "primary",
+      "source_domain": "https://afrakari.com",
+      "dry_run_status": "would_insert_unverified",
+      "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/dry_runs/afrakari.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/curated_manifests/afrakari.json",
+      "commerce_gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "unknown",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "availability_status": "in_stock",
+        "problems": []
+      },
+      "safety_status": "needs_main_agent_review",
+      "safety_flags": [],
+      "needs_main_agent_review": [
+        "cosmetic_claim_language_needs_review",
+        "dry_run_sellable_region_unknown",
+        "dry_run_shipping_unknown"
+      ],
+      "note": "Dry-run insert candidate, but unresolved review fields prevent an unconditional safety pass."
+    },
+    {
+      "batch": 3,
+      "brand": "AFRAKARI",
+      "slug": "afrakari",
+      "title": "Resurface + Restore Night Cream",
+      "source_url": "https://afrakari.com/products/resurface-restore-night-cream",
+      "canonical_url": "https://afrakari.com/products/resurface-restore-night-cream",
+      "external_product_id": "ext_40353e5d40b9c6d3866bfb35",
+      "seed_id": "eps_84b4b04897b97446519566d1",
+      "price_amount": 2150,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "source_role": "primary",
+      "source_domain": "https://afrakari.com",
+      "dry_run_status": "would_insert_unverified",
+      "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/dry_runs/afrakari.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/curated_manifests/afrakari.json",
+      "commerce_gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "unknown",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "availability_status": "in_stock",
+        "problems": []
+      },
+      "safety_status": "blocked_or_needs_rework",
+      "safety_flags": [
+        "regulated_or_therapeutic_claim_cue"
+      ],
+      "needs_main_agent_review": [
+        "dry_run_sellable_region_unknown",
+        "dry_run_shipping_unknown"
+      ],
+      "note": "Do not apply until flagged issues are cleared."
+    },
+    {
+      "batch": 3,
+      "brand": "AFRAKARI",
+      "slug": "afrakari",
+      "title": "Renewal Facial Oil",
+      "source_url": "https://afrakari.com/products/renewal-facial-oil",
+      "canonical_url": "https://afrakari.com/products/renewal-facial-oil",
+      "external_product_id": "ext_3d1d0b42b8eca59a501ff39e",
+      "seed_id": "eps_71b0cab4af5aae7e1fa52ecf",
+      "price_amount": 1650,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "source_role": "primary",
+      "source_domain": "https://afrakari.com",
+      "dry_run_status": "would_insert_unverified",
+      "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/dry_runs/afrakari.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/curated_manifests/afrakari.json",
+      "commerce_gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "unknown",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "availability_status": "in_stock",
+        "problems": []
+      },
+      "safety_status": "needs_main_agent_review",
+      "safety_flags": [],
+      "needs_main_agent_review": [
+        "cosmetic_claim_language_needs_review",
+        "dry_run_sellable_region_unknown",
+        "dry_run_shipping_unknown"
+      ],
+      "note": "Dry-run insert candidate, but unresolved review fields prevent an unconditional safety pass."
+    },
+    {
+      "batch": 3,
+      "brand": "AFRAKARI",
+      "slug": "afrakari",
+      "title": "Cape Kelp Hydrating Cleanser",
+      "source_url": "https://afrakari.com/products/cape-kelp-hydrating-cleanser",
+      "canonical_url": "https://afrakari.com/products/cape-kelp-hydrating-cleanser",
+      "external_product_id": "ext_81b379a35a0ad778e3650f0e",
+      "seed_id": "eps_5e3c158d7dd82beaf3ca9cc4",
+      "price_amount": 975,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "source_role": "primary",
+      "source_domain": "https://afrakari.com",
+      "dry_run_status": "would_insert_unverified",
+      "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/dry_runs/afrakari.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/curated_manifests/afrakari.json",
+      "commerce_gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "unknown",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "availability_status": "in_stock",
+        "problems": []
+      },
+      "safety_status": "needs_main_agent_review",
+      "safety_flags": [],
+      "needs_main_agent_review": [
+        "cosmetic_claim_language_needs_review",
+        "dry_run_sellable_region_unknown",
+        "dry_run_shipping_unknown"
+      ],
+      "note": "Dry-run insert candidate, but unresolved review fields prevent an unconditional safety pass."
+    },
+    {
+      "batch": 4,
+      "brand": "Lucamar Skin Care",
+      "slug": "lucamar-skin-care",
+      "title": "Lucamar Baalm 50g  UNSCENTED",
+      "source_url": "https://lucamarskincare.com/products/lucamar-baalm-50g-unscented",
+      "canonical_url": "https://lucamarskincare.com/products/lucamar-baalm-50g-unscented",
+      "external_product_id": "ext_065337312a937f0f26d50865",
+      "seed_id": "eps_0d072fad09b3413bc8b13c49",
+      "price_amount": 14,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "source_role": "primary",
+      "source_domain": "https://lucamarskincare.com",
+      "dry_run_status": "would_insert_unverified",
+      "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/dry_runs/lucamar-skin-care.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/curated_manifests/lucamar-skin-care.json",
+      "commerce_gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "ok",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "availability_status": "in_stock",
+        "problems": []
+      },
+      "safety_status": "needs_main_agent_review",
+      "safety_flags": [],
+      "needs_main_agent_review": [
+        "dry_run_sellable_region_unknown",
+        "dry_run_shipping_unknown"
+      ],
+      "note": "Dry-run insert candidate, but unresolved review fields prevent an unconditional safety pass."
+    },
+    {
+      "batch": 4,
+      "brand": "Lucamar Skin Care",
+      "slug": "lucamar-skin-care",
+      "title": "Baa Ram Ewe  Lanolin Skin Balm  120g UNSCENTED",
+      "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+      "canonical_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+      "external_product_id": "ext_c26547ca63d530592ed62d63",
+      "seed_id": "eps_4345b0af311a4e604dc9eb17",
+      "price_amount": 17,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "source_role": "primary",
+      "source_domain": "https://lucamarskincare.com",
+      "dry_run_status": "would_insert_unverified",
+      "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/dry_runs/lucamar-skin-care.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/curated_manifests/lucamar-skin-care.json",
+      "commerce_gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "ok",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "availability_status": "in_stock",
+        "problems": []
+      },
+      "safety_status": "blocked_or_needs_rework",
+      "safety_flags": [
+        "regulated_or_therapeutic_claim_cue"
+      ],
+      "needs_main_agent_review": [
+        "dry_run_sellable_region_unknown",
+        "dry_run_shipping_unknown"
+      ],
+      "note": "Do not apply until flagged issues are cleared."
+    },
+    {
+      "batch": 4,
+      "brand": "Lucamar Skin Care",
+      "slug": "lucamar-skin-care",
+      "title": "Musk: My Lips Are Sealed Lip Balm 10gms",
+      "source_url": "https://lucamarskincare.com/products/limited-edition-musk-flavoured-my-lips-are-sealed-lip-balm-10gms",
+      "canonical_url": "https://lucamarskincare.com/products/limited-edition-musk-flavoured-my-lips-are-sealed-lip-balm-10gms",
+      "external_product_id": "ext_74a7dddbe9cfad5b36ea4bc1",
+      "seed_id": "eps_a54b44da72d94062579357f8",
+      "price_amount": 8,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "source_role": "primary",
+      "source_domain": "https://lucamarskincare.com",
+      "dry_run_status": "would_insert_unverified",
+      "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/dry_runs/lucamar-skin-care.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/curated_manifests/lucamar-skin-care.json",
+      "commerce_gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "ok",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "availability_status": "in_stock",
+        "problems": []
+      },
+      "safety_status": "blocked_or_needs_rework",
+      "safety_flags": [
+        "regulated_or_therapeutic_claim_cue"
+      ],
+      "needs_main_agent_review": [
+        "dry_run_sellable_region_unknown",
+        "dry_run_shipping_unknown"
+      ],
+      "note": "Do not apply until flagged issues are cleared."
+    },
+    {
+      "batch": 4,
+      "brand": "Lucamar Skin Care",
+      "slug": "lucamar-skin-care",
+      "title": "Baa Ram Ewe  Lanolin Skin Balm  120g",
+      "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+      "canonical_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+      "external_product_id": "ext_0836525e72365da8ecbcc3b5",
+      "seed_id": "eps_e2fa8f2dda7a3a9609d84dfa",
+      "price_amount": 17,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "source_role": "primary",
+      "source_domain": "https://lucamarskincare.com",
+      "dry_run_status": "would_insert_unverified",
+      "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/dry_runs/lucamar-skin-care.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/curated_manifests/lucamar-skin-care.json",
+      "commerce_gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "ok",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "availability_status": "in_stock",
+        "problems": []
+      },
+      "safety_status": "blocked_or_needs_rework",
+      "safety_flags": [
+        "regulated_or_therapeutic_claim_cue"
+      ],
+      "needs_main_agent_review": [
+        "dry_run_sellable_region_unknown",
+        "dry_run_shipping_unknown"
+      ],
+      "note": "Do not apply until flagged issues are cleared."
+    },
+    {
+      "batch": 4,
+      "brand": "Lucamar Skin Care",
+      "slug": "lucamar-skin-care",
+      "title": "Vanilla:   My Lips Are Sealed Natural Lip Balm 10gms",
+      "source_url": "https://lucamarskincare.com/products/my-lips-are-sealed-natural-lip-balm-vanilla",
+      "canonical_url": "https://lucamarskincare.com/products/my-lips-are-sealed-natural-lip-balm-vanilla",
+      "external_product_id": "ext_cfdd4c8d3521fe733d0fc75d",
+      "seed_id": "eps_8c3a1a8c5634c3a602478c6d",
+      "price_amount": 8,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "source_role": "primary",
+      "source_domain": "https://lucamarskincare.com",
+      "dry_run_status": "would_insert_unverified",
+      "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/dry_runs/lucamar-skin-care.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/curated_manifests/lucamar-skin-care.json",
+      "commerce_gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "ok",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "availability_status": "in_stock",
+        "problems": []
+      },
+      "safety_status": "blocked_or_needs_rework",
+      "safety_flags": [
+        "regulated_or_therapeutic_claim_cue"
+      ],
+      "needs_main_agent_review": [
+        "dry_run_sellable_region_unknown",
+        "dry_run_shipping_unknown"
+      ],
+      "note": "Do not apply until flagged issues are cleared."
+    },
+    {
+      "batch": 4,
+      "brand": "Lucamar Skin Care",
+      "slug": "lucamar-skin-care",
+      "title": "Lucamar Baalm 50g",
+      "source_url": "https://lucamarskincare.com/products/lucamar-baalm",
+      "canonical_url": "https://lucamarskincare.com/products/lucamar-baalm",
+      "external_product_id": "ext_05c5a41a67fb37dcf352853e",
+      "seed_id": "eps_499592237ce0da6e864a8846",
+      "price_amount": 14,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "source_role": "primary",
+      "source_domain": "https://lucamarskincare.com",
+      "dry_run_status": "would_insert_unverified",
+      "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/dry_runs/lucamar-skin-care.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/curated_manifests/lucamar-skin-care.json",
+      "commerce_gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "ok",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "availability_status": "in_stock",
+        "problems": []
+      },
+      "safety_status": "needs_main_agent_review",
+      "safety_flags": [],
+      "needs_main_agent_review": [
+        "dry_run_sellable_region_unknown",
+        "dry_run_shipping_unknown"
+      ],
+      "note": "Dry-run insert candidate, but unresolved review fields prevent an unconditional safety pass."
+    },
+    {
+      "batch": 4,
+      "brand": "Lucamar Skin Care",
+      "slug": "lucamar-skin-care",
+      "title": "Baa Ram Ewe Lanolin Skin Balm 50g",
+      "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+      "canonical_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+      "external_product_id": "ext_edcf7e510314384ac432b385",
+      "seed_id": "eps_f4b6e76f5ce353e8980d61fd",
+      "price_amount": 12,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "source_role": "primary",
+      "source_domain": "https://lucamarskincare.com",
+      "dry_run_status": "would_insert_unverified",
+      "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/dry_runs/lucamar-skin-care.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/curated_manifests/lucamar-skin-care.json",
+      "commerce_gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "ok",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "availability_status": "in_stock",
+        "problems": []
+      },
+      "safety_status": "blocked_or_needs_rework",
+      "safety_flags": [
+        "regulated_or_therapeutic_claim_cue"
+      ],
+      "needs_main_agent_review": [
+        "dry_run_sellable_region_unknown",
+        "dry_run_shipping_unknown"
+      ],
+      "note": "Do not apply until flagged issues are cleared."
+    },
+    {
+      "batch": 4,
+      "brand": "7Journeys",
+      "slug": "7journeys",
+      "title": "7 Journeys Extra Soft Glow Renewal Moisturizer 50g - Hydrating & Firming",
+      "source_url": "https://7journeys.com/products/7-journeys-extra-soft-glow-renewal-moisturizer-50g",
+      "canonical_url": "https://7journeys.com/products/7-journeys-extra-soft-glow-renewal-moisturizer-50g",
+      "external_product_id": "ext_c3feb615476441d19d3d7cad",
+      "seed_id": "eps_27417af7c9613766a0c99aeb",
+      "price_amount": 480,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "source_role": "primary",
+      "source_domain": "https://7journeys.com",
+      "dry_run_status": "would_insert_unverified",
+      "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/dry_runs/7journeys.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/curated_manifests/7journeys.json",
+      "commerce_gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "ok",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "availability_status": "in_stock",
+        "problems": []
+      },
+      "safety_status": "needs_main_agent_review",
+      "safety_flags": [],
+      "needs_main_agent_review": [
+        "cosmetic_claim_language_needs_review",
+        "dry_run_sellable_region_unknown",
+        "dry_run_shipping_unknown"
+      ],
+      "note": "Dry-run insert candidate, but unresolved review fields prevent an unconditional safety pass."
+    },
+    {
+      "batch": 4,
+      "brand": "7Journeys",
+      "slug": "7journeys",
+      "title": "7 Journeys Miracle Timeless Eye Cream 30g (Hydrating & Glowing)",
+      "source_url": "https://7journeys.com/products/7-journeys-miracle-timeless-eye-cream-30g",
+      "canonical_url": "https://7journeys.com/products/7-journeys-miracle-timeless-eye-cream-30g",
+      "external_product_id": "ext_0d1e0a286ec9983daa6588e9",
+      "seed_id": "eps_1c53b17389fcd9c72077daad",
+      "price_amount": 540,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "source_role": "primary",
+      "source_domain": "https://7journeys.com",
+      "dry_run_status": "would_insert_unverified",
+      "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/dry_runs/7journeys.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/curated_manifests/7journeys.json",
+      "commerce_gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "ok",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "availability_status": "in_stock",
+        "problems": []
+      },
+      "safety_status": "needs_main_agent_review",
+      "safety_flags": [],
+      "needs_main_agent_review": [
+        "dry_run_sellable_region_unknown",
+        "dry_run_shipping_unknown"
+      ],
+      "note": "Dry-run insert candidate, but unresolved review fields prevent an unconditional safety pass."
+    },
+    {
+      "batch": 4,
+      "brand": "7Journeys",
+      "slug": "7journeys",
+      "title": "7 Journeys Antarctic Timeless Serum 45ml (Hydration & Anti-aging)",
+      "source_url": "https://7journeys.com/products/7-journeys-anatctic-timeless-serum-45ml",
+      "canonical_url": "https://7journeys.com/products/7-journeys-anatctic-timeless-serum-45ml",
+      "external_product_id": "ext_ab73ef0b2176992ac7edae2e",
+      "seed_id": "eps_6dc0a98fc6a40d6d447f496d",
+      "price_amount": 540,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "source_role": "primary",
+      "source_domain": "https://7journeys.com",
+      "dry_run_status": "would_insert_unverified",
+      "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/dry_runs/7journeys.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/curated_manifests/7journeys.json",
+      "commerce_gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "ok",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "availability_status": "in_stock",
+        "problems": []
+      },
+      "safety_status": "needs_main_agent_review",
+      "safety_flags": [],
+      "needs_main_agent_review": [
+        "cosmetic_claim_language_needs_review",
+        "dry_run_sellable_region_unknown",
+        "dry_run_shipping_unknown"
+      ],
+      "note": "Dry-run insert candidate, but unresolved review fields prevent an unconditional safety pass."
+    },
+    {
+      "batch": 4,
+      "brand": "7Journeys",
+      "slug": "7journeys",
+      "title": "7 Journeys Glow Renewal Serum 45ml (Hydrated & Glowing Skin)",
+      "source_url": "https://7journeys.com/products/7-journeys-glow-renewal-serum-45ml",
+      "canonical_url": "https://7journeys.com/products/7-journeys-glow-renewal-serum-45ml",
+      "external_product_id": "ext_ebe749514b521fc5985e2347",
+      "seed_id": "eps_3bd7d50a55a60ef9a2b7a40d",
+      "price_amount": 660,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "source_role": "primary",
+      "source_domain": "https://7journeys.com",
+      "dry_run_status": "would_insert_unverified",
+      "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/dry_runs/7journeys.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/curated_manifests/7journeys.json",
+      "commerce_gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "ok",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "availability_status": "in_stock",
+        "problems": []
+      },
+      "safety_status": "needs_main_agent_review",
+      "safety_flags": [],
+      "needs_main_agent_review": [
+        "dry_run_sellable_region_unknown",
+        "dry_run_shipping_unknown"
+      ],
+      "note": "Dry-run insert candidate, but unresolved review fields prevent an unconditional safety pass."
+    },
+    {
+      "batch": 4,
+      "brand": "7Journeys",
+      "slug": "7journeys",
+      "title": "7 Journeys Miracle Glow Serum Mask 25ml (10 Sheets)",
+      "source_url": "https://7journeys.com/products/7journeys-miracle-glow-serum-mask-10-sheets",
+      "canonical_url": "https://7journeys.com/products/7journeys-miracle-glow-serum-mask-10-sheets",
+      "external_product_id": "ext_824c5edce946bb360f763cac",
+      "seed_id": "eps_06c65c9418283c22a66f664a",
+      "price_amount": 550,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "source_role": "primary",
+      "source_domain": "https://7journeys.com",
+      "dry_run_status": "would_insert_unverified",
+      "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/dry_runs/7journeys.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/curated_manifests/7journeys.json",
+      "commerce_gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "ok",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "availability_status": "in_stock",
+        "problems": []
+      },
+      "safety_status": "needs_main_agent_review",
+      "safety_flags": [],
+      "needs_main_agent_review": [
+        "dry_run_sellable_region_unknown",
+        "dry_run_shipping_unknown"
+      ],
+      "note": "Dry-run insert candidate, but unresolved review fields prevent an unconditional safety pass."
+    },
+    {
+      "batch": 4,
+      "brand": "Rohr Remedy",
+      "slug": "rohr-remedy",
+      "title": "Kakadu Plum Super Serum with Vit C",
+      "source_url": "https://rohrremedy.com/products/kakadu-plum-face-serum-with-vit-c",
+      "canonical_url": "https://rohrremedy.com/products/kakadu-plum-face-serum-with-vit-c",
+      "external_product_id": "ext_c463dcd674e1138b1284ff37",
+      "seed_id": "eps_5b49f8c120d2920838ae83d6",
+      "price_amount": 44,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "source_role": "primary",
+      "source_domain": "https://rohrremedy.com",
+      "dry_run_status": "would_insert_unverified",
+      "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/dry_runs/rohr-remedy.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/curated_manifests/rohr-remedy.json",
+      "commerce_gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "unknown",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "availability_status": "in_stock",
+        "problems": []
+      },
+      "safety_status": "needs_main_agent_review",
+      "safety_flags": [],
+      "needs_main_agent_review": [
+        "cosmetic_claim_language_needs_review",
+        "dry_run_sellable_region_unknown",
+        "dry_run_shipping_unknown"
+      ],
+      "note": "Dry-run insert candidate, but unresolved review fields prevent an unconditional safety pass."
+    },
+    {
+      "batch": 4,
+      "brand": "Rohr Remedy",
+      "slug": "rohr-remedy",
+      "title": "Lilly Pilly Face Moisturiser with Omega-3",
+      "source_url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser",
+      "canonical_url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser",
+      "external_product_id": "ext_1b95875bc9bdeee751d0cee1",
+      "seed_id": "eps_5ee0b414653347fb5af51740",
+      "price_amount": 30,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "source_role": "primary",
+      "source_domain": "https://rohrremedy.com",
+      "dry_run_status": "would_insert_unverified",
+      "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/dry_runs/rohr-remedy.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/curated_manifests/rohr-remedy.json",
+      "commerce_gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "unknown",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "availability_status": "in_stock",
+        "problems": []
+      },
+      "safety_status": "needs_main_agent_review",
+      "safety_flags": [],
+      "needs_main_agent_review": [
+        "dry_run_sellable_region_unknown",
+        "dry_run_shipping_unknown"
+      ],
+      "note": "Dry-run insert candidate, but unresolved review fields prevent an unconditional safety pass."
+    }
+  ],
+  "duplicate_checks": {
+    "duplicate_canonical_url_groups": [],
+    "duplicate_brand_title_groups": [],
+    "duplicate_external_product_id_groups": [],
+    "duplicate_count": 0
+  },
+  "safety_findings": {
+    "hard_blocked_or_rework_rows": [
+      {
+        "batch": 3,
+        "brand": "AFRAKARI",
+        "slug": "afrakari",
+        "title": "Recovery Cream",
+        "source_url": "https://afrakari.com/products/recovery-cream",
+        "canonical_url": "https://afrakari.com/products/recovery-cream",
+        "external_product_id": "ext_21c18dd88afe33fb11d9fbc6",
+        "seed_id": "eps_fa2ac13757b056ce5e682c29",
+        "price_amount": 2950,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "source_role": "primary",
+        "source_domain": "https://afrakari.com",
+        "dry_run_status": "would_insert_unverified",
+        "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/dry_runs/afrakari.json",
+        "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/curated_manifests/afrakari.json",
+        "commerce_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "unknown",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": []
+        },
+        "safety_status": "blocked_or_needs_rework",
+        "safety_flags": [
+          "regulated_or_therapeutic_claim_cue"
+        ],
+        "needs_main_agent_review": [
+          "dry_run_sellable_region_unknown",
+          "dry_run_shipping_unknown"
+        ],
+        "note": "Do not apply until flagged issues are cleared."
+      },
+      {
+        "batch": 3,
+        "brand": "AFRAKARI",
+        "slug": "afrakari",
+        "title": "Gentle Cleansing Milk",
+        "source_url": "https://afrakari.com/products/gentle-cleansing-milk",
+        "canonical_url": "https://afrakari.com/products/gentle-cleansing-milk",
+        "external_product_id": "ext_f52a396425de7fce597534b1",
+        "seed_id": "eps_f89eb02ceed27a8f692279fb",
+        "price_amount": 900,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "source_role": "primary",
+        "source_domain": "https://afrakari.com",
+        "dry_run_status": "would_insert_unverified",
+        "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/dry_runs/afrakari.json",
+        "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/curated_manifests/afrakari.json",
+        "commerce_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "unknown",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": []
+        },
+        "safety_status": "blocked_or_needs_rework",
+        "safety_flags": [
+          "regulated_or_therapeutic_claim_cue"
+        ],
+        "needs_main_agent_review": [
+          "dry_run_sellable_region_unknown",
+          "dry_run_shipping_unknown"
+        ],
+        "note": "Do not apply until flagged issues are cleared."
+      },
+      {
+        "batch": 3,
+        "brand": "AFRAKARI",
+        "slug": "afrakari",
+        "title": "Marula Hydrating Elixir",
+        "source_url": "https://afrakari.com/products/marula-hydrating-elixir",
+        "canonical_url": "https://afrakari.com/products/marula-hydrating-elixir",
+        "external_product_id": "ext_18f015be942fdeb3df68ad45",
+        "seed_id": "eps_186e29e1e6fd806125dece26",
+        "price_amount": 1400,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "source_role": "primary",
+        "source_domain": "https://afrakari.com",
+        "dry_run_status": "would_insert_unverified",
+        "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/dry_runs/afrakari.json",
+        "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/curated_manifests/afrakari.json",
+        "commerce_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "unknown",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": []
+        },
+        "safety_status": "blocked_or_needs_rework",
+        "safety_flags": [
+          "regulated_or_therapeutic_claim_cue"
+        ],
+        "needs_main_agent_review": [
+          "dry_run_sellable_region_unknown",
+          "dry_run_shipping_unknown"
+        ],
+        "note": "Do not apply until flagged issues are cleared."
+      },
+      {
+        "batch": 3,
+        "brand": "AFRAKARI",
+        "slug": "afrakari",
+        "title": "Pure Marula Oil + Cape Chamomile",
+        "source_url": "https://afrakari.com/products/pure-marula-oil-cape-chamomile",
+        "canonical_url": "https://afrakari.com/products/pure-marula-oil-cape-chamomile",
+        "external_product_id": "ext_d9acdecc612f64df18b8dda8",
+        "seed_id": "eps_347e8e61d70b03be347f97f1",
+        "price_amount": 1000,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "source_role": "primary",
+        "source_domain": "https://afrakari.com",
+        "dry_run_status": "would_insert_unverified",
+        "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/dry_runs/afrakari.json",
+        "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/curated_manifests/afrakari.json",
+        "commerce_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "unknown",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": []
+        },
+        "safety_status": "blocked_or_needs_rework",
+        "safety_flags": [
+          "regulated_or_therapeutic_claim_cue"
+        ],
+        "needs_main_agent_review": [
+          "dry_run_sellable_region_unknown",
+          "dry_run_shipping_unknown"
+        ],
+        "note": "Do not apply until flagged issues are cleared."
+      },
+      {
+        "batch": 3,
+        "brand": "AFRAKARI",
+        "slug": "afrakari",
+        "title": "Resurface + Restore Night Cream",
+        "source_url": "https://afrakari.com/products/resurface-restore-night-cream",
+        "canonical_url": "https://afrakari.com/products/resurface-restore-night-cream",
+        "external_product_id": "ext_40353e5d40b9c6d3866bfb35",
+        "seed_id": "eps_84b4b04897b97446519566d1",
+        "price_amount": 2150,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "source_role": "primary",
+        "source_domain": "https://afrakari.com",
+        "dry_run_status": "would_insert_unverified",
+        "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/dry_runs/afrakari.json",
+        "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/curated_manifests/afrakari.json",
+        "commerce_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "unknown",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": []
+        },
+        "safety_status": "blocked_or_needs_rework",
+        "safety_flags": [
+          "regulated_or_therapeutic_claim_cue"
+        ],
+        "needs_main_agent_review": [
+          "dry_run_sellable_region_unknown",
+          "dry_run_shipping_unknown"
+        ],
+        "note": "Do not apply until flagged issues are cleared."
+      },
+      {
+        "batch": 4,
+        "brand": "Lucamar Skin Care",
+        "slug": "lucamar-skin-care",
+        "title": "Baa Ram Ewe  Lanolin Skin Balm  120g UNSCENTED",
+        "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+        "canonical_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+        "external_product_id": "ext_c26547ca63d530592ed62d63",
+        "seed_id": "eps_4345b0af311a4e604dc9eb17",
+        "price_amount": 17,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "source_role": "primary",
+        "source_domain": "https://lucamarskincare.com",
+        "dry_run_status": "would_insert_unverified",
+        "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/dry_runs/lucamar-skin-care.json",
+        "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/curated_manifests/lucamar-skin-care.json",
+        "commerce_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "ok",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": []
+        },
+        "safety_status": "blocked_or_needs_rework",
+        "safety_flags": [
+          "regulated_or_therapeutic_claim_cue"
+        ],
+        "needs_main_agent_review": [
+          "dry_run_sellable_region_unknown",
+          "dry_run_shipping_unknown"
+        ],
+        "note": "Do not apply until flagged issues are cleared."
+      },
+      {
+        "batch": 4,
+        "brand": "Lucamar Skin Care",
+        "slug": "lucamar-skin-care",
+        "title": "Musk: My Lips Are Sealed Lip Balm 10gms",
+        "source_url": "https://lucamarskincare.com/products/limited-edition-musk-flavoured-my-lips-are-sealed-lip-balm-10gms",
+        "canonical_url": "https://lucamarskincare.com/products/limited-edition-musk-flavoured-my-lips-are-sealed-lip-balm-10gms",
+        "external_product_id": "ext_74a7dddbe9cfad5b36ea4bc1",
+        "seed_id": "eps_a54b44da72d94062579357f8",
+        "price_amount": 8,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "source_role": "primary",
+        "source_domain": "https://lucamarskincare.com",
+        "dry_run_status": "would_insert_unverified",
+        "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/dry_runs/lucamar-skin-care.json",
+        "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/curated_manifests/lucamar-skin-care.json",
+        "commerce_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "ok",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": []
+        },
+        "safety_status": "blocked_or_needs_rework",
+        "safety_flags": [
+          "regulated_or_therapeutic_claim_cue"
+        ],
+        "needs_main_agent_review": [
+          "dry_run_sellable_region_unknown",
+          "dry_run_shipping_unknown"
+        ],
+        "note": "Do not apply until flagged issues are cleared."
+      },
+      {
+        "batch": 4,
+        "brand": "Lucamar Skin Care",
+        "slug": "lucamar-skin-care",
+        "title": "Baa Ram Ewe  Lanolin Skin Balm  120g",
+        "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+        "canonical_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+        "external_product_id": "ext_0836525e72365da8ecbcc3b5",
+        "seed_id": "eps_e2fa8f2dda7a3a9609d84dfa",
+        "price_amount": 17,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "source_role": "primary",
+        "source_domain": "https://lucamarskincare.com",
+        "dry_run_status": "would_insert_unverified",
+        "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/dry_runs/lucamar-skin-care.json",
+        "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/curated_manifests/lucamar-skin-care.json",
+        "commerce_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "ok",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": []
+        },
+        "safety_status": "blocked_or_needs_rework",
+        "safety_flags": [
+          "regulated_or_therapeutic_claim_cue"
+        ],
+        "needs_main_agent_review": [
+          "dry_run_sellable_region_unknown",
+          "dry_run_shipping_unknown"
+        ],
+        "note": "Do not apply until flagged issues are cleared."
+      },
+      {
+        "batch": 4,
+        "brand": "Lucamar Skin Care",
+        "slug": "lucamar-skin-care",
+        "title": "Vanilla:   My Lips Are Sealed Natural Lip Balm 10gms",
+        "source_url": "https://lucamarskincare.com/products/my-lips-are-sealed-natural-lip-balm-vanilla",
+        "canonical_url": "https://lucamarskincare.com/products/my-lips-are-sealed-natural-lip-balm-vanilla",
+        "external_product_id": "ext_cfdd4c8d3521fe733d0fc75d",
+        "seed_id": "eps_8c3a1a8c5634c3a602478c6d",
+        "price_amount": 8,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "source_role": "primary",
+        "source_domain": "https://lucamarskincare.com",
+        "dry_run_status": "would_insert_unverified",
+        "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/dry_runs/lucamar-skin-care.json",
+        "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/curated_manifests/lucamar-skin-care.json",
+        "commerce_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "ok",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": []
+        },
+        "safety_status": "blocked_or_needs_rework",
+        "safety_flags": [
+          "regulated_or_therapeutic_claim_cue"
+        ],
+        "needs_main_agent_review": [
+          "dry_run_sellable_region_unknown",
+          "dry_run_shipping_unknown"
+        ],
+        "note": "Do not apply until flagged issues are cleared."
+      },
+      {
+        "batch": 4,
+        "brand": "Lucamar Skin Care",
+        "slug": "lucamar-skin-care",
+        "title": "Baa Ram Ewe Lanolin Skin Balm 50g",
+        "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+        "canonical_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+        "external_product_id": "ext_edcf7e510314384ac432b385",
+        "seed_id": "eps_f4b6e76f5ce353e8980d61fd",
+        "price_amount": 12,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "source_role": "primary",
+        "source_domain": "https://lucamarskincare.com",
+        "dry_run_status": "would_insert_unverified",
+        "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/dry_runs/lucamar-skin-care.json",
+        "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/curated_manifests/lucamar-skin-care.json",
+        "commerce_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "ok",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": []
+        },
+        "safety_status": "blocked_or_needs_rework",
+        "safety_flags": [
+          "regulated_or_therapeutic_claim_cue"
+        ],
+        "needs_main_agent_review": [
+          "dry_run_sellable_region_unknown",
+          "dry_run_shipping_unknown"
+        ],
+        "note": "Do not apply until flagged issues are cleared."
+      }
+    ],
+    "needs_main_agent_review_rows": [
+      {
+        "batch": 1,
+        "brand": "Aetas",
+        "slug": "aetas",
+        "title": "The Serum",
+        "source_url": "https://aetasofficial.com/products/serum",
+        "canonical_url": "https://aetasofficial.com/products/serum",
+        "external_product_id": "ext_38b10ae142ef283bdc0acca8",
+        "seed_id": "eps_00b1b6dc2b0d11c894a13934",
+        "price_amount": 60,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "source_role": "primary",
+        "source_domain": "https://aetasofficial.com",
+        "dry_run_status": "would_insert_unverified",
+        "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/dry_runs/aetas.json",
+        "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/curated_manifests/aetas.json",
+        "commerce_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "ok",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": []
+        },
+        "safety_status": "needs_main_agent_review",
+        "safety_flags": [],
+        "needs_main_agent_review": [
+          "dry_run_sellable_region_unknown",
+          "dry_run_shipping_unknown"
+        ],
+        "note": "Dry-run insert candidate, but unresolved review fields prevent an unconditional safety pass."
+      },
+      {
+        "batch": 2,
+        "brand": "Seresilk",
+        "slug": "seresilk",
+        "title": "Silk Night Cream",
+        "source_url": "https://seresilk.com.au/products/silk-night-cream",
+        "canonical_url": "https://seresilk.com.au/products/silk-night-cream",
+        "external_product_id": "ext_df8aac07d6c970d4c213b43f",
+        "seed_id": "eps_44c1397b319a538f47b4ca1d",
+        "price_amount": 79.97,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "source_role": "primary",
+        "source_domain": "https://seresilk.com.au",
+        "dry_run_status": "would_insert_unverified",
+        "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/dry_runs/seresilk.json",
+        "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/curated_manifests/seresilk.json",
+        "commerce_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "ok",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": []
+        },
+        "safety_status": "needs_main_agent_review",
+        "safety_flags": [],
+        "needs_main_agent_review": [
+          "dry_run_sellable_region_unknown",
+          "dry_run_shipping_unknown"
+        ],
+        "note": "Dry-run insert candidate, but unresolved review fields prevent an unconditional safety pass."
+      },
+      {
+        "batch": 2,
+        "brand": "Seresilk",
+        "slug": "seresilk",
+        "title": "Silk Night Serum",
+        "source_url": "https://seresilk.com.au/products/silk-night-serum",
+        "canonical_url": "https://seresilk.com.au/products/silk-night-serum",
+        "external_product_id": "ext_438058253d57a2c8d75f5906",
+        "seed_id": "eps_68187b19d2f43540ff7e1b59",
+        "price_amount": 94.51,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "source_role": "primary",
+        "source_domain": "https://seresilk.com.au",
+        "dry_run_status": "would_insert_unverified",
+        "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/dry_runs/seresilk.json",
+        "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/curated_manifests/seresilk.json",
+        "commerce_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "ok",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": []
+        },
+        "safety_status": "needs_main_agent_review",
+        "safety_flags": [],
+        "needs_main_agent_review": [
+          "cosmetic_claim_language_needs_review",
+          "dry_run_sellable_region_unknown",
+          "dry_run_shipping_unknown"
+        ],
+        "note": "Dry-run insert candidate, but unresolved review fields prevent an unconditional safety pass."
+      },
+      {
+        "batch": 2,
+        "brand": "Seresilk",
+        "slug": "seresilk",
+        "title": "Gentle Silk Cleanser",
+        "source_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+        "canonical_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+        "external_product_id": "ext_0d4ffd13b899460cabb1f392",
+        "seed_id": "eps_5ae568728c95aa19d64a9413",
+        "price_amount": 54.52,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "source_role": "primary",
+        "source_domain": "https://seresilk.com.au",
+        "dry_run_status": "would_insert_unverified",
+        "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/dry_runs/seresilk.json",
+        "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/curated_manifests/seresilk.json",
+        "commerce_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "ok",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": []
+        },
+        "safety_status": "needs_main_agent_review",
+        "safety_flags": [],
+        "needs_main_agent_review": [
+          "dry_run_sellable_region_unknown",
+          "dry_run_shipping_unknown"
+        ],
+        "note": "Dry-run insert candidate, but unresolved review fields prevent an unconditional safety pass."
+      },
+      {
+        "batch": 3,
+        "brand": "AFRAKARI",
+        "slug": "afrakari",
+        "title": "Radiance Elixir",
+        "source_url": "https://afrakari.com/products/radiance-elixir",
+        "canonical_url": "https://afrakari.com/products/radiance-elixir",
+        "external_product_id": "ext_63426418919f510613d11dfc",
+        "seed_id": "eps_2767ebd9da66c08f2bb81080",
+        "price_amount": 1500,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "source_role": "primary",
+        "source_domain": "https://afrakari.com",
+        "dry_run_status": "would_insert_unverified",
+        "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/dry_runs/afrakari.json",
+        "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/curated_manifests/afrakari.json",
+        "commerce_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "unknown",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": []
+        },
+        "safety_status": "needs_main_agent_review",
+        "safety_flags": [],
+        "needs_main_agent_review": [
+          "cosmetic_claim_language_needs_review",
+          "dry_run_sellable_region_unknown",
+          "dry_run_shipping_unknown"
+        ],
+        "note": "Dry-run insert candidate, but unresolved review fields prevent an unconditional safety pass."
+      },
+      {
+        "batch": 3,
+        "brand": "AFRAKARI",
+        "slug": "afrakari",
+        "title": "Prickly Pear Elixir",
+        "source_url": "https://afrakari.com/products/prickly-pear-elixir",
+        "canonical_url": "https://afrakari.com/products/prickly-pear-elixir",
+        "external_product_id": "ext_212d963582191d90a381b919",
+        "seed_id": "eps_10f419ffd1e558d0fe8c1790",
+        "price_amount": 1000,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "source_role": "primary",
+        "source_domain": "https://afrakari.com",
+        "dry_run_status": "would_insert_unverified",
+        "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/dry_runs/afrakari.json",
+        "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/curated_manifests/afrakari.json",
+        "commerce_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "unknown",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": []
+        },
+        "safety_status": "needs_main_agent_review",
+        "safety_flags": [],
+        "needs_main_agent_review": [
+          "dry_run_sellable_region_unknown",
+          "dry_run_shipping_unknown"
+        ],
+        "note": "Dry-run insert candidate, but unresolved review fields prevent an unconditional safety pass."
+      },
+      {
+        "batch": 3,
+        "brand": "AFRAKARI",
+        "slug": "afrakari",
+        "title": "Recovery Serum",
+        "source_url": "https://afrakari.com/products/recovery-serum",
+        "canonical_url": "https://afrakari.com/products/recovery-serum",
+        "external_product_id": "ext_92fd955718af4577fe7a921f",
+        "seed_id": "eps_95518d4281bf9d450327fe8b",
+        "price_amount": 2950,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "source_role": "primary",
+        "source_domain": "https://afrakari.com",
+        "dry_run_status": "would_insert_unverified",
+        "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/dry_runs/afrakari.json",
+        "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/curated_manifests/afrakari.json",
+        "commerce_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "unknown",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": []
+        },
+        "safety_status": "needs_main_agent_review",
+        "safety_flags": [],
+        "needs_main_agent_review": [
+          "cosmetic_claim_language_needs_review",
+          "dry_run_sellable_region_unknown",
+          "dry_run_shipping_unknown"
+        ],
+        "note": "Dry-run insert candidate, but unresolved review fields prevent an unconditional safety pass."
+      },
+      {
+        "batch": 3,
+        "brand": "AFRAKARI",
+        "slug": "afrakari",
+        "title": "Kalahari Melon Seed Oil",
+        "source_url": "https://afrakari.com/products/kalahari-melon-seed-oil",
+        "canonical_url": "https://afrakari.com/products/kalahari-melon-seed-oil",
+        "external_product_id": "ext_4d2036846dfde9236a2e5db9",
+        "seed_id": "eps_f13752e8e836b8debd48845f",
+        "price_amount": 900,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "source_role": "primary",
+        "source_domain": "https://afrakari.com",
+        "dry_run_status": "would_insert_unverified",
+        "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/dry_runs/afrakari.json",
+        "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/curated_manifests/afrakari.json",
+        "commerce_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "unknown",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": []
+        },
+        "safety_status": "needs_main_agent_review",
+        "safety_flags": [],
+        "needs_main_agent_review": [
+          "cosmetic_claim_language_needs_review",
+          "dry_run_sellable_region_unknown",
+          "dry_run_shipping_unknown"
+        ],
+        "note": "Dry-run insert candidate, but unresolved review fields prevent an unconditional safety pass."
+      },
+      {
+        "batch": 3,
+        "brand": "AFRAKARI",
+        "slug": "afrakari",
+        "title": "Pure Marula Oil",
+        "source_url": "https://afrakari.com/products/pure-marula-oil",
+        "canonical_url": "https://afrakari.com/products/pure-marula-oil",
+        "external_product_id": "ext_d72da473fbf1b8456b2e9ab8",
+        "seed_id": "eps_7f8a4c07e9c5b32c408cb824",
+        "price_amount": 900,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "source_role": "primary",
+        "source_domain": "https://afrakari.com",
+        "dry_run_status": "would_insert_unverified",
+        "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/dry_runs/afrakari.json",
+        "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/curated_manifests/afrakari.json",
+        "commerce_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "unknown",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": []
+        },
+        "safety_status": "needs_main_agent_review",
+        "safety_flags": [],
+        "needs_main_agent_review": [
+          "cosmetic_claim_language_needs_review",
+          "dry_run_sellable_region_unknown",
+          "dry_run_shipping_unknown"
+        ],
+        "note": "Dry-run insert candidate, but unresolved review fields prevent an unconditional safety pass."
+      },
+      {
+        "batch": 3,
+        "brand": "AFRAKARI",
+        "slug": "afrakari",
+        "title": "Renewal Facial Oil",
+        "source_url": "https://afrakari.com/products/renewal-facial-oil",
+        "canonical_url": "https://afrakari.com/products/renewal-facial-oil",
+        "external_product_id": "ext_3d1d0b42b8eca59a501ff39e",
+        "seed_id": "eps_71b0cab4af5aae7e1fa52ecf",
+        "price_amount": 1650,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "source_role": "primary",
+        "source_domain": "https://afrakari.com",
+        "dry_run_status": "would_insert_unverified",
+        "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/dry_runs/afrakari.json",
+        "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/curated_manifests/afrakari.json",
+        "commerce_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "unknown",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": []
+        },
+        "safety_status": "needs_main_agent_review",
+        "safety_flags": [],
+        "needs_main_agent_review": [
+          "cosmetic_claim_language_needs_review",
+          "dry_run_sellable_region_unknown",
+          "dry_run_shipping_unknown"
+        ],
+        "note": "Dry-run insert candidate, but unresolved review fields prevent an unconditional safety pass."
+      },
+      {
+        "batch": 3,
+        "brand": "AFRAKARI",
+        "slug": "afrakari",
+        "title": "Cape Kelp Hydrating Cleanser",
+        "source_url": "https://afrakari.com/products/cape-kelp-hydrating-cleanser",
+        "canonical_url": "https://afrakari.com/products/cape-kelp-hydrating-cleanser",
+        "external_product_id": "ext_81b379a35a0ad778e3650f0e",
+        "seed_id": "eps_5e3c158d7dd82beaf3ca9cc4",
+        "price_amount": 975,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "source_role": "primary",
+        "source_domain": "https://afrakari.com",
+        "dry_run_status": "would_insert_unverified",
+        "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/dry_runs/afrakari.json",
+        "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/curated_manifests/afrakari.json",
+        "commerce_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "unknown",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": []
+        },
+        "safety_status": "needs_main_agent_review",
+        "safety_flags": [],
+        "needs_main_agent_review": [
+          "cosmetic_claim_language_needs_review",
+          "dry_run_sellable_region_unknown",
+          "dry_run_shipping_unknown"
+        ],
+        "note": "Dry-run insert candidate, but unresolved review fields prevent an unconditional safety pass."
+      },
+      {
+        "batch": 4,
+        "brand": "Lucamar Skin Care",
+        "slug": "lucamar-skin-care",
+        "title": "Lucamar Baalm 50g  UNSCENTED",
+        "source_url": "https://lucamarskincare.com/products/lucamar-baalm-50g-unscented",
+        "canonical_url": "https://lucamarskincare.com/products/lucamar-baalm-50g-unscented",
+        "external_product_id": "ext_065337312a937f0f26d50865",
+        "seed_id": "eps_0d072fad09b3413bc8b13c49",
+        "price_amount": 14,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "source_role": "primary",
+        "source_domain": "https://lucamarskincare.com",
+        "dry_run_status": "would_insert_unverified",
+        "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/dry_runs/lucamar-skin-care.json",
+        "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/curated_manifests/lucamar-skin-care.json",
+        "commerce_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "ok",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": []
+        },
+        "safety_status": "needs_main_agent_review",
+        "safety_flags": [],
+        "needs_main_agent_review": [
+          "dry_run_sellable_region_unknown",
+          "dry_run_shipping_unknown"
+        ],
+        "note": "Dry-run insert candidate, but unresolved review fields prevent an unconditional safety pass."
+      },
+      {
+        "batch": 4,
+        "brand": "Lucamar Skin Care",
+        "slug": "lucamar-skin-care",
+        "title": "Lucamar Baalm 50g",
+        "source_url": "https://lucamarskincare.com/products/lucamar-baalm",
+        "canonical_url": "https://lucamarskincare.com/products/lucamar-baalm",
+        "external_product_id": "ext_05c5a41a67fb37dcf352853e",
+        "seed_id": "eps_499592237ce0da6e864a8846",
+        "price_amount": 14,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "source_role": "primary",
+        "source_domain": "https://lucamarskincare.com",
+        "dry_run_status": "would_insert_unverified",
+        "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/dry_runs/lucamar-skin-care.json",
+        "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/curated_manifests/lucamar-skin-care.json",
+        "commerce_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "ok",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": []
+        },
+        "safety_status": "needs_main_agent_review",
+        "safety_flags": [],
+        "needs_main_agent_review": [
+          "dry_run_sellable_region_unknown",
+          "dry_run_shipping_unknown"
+        ],
+        "note": "Dry-run insert candidate, but unresolved review fields prevent an unconditional safety pass."
+      },
+      {
+        "batch": 4,
+        "brand": "7Journeys",
+        "slug": "7journeys",
+        "title": "7 Journeys Extra Soft Glow Renewal Moisturizer 50g - Hydrating & Firming",
+        "source_url": "https://7journeys.com/products/7-journeys-extra-soft-glow-renewal-moisturizer-50g",
+        "canonical_url": "https://7journeys.com/products/7-journeys-extra-soft-glow-renewal-moisturizer-50g",
+        "external_product_id": "ext_c3feb615476441d19d3d7cad",
+        "seed_id": "eps_27417af7c9613766a0c99aeb",
+        "price_amount": 480,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "source_role": "primary",
+        "source_domain": "https://7journeys.com",
+        "dry_run_status": "would_insert_unverified",
+        "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/dry_runs/7journeys.json",
+        "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/curated_manifests/7journeys.json",
+        "commerce_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "ok",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": []
+        },
+        "safety_status": "needs_main_agent_review",
+        "safety_flags": [],
+        "needs_main_agent_review": [
+          "cosmetic_claim_language_needs_review",
+          "dry_run_sellable_region_unknown",
+          "dry_run_shipping_unknown"
+        ],
+        "note": "Dry-run insert candidate, but unresolved review fields prevent an unconditional safety pass."
+      },
+      {
+        "batch": 4,
+        "brand": "7Journeys",
+        "slug": "7journeys",
+        "title": "7 Journeys Miracle Timeless Eye Cream 30g (Hydrating & Glowing)",
+        "source_url": "https://7journeys.com/products/7-journeys-miracle-timeless-eye-cream-30g",
+        "canonical_url": "https://7journeys.com/products/7-journeys-miracle-timeless-eye-cream-30g",
+        "external_product_id": "ext_0d1e0a286ec9983daa6588e9",
+        "seed_id": "eps_1c53b17389fcd9c72077daad",
+        "price_amount": 540,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "source_role": "primary",
+        "source_domain": "https://7journeys.com",
+        "dry_run_status": "would_insert_unverified",
+        "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/dry_runs/7journeys.json",
+        "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/curated_manifests/7journeys.json",
+        "commerce_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "ok",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": []
+        },
+        "safety_status": "needs_main_agent_review",
+        "safety_flags": [],
+        "needs_main_agent_review": [
+          "dry_run_sellable_region_unknown",
+          "dry_run_shipping_unknown"
+        ],
+        "note": "Dry-run insert candidate, but unresolved review fields prevent an unconditional safety pass."
+      },
+      {
+        "batch": 4,
+        "brand": "7Journeys",
+        "slug": "7journeys",
+        "title": "7 Journeys Antarctic Timeless Serum 45ml (Hydration & Anti-aging)",
+        "source_url": "https://7journeys.com/products/7-journeys-anatctic-timeless-serum-45ml",
+        "canonical_url": "https://7journeys.com/products/7-journeys-anatctic-timeless-serum-45ml",
+        "external_product_id": "ext_ab73ef0b2176992ac7edae2e",
+        "seed_id": "eps_6dc0a98fc6a40d6d447f496d",
+        "price_amount": 540,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "source_role": "primary",
+        "source_domain": "https://7journeys.com",
+        "dry_run_status": "would_insert_unverified",
+        "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/dry_runs/7journeys.json",
+        "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/curated_manifests/7journeys.json",
+        "commerce_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "ok",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": []
+        },
+        "safety_status": "needs_main_agent_review",
+        "safety_flags": [],
+        "needs_main_agent_review": [
+          "cosmetic_claim_language_needs_review",
+          "dry_run_sellable_region_unknown",
+          "dry_run_shipping_unknown"
+        ],
+        "note": "Dry-run insert candidate, but unresolved review fields prevent an unconditional safety pass."
+      },
+      {
+        "batch": 4,
+        "brand": "7Journeys",
+        "slug": "7journeys",
+        "title": "7 Journeys Glow Renewal Serum 45ml (Hydrated & Glowing Skin)",
+        "source_url": "https://7journeys.com/products/7-journeys-glow-renewal-serum-45ml",
+        "canonical_url": "https://7journeys.com/products/7-journeys-glow-renewal-serum-45ml",
+        "external_product_id": "ext_ebe749514b521fc5985e2347",
+        "seed_id": "eps_3bd7d50a55a60ef9a2b7a40d",
+        "price_amount": 660,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "source_role": "primary",
+        "source_domain": "https://7journeys.com",
+        "dry_run_status": "would_insert_unverified",
+        "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/dry_runs/7journeys.json",
+        "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/curated_manifests/7journeys.json",
+        "commerce_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "ok",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": []
+        },
+        "safety_status": "needs_main_agent_review",
+        "safety_flags": [],
+        "needs_main_agent_review": [
+          "dry_run_sellable_region_unknown",
+          "dry_run_shipping_unknown"
+        ],
+        "note": "Dry-run insert candidate, but unresolved review fields prevent an unconditional safety pass."
+      },
+      {
+        "batch": 4,
+        "brand": "7Journeys",
+        "slug": "7journeys",
+        "title": "7 Journeys Miracle Glow Serum Mask 25ml (10 Sheets)",
+        "source_url": "https://7journeys.com/products/7journeys-miracle-glow-serum-mask-10-sheets",
+        "canonical_url": "https://7journeys.com/products/7journeys-miracle-glow-serum-mask-10-sheets",
+        "external_product_id": "ext_824c5edce946bb360f763cac",
+        "seed_id": "eps_06c65c9418283c22a66f664a",
+        "price_amount": 550,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "source_role": "primary",
+        "source_domain": "https://7journeys.com",
+        "dry_run_status": "would_insert_unverified",
+        "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/dry_runs/7journeys.json",
+        "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/curated_manifests/7journeys.json",
+        "commerce_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "ok",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": []
+        },
+        "safety_status": "needs_main_agent_review",
+        "safety_flags": [],
+        "needs_main_agent_review": [
+          "dry_run_sellable_region_unknown",
+          "dry_run_shipping_unknown"
+        ],
+        "note": "Dry-run insert candidate, but unresolved review fields prevent an unconditional safety pass."
+      },
+      {
+        "batch": 4,
+        "brand": "Rohr Remedy",
+        "slug": "rohr-remedy",
+        "title": "Kakadu Plum Super Serum with Vit C",
+        "source_url": "https://rohrremedy.com/products/kakadu-plum-face-serum-with-vit-c",
+        "canonical_url": "https://rohrremedy.com/products/kakadu-plum-face-serum-with-vit-c",
+        "external_product_id": "ext_c463dcd674e1138b1284ff37",
+        "seed_id": "eps_5b49f8c120d2920838ae83d6",
+        "price_amount": 44,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "source_role": "primary",
+        "source_domain": "https://rohrremedy.com",
+        "dry_run_status": "would_insert_unverified",
+        "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/dry_runs/rohr-remedy.json",
+        "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/curated_manifests/rohr-remedy.json",
+        "commerce_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "unknown",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": []
+        },
+        "safety_status": "needs_main_agent_review",
+        "safety_flags": [],
+        "needs_main_agent_review": [
+          "cosmetic_claim_language_needs_review",
+          "dry_run_sellable_region_unknown",
+          "dry_run_shipping_unknown"
+        ],
+        "note": "Dry-run insert candidate, but unresolved review fields prevent an unconditional safety pass."
+      },
+      {
+        "batch": 4,
+        "brand": "Rohr Remedy",
+        "slug": "rohr-remedy",
+        "title": "Lilly Pilly Face Moisturiser with Omega-3",
+        "source_url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser",
+        "canonical_url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser",
+        "external_product_id": "ext_1b95875bc9bdeee751d0cee1",
+        "seed_id": "eps_5ee0b414653347fb5af51740",
+        "price_amount": 30,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "source_role": "primary",
+        "source_domain": "https://rohrremedy.com",
+        "dry_run_status": "would_insert_unverified",
+        "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/dry_runs/rohr-remedy.json",
+        "curated_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/curated_manifests/rohr-remedy.json",
+        "commerce_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "unknown",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": []
+        },
+        "safety_status": "needs_main_agent_review",
+        "safety_flags": [],
+        "needs_main_agent_review": [
+          "dry_run_sellable_region_unknown",
+          "dry_run_shipping_unknown"
+        ],
+        "note": "Dry-run insert candidate, but unresolved review fields prevent an unconditional safety pass."
+      }
+    ],
+    "no_unconditional_pass_note": "Rows with unknown sellable-region/shipping status, missing descriptions, cosmetic claim cues, or possible bundle/accessory wording are intentionally not treated as fully passed."
+  },
+  "blockers": {
+    "official_source_gap": {
+      "count": 12,
+      "examples": [
+        {
+          "batch": 1,
+          "brand": "NOVOS",
+          "detail": [
+            "zero_accepted_items_from_extractor",
+            "zero_curatable_rows_from_extractor"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/reviews/novos.json"
+        },
+        {
+          "batch": 1,
+          "brand": "Depuravita",
+          "detail": [
+            "zero_accepted_items_from_extractor",
+            "catalog_intelligence_dns_blocked_in_sandbox"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/reviews/depuravita.json"
+        },
+        {
+          "batch": 2,
+          "brand": "KHUS KHUS modern herbal fusion",
+          "detail": [
+            "zero_accepted_items_from_extractor",
+            "anti_abuse_signal:perimeterx"
+          ],
+          "path": null
+        },
+        {
+          "batch": 2,
+          "brand": "Akan Moringa",
+          "detail": [
+            "zero_accepted_items_from_extractor"
+          ],
+          "path": null
+        },
+        {
+          "batch": 2,
+          "brand": "Apiceuticals",
+          "detail": [
+            "zero_accepted_items_from_extractor"
+          ],
+          "path": null
+        },
+        {
+          "batch": 3,
+          "brand": "Australia's Manuka",
+          "detail": [
+            "zero_accepted_items_from_extractor",
+            "anti_abuse_signal:cloudflare",
+            "no_extracted_rows_available_for_curation"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/australias-manuka.json"
+        },
+        {
+          "batch": 3,
+          "brand": "LIME",
+          "detail": [
+            "zero_accepted_items_from_extractor",
+            "no_extracted_rows_available_for_curation"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/lime.json"
+        },
+        {
+          "batch": 3,
+          "brand": "Lazy Society",
+          "detail": [
+            "zero_accepted_items_from_extractor",
+            "no_extracted_rows_available_for_curation"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/lazy-society.json"
+        },
+        {
+          "batch": 4,
+          "brand": "Pairfum",
+          "detail": [
+            "zero_accepted_items_from_extractor",
+            "anti_abuse_signal:cloudflare"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/reviews/pairfum.json"
+        },
+        {
+          "batch": 5,
+          "brand": "GinGingers",
+          "detail": [
+            "zero_accepted_items_from_extractor"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/reviews/gingingers.json"
+        },
+        {
+          "batch": 5,
+          "brand": "ADVANCED COSMETICA",
+          "detail": [
+            "zero_accepted_items_from_extractor"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/reviews/advanced-cosmetica.json"
+        },
+        {
+          "batch": 5,
+          "brand": "Ilmma Beauty",
+          "detail": [
+            "zero_accepted_items_from_extractor"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/reviews/ilmma-beauty.json"
+        }
+      ]
+    },
+    "market_mismatch": {
+      "count": 13,
+      "examples": [
+        {
+          "batch": 1,
+          "brand": "MASAMI",
+          "detail": [
+            "anti_abuse_signal:perimeterx",
+            "anti_abuse_signal_perimeterx",
+            "marketplace_third_party_contamination",
+            "non_us_currency_market_mismatch",
+            "out_of_stock"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/reviews/masami.json"
+        },
+        {
+          "batch": 1,
+          "brand": "Therapy Notebooks",
+          "detail": [
+            "therapeutic_claims_hold",
+            "non_us_currency_market_mismatch"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/reviews/therapy-notebooks.json"
+        },
+        {
+          "batch": 1,
+          "brand": "Lhamour",
+          "detail": [
+            "non_us_currency_market_mismatch",
+            "therapeutic_or_high_claim_skincare_hold"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/reviews/lhamour.json"
+        },
+        {
+          "batch": 1,
+          "brand": "(batch aggregate)",
+          "detail": "marketplace_third_party_contamination: 100",
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/batch_summary.json"
+        },
+        {
+          "batch": 1,
+          "brand": "(batch aggregate)",
+          "detail": "non_us_currency_market_mismatch: 126",
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/batch_summary.json"
+        },
+        {
+          "batch": 2,
+          "brand": "(batch aggregate)",
+          "detail": "commerce_facts_problem:market_currency_mismatch: 17",
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/batch_summary.json"
+        },
+        {
+          "batch": 2,
+          "brand": "(batch aggregate)",
+          "detail": "non_us_currency:EUR: 17",
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/batch_summary.json"
+        },
+        {
+          "batch": 3,
+          "brand": "Chatelier",
+          "detail": [
+            "anti_abuse_signal:perimeterx",
+            "non_us_currency_or_market_mismatch",
+            "commerce_facts_gate_hold",
+            "market_currency_mismatch",
+            "review_gate_blocker:anti_abuse_signal:perimeterx",
+            "bundle_accessory_or_set_like_row",
+            "description_pollution_page_script",
+            "out_of_stock_or_unavailable"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/chatelier.json"
+        },
+        {
+          "batch": 4,
+          "brand": "Gun Ana",
+          "detail": [
+            "non_us_currency_market_mismatch_hold",
+            "commerce_facts_gate_hold",
+            "commerce:market_currency_mismatch",
+            "commerce:commerce_facts_currency_mismatch",
+            "commerce:commerce_facts_market_switch_not_ok",
+            "regulated_spf_claims_lane_hold",
+            "regulated_wellness_supplement_claims_lane_hold",
+            "therapeutic_or_antimicrobial_claims_lane_hold",
+            "duplicate_copy_url_hold",
+            "bundle_or_multipack_hold",
+            "accessory_or_non_beauty_product_hold",
+            "out_of_stock_hold"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/reviews/gun-ana.json"
+        },
+        {
+          "batch": 5,
+          "brand": "(batch aggregate)",
+          "detail": "commerce_problem:market_currency_mismatch: 296",
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/batch_summary.json"
+        },
+        {
+          "batch": 5,
+          "brand": "(batch aggregate)",
+          "detail": "non_us_seed_currency:EUR: 296",
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/batch_summary.json"
+        },
+        {
+          "batch": 5,
+          "brand": "(batch aggregate)",
+          "detail": "commerce_problem:commerce_facts_currency_mismatch: 235",
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/batch_summary.json"
+        },
+        {
+          "batch": 5,
+          "brand": "(batch aggregate)",
+          "detail": "commerce_problem:commerce_facts_market_switch_not_ok: 235",
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/batch_summary.json"
+        }
+      ]
+    },
+    "compliance_claims_lane": {
+      "count": 18,
+      "examples": [
+        {
+          "batch": 1,
+          "brand": "Herbalore",
+          "detail": [
+            "regulated_wellness_supplement_claims_hold"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/reviews/herbalore.json"
+        },
+        {
+          "batch": 1,
+          "brand": "Therapy Notebooks",
+          "detail": [
+            "therapeutic_claims_hold",
+            "non_us_currency_market_mismatch"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/reviews/therapy-notebooks.json"
+        },
+        {
+          "batch": 1,
+          "brand": "Lhamour",
+          "detail": [
+            "non_us_currency_market_mismatch",
+            "therapeutic_or_high_claim_skincare_hold"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/reviews/lhamour.json"
+        },
+        {
+          "batch": 1,
+          "brand": "(batch aggregate)",
+          "detail": "regulated_wellness_supplement_claims_hold: 2",
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/batch_summary.json"
+        },
+        {
+          "batch": 1,
+          "brand": "(batch aggregate)",
+          "detail": "therapeutic_claims_hold: 6",
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/batch_summary.json"
+        },
+        {
+          "batch": 1,
+          "brand": "(batch aggregate)",
+          "detail": "therapeutic_or_high_claim_skincare_hold: 16",
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/batch_summary.json"
+        },
+        {
+          "batch": 2,
+          "brand": "(batch aggregate)",
+          "detail": "regulated_wellness_supplement_claims_lane: 14",
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/batch_summary.json"
+        },
+        {
+          "batch": 2,
+          "brand": "(batch aggregate)",
+          "detail": "therapeutic_or_regulated_claims_text: 14",
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/batch_summary.json"
+        },
+        {
+          "batch": 3,
+          "brand": "Apih",
+          "detail": [
+            "regulated_wellness_supplement_or_therapeutic_claims_lane",
+            "accessory_or_container_row",
+            "non_english_or_health_claim_copy_for_us_review",
+            "out_of_stock_or_unavailable"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/apih.json"
+        },
+        {
+          "batch": 3,
+          "brand": "AFRAKARI",
+          "detail": [
+            "therapeutic_or_correction_claim",
+            "regulated_cbd_claim_lane",
+            "possible_sunscreen_regulatory_claim"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/afrakari.json"
+        },
+        {
+          "batch": 3,
+          "brand": "Fusspot Collagen Beauty Tea",
+          "detail": [
+            "regulated_wellness_supplement_or_therapeutic_claims_lane",
+            "therapeutic_or_body_function_claims",
+            "out_of_stock_or_unavailable",
+            "accessory_or_container_row"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/fusspot-collagen-beauty-tea.json"
+        },
+        {
+          "batch": 4,
+          "brand": "Lucamar Skin Care",
+          "detail": [
+            "duplicate_copy_url_hold",
+            "therapeutic_or_antimicrobial_claims_lane_hold"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/reviews/lucamar-skin-care.json"
+        },
+        {
+          "batch": 4,
+          "brand": "abyssian",
+          "detail": [
+            "anti_abuse_signal:perimeterx",
+            "review_gate_blocked",
+            "review:anti_abuse_signal:perimeterx",
+            "out_of_stock_hold",
+            "accessory_or_non_beauty_product_hold",
+            "regulated_wellness_supplement_claims_lane_hold"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/reviews/abyssian.json"
+        },
+        {
+          "batch": 4,
+          "brand": "Rohr Remedy",
+          "detail": [
+            "accessory_or_non_beauty_product_hold",
+            "therapeutic_or_antimicrobial_claims_lane_hold",
+            "bundle_or_multipack_hold",
+            "out_of_stock_hold",
+            "unboxed_or_duplicate_variant_hold"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/reviews/rohr-remedy.json"
+        },
+        {
+          "batch": 4,
+          "brand": "Gun Ana",
+          "detail": [
+            "non_us_currency_market_mismatch_hold",
+            "commerce_facts_gate_hold",
+            "commerce:market_currency_mismatch",
+            "commerce:commerce_facts_currency_mismatch",
+            "commerce:commerce_facts_market_switch_not_ok",
+            "regulated_spf_claims_lane_hold",
+            "regulated_wellness_supplement_claims_lane_hold",
+            "therapeutic_or_antimicrobial_claims_lane_hold",
+            "duplicate_copy_url_hold",
+            "bundle_or_multipack_hold",
+            "accessory_or_non_beauty_product_hold",
+            "out_of_stock_hold"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/reviews/gun-ana.json"
+        },
+        {
+          "batch": 4,
+          "brand": "HIRO",
+          "detail": [
+            "bundle_or_multipack_hold",
+            "regulated_wellness_supplement_claims_lane_hold",
+            "accessory_or_non_beauty_product_hold",
+            "out_of_stock_hold"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/reviews/hiro.json"
+        },
+        {
+          "batch": 5,
+          "brand": "(batch aggregate)",
+          "detail": "regulated_or_therapeutic_claim_lane: 49",
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/batch_summary.json"
+        },
+        {
+          "batch": 5,
+          "brand": "(batch aggregate)",
+          "detail": "wellness_supplement_claims_lane_review_required: 5",
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/batch_summary.json"
+        }
+      ]
+    },
+    "extractor_contamination_timeout": {
+      "count": 12,
+      "examples": [
+        {
+          "batch": 1,
+          "brand": "MASAMI",
+          "detail": [
+            "anti_abuse_signal:perimeterx",
+            "anti_abuse_signal_perimeterx",
+            "marketplace_third_party_contamination",
+            "non_us_currency_market_mismatch",
+            "out_of_stock"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/reviews/masami.json"
+        },
+        {
+          "batch": 1,
+          "brand": "(batch aggregate)",
+          "detail": "anti_abuse_signal_perimeterx: 100",
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/batch_summary.json"
+        },
+        {
+          "batch": 1,
+          "brand": "(batch aggregate)",
+          "detail": "marketplace_third_party_contamination: 100",
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/batch_summary.json"
+        },
+        {
+          "batch": 2,
+          "brand": "KHUS KHUS modern herbal fusion",
+          "detail": [
+            "zero_accepted_items_from_extractor",
+            "anti_abuse_signal:perimeterx"
+          ],
+          "path": null
+        },
+        {
+          "batch": 3,
+          "brand": "Australia's Manuka",
+          "detail": [
+            "zero_accepted_items_from_extractor",
+            "anti_abuse_signal:cloudflare",
+            "no_extracted_rows_available_for_curation"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/australias-manuka.json"
+        },
+        {
+          "batch": 3,
+          "brand": "Chatelier",
+          "detail": [
+            "anti_abuse_signal:perimeterx",
+            "non_us_currency_or_market_mismatch",
+            "commerce_facts_gate_hold",
+            "market_currency_mismatch",
+            "review_gate_blocker:anti_abuse_signal:perimeterx",
+            "bundle_accessory_or_set_like_row",
+            "description_pollution_page_script",
+            "out_of_stock_or_unavailable"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/chatelier.json"
+        },
+        {
+          "batch": 4,
+          "brand": "abyssian",
+          "detail": [
+            "anti_abuse_signal:perimeterx",
+            "review_gate_blocked",
+            "review:anti_abuse_signal:perimeterx",
+            "out_of_stock_hold",
+            "accessory_or_non_beauty_product_hold",
+            "regulated_wellness_supplement_claims_lane_hold"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/reviews/abyssian.json"
+        },
+        {
+          "batch": 4,
+          "brand": "Pairfum",
+          "detail": [
+            "zero_accepted_items_from_extractor",
+            "anti_abuse_signal:cloudflare"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/reviews/pairfum.json"
+        },
+        {
+          "batch": 5,
+          "brand": "Vegan Fox",
+          "detail": [
+            "manifest_extraction_timeout"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/reviews/vegan-fox.json"
+        },
+        {
+          "batch": 5,
+          "brand": "Suntribe AB",
+          "detail": [
+            "anti_abuse_signal:perimeterx",
+            {
+              "reason": "anti_abuse_signal:perimeterx",
+              "count": 37
+            },
+            {
+              "reason": "commerce_facts_gate:hold",
+              "count": 37
+            },
+            {
+              "reason": "commerce_problem:commerce_facts_currency_mismatch",
+              "count": 37
+            },
+            {
+              "reason": "commerce_problem:commerce_facts_market_switch_not_ok",
+              "count": 37
+            },
+            {
+              "reason": "commerce_problem:market_currency_mismatch",
+              "count": 37
+            },
+            {
+              "reason": "non_us_seed_currency:EUR",
+              "count": 37
+            },
+            {
+              "reason": "review_blocker:anti_abuse_signal:perimeterx",
+              "count": 37
+            },
+            {
+              "reason": "bundle_wholesale_duplicate_or_non_single_sku",
+              "count": 28
+            }
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/reviews/suntribe-ab.json"
+        },
+        {
+          "batch": 5,
+          "brand": "(batch aggregate)",
+          "detail": "anti_abuse_signal:perimeterx: 37",
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/batch_summary.json"
+        },
+        {
+          "batch": 5,
+          "brand": "(batch aggregate)",
+          "detail": "review_blocker:anti_abuse_signal:perimeterx: 37",
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/batch_summary.json"
+        }
+      ]
+    },
+    "structural_review_failure": {
+      "count": 17,
+      "examples": [
+        {
+          "batch": 1,
+          "brand": "MASAMI",
+          "detail": [
+            "anti_abuse_signal:perimeterx",
+            "anti_abuse_signal_perimeterx",
+            "marketplace_third_party_contamination",
+            "non_us_currency_market_mismatch",
+            "out_of_stock"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/reviews/masami.json"
+        },
+        {
+          "batch": 1,
+          "brand": "NOVOS",
+          "detail": [
+            "zero_accepted_items_from_extractor",
+            "zero_curatable_rows_from_extractor"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/reviews/novos.json"
+        },
+        {
+          "batch": 1,
+          "brand": "Depuravita",
+          "detail": [
+            "zero_accepted_items_from_extractor",
+            "catalog_intelligence_dns_blocked_in_sandbox"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/reviews/depuravita.json"
+        },
+        {
+          "batch": 2,
+          "brand": "KHUS KHUS modern herbal fusion",
+          "detail": [
+            "zero_accepted_items_from_extractor",
+            "anti_abuse_signal:perimeterx"
+          ],
+          "path": null
+        },
+        {
+          "batch": 2,
+          "brand": "Akan Moringa",
+          "detail": [
+            "zero_accepted_items_from_extractor"
+          ],
+          "path": null
+        },
+        {
+          "batch": 2,
+          "brand": "Apiceuticals",
+          "detail": [
+            "zero_accepted_items_from_extractor"
+          ],
+          "path": null
+        },
+        {
+          "batch": 3,
+          "brand": "Australia's Manuka",
+          "detail": [
+            "zero_accepted_items_from_extractor",
+            "anti_abuse_signal:cloudflare",
+            "no_extracted_rows_available_for_curation"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/australias-manuka.json"
+        },
+        {
+          "batch": 3,
+          "brand": "Chatelier",
+          "detail": [
+            "anti_abuse_signal:perimeterx",
+            "non_us_currency_or_market_mismatch",
+            "commerce_facts_gate_hold",
+            "market_currency_mismatch",
+            "review_gate_blocker:anti_abuse_signal:perimeterx",
+            "bundle_accessory_or_set_like_row",
+            "description_pollution_page_script",
+            "out_of_stock_or_unavailable"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/chatelier.json"
+        },
+        {
+          "batch": 3,
+          "brand": "LIME",
+          "detail": [
+            "zero_accepted_items_from_extractor",
+            "no_extracted_rows_available_for_curation"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/lime.json"
+        },
+        {
+          "batch": 3,
+          "brand": "Lazy Society",
+          "detail": [
+            "zero_accepted_items_from_extractor",
+            "no_extracted_rows_available_for_curation"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/lazy-society.json"
+        },
+        {
+          "batch": 4,
+          "brand": "abyssian",
+          "detail": [
+            "anti_abuse_signal:perimeterx",
+            "review_gate_blocked",
+            "review:anti_abuse_signal:perimeterx",
+            "out_of_stock_hold",
+            "accessory_or_non_beauty_product_hold",
+            "regulated_wellness_supplement_claims_lane_hold"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/reviews/abyssian.json"
+        },
+        {
+          "batch": 4,
+          "brand": "Pairfum",
+          "detail": [
+            "zero_accepted_items_from_extractor",
+            "anti_abuse_signal:cloudflare"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/reviews/pairfum.json"
+        },
+        {
+          "batch": 5,
+          "brand": "GinGingers",
+          "detail": [
+            "zero_accepted_items_from_extractor"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/reviews/gingingers.json"
+        },
+        {
+          "batch": 5,
+          "brand": "ADVANCED COSMETICA",
+          "detail": [
+            "zero_accepted_items_from_extractor"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/reviews/advanced-cosmetica.json"
+        },
+        {
+          "batch": 5,
+          "brand": "Ilmma Beauty",
+          "detail": [
+            "zero_accepted_items_from_extractor"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/reviews/ilmma-beauty.json"
+        },
+        {
+          "batch": 5,
+          "brand": "Vegan Fox",
+          "detail": [
+            "manifest_extraction_timeout"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/reviews/vegan-fox.json"
+        },
+        {
+          "batch": 5,
+          "brand": "Suntribe AB",
+          "detail": [
+            "anti_abuse_signal:perimeterx",
+            {
+              "reason": "anti_abuse_signal:perimeterx",
+              "count": 37
+            },
+            {
+              "reason": "commerce_facts_gate:hold",
+              "count": 37
+            },
+            {
+              "reason": "commerce_problem:commerce_facts_currency_mismatch",
+              "count": 37
+            },
+            {
+              "reason": "commerce_problem:commerce_facts_market_switch_not_ok",
+              "count": 37
+            },
+            {
+              "reason": "commerce_problem:market_currency_mismatch",
+              "count": 37
+            },
+            {
+              "reason": "non_us_seed_currency:EUR",
+              "count": 37
+            },
+            {
+              "reason": "review_blocker:anti_abuse_signal:perimeterx",
+              "count": 37
+            },
+            {
+              "reason": "bundle_wholesale_duplicate_or_non_single_sku",
+              "count": 28
+            }
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/reviews/suntribe-ab.json"
+        }
+      ]
+    },
+    "out_of_stock_wholesale_accessory": {
+      "count": 16,
+      "examples": [
+        {
+          "batch": 1,
+          "brand": "MASAMI",
+          "detail": [
+            "anti_abuse_signal:perimeterx",
+            "anti_abuse_signal_perimeterx",
+            "marketplace_third_party_contamination",
+            "non_us_currency_market_mismatch",
+            "out_of_stock"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/reviews/masami.json"
+        },
+        {
+          "batch": 1,
+          "brand": "Aetas",
+          "detail": [
+            "out_of_stock"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/reviews/aetas.json"
+        },
+        {
+          "batch": 1,
+          "brand": "(batch aggregate)",
+          "detail": "out_of_stock: 7",
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/batch_summary.json"
+        },
+        {
+          "batch": 2,
+          "brand": "(batch aggregate)",
+          "detail": "availability:out_of_stock: 2",
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/batch_summary.json"
+        },
+        {
+          "batch": 2,
+          "brand": "(batch aggregate)",
+          "detail": "wholesale_row: 4",
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/batch_summary.json"
+        },
+        {
+          "batch": 2,
+          "brand": "(batch aggregate)",
+          "detail": "non_topical_accessory_or_tool: 2",
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2/batch_summary.json"
+        },
+        {
+          "batch": 3,
+          "brand": "Chatelier",
+          "detail": [
+            "anti_abuse_signal:perimeterx",
+            "non_us_currency_or_market_mismatch",
+            "commerce_facts_gate_hold",
+            "market_currency_mismatch",
+            "review_gate_blocker:anti_abuse_signal:perimeterx",
+            "bundle_accessory_or_set_like_row",
+            "description_pollution_page_script",
+            "out_of_stock_or_unavailable"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/chatelier.json"
+        },
+        {
+          "batch": 3,
+          "brand": "Apih",
+          "detail": [
+            "regulated_wellness_supplement_or_therapeutic_claims_lane",
+            "accessory_or_container_row",
+            "non_english_or_health_claim_copy_for_us_review",
+            "out_of_stock_or_unavailable"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/apih.json"
+        },
+        {
+          "batch": 3,
+          "brand": "Fusspot Collagen Beauty Tea",
+          "detail": [
+            "regulated_wellness_supplement_or_therapeutic_claims_lane",
+            "therapeutic_or_body_function_claims",
+            "out_of_stock_or_unavailable",
+            "accessory_or_container_row"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3/reviews/fusspot-collagen-beauty-tea.json"
+        },
+        {
+          "batch": 4,
+          "brand": "abyssian",
+          "detail": [
+            "anti_abuse_signal:perimeterx",
+            "review_gate_blocked",
+            "review:anti_abuse_signal:perimeterx",
+            "out_of_stock_hold",
+            "accessory_or_non_beauty_product_hold",
+            "regulated_wellness_supplement_claims_lane_hold"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/reviews/abyssian.json"
+        },
+        {
+          "batch": 4,
+          "brand": "Rohr Remedy",
+          "detail": [
+            "accessory_or_non_beauty_product_hold",
+            "therapeutic_or_antimicrobial_claims_lane_hold",
+            "bundle_or_multipack_hold",
+            "out_of_stock_hold",
+            "unboxed_or_duplicate_variant_hold"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/reviews/rohr-remedy.json"
+        },
+        {
+          "batch": 4,
+          "brand": "Gun Ana",
+          "detail": [
+            "non_us_currency_market_mismatch_hold",
+            "commerce_facts_gate_hold",
+            "commerce:market_currency_mismatch",
+            "commerce:commerce_facts_currency_mismatch",
+            "commerce:commerce_facts_market_switch_not_ok",
+            "regulated_spf_claims_lane_hold",
+            "regulated_wellness_supplement_claims_lane_hold",
+            "therapeutic_or_antimicrobial_claims_lane_hold",
+            "duplicate_copy_url_hold",
+            "bundle_or_multipack_hold",
+            "accessory_or_non_beauty_product_hold",
+            "out_of_stock_hold"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/reviews/gun-ana.json"
+        },
+        {
+          "batch": 4,
+          "brand": "HIRO",
+          "detail": [
+            "bundle_or_multipack_hold",
+            "regulated_wellness_supplement_claims_lane_hold",
+            "accessory_or_non_beauty_product_hold",
+            "out_of_stock_hold"
+          ],
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4/reviews/hiro.json"
+        },
+        {
+          "batch": 5,
+          "brand": "(batch aggregate)",
+          "detail": "bundle_wholesale_duplicate_or_non_single_sku: 74",
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/batch_summary.json"
+        },
+        {
+          "batch": 5,
+          "brand": "(batch aggregate)",
+          "detail": "accessory_or_non_core_beauty_merch: 33",
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/batch_summary.json"
+        },
+        {
+          "batch": 5,
+          "brand": "(batch aggregate)",
+          "detail": "out_of_stock: 12",
+          "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5/batch_summary.json"
+        }
+      ]
+    }
+  },
+  "write_scope_validation": {
+    "batch_1": {
+      "assigned_dir": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1",
+      "files_seen_under_assigned_dir": 53,
+      "all_seen_files_under_assigned_dir": true,
+      "reported_changed_files_count": 0,
+      "reported_changed_files_all_under_assigned_dir": null,
+      "note": "batch_summary.json did not report changed_files; filesystem inventory for requested batch dir contains only files under that assigned dir"
+    },
+    "batch_2": {
+      "assigned_dir": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_2",
+      "files_seen_under_assigned_dir": 36,
+      "all_seen_files_under_assigned_dir": true,
+      "reported_changed_files_count": 0,
+      "reported_changed_files_all_under_assigned_dir": null,
+      "note": "batch_summary.json did not report changed_files; filesystem inventory for requested batch dir contains only files under that assigned dir"
+    },
+    "batch_3": {
+      "assigned_dir": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_3",
+      "files_seen_under_assigned_dir": 35,
+      "all_seen_files_under_assigned_dir": true,
+      "reported_changed_files_count": 35,
+      "reported_changed_files_all_under_assigned_dir": true,
+      "note": "batch_summary.json reported changed_files and all are under assigned dir"
+    },
+    "batch_4": {
+      "assigned_dir": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_4",
+      "files_seen_under_assigned_dir": 57,
+      "all_seen_files_under_assigned_dir": true,
+      "reported_changed_files_count": 0,
+      "reported_changed_files_all_under_assigned_dir": null,
+      "note": "batch_summary.json did not report changed_files; filesystem inventory for requested batch dir contains only files under that assigned dir"
+    },
+    "batch_5": {
+      "assigned_dir": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_5",
+      "files_seen_under_assigned_dir": 48,
+      "all_seen_files_under_assigned_dir": true,
+      "reported_changed_files_count": 0,
+      "reported_changed_files_all_under_assigned_dir": null,
+      "note": "batch_summary.json did not report changed_files; filesystem inventory for requested batch dir contains only files under that assigned dir"
+    }
+  },
+  "residual_risks": [
+    "All no-DB dry-runs report database_available=false and inserted=0; candidates remain would_insert_unverified, not DB-applied rows.",
+    "Dry-run commerce gates commonly leave sellable_region_status and shipping_status as unknown; these rows need main-agent review before apply.",
+    "Some candidate titles/descriptions contain cosmetic claim language such as anti-aging, recovery, repair, firming, Vit C, peptides, or acids; these were marked for main-agent review rather than treated as unconditional compliance passes.",
+    "Batch 3 candidate rows are brand-level in batch_summary.json, not top-level, so downstream consumers should use this consolidated manifest or brand.curation rows.",
+    "git status shows the broader reports/markato_expansion_status_20260524 tree contains other untracked Wave5/Wave6 artifacts; this validation only confirms the five requested worker dirs and writes only the overall validation dir."
+  ]
+}

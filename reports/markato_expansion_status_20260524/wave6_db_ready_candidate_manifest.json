@@ -1,0 +1,1665 @@
+{
+  "generated_at": "2026-05-24T04:52:55.522Z",
+  "market": "US",
+  "source": "wave6_curated_no_db_dry_run_gate",
+  "curation_policy": "wave6_db_ready_candidate_gate_v1",
+  "item_count": 5,
+  "items": [
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "target_brand": "Aetas",
+      "target_url": "https://aetasofficial.com/products/serum",
+      "extract_status": "brand_catalog_extract",
+      "market": "US",
+      "source_domain": "https://aetasofficial.com",
+      "source_role": "primary",
+      "matched_preferred_titles": [],
+      "alias_preferred_titles": [],
+      "seed_row": {
+        "ingredient_id": null,
+        "ingredient_name": null,
+        "seed_id": "eps_00b1b6dc2b0d11c894a13934",
+        "brand": "Aetas",
+        "market": "US",
+        "tool": "creator_agents",
+        "status": "active",
+        "domain": "aetasofficial.com",
+        "external_product_id": "ext_38b10ae142ef283bdc0acca8",
+        "canonical_url": "https://aetasofficial.com/products/serum",
+        "destination_url": "https://aetasofficial.com/products/serum",
+        "title": "The Serum",
+        "image_url": "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/Serum_B_square.png?v=1751105329",
+        "price_amount": 60,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "attached_product_key": null,
+        "requires_seed_correction": false,
+        "seed_data": {
+          "brand": "Aetas",
+          "title": "The Serum",
+          "description": "イエベ肌・ブルベ肌を魅せる導入美容液。\n\n肌本来の輝きを引き出し、肌タイプを活かした「透明感 ※1 」を手にいれる\n\nパーソナルカラー診断でイエローベース・ブルーベースを決める要素のひとつ「肌質」の違いに着目。多くの方が理想とする、くすみのない ※２ ・透明感 ※1 あふれる美肌のあり方や、必要なアプローチの違いを研究。それぞれの肌が持つユニークな個性を最大限に際立たせ、内側から輝くような美しさを引き出す導入美容液。\n本来の肌の魅力を覚醒させ、自信に満ちた輝きへ。\n\nThe Serum γ (イエベの方へ) \n自然由来指数 ※3 ：99.54% \n\n肌に黄みを感じる、イエローベースの方向け。活力ある雰囲気が魅力。\n肌のごわつきに働きかけ肌のキメを整えることで、やわらかくしなやかな肌へと導き、明るく輝く肌印象へ。\nPCA-Na ※4 ・フルーツ酸 ※5 配合\n\nThe Serum β (ブルベの方へ) \n自然由来指数 ※3 ：98.89% \n\n肌に青みを感じる、ブルーベースの方向け。涼しげな雰囲気が魅力。\n潤いで満たして乾燥から守り、ハリ感のある肌に。顔全体をすっきりと澄み渡らせ、透明感 ※1 や洗練感を演出。\nビタミンP ※6 ・カフェイン ※4 配合\n\n※１ 潤いによる肌印象\n※２ 乾燥よる肌のくすみ\n※３ 自然由来指数は水を含む数値。ISO16128国際標準の規定に基づき、商品中の全配合成分に占める自然由来成分の比率 \n※４ 保湿成分\n※５ ライム果汁、オレンジ果汁、グレープフルーツ果実エキス、サンザシエキス、ナツメ果実エキス、リンゴ果実エキス（整肌成分）\n※６ グルコシルヘスペリジン（整肌成分）",
+          "external_product_id": "ext_38b10ae142ef283bdc0acca8",
+          "canonical_url": "https://aetasofficial.com/products/serum",
+          "destination_url": "https://aetasofficial.com/products/serum",
+          "price_amount": 60,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/Serum_B_square.png?v=1751105329",
+          "image_urls": [
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/Serum_B_square.png?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/SerumyB__2048px_2048.jpg?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09579_Large_48161306-3df3-45a5-910c-cb5ec6c37f5d.jpg?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09377.jpg?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09372.jpg?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09406_Large_841f00ba-1c87-469e-82e2-c32b50cb46df.jpg?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09636.jpg?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09537.jpg?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09581.jpg?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09320.jpg?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09319.jpg?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09306_Large_a2cf51e4-d8d6-45ff-93e1-51df8489d79d.jpg?v=1751105329"
+          ],
+          "images": [
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/Serum_B_square.png?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/SerumyB__2048px_2048.jpg?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09579_Large_48161306-3df3-45a5-910c-cb5ec6c37f5d.jpg?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09377.jpg?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09372.jpg?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09406_Large_841f00ba-1c87-469e-82e2-c32b50cb46df.jpg?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09636.jpg?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09537.jpg?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09581.jpg?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09320.jpg?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09319.jpg?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09306_Large_a2cf51e4-d8d6-45ff-93e1-51df8489d79d.jpg?v=1751105329"
+          ],
+          "variants": [
+            {
+              "sku": "400",
+              "variant_id": "46009531236507",
+              "url": "https://aetasofficial.com/products/serum",
+              "option_name": "肌タイプ別",
+              "option_value": "β（ブルベ向け）",
+              "price": "60",
+              "currency": "USD",
+              "stock": "In Stock",
+              "description": "イエベ肌・ブルベ肌を魅せる導入美容液。\n\n肌本来の輝きを引き出し、肌タイプを活かした「透明感 ※1 」を手にいれる\n\nパーソナルカラー診断でイエローベース・ブルーベースを決める要素のひとつ「肌質」の違いに着目。多くの方が理想とする、くすみのない ※２ ・透明感 ※1 あふれる美肌のあり方や、必要なアプローチの違いを研究。それぞれの肌が持つユニークな個性を最大限に際立たせ、内側から輝くような美しさを引き出す導入美容液。\n本来の肌の魅力を覚醒させ、自信に満ちた輝きへ。\n\nThe Serum γ (イエベの方へ) \n自然由来指数 ※3 ：99.54% \n\n肌に黄みを感じる、イエローベースの方向け。活力ある雰囲気が魅力。\n肌のごわつきに働きかけ肌のキメを整えることで、やわらかくしなやかな肌へと導き、明るく輝く肌印象へ。\nPCA-Na ※4 ・フルーツ酸 ※5 配合\n\nThe Serum β (ブルベの方へ) \n自然由来指数 ※3 ：98.89% \n\n肌に青みを感じる、ブルーベースの方向け。涼しげな雰囲気が魅力。\n潤いで満たして乾燥から守り、ハリ感のある肌に。顔全体をすっきりと澄み渡らせ、透明感 ※1 や洗練感を演出。\nビタミンP ※6 ・カフェイン ※4 配合\n\n※１ 潤いによる肌印象\n※２ 乾燥よる肌のくすみ\n※３ 自然由来指数は水を含む数値。ISO16128国際標準の規定に基づき、商品中の全配合成分に占める自然由来成分の比率 \n※４ 保湿成分\n※５ ライム果汁、オレンジ果汁、グレープフルーツ果実エキス、サンザシエキス、ナツメ果実エキス、リンゴ果実エキス（整肌成分）\n※６ グルコシルヘスペリジン（整肌成分）",
+              "image_url": "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/Serum_B_square.png?v=1751105329",
+              "image_urls": [
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/Serum_B_square.png?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/SerumyB__2048px_2048.jpg?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09579_Large_48161306-3df3-45a5-910c-cb5ec6c37f5d.jpg?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09377.jpg?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09372.jpg?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09406_Large_841f00ba-1c87-469e-82e2-c32b50cb46df.jpg?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09636.jpg?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09537.jpg?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09581.jpg?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09320.jpg?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09319.jpg?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09306_Large_a2cf51e4-d8d6-45ff-93e1-51df8489d79d.jpg?v=1751105329"
+              ]
+            },
+            {
+              "sku": "410",
+              "variant_id": "46009531269275",
+              "url": "https://aetasofficial.com/products/serum",
+              "option_name": "肌タイプ別",
+              "option_value": "γ（イエベ向け）",
+              "price": "60",
+              "currency": "USD",
+              "stock": "In Stock",
+              "description": "イエベ肌・ブルベ肌を魅せる導入美容液。\n\n肌本来の輝きを引き出し、肌タイプを活かした「透明感 ※1 」を手にいれる\n\nパーソナルカラー診断でイエローベース・ブルーベースを決める要素のひとつ「肌質」の違いに着目。多くの方が理想とする、くすみのない ※２ ・透明感 ※1 あふれる美肌のあり方や、必要なアプローチの違いを研究。それぞれの肌が持つユニークな個性を最大限に際立たせ、内側から輝くような美しさを引き出す導入美容液。\n本来の肌の魅力を覚醒させ、自信に満ちた輝きへ。\n\nThe Serum γ (イエベの方へ) \n自然由来指数 ※3 ：99.54% \n\n肌に黄みを感じる、イエローベースの方向け。活力ある雰囲気が魅力。\n肌のごわつきに働きかけ肌のキメを整えることで、やわらかくしなやかな肌へと導き、明るく輝く肌印象へ。\nPCA-Na ※4 ・フルーツ酸 ※5 配合\n\nThe Serum β (ブルベの方へ) \n自然由来指数 ※3 ：98.89% \n\n肌に青みを感じる、ブルーベースの方向け。涼しげな雰囲気が魅力。\n潤いで満たして乾燥から守り、ハリ感のある肌に。顔全体をすっきりと澄み渡らせ、透明感 ※1 や洗練感を演出。\nビタミンP ※6 ・カフェイン ※4 配合\n\n※１ 潤いによる肌印象\n※２ 乾燥よる肌のくすみ\n※３ 自然由来指数は水を含む数値。ISO16128国際標準の規定に基づき、商品中の全配合成分に占める自然由来成分の比率 \n※４ 保湿成分\n※５ ライム果汁、オレンジ果汁、グレープフルーツ果実エキス、サンザシエキス、ナツメ果実エキス、リンゴ果実エキス（整肌成分）\n※６ グルコシルヘスペリジン（整肌成分）",
+              "image_url": "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/Serum_Y_square.png?v=1751105329",
+              "image_urls": [
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/Serum_Y_square.png?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/SerumyB__2048px_2048.jpg?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09579_Large_48161306-3df3-45a5-910c-cb5ec6c37f5d.jpg?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09377.jpg?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09372.jpg?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09406_Large_841f00ba-1c87-469e-82e2-c32b50cb46df.jpg?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09636.jpg?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09537.jpg?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09581.jpg?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09320.jpg?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09319.jpg?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09306_Large_a2cf51e4-d8d6-45ff-93e1-51df8489d79d.jpg?v=1751105329"
+              ]
+            }
+          ],
+          "snapshot": {
+            "source": "catalog_intelligence_seed_creation_manifest",
+            "extracted_at": "2026-05-24T04:50:12.100Z",
+            "canonical_url": "https://aetasofficial.com/products/serum",
+            "destination_url": "https://aetasofficial.com/products/serum",
+            "title": "The Serum",
+            "description": "イエベ肌・ブルベ肌を魅せる導入美容液。\n\n肌本来の輝きを引き出し、肌タイプを活かした「透明感 ※1 」を手にいれる\n\nパーソナルカラー診断でイエローベース・ブルーベースを決める要素のひとつ「肌質」の違いに着目。多くの方が理想とする、くすみのない ※２ ・透明感 ※1 あふれる美肌のあり方や、必要なアプローチの違いを研究。それぞれの肌が持つユニークな個性を最大限に際立たせ、内側から輝くような美しさを引き出す導入美容液。\n本来の肌の魅力を覚醒させ、自信に満ちた輝きへ。\n\nThe Serum γ (イエベの方へ) \n自然由来指数 ※3 ：99.54% \n\n肌に黄みを感じる、イエローベースの方向け。活力ある雰囲気が魅力。\n肌のごわつきに働きかけ肌のキメを整えることで、やわらかくしなやかな肌へと導き、明るく輝く肌印象へ。\nPCA-Na ※4 ・フルーツ酸 ※5 配合\n\nThe Serum β (ブルベの方へ) \n自然由来指数 ※3 ：98.89% \n\n肌に青みを感じる、ブルーベースの方向け。涼しげな雰囲気が魅力。\n潤いで満たして乾燥から守り、ハリ感のある肌に。顔全体をすっきりと澄み渡らせ、透明感 ※1 や洗練感を演出。\nビタミンP ※6 ・カフェイン ※4 配合\n\n※１ 潤いによる肌印象\n※２ 乾燥よる肌のくすみ\n※３ 自然由来指数は水を含む数値。ISO16128国際標準の規定に基づき、商品中の全配合成分に占める自然由来成分の比率 \n※４ 保湿成分\n※５ ライム果汁、オレンジ果汁、グレープフルーツ果実エキス、サンザシエキス、ナツメ果実エキス、リンゴ果実エキス（整肌成分）\n※６ グルコシルヘスペリジン（整肌成分）",
+            "image_url": "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/Serum_B_square.png?v=1751105329",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/Serum_B_square.png?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/SerumyB__2048px_2048.jpg?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09579_Large_48161306-3df3-45a5-910c-cb5ec6c37f5d.jpg?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09377.jpg?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09372.jpg?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09406_Large_841f00ba-1c87-469e-82e2-c32b50cb46df.jpg?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09636.jpg?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09537.jpg?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09581.jpg?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09320.jpg?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09319.jpg?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09306_Large_a2cf51e4-d8d6-45ff-93e1-51df8489d79d.jpg?v=1751105329"
+            ],
+            "images": [
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/Serum_B_square.png?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/SerumyB__2048px_2048.jpg?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09579_Large_48161306-3df3-45a5-910c-cb5ec6c37f5d.jpg?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09377.jpg?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09372.jpg?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09406_Large_841f00ba-1c87-469e-82e2-c32b50cb46df.jpg?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09636.jpg?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09537.jpg?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09581.jpg?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09320.jpg?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09319.jpg?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09306_Large_a2cf51e4-d8d6-45ff-93e1-51df8489d79d.jpg?v=1751105329"
+            ],
+            "variants": [
+              {
+                "sku": "400",
+                "variant_id": "46009531236507",
+                "url": "https://aetasofficial.com/products/serum",
+                "option_name": "肌タイプ別",
+                "option_value": "β（ブルベ向け）",
+                "price": "60",
+                "currency": "USD",
+                "stock": "In Stock",
+                "description": "イエベ肌・ブルベ肌を魅せる導入美容液。\n\n肌本来の輝きを引き出し、肌タイプを活かした「透明感 ※1 」を手にいれる\n\nパーソナルカラー診断でイエローベース・ブルーベースを決める要素のひとつ「肌質」の違いに着目。多くの方が理想とする、くすみのない ※２ ・透明感 ※1 あふれる美肌のあり方や、必要なアプローチの違いを研究。それぞれの肌が持つユニークな個性を最大限に際立たせ、内側から輝くような美しさを引き出す導入美容液。\n本来の肌の魅力を覚醒させ、自信に満ちた輝きへ。\n\nThe Serum γ (イエベの方へ) \n自然由来指数 ※3 ：99.54% \n\n肌に黄みを感じる、イエローベースの方向け。活力ある雰囲気が魅力。\n肌のごわつきに働きかけ肌のキメを整えることで、やわらかくしなやかな肌へと導き、明るく輝く肌印象へ。\nPCA-Na ※4 ・フルーツ酸 ※5 配合\n\nThe Serum β (ブルベの方へ) \n自然由来指数 ※3 ：98.89% \n\n肌に青みを感じる、ブルーベースの方向け。涼しげな雰囲気が魅力。\n潤いで満たして乾燥から守り、ハリ感のある肌に。顔全体をすっきりと澄み渡らせ、透明感 ※1 や洗練感を演出。\nビタミンP ※6 ・カフェイン ※4 配合\n\n※１ 潤いによる肌印象\n※２ 乾燥よる肌のくすみ\n※３ 自然由来指数は水を含む数値。ISO16128国際標準の規定に基づき、商品中の全配合成分に占める自然由来成分の比率 \n※４ 保湿成分\n※５ ライム果汁、オレンジ果汁、グレープフルーツ果実エキス、サンザシエキス、ナツメ果実エキス、リンゴ果実エキス（整肌成分）\n※６ グルコシルヘスペリジン（整肌成分）",
+                "image_url": "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/Serum_B_square.png?v=1751105329",
+                "image_urls": [
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/Serum_B_square.png?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/SerumyB__2048px_2048.jpg?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09579_Large_48161306-3df3-45a5-910c-cb5ec6c37f5d.jpg?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09377.jpg?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09372.jpg?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09406_Large_841f00ba-1c87-469e-82e2-c32b50cb46df.jpg?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09636.jpg?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09537.jpg?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09581.jpg?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09320.jpg?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09319.jpg?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09306_Large_a2cf51e4-d8d6-45ff-93e1-51df8489d79d.jpg?v=1751105329"
+                ]
+              },
+              {
+                "sku": "410",
+                "variant_id": "46009531269275",
+                "url": "https://aetasofficial.com/products/serum",
+                "option_name": "肌タイプ別",
+                "option_value": "γ（イエベ向け）",
+                "price": "60",
+                "currency": "USD",
+                "stock": "In Stock",
+                "description": "イエベ肌・ブルベ肌を魅せる導入美容液。\n\n肌本来の輝きを引き出し、肌タイプを活かした「透明感 ※1 」を手にいれる\n\nパーソナルカラー診断でイエローベース・ブルーベースを決める要素のひとつ「肌質」の違いに着目。多くの方が理想とする、くすみのない ※２ ・透明感 ※1 あふれる美肌のあり方や、必要なアプローチの違いを研究。それぞれの肌が持つユニークな個性を最大限に際立たせ、内側から輝くような美しさを引き出す導入美容液。\n本来の肌の魅力を覚醒させ、自信に満ちた輝きへ。\n\nThe Serum γ (イエベの方へ) \n自然由来指数 ※3 ：99.54% \n\n肌に黄みを感じる、イエローベースの方向け。活力ある雰囲気が魅力。\n肌のごわつきに働きかけ肌のキメを整えることで、やわらかくしなやかな肌へと導き、明るく輝く肌印象へ。\nPCA-Na ※4 ・フルーツ酸 ※5 配合\n\nThe Serum β (ブルベの方へ) \n自然由来指数 ※3 ：98.89% \n\n肌に青みを感じる、ブルーベースの方向け。涼しげな雰囲気が魅力。\n潤いで満たして乾燥から守り、ハリ感のある肌に。顔全体をすっきりと澄み渡らせ、透明感 ※1 や洗練感を演出。\nビタミンP ※6 ・カフェイン ※4 配合\n\n※１ 潤いによる肌印象\n※２ 乾燥よる肌のくすみ\n※３ 自然由来指数は水を含む数値。ISO16128国際標準の規定に基づき、商品中の全配合成分に占める自然由来成分の比率 \n※４ 保湿成分\n※５ ライム果汁、オレンジ果汁、グレープフルーツ果実エキス、サンザシエキス、ナツメ果実エキス、リンゴ果実エキス（整肌成分）\n※６ グルコシルヘスペリジン（整肌成分）",
+                "image_url": "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/Serum_Y_square.png?v=1751105329",
+                "image_urls": [
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/Serum_Y_square.png?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/SerumyB__2048px_2048.jpg?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09579_Large_48161306-3df3-45a5-910c-cb5ec6c37f5d.jpg?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09377.jpg?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09372.jpg?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09406_Large_841f00ba-1c87-469e-82e2-c32b50cb46df.jpg?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09636.jpg?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09537.jpg?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09581.jpg?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09320.jpg?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09319.jpg?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09306_Large_a2cf51e4-d8d6-45ff-93e1-51df8489d79d.jpg?v=1751105329"
+                ]
+              }
+            ],
+            "diagnostics": {
+              "requested_domain": "aetasofficial.com",
+              "resolved_base_url": "https://aetasofficial.com",
+              "discovery_strategy": "shopify_json",
+              "failure_category": null,
+              "block_provider": null,
+              "http_trace": [
+                {
+                  "url": "https://aetasofficial.com/",
+                  "status": 200
+                },
+                {
+                  "url": "https://aetasofficial.com/products.json?limit=1",
+                  "status": 200
+                },
+                {
+                  "url": "https://aetasofficial.com/",
+                  "status": 200
+                },
+                {
+                  "url": "https://aetasofficial.com/products.json?limit=250&page=1",
+                  "status": 200
+                }
+              ]
+            },
+            "search_aliases": [
+              "The Serum"
+            ],
+            "authority_source": {
+              "source_url": "https://aetasofficial.com",
+              "source_role": "primary",
+              "matched_preferred_titles": []
+            },
+            "source_validation": {
+              "source_type": "brand_owned",
+              "requires_multi_offer_merge_validation": false,
+              "source_host": "aetasofficial.com"
+            },
+            "commerce_facts_v1": {
+              "contract_version": "commerce_facts.v1",
+              "market_id": "US",
+              "country": "US",
+              "currency_target": "USD",
+              "source_authority": "catalog_extract_v2",
+              "captured_at": "2026-05-24T04:50:12.464Z",
+              "evidence_url": "https://aetasofficial.com/products/serum",
+              "sellable_region": {
+                "status": "unknown",
+                "countries": [],
+                "evidence_source": "catalog_extract_v2",
+                "confidence": "medium",
+                "checked_at": "2026-05-24T04:50:12.464Z",
+                "reason_codes": [
+                  "market_currency_observed",
+                  "shipping_destination_not_verified",
+                  "external_checkout_not_queried"
+                ],
+                "evidence_url": "https://aetasofficial.com/products/serum"
+              },
+              "regional_price": {
+                "amount": 60,
+                "currency": "USD",
+                "display_raw": "60.00",
+                "price_type": "list",
+                "compare_at_amount": null,
+                "compare_at_currency": null,
+                "compare_at_display_raw": null,
+                "tax_included": "unknown",
+                "confidence": "medium",
+                "market_switch_status": "ok",
+                "observed_currency": "USD",
+                "source_url": "https://aetasofficial.com/products/serum",
+                "captured_at": "2026-05-24T04:50:12.464Z"
+              },
+              "availability": {
+                "status": "in_stock",
+                "source": "catalog_extract_v2",
+                "confidence": "medium",
+                "captured_at": "2026-05-24T04:50:12.464Z"
+              },
+              "shipping": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_checkout_not_queried"
+                ],
+                "checked_at": "2026-05-24T04:50:12.464Z"
+              },
+              "promotions": [],
+              "returns": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_returns_not_extracted"
+                ],
+                "checked_at": "2026-05-24T04:50:12.464Z"
+              }
+            },
+            "commerce_facts_gate": {
+              "status": "pass",
+              "market_id": "US",
+              "expected_currency": "USD",
+              "observed_currency": "USD",
+              "market_switch_status": "ok",
+              "sellable_region_status": "unknown",
+              "shipping_status": "unknown",
+              "promotions_status": "unknown",
+              "availability_status": "in_stock",
+              "problems": []
+            }
+          },
+          "search_aliases": [
+            "The Serum"
+          ],
+          "authority_source": {
+            "source_url": "https://aetasofficial.com",
+            "source_role": "primary",
+            "matched_preferred_titles": []
+          },
+          "source_validation": {
+            "source_type": "brand_owned",
+            "requires_multi_offer_merge_validation": false,
+            "source_host": "aetasofficial.com"
+          },
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T04:50:12.464Z",
+            "evidence_url": "https://aetasofficial.com/products/serum",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-24T04:50:12.464Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://aetasofficial.com/products/serum"
+            },
+            "regional_price": {
+              "amount": 60,
+              "currency": "USD",
+              "display_raw": "60.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://aetasofficial.com/products/serum",
+              "captured_at": "2026-05-24T04:50:12.464Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T04:50:12.464Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T04:50:12.464Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T04:50:12.464Z"
+            }
+          },
+          "commerce_facts_gate": {
+            "status": "pass",
+            "market_id": "US",
+            "expected_currency": "USD",
+            "observed_currency": "USD",
+            "market_switch_status": "ok",
+            "sellable_region_status": "unknown",
+            "shipping_status": "unknown",
+            "promotions_status": "unknown",
+            "availability_status": "in_stock",
+            "problems": []
+          }
+        }
+      }
+    },
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "target_brand": "Seresilk",
+      "target_url": "https://seresilk.com.au/products/silk-night-cream",
+      "extract_status": "brand_catalog_extract",
+      "market": "US",
+      "source_domain": "https://seresilk.com.au",
+      "source_role": "primary",
+      "matched_preferred_titles": [],
+      "alias_preferred_titles": [],
+      "seed_row": {
+        "ingredient_id": null,
+        "ingredient_name": null,
+        "seed_id": "eps_44c1397b319a538f47b4ca1d",
+        "brand": "Seresilk",
+        "market": "US",
+        "tool": "creator_agents",
+        "status": "active",
+        "domain": "seresilk.com.au",
+        "external_product_id": "ext_df8aac07d6c970d4c213b43f",
+        "canonical_url": "https://seresilk.com.au/products/silk-night-cream",
+        "destination_url": "https://seresilk.com.au/products/silk-night-cream",
+        "title": "Silk Night Cream",
+        "image_url": "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_SilkNightCream.jpg?v=1754113861",
+        "price_amount": 79.97,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "attached_product_key": null,
+        "requires_seed_correction": false,
+        "seed_data": {
+          "brand": "Seresilk",
+          "title": "Silk Night Cream",
+          "description": "50ml \n\nThe Silk Night Cream is a rich, restorative treatment designed to deeply hydrate, firm, and reinforce the skin’s barrier overnight. Enriched with the proprietary Hydrolysed Silk Complex HSC01-A™ , squalene, and vitamin E, the cream delivers intense moisture while supporting elasticity and cell renewal.\n\nIts velvety texture melts into the skin, creating a soft, breathable veil that leaves the complexion visibly firmer and more radiant by morning.\n\nBENEFITS \nImmediately: Skin feels nourished, soothed, and comforted. With continued use: Skin appears firmer, more elastic, and visibly revitalised.\n\nDermatologically tested and approved. Patch test before application.\nApproved under the Leaping Bunny programme.",
+          "external_product_id": "ext_df8aac07d6c970d4c213b43f",
+          "canonical_url": "https://seresilk.com.au/products/silk-night-cream",
+          "destination_url": "https://seresilk.com.au/products/silk-night-cream",
+          "price_amount": 79.97,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_SilkNightCream.jpg?v=1754113861",
+          "image_urls": [
+            "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_SilkNightCream.jpg?v=1754113861",
+            "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Texture_Square_SilkNightCream.webp?v=1754113861",
+            "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/EditorialSquareNightCream.webp?v=1754113861"
+          ],
+          "images": [
+            "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_SilkNightCream.jpg?v=1754113861",
+            "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Texture_Square_SilkNightCream.webp?v=1754113861",
+            "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/EditorialSquareNightCream.webp?v=1754113861"
+          ],
+          "variants": [
+            {
+              "sku": "7701061711",
+              "variant_id": "40087701061711",
+              "url": "https://seresilk.com.au/products/silk-night-cream",
+              "option_name": "Size",
+              "option_value": "50ml",
+              "price": "79.97",
+              "currency": "USD",
+              "stock": "In Stock",
+              "description": "50ml \n\nThe Silk Night Cream is a rich, restorative treatment designed to deeply hydrate, firm, and reinforce the skin’s barrier overnight. Enriched with the proprietary Hydrolysed Silk Complex HSC01-A™ , squalene, and vitamin E, the cream delivers intense moisture while supporting elasticity and cell renewal.\n\nIts velvety texture melts into the skin, creating a soft, breathable veil that leaves the complexion visibly firmer and more radiant by morning.\n\nBENEFITS \nImmediately: Skin feels nourished, soothed, and comforted. With continued use: Skin appears firmer, more elastic, and visibly revitalised.\n\nDermatologically tested and approved. Patch test before application.\nApproved under the Leaping Bunny programme.",
+              "image_url": "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_SilkNightCream.jpg?v=1754113861",
+              "image_urls": [
+                "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_SilkNightCream.jpg?v=1754113861",
+                "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Texture_Square_SilkNightCream.webp?v=1754113861",
+                "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/EditorialSquareNightCream.webp?v=1754113861"
+              ]
+            }
+          ],
+          "snapshot": {
+            "source": "catalog_intelligence_seed_creation_manifest",
+            "extracted_at": "2026-05-24T04:50:24.211Z",
+            "canonical_url": "https://seresilk.com.au/products/silk-night-cream",
+            "destination_url": "https://seresilk.com.au/products/silk-night-cream",
+            "title": "Silk Night Cream",
+            "description": "50ml \n\nThe Silk Night Cream is a rich, restorative treatment designed to deeply hydrate, firm, and reinforce the skin’s barrier overnight. Enriched with the proprietary Hydrolysed Silk Complex HSC01-A™ , squalene, and vitamin E, the cream delivers intense moisture while supporting elasticity and cell renewal.\n\nIts velvety texture melts into the skin, creating a soft, breathable veil that leaves the complexion visibly firmer and more radiant by morning.\n\nBENEFITS \nImmediately: Skin feels nourished, soothed, and comforted. With continued use: Skin appears firmer, more elastic, and visibly revitalised.\n\nDermatologically tested and approved. Patch test before application.\nApproved under the Leaping Bunny programme.",
+            "image_url": "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_SilkNightCream.jpg?v=1754113861",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_SilkNightCream.jpg?v=1754113861",
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Texture_Square_SilkNightCream.webp?v=1754113861",
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/EditorialSquareNightCream.webp?v=1754113861"
+            ],
+            "images": [
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_SilkNightCream.jpg?v=1754113861",
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Texture_Square_SilkNightCream.webp?v=1754113861",
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/EditorialSquareNightCream.webp?v=1754113861"
+            ],
+            "variants": [
+              {
+                "sku": "7701061711",
+                "variant_id": "40087701061711",
+                "url": "https://seresilk.com.au/products/silk-night-cream",
+                "option_name": "Size",
+                "option_value": "50ml",
+                "price": "79.97",
+                "currency": "USD",
+                "stock": "In Stock",
+                "description": "50ml \n\nThe Silk Night Cream is a rich, restorative treatment designed to deeply hydrate, firm, and reinforce the skin’s barrier overnight. Enriched with the proprietary Hydrolysed Silk Complex HSC01-A™ , squalene, and vitamin E, the cream delivers intense moisture while supporting elasticity and cell renewal.\n\nIts velvety texture melts into the skin, creating a soft, breathable veil that leaves the complexion visibly firmer and more radiant by morning.\n\nBENEFITS \nImmediately: Skin feels nourished, soothed, and comforted. With continued use: Skin appears firmer, more elastic, and visibly revitalised.\n\nDermatologically tested and approved. Patch test before application.\nApproved under the Leaping Bunny programme.",
+                "image_url": "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_SilkNightCream.jpg?v=1754113861",
+                "image_urls": [
+                  "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_SilkNightCream.jpg?v=1754113861",
+                  "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Texture_Square_SilkNightCream.webp?v=1754113861",
+                  "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/EditorialSquareNightCream.webp?v=1754113861"
+                ]
+              }
+            ],
+            "diagnostics": {
+              "requested_domain": "seresilk.com.au",
+              "resolved_base_url": "https://seresilk.com.au",
+              "discovery_strategy": "shopify_json",
+              "failure_category": null,
+              "block_provider": null,
+              "http_trace": [
+                {
+                  "url": "https://seresilk.com.au/",
+                  "status": 200
+                },
+                {
+                  "url": "https://seresilk.com.au/products.json?limit=1",
+                  "status": 200
+                },
+                {
+                  "url": "https://seresilk.com.au/",
+                  "status": 200
+                },
+                {
+                  "url": "https://seresilk.com.au/products.json?limit=250&page=1",
+                  "status": 200
+                }
+              ]
+            },
+            "search_aliases": [
+              "Silk Night Cream"
+            ],
+            "authority_source": {
+              "source_url": "https://seresilk.com.au",
+              "source_role": "primary",
+              "matched_preferred_titles": []
+            },
+            "source_validation": {
+              "source_type": "brand_owned",
+              "requires_multi_offer_merge_validation": false,
+              "source_host": "seresilk.com.au"
+            },
+            "commerce_facts_v1": {
+              "contract_version": "commerce_facts.v1",
+              "market_id": "US",
+              "country": "US",
+              "currency_target": "USD",
+              "source_authority": "catalog_extract_v2",
+              "captured_at": "2026-05-24T04:50:24.571Z",
+              "evidence_url": "https://seresilk.com.au/products/silk-night-cream",
+              "sellable_region": {
+                "status": "unknown",
+                "countries": [],
+                "evidence_source": "catalog_extract_v2",
+                "confidence": "medium",
+                "checked_at": "2026-05-24T04:50:24.571Z",
+                "reason_codes": [
+                  "market_currency_observed",
+                  "shipping_destination_not_verified",
+                  "external_checkout_not_queried"
+                ],
+                "evidence_url": "https://seresilk.com.au/products/silk-night-cream"
+              },
+              "regional_price": {
+                "amount": 79.97,
+                "currency": "USD",
+                "display_raw": "79.97",
+                "price_type": "list",
+                "compare_at_amount": null,
+                "compare_at_currency": null,
+                "compare_at_display_raw": null,
+                "tax_included": "unknown",
+                "confidence": "medium",
+                "market_switch_status": "ok",
+                "observed_currency": "USD",
+                "source_url": "https://seresilk.com.au/products/silk-night-cream",
+                "captured_at": "2026-05-24T04:50:24.571Z"
+              },
+              "availability": {
+                "status": "in_stock",
+                "source": "catalog_extract_v2",
+                "confidence": "medium",
+                "captured_at": "2026-05-24T04:50:24.571Z"
+              },
+              "shipping": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_checkout_not_queried"
+                ],
+                "checked_at": "2026-05-24T04:50:24.571Z"
+              },
+              "promotions": [],
+              "returns": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_returns_not_extracted"
+                ],
+                "checked_at": "2026-05-24T04:50:24.571Z"
+              }
+            },
+            "commerce_facts_gate": {
+              "status": "pass",
+              "market_id": "US",
+              "expected_currency": "USD",
+              "observed_currency": "USD",
+              "market_switch_status": "ok",
+              "sellable_region_status": "unknown",
+              "shipping_status": "unknown",
+              "promotions_status": "unknown",
+              "availability_status": "in_stock",
+              "problems": []
+            }
+          },
+          "search_aliases": [
+            "Silk Night Cream"
+          ],
+          "authority_source": {
+            "source_url": "https://seresilk.com.au",
+            "source_role": "primary",
+            "matched_preferred_titles": []
+          },
+          "source_validation": {
+            "source_type": "brand_owned",
+            "requires_multi_offer_merge_validation": false,
+            "source_host": "seresilk.com.au"
+          },
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T04:50:24.571Z",
+            "evidence_url": "https://seresilk.com.au/products/silk-night-cream",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-24T04:50:24.571Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://seresilk.com.au/products/silk-night-cream"
+            },
+            "regional_price": {
+              "amount": 79.97,
+              "currency": "USD",
+              "display_raw": "79.97",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://seresilk.com.au/products/silk-night-cream",
+              "captured_at": "2026-05-24T04:50:24.571Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T04:50:24.571Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T04:50:24.571Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T04:50:24.571Z"
+            }
+          },
+          "commerce_facts_gate": {
+            "status": "pass",
+            "market_id": "US",
+            "expected_currency": "USD",
+            "observed_currency": "USD",
+            "market_switch_status": "ok",
+            "sellable_region_status": "unknown",
+            "shipping_status": "unknown",
+            "promotions_status": "unknown",
+            "availability_status": "in_stock",
+            "problems": []
+          }
+        }
+      }
+    },
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "target_brand": "Seresilk",
+      "target_url": "https://seresilk.com.au/products/silk-night-serum",
+      "extract_status": "brand_catalog_extract",
+      "market": "US",
+      "source_domain": "https://seresilk.com.au",
+      "source_role": "primary",
+      "matched_preferred_titles": [],
+      "alias_preferred_titles": [],
+      "seed_row": {
+        "ingredient_id": null,
+        "ingredient_name": null,
+        "seed_id": "eps_68187b19d2f43540ff7e1b59",
+        "brand": "Seresilk",
+        "market": "US",
+        "tool": "creator_agents",
+        "status": "active",
+        "domain": "seresilk.com.au",
+        "external_product_id": "ext_438058253d57a2c8d75f5906",
+        "canonical_url": "https://seresilk.com.au/products/silk-night-serum",
+        "destination_url": "https://seresilk.com.au/products/silk-night-serum",
+        "title": "Silk Night Serum",
+        "image_url": "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_SilkNightSerum.jpg?v=1753242176",
+        "price_amount": 94.51,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "attached_product_key": null,
+        "requires_seed_correction": false,
+        "seed_data": {
+          "brand": "Seresilk",
+          "title": "Silk Night Serum",
+          "description": "30ml \n\nThe Silk Night Serum is a concentrated formula developed to support the skin’s overnight regenerative processes. Infused with the proprietary Hydrolysed Silk Complex HSC01-A™ , vitamin A, and hyaluronic acid, this serum helps refine skin texture, improve tone, and visibly reduce the appearance of fine lines.\n\nIts lightweight, fast-absorbing texture delivers immediate hydration and a refined finish, preparing the skin for optimal overnight recovery.\n\nBENEFITS \nImmediately: Skin feels hydrated and soothed. Over time: Skin appears smoother, more even, and visibly renewed by morning.\n\nDermatologically tested and approved. Patch test before application.\nApproved under the Leaping Bunny programme.",
+          "external_product_id": "ext_438058253d57a2c8d75f5906",
+          "canonical_url": "https://seresilk.com.au/products/silk-night-serum",
+          "destination_url": "https://seresilk.com.au/products/silk-night-serum",
+          "price_amount": 94.51,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_SilkNightSerum.jpg?v=1753242176",
+          "image_urls": [
+            "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_SilkNightSerum.jpg?v=1753242176",
+            "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Texture_Square_SilkNightSerum.webp?v=1753242176",
+            "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/EditorialSilkNightSerumSquare.webp?v=1753242176"
+          ],
+          "images": [
+            "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_SilkNightSerum.jpg?v=1753242176",
+            "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Texture_Square_SilkNightSerum.webp?v=1753242176",
+            "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/EditorialSilkNightSerumSquare.webp?v=1753242176"
+          ],
+          "variants": [
+            {
+              "sku": "7700471887",
+              "variant_id": "40087700471887",
+              "url": "https://seresilk.com.au/products/silk-night-serum",
+              "option_name": "Size",
+              "option_value": "30ml",
+              "price": "94.51",
+              "currency": "USD",
+              "stock": "In Stock",
+              "description": "30ml \n\nThe Silk Night Serum is a concentrated formula developed to support the skin’s overnight regenerative processes. Infused with the proprietary Hydrolysed Silk Complex HSC01-A™ , vitamin A, and hyaluronic acid, this serum helps refine skin texture, improve tone, and visibly reduce the appearance of fine lines.\n\nIts lightweight, fast-absorbing texture delivers immediate hydration and a refined finish, preparing the skin for optimal overnight recovery.\n\nBENEFITS \nImmediately: Skin feels hydrated and soothed. Over time: Skin appears smoother, more even, and visibly renewed by morning.\n\nDermatologically tested and approved. Patch test before application.\nApproved under the Leaping Bunny programme.",
+              "image_url": "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_SilkNightSerum.jpg?v=1753242176",
+              "image_urls": [
+                "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_SilkNightSerum.jpg?v=1753242176",
+                "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Texture_Square_SilkNightSerum.webp?v=1753242176",
+                "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/EditorialSilkNightSerumSquare.webp?v=1753242176"
+              ]
+            }
+          ],
+          "snapshot": {
+            "source": "catalog_intelligence_seed_creation_manifest",
+            "extracted_at": "2026-05-24T04:50:24.211Z",
+            "canonical_url": "https://seresilk.com.au/products/silk-night-serum",
+            "destination_url": "https://seresilk.com.au/products/silk-night-serum",
+            "title": "Silk Night Serum",
+            "description": "30ml \n\nThe Silk Night Serum is a concentrated formula developed to support the skin’s overnight regenerative processes. Infused with the proprietary Hydrolysed Silk Complex HSC01-A™ , vitamin A, and hyaluronic acid, this serum helps refine skin texture, improve tone, and visibly reduce the appearance of fine lines.\n\nIts lightweight, fast-absorbing texture delivers immediate hydration and a refined finish, preparing the skin for optimal overnight recovery.\n\nBENEFITS \nImmediately: Skin feels hydrated and soothed. Over time: Skin appears smoother, more even, and visibly renewed by morning.\n\nDermatologically tested and approved. Patch test before application.\nApproved under the Leaping Bunny programme.",
+            "image_url": "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_SilkNightSerum.jpg?v=1753242176",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_SilkNightSerum.jpg?v=1753242176",
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Texture_Square_SilkNightSerum.webp?v=1753242176",
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/EditorialSilkNightSerumSquare.webp?v=1753242176"
+            ],
+            "images": [
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_SilkNightSerum.jpg?v=1753242176",
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Texture_Square_SilkNightSerum.webp?v=1753242176",
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/EditorialSilkNightSerumSquare.webp?v=1753242176"
+            ],
+            "variants": [
+              {
+                "sku": "7700471887",
+                "variant_id": "40087700471887",
+                "url": "https://seresilk.com.au/products/silk-night-serum",
+                "option_name": "Size",
+                "option_value": "30ml",
+                "price": "94.51",
+                "currency": "USD",
+                "stock": "In Stock",
+                "description": "30ml \n\nThe Silk Night Serum is a concentrated formula developed to support the skin’s overnight regenerative processes. Infused with the proprietary Hydrolysed Silk Complex HSC01-A™ , vitamin A, and hyaluronic acid, this serum helps refine skin texture, improve tone, and visibly reduce the appearance of fine lines.\n\nIts lightweight, fast-absorbing texture delivers immediate hydration and a refined finish, preparing the skin for optimal overnight recovery.\n\nBENEFITS \nImmediately: Skin feels hydrated and soothed. Over time: Skin appears smoother, more even, and visibly renewed by morning.\n\nDermatologically tested and approved. Patch test before application.\nApproved under the Leaping Bunny programme.",
+                "image_url": "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_SilkNightSerum.jpg?v=1753242176",
+                "image_urls": [
+                  "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_SilkNightSerum.jpg?v=1753242176",
+                  "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Texture_Square_SilkNightSerum.webp?v=1753242176",
+                  "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/EditorialSilkNightSerumSquare.webp?v=1753242176"
+                ]
+              }
+            ],
+            "diagnostics": {
+              "requested_domain": "seresilk.com.au",
+              "resolved_base_url": "https://seresilk.com.au",
+              "discovery_strategy": "shopify_json",
+              "failure_category": null,
+              "block_provider": null,
+              "http_trace": [
+                {
+                  "url": "https://seresilk.com.au/",
+                  "status": 200
+                },
+                {
+                  "url": "https://seresilk.com.au/products.json?limit=1",
+                  "status": 200
+                },
+                {
+                  "url": "https://seresilk.com.au/",
+                  "status": 200
+                },
+                {
+                  "url": "https://seresilk.com.au/products.json?limit=250&page=1",
+                  "status": 200
+                }
+              ]
+            },
+            "search_aliases": [
+              "Silk Night Serum"
+            ],
+            "authority_source": {
+              "source_url": "https://seresilk.com.au",
+              "source_role": "primary",
+              "matched_preferred_titles": []
+            },
+            "source_validation": {
+              "source_type": "brand_owned",
+              "requires_multi_offer_merge_validation": false,
+              "source_host": "seresilk.com.au"
+            },
+            "commerce_facts_v1": {
+              "contract_version": "commerce_facts.v1",
+              "market_id": "US",
+              "country": "US",
+              "currency_target": "USD",
+              "source_authority": "catalog_extract_v2",
+              "captured_at": "2026-05-24T04:50:24.571Z",
+              "evidence_url": "https://seresilk.com.au/products/silk-night-serum",
+              "sellable_region": {
+                "status": "unknown",
+                "countries": [],
+                "evidence_source": "catalog_extract_v2",
+                "confidence": "medium",
+                "checked_at": "2026-05-24T04:50:24.571Z",
+                "reason_codes": [
+                  "market_currency_observed",
+                  "shipping_destination_not_verified",
+                  "external_checkout_not_queried"
+                ],
+                "evidence_url": "https://seresilk.com.au/products/silk-night-serum"
+              },
+              "regional_price": {
+                "amount": 94.51,
+                "currency": "USD",
+                "display_raw": "94.51",
+                "price_type": "list",
+                "compare_at_amount": null,
+                "compare_at_currency": null,
+                "compare_at_display_raw": null,
+                "tax_included": "unknown",
+                "confidence": "medium",
+                "market_switch_status": "ok",
+                "observed_currency": "USD",
+                "source_url": "https://seresilk.com.au/products/silk-night-serum",
+                "captured_at": "2026-05-24T04:50:24.571Z"
+              },
+              "availability": {
+                "status": "in_stock",
+                "source": "catalog_extract_v2",
+                "confidence": "medium",
+                "captured_at": "2026-05-24T04:50:24.571Z"
+              },
+              "shipping": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_checkout_not_queried"
+                ],
+                "checked_at": "2026-05-24T04:50:24.571Z"
+              },
+              "promotions": [],
+              "returns": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_returns_not_extracted"
+                ],
+                "checked_at": "2026-05-24T04:50:24.571Z"
+              }
+            },
+            "commerce_facts_gate": {
+              "status": "pass",
+              "market_id": "US",
+              "expected_currency": "USD",
+              "observed_currency": "USD",
+              "market_switch_status": "ok",
+              "sellable_region_status": "unknown",
+              "shipping_status": "unknown",
+              "promotions_status": "unknown",
+              "availability_status": "in_stock",
+              "problems": []
+            }
+          },
+          "search_aliases": [
+            "Silk Night Serum"
+          ],
+          "authority_source": {
+            "source_url": "https://seresilk.com.au",
+            "source_role": "primary",
+            "matched_preferred_titles": []
+          },
+          "source_validation": {
+            "source_type": "brand_owned",
+            "requires_multi_offer_merge_validation": false,
+            "source_host": "seresilk.com.au"
+          },
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T04:50:24.571Z",
+            "evidence_url": "https://seresilk.com.au/products/silk-night-serum",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-24T04:50:24.571Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://seresilk.com.au/products/silk-night-serum"
+            },
+            "regional_price": {
+              "amount": 94.51,
+              "currency": "USD",
+              "display_raw": "94.51",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://seresilk.com.au/products/silk-night-serum",
+              "captured_at": "2026-05-24T04:50:24.571Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T04:50:24.571Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T04:50:24.571Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T04:50:24.571Z"
+            }
+          },
+          "commerce_facts_gate": {
+            "status": "pass",
+            "market_id": "US",
+            "expected_currency": "USD",
+            "observed_currency": "USD",
+            "market_switch_status": "ok",
+            "sellable_region_status": "unknown",
+            "shipping_status": "unknown",
+            "promotions_status": "unknown",
+            "availability_status": "in_stock",
+            "problems": []
+          }
+        }
+      }
+    },
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "target_brand": "Seresilk",
+      "target_url": "https://seresilk.com.au/products/pure-silk-exfoliator",
+      "extract_status": "brand_catalog_extract",
+      "market": "US",
+      "source_domain": "https://seresilk.com.au",
+      "source_role": "primary",
+      "matched_preferred_titles": [],
+      "alias_preferred_titles": [],
+      "seed_row": {
+        "ingredient_id": null,
+        "ingredient_name": null,
+        "seed_id": "eps_23e4ebbf8953e0c23fa7fca5",
+        "brand": "Seresilk",
+        "market": "US",
+        "tool": "creator_agents",
+        "status": "active",
+        "domain": "seresilk.com.au",
+        "external_product_id": "ext_7c5f8c37e37a5f147672a9f2",
+        "canonical_url": "https://seresilk.com.au/products/pure-silk-exfoliator",
+        "destination_url": "https://seresilk.com.au/products/pure-silk-exfoliator",
+        "title": "Pure Silk Exfoliator",
+        "image_url": "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_PureSilkExfoliator.jpg?v=1753242189",
+        "price_amount": 43.62,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "attached_product_key": null,
+        "requires_seed_correction": false,
+        "seed_data": {
+          "brand": "Seresilk",
+          "title": "Pure Silk Exfoliator",
+          "description": "150ml / 12 Pieces \n\nEmbrace the purest expression of nature’s most sacred fibre.\n\nCrafted from 100% pure, cruelty-free silk, this reusable exfoliator glides effortlessly across the skin, delicately lifting away impurities and surface buildup. Its unique fibre structure supports skin renewal, helping to smooth texture, reduce the appearance of fine lines, and improve elasticity.\n\nWith continued use, the complexion appears clearer, more refined, and visibly revitalised—revealing the skin’s natural luminosity.\n\nBENEFITS \nImmediately: Skin feels softened and visibly polished. Over time: Skin appears smoother, more even-toned, and refined in texture.\n\nDermatologically tested and approved. Patch test before application.",
+          "external_product_id": "ext_7c5f8c37e37a5f147672a9f2",
+          "canonical_url": "https://seresilk.com.au/products/pure-silk-exfoliator",
+          "destination_url": "https://seresilk.com.au/products/pure-silk-exfoliator",
+          "price_amount": 43.62,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_PureSilkExfoliator.jpg?v=1753242189",
+          "image_urls": [
+            "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_PureSilkExfoliator.jpg?v=1753242189",
+            "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Texture_Square_PureSilkExfoliator.webp?v=1753242189",
+            "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/EditorialPureSilkExfoliatorSquare.webp?v=1753242189"
+          ],
+          "images": [
+            "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_PureSilkExfoliator.jpg?v=1753242189",
+            "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Texture_Square_PureSilkExfoliator.webp?v=1753242189",
+            "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/EditorialPureSilkExfoliatorSquare.webp?v=1753242189"
+          ],
+          "variants": [
+            {
+              "sku": "7698800719",
+              "variant_id": "40087698800719",
+              "url": "https://seresilk.com.au/products/pure-silk-exfoliator",
+              "option_name": "Size",
+              "option_value": "150ml",
+              "price": "43.62",
+              "currency": "USD",
+              "stock": "In Stock",
+              "description": "150ml / 12 Pieces \n\nEmbrace the purest expression of nature’s most sacred fibre.\n\nCrafted from 100% pure, cruelty-free silk, this reusable exfoliator glides effortlessly across the skin, delicately lifting away impurities and surface buildup. Its unique fibre structure supports skin renewal, helping to smooth texture, reduce the appearance of fine lines, and improve elasticity.\n\nWith continued use, the complexion appears clearer, more refined, and visibly revitalised—revealing the skin’s natural luminosity.\n\nBENEFITS \nImmediately: Skin feels softened and visibly polished. Over time: Skin appears smoother, more even-toned, and refined in texture.\n\nDermatologically tested and approved. Patch test before application.",
+              "image_url": "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_PureSilkExfoliator.jpg?v=1753242189",
+              "image_urls": [
+                "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_PureSilkExfoliator.jpg?v=1753242189",
+                "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Texture_Square_PureSilkExfoliator.webp?v=1753242189",
+                "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/EditorialPureSilkExfoliatorSquare.webp?v=1753242189"
+              ]
+            }
+          ],
+          "snapshot": {
+            "source": "catalog_intelligence_seed_creation_manifest",
+            "extracted_at": "2026-05-24T04:50:24.211Z",
+            "canonical_url": "https://seresilk.com.au/products/pure-silk-exfoliator",
+            "destination_url": "https://seresilk.com.au/products/pure-silk-exfoliator",
+            "title": "Pure Silk Exfoliator",
+            "description": "150ml / 12 Pieces \n\nEmbrace the purest expression of nature’s most sacred fibre.\n\nCrafted from 100% pure, cruelty-free silk, this reusable exfoliator glides effortlessly across the skin, delicately lifting away impurities and surface buildup. Its unique fibre structure supports skin renewal, helping to smooth texture, reduce the appearance of fine lines, and improve elasticity.\n\nWith continued use, the complexion appears clearer, more refined, and visibly revitalised—revealing the skin’s natural luminosity.\n\nBENEFITS \nImmediately: Skin feels softened and visibly polished. Over time: Skin appears smoother, more even-toned, and refined in texture.\n\nDermatologically tested and approved. Patch test before application.",
+            "image_url": "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_PureSilkExfoliator.jpg?v=1753242189",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_PureSilkExfoliator.jpg?v=1753242189",
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Texture_Square_PureSilkExfoliator.webp?v=1753242189",
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/EditorialPureSilkExfoliatorSquare.webp?v=1753242189"
+            ],
+            "images": [
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_PureSilkExfoliator.jpg?v=1753242189",
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Texture_Square_PureSilkExfoliator.webp?v=1753242189",
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/EditorialPureSilkExfoliatorSquare.webp?v=1753242189"
+            ],
+            "variants": [
+              {
+                "sku": "7698800719",
+                "variant_id": "40087698800719",
+                "url": "https://seresilk.com.au/products/pure-silk-exfoliator",
+                "option_name": "Size",
+                "option_value": "150ml",
+                "price": "43.62",
+                "currency": "USD",
+                "stock": "In Stock",
+                "description": "150ml / 12 Pieces \n\nEmbrace the purest expression of nature’s most sacred fibre.\n\nCrafted from 100% pure, cruelty-free silk, this reusable exfoliator glides effortlessly across the skin, delicately lifting away impurities and surface buildup. Its unique fibre structure supports skin renewal, helping to smooth texture, reduce the appearance of fine lines, and improve elasticity.\n\nWith continued use, the complexion appears clearer, more refined, and visibly revitalised—revealing the skin’s natural luminosity.\n\nBENEFITS \nImmediately: Skin feels softened and visibly polished. Over time: Skin appears smoother, more even-toned, and refined in texture.\n\nDermatologically tested and approved. Patch test before application.",
+                "image_url": "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_PureSilkExfoliator.jpg?v=1753242189",
+                "image_urls": [
+                  "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_PureSilkExfoliator.jpg?v=1753242189",
+                  "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Texture_Square_PureSilkExfoliator.webp?v=1753242189",
+                  "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/EditorialPureSilkExfoliatorSquare.webp?v=1753242189"
+                ]
+              }
+            ],
+            "diagnostics": {
+              "requested_domain": "seresilk.com.au",
+              "resolved_base_url": "https://seresilk.com.au",
+              "discovery_strategy": "shopify_json",
+              "failure_category": null,
+              "block_provider": null,
+              "http_trace": [
+                {
+                  "url": "https://seresilk.com.au/",
+                  "status": 200
+                },
+                {
+                  "url": "https://seresilk.com.au/products.json?limit=1",
+                  "status": 200
+                },
+                {
+                  "url": "https://seresilk.com.au/",
+                  "status": 200
+                },
+                {
+                  "url": "https://seresilk.com.au/products.json?limit=250&page=1",
+                  "status": 200
+                }
+              ]
+            },
+            "search_aliases": [
+              "Pure Silk Exfoliator"
+            ],
+            "authority_source": {
+              "source_url": "https://seresilk.com.au",
+              "source_role": "primary",
+              "matched_preferred_titles": []
+            },
+            "source_validation": {
+              "source_type": "brand_owned",
+              "requires_multi_offer_merge_validation": false,
+              "source_host": "seresilk.com.au"
+            },
+            "commerce_facts_v1": {
+              "contract_version": "commerce_facts.v1",
+              "market_id": "US",
+              "country": "US",
+              "currency_target": "USD",
+              "source_authority": "catalog_extract_v2",
+              "captured_at": "2026-05-24T04:50:24.571Z",
+              "evidence_url": "https://seresilk.com.au/products/pure-silk-exfoliator",
+              "sellable_region": {
+                "status": "unknown",
+                "countries": [],
+                "evidence_source": "catalog_extract_v2",
+                "confidence": "medium",
+                "checked_at": "2026-05-24T04:50:24.571Z",
+                "reason_codes": [
+                  "market_currency_observed",
+                  "shipping_destination_not_verified",
+                  "external_checkout_not_queried"
+                ],
+                "evidence_url": "https://seresilk.com.au/products/pure-silk-exfoliator"
+              },
+              "regional_price": {
+                "amount": 43.62,
+                "currency": "USD",
+                "display_raw": "43.62",
+                "price_type": "list",
+                "compare_at_amount": null,
+                "compare_at_currency": null,
+                "compare_at_display_raw": null,
+                "tax_included": "unknown",
+                "confidence": "medium",
+                "market_switch_status": "ok",
+                "observed_currency": "USD",
+                "source_url": "https://seresilk.com.au/products/pure-silk-exfoliator",
+                "captured_at": "2026-05-24T04:50:24.571Z"
+              },
+              "availability": {
+                "status": "in_stock",
+                "source": "catalog_extract_v2",
+                "confidence": "medium",
+                "captured_at": "2026-05-24T04:50:24.571Z"
+              },
+              "shipping": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_checkout_not_queried"
+                ],
+                "checked_at": "2026-05-24T04:50:24.571Z"
+              },
+              "promotions": [],
+              "returns": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_returns_not_extracted"
+                ],
+                "checked_at": "2026-05-24T04:50:24.571Z"
+              }
+            },
+            "commerce_facts_gate": {
+              "status": "pass",
+              "market_id": "US",
+              "expected_currency": "USD",
+              "observed_currency": "USD",
+              "market_switch_status": "ok",
+              "sellable_region_status": "unknown",
+              "shipping_status": "unknown",
+              "promotions_status": "unknown",
+              "availability_status": "in_stock",
+              "problems": []
+            }
+          },
+          "search_aliases": [
+            "Pure Silk Exfoliator"
+          ],
+          "authority_source": {
+            "source_url": "https://seresilk.com.au",
+            "source_role": "primary",
+            "matched_preferred_titles": []
+          },
+          "source_validation": {
+            "source_type": "brand_owned",
+            "requires_multi_offer_merge_validation": false,
+            "source_host": "seresilk.com.au"
+          },
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T04:50:24.571Z",
+            "evidence_url": "https://seresilk.com.au/products/pure-silk-exfoliator",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-24T04:50:24.571Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://seresilk.com.au/products/pure-silk-exfoliator"
+            },
+            "regional_price": {
+              "amount": 43.62,
+              "currency": "USD",
+              "display_raw": "43.62",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://seresilk.com.au/products/pure-silk-exfoliator",
+              "captured_at": "2026-05-24T04:50:24.571Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T04:50:24.571Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T04:50:24.571Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T04:50:24.571Z"
+            }
+          },
+          "commerce_facts_gate": {
+            "status": "pass",
+            "market_id": "US",
+            "expected_currency": "USD",
+            "observed_currency": "USD",
+            "market_switch_status": "ok",
+            "sellable_region_status": "unknown",
+            "shipping_status": "unknown",
+            "promotions_status": "unknown",
+            "availability_status": "in_stock",
+            "problems": []
+          }
+        }
+      }
+    },
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "target_brand": "Seresilk",
+      "target_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+      "extract_status": "brand_catalog_extract",
+      "market": "US",
+      "source_domain": "https://seresilk.com.au",
+      "source_role": "primary",
+      "matched_preferred_titles": [],
+      "alias_preferred_titles": [],
+      "seed_row": {
+        "ingredient_id": null,
+        "ingredient_name": null,
+        "seed_id": "eps_5ae568728c95aa19d64a9413",
+        "brand": "Seresilk",
+        "market": "US",
+        "tool": "creator_agents",
+        "status": "active",
+        "domain": "seresilk.com.au",
+        "external_product_id": "ext_0d4ffd13b899460cabb1f392",
+        "canonical_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+        "destination_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+        "title": "Gentle Silk Cleanser",
+        "image_url": "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_GentleSilkCleanser.jpg?v=1753242356",
+        "price_amount": 54.52,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "attached_product_key": null,
+        "requires_seed_correction": false,
+        "seed_data": {
+          "brand": "Seresilk",
+          "title": "Gentle Silk Cleanser",
+          "description": "100ml \n\nThe Gentle Silk Cleanser is a daily cleansing formula enriched with the proprietary Hydrolysed Silk Complex HSC01-A™ and glycerin to purify the skin while preserving its essential lipids. Designed to respect the skin’s natural barrier, it removes impurities, environmental residue, and excess oil without disturbing the skin’s optimum hydration equilibrium.\n\nIts lightweight, feather-soft texture transforms on contact with water, emulsifying into a milky fluid that rinses away effortlessly. The result is a complexion that feels clean, comfortable, and prepared for exfoliation.\n\nBENEFITS\nImmediately: Skin is refreshed, softened, and hydrated. With continued use: Skin appears smoother, more balanced, and visibly more radiant.\n\nDermatologically tested and approved. Patch test before application.\nApproved under the Leaping Bunny programme.",
+          "external_product_id": "ext_0d4ffd13b899460cabb1f392",
+          "canonical_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+          "destination_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+          "price_amount": 54.52,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_GentleSilkCleanser.jpg?v=1753242356",
+          "image_urls": [
+            "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_GentleSilkCleanser.jpg?v=1753242356",
+            "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Texture_Square_GentleSilkCleanser.webp?v=1753242356",
+            "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/EditorialGentleSilkCleanserSquare.webp?v=1753242356"
+          ],
+          "images": [
+            "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_GentleSilkCleanser.jpg?v=1753242356",
+            "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Texture_Square_GentleSilkCleanser.webp?v=1753242356",
+            "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/EditorialGentleSilkCleanserSquare.webp?v=1753242356"
+          ],
+          "variants": [
+            {
+              "sku": "7068100687",
+              "variant_id": "40067068100687",
+              "url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+              "option_name": "Size",
+              "option_value": "100ml",
+              "price": "54.52",
+              "currency": "USD",
+              "stock": "In Stock",
+              "description": "100ml \n\nThe Gentle Silk Cleanser is a daily cleansing formula enriched with the proprietary Hydrolysed Silk Complex HSC01-A™ and glycerin to purify the skin while preserving its essential lipids. Designed to respect the skin’s natural barrier, it removes impurities, environmental residue, and excess oil without disturbing the skin’s optimum hydration equilibrium.\n\nIts lightweight, feather-soft texture transforms on contact with water, emulsifying into a milky fluid that rinses away effortlessly. The result is a complexion that feels clean, comfortable, and prepared for exfoliation.\n\nBENEFITS\nImmediately: Skin is refreshed, softened, and hydrated. With continued use: Skin appears smoother, more balanced, and visibly more radiant.\n\nDermatologically tested and approved. Patch test before application.\nApproved under the Leaping Bunny programme.",
+              "image_url": "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_GentleSilkCleanser.jpg?v=1753242356",
+              "image_urls": [
+                "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_GentleSilkCleanser.jpg?v=1753242356",
+                "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Texture_Square_GentleSilkCleanser.webp?v=1753242356",
+                "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/EditorialGentleSilkCleanserSquare.webp?v=1753242356"
+              ]
+            }
+          ],
+          "snapshot": {
+            "source": "catalog_intelligence_seed_creation_manifest",
+            "extracted_at": "2026-05-24T04:50:24.211Z",
+            "canonical_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+            "destination_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+            "title": "Gentle Silk Cleanser",
+            "description": "100ml \n\nThe Gentle Silk Cleanser is a daily cleansing formula enriched with the proprietary Hydrolysed Silk Complex HSC01-A™ and glycerin to purify the skin while preserving its essential lipids. Designed to respect the skin’s natural barrier, it removes impurities, environmental residue, and excess oil without disturbing the skin’s optimum hydration equilibrium.\n\nIts lightweight, feather-soft texture transforms on contact with water, emulsifying into a milky fluid that rinses away effortlessly. The result is a complexion that feels clean, comfortable, and prepared for exfoliation.\n\nBENEFITS\nImmediately: Skin is refreshed, softened, and hydrated. With continued use: Skin appears smoother, more balanced, and visibly more radiant.\n\nDermatologically tested and approved. Patch test before application.\nApproved under the Leaping Bunny programme.",
+            "image_url": "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_GentleSilkCleanser.jpg?v=1753242356",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_GentleSilkCleanser.jpg?v=1753242356",
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Texture_Square_GentleSilkCleanser.webp?v=1753242356",
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/EditorialGentleSilkCleanserSquare.webp?v=1753242356"
+            ],
+            "images": [
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_GentleSilkCleanser.jpg?v=1753242356",
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Texture_Square_GentleSilkCleanser.webp?v=1753242356",
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/EditorialGentleSilkCleanserSquare.webp?v=1753242356"
+            ],
+            "variants": [
+              {
+                "sku": "7068100687",
+                "variant_id": "40067068100687",
+                "url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+                "option_name": "Size",
+                "option_value": "100ml",
+                "price": "54.52",
+                "currency": "USD",
+                "stock": "In Stock",
+                "description": "100ml \n\nThe Gentle Silk Cleanser is a daily cleansing formula enriched with the proprietary Hydrolysed Silk Complex HSC01-A™ and glycerin to purify the skin while preserving its essential lipids. Designed to respect the skin’s natural barrier, it removes impurities, environmental residue, and excess oil without disturbing the skin’s optimum hydration equilibrium.\n\nIts lightweight, feather-soft texture transforms on contact with water, emulsifying into a milky fluid that rinses away effortlessly. The result is a complexion that feels clean, comfortable, and prepared for exfoliation.\n\nBENEFITS\nImmediately: Skin is refreshed, softened, and hydrated. With continued use: Skin appears smoother, more balanced, and visibly more radiant.\n\nDermatologically tested and approved. Patch test before application.\nApproved under the Leaping Bunny programme.",
+                "image_url": "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_GentleSilkCleanser.jpg?v=1753242356",
+                "image_urls": [
+                  "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_GentleSilkCleanser.jpg?v=1753242356",
+                  "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Texture_Square_GentleSilkCleanser.webp?v=1753242356",
+                  "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/EditorialGentleSilkCleanserSquare.webp?v=1753242356"
+                ]
+              }
+            ],
+            "diagnostics": {
+              "requested_domain": "seresilk.com.au",
+              "resolved_base_url": "https://seresilk.com.au",
+              "discovery_strategy": "shopify_json",
+              "failure_category": null,
+              "block_provider": null,
+              "http_trace": [
+                {
+                  "url": "https://seresilk.com.au/",
+                  "status": 200
+                },
+                {
+                  "url": "https://seresilk.com.au/products.json?limit=1",
+                  "status": 200
+                },
+                {
+                  "url": "https://seresilk.com.au/",
+                  "status": 200
+                },
+                {
+                  "url": "https://seresilk.com.au/products.json?limit=250&page=1",
+                  "status": 200
+                }
+              ]
+            },
+            "search_aliases": [
+              "Gentle Silk Cleanser"
+            ],
+            "authority_source": {
+              "source_url": "https://seresilk.com.au",
+              "source_role": "primary",
+              "matched_preferred_titles": []
+            },
+            "source_validation": {
+              "source_type": "brand_owned",
+              "requires_multi_offer_merge_validation": false,
+              "source_host": "seresilk.com.au"
+            },
+            "commerce_facts_v1": {
+              "contract_version": "commerce_facts.v1",
+              "market_id": "US",
+              "country": "US",
+              "currency_target": "USD",
+              "source_authority": "catalog_extract_v2",
+              "captured_at": "2026-05-24T04:50:24.571Z",
+              "evidence_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+              "sellable_region": {
+                "status": "unknown",
+                "countries": [],
+                "evidence_source": "catalog_extract_v2",
+                "confidence": "medium",
+                "checked_at": "2026-05-24T04:50:24.571Z",
+                "reason_codes": [
+                  "market_currency_observed",
+                  "shipping_destination_not_verified",
+                  "external_checkout_not_queried"
+                ],
+                "evidence_url": "https://seresilk.com.au/products/gentle-silk-cleanser"
+              },
+              "regional_price": {
+                "amount": 54.52,
+                "currency": "USD",
+                "display_raw": "54.52",
+                "price_type": "list",
+                "compare_at_amount": null,
+                "compare_at_currency": null,
+                "compare_at_display_raw": null,
+                "tax_included": "unknown",
+                "confidence": "medium",
+                "market_switch_status": "ok",
+                "observed_currency": "USD",
+                "source_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+                "captured_at": "2026-05-24T04:50:24.571Z"
+              },
+              "availability": {
+                "status": "in_stock",
+                "source": "catalog_extract_v2",
+                "confidence": "medium",
+                "captured_at": "2026-05-24T04:50:24.571Z"
+              },
+              "shipping": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_checkout_not_queried"
+                ],
+                "checked_at": "2026-05-24T04:50:24.571Z"
+              },
+              "promotions": [],
+              "returns": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_returns_not_extracted"
+                ],
+                "checked_at": "2026-05-24T04:50:24.571Z"
+              }
+            },
+            "commerce_facts_gate": {
+              "status": "pass",
+              "market_id": "US",
+              "expected_currency": "USD",
+              "observed_currency": "USD",
+              "market_switch_status": "ok",
+              "sellable_region_status": "unknown",
+              "shipping_status": "unknown",
+              "promotions_status": "unknown",
+              "availability_status": "in_stock",
+              "problems": []
+            }
+          },
+          "search_aliases": [
+            "Gentle Silk Cleanser"
+          ],
+          "authority_source": {
+            "source_url": "https://seresilk.com.au",
+            "source_role": "primary",
+            "matched_preferred_titles": []
+          },
+          "source_validation": {
+            "source_type": "brand_owned",
+            "requires_multi_offer_merge_validation": false,
+            "source_host": "seresilk.com.au"
+          },
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T04:50:24.571Z",
+            "evidence_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-24T04:50:24.571Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://seresilk.com.au/products/gentle-silk-cleanser"
+            },
+            "regional_price": {
+              "amount": 54.52,
+              "currency": "USD",
+              "display_raw": "54.52",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+              "captured_at": "2026-05-24T04:50:24.571Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T04:50:24.571Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T04:50:24.571Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T04:50:24.571Z"
+            }
+          },
+          "commerce_facts_gate": {
+            "status": "pass",
+            "market_id": "US",
+            "expected_currency": "USD",
+            "observed_currency": "USD",
+            "market_switch_status": "ok",
+            "sellable_region_status": "unknown",
+            "shipping_status": "unknown",
+            "promotions_status": "unknown",
+            "availability_status": "in_stock",
+            "problems": []
+          }
+        }
+      }
+    }
+  ]
+}

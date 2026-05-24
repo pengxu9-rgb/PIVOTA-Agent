@@ -1,0 +1,616 @@
+{
+  "generated_at": "2026-05-24T04:52:55.522Z",
+  "mode": "db_ready_candidate_manifest_from_no_db_dry_run",
+  "output_manifest": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/wave6_db_ready_candidate_manifest.json",
+  "totals": {
+    "scanned": 20,
+    "db_ready_candidates": 5,
+    "held": 15
+  },
+  "rows": [
+    {
+      "source": "lhamour",
+      "title": "Sea buckthorn Hand Cream for Dry Hands | Natural Hand Butter | Lhamour",
+      "target_url": "https://lhamour.com/products/natural-sea-buckthorn-hand-butter",
+      "external_product_id": "ext_5e8f434b21357e5585662b1a",
+      "dry_run": {
+        "seed_id": "eps_af1f8ac9a5ce74212affc53f",
+        "external_product_id": "ext_5e8f434b21357e5585662b1a",
+        "status": "invalid",
+        "validation_problems": [
+          "market_currency_mismatch",
+          "commerce_facts_currency_mismatch"
+        ],
+        "commerce_facts_gate": {
+          "status": "hold",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "EUR",
+          "market_switch_status": "unknown",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "promotions_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": [
+            "market_currency_mismatch",
+            "commerce_facts_currency_mismatch"
+          ]
+        }
+      },
+      "decision": "hold",
+      "reason": "invalid"
+    },
+    {
+      "source": "lhamour",
+      "title": "Sea Buckthorn Lip Balm for Dry Lips | Natural Lip Care | Lhamour",
+      "target_url": "https://lhamour.com/products/natural-sea-buckthorn-lip-balm",
+      "external_product_id": "ext_aeaff473ee22294bf3b5367d",
+      "dry_run": {
+        "seed_id": "eps_c69b57d80af3d980effab03a",
+        "external_product_id": "ext_aeaff473ee22294bf3b5367d",
+        "status": "invalid",
+        "validation_problems": [
+          "market_currency_mismatch",
+          "commerce_facts_currency_mismatch"
+        ],
+        "commerce_facts_gate": {
+          "status": "hold",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "EUR",
+          "market_switch_status": "unknown",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "promotions_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": [
+            "market_currency_mismatch",
+            "commerce_facts_currency_mismatch"
+          ]
+        }
+      },
+      "decision": "hold",
+      "reason": "invalid"
+    },
+    {
+      "source": "lhamour",
+      "title": "Natural Yak Milk Soap for Dry & Sensitive Skin | Lhamour",
+      "target_url": "https://lhamour.com/products/yak-milk-soap",
+      "external_product_id": "ext_cd1815a3e6f08263f765a825",
+      "dry_run": {
+        "seed_id": "eps_4f988267d85d4842723c4979",
+        "external_product_id": "ext_cd1815a3e6f08263f765a825",
+        "status": "invalid",
+        "validation_problems": [
+          "market_currency_mismatch",
+          "commerce_facts_currency_mismatch"
+        ],
+        "commerce_facts_gate": {
+          "status": "hold",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "EUR",
+          "market_switch_status": "unknown",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "promotions_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": [
+            "market_currency_mismatch",
+            "commerce_facts_currency_mismatch"
+          ]
+        }
+      },
+      "decision": "hold",
+      "reason": "invalid"
+    },
+    {
+      "source": "lhamour",
+      "title": "Natural Shampoo Bar for Healthy Hair & Scalp | Lhamour",
+      "target_url": "https://lhamour.com/products/shampoo-bar",
+      "external_product_id": "ext_8896e006c441685448ffad1f",
+      "dry_run": {
+        "seed_id": "eps_05eb35a4f9c57d5d1f1df8a6",
+        "external_product_id": "ext_8896e006c441685448ffad1f",
+        "status": "invalid",
+        "validation_problems": [
+          "market_currency_mismatch",
+          "commerce_facts_currency_mismatch"
+        ],
+        "commerce_facts_gate": {
+          "status": "hold",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "EUR",
+          "market_switch_status": "unknown",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "promotions_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": [
+            "market_currency_mismatch",
+            "commerce_facts_currency_mismatch"
+          ]
+        }
+      },
+      "decision": "hold",
+      "reason": "invalid"
+    },
+    {
+      "source": "lhamour",
+      "title": "Coconut Lip Balm for Dry Lips | Natural Lip Care | Lhamour",
+      "target_url": "https://lhamour.com/products/natural-coconut-oil-lip-balm",
+      "external_product_id": "ext_7683928390fe4c2b22afba7c",
+      "dry_run": {
+        "seed_id": "eps_7bfe3c7238efb34d2b2c729f",
+        "external_product_id": "ext_7683928390fe4c2b22afba7c",
+        "status": "invalid",
+        "validation_problems": [
+          "market_currency_mismatch",
+          "commerce_facts_currency_mismatch"
+        ],
+        "commerce_facts_gate": {
+          "status": "hold",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "EUR",
+          "market_switch_status": "unknown",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "promotions_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": [
+            "market_currency_mismatch",
+            "commerce_facts_currency_mismatch"
+          ]
+        }
+      },
+      "decision": "hold",
+      "reason": "invalid"
+    },
+    {
+      "source": "lhamour",
+      "title": "Natural Beeswax Lip Balm for Dry & Cracked Lips | Lhamour",
+      "target_url": "https://lhamour.com/products/natural-beeswax-lip-balm",
+      "external_product_id": "ext_40651ec9534794ddc64ea362",
+      "dry_run": {
+        "seed_id": "eps_04e907e5119fcd92e4358978",
+        "external_product_id": "ext_40651ec9534794ddc64ea362",
+        "status": "invalid",
+        "validation_problems": [
+          "market_currency_mismatch",
+          "commerce_facts_currency_mismatch"
+        ],
+        "commerce_facts_gate": {
+          "status": "hold",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "EUR",
+          "market_switch_status": "unknown",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "promotions_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": [
+            "market_currency_mismatch",
+            "commerce_facts_currency_mismatch"
+          ]
+        }
+      },
+      "decision": "hold",
+      "reason": "invalid"
+    },
+    {
+      "source": "lhamour",
+      "title": "Natural Facial Mist for Hydration & Glowing Skin | Lhamour",
+      "target_url": "https://lhamour.com/products/natural-refreshing-cucumber-extract-facial-mist",
+      "external_product_id": "ext_35f5805dd06c25ca64602f43",
+      "dry_run": {
+        "seed_id": "eps_3e9a9873d92c22c164712eba",
+        "external_product_id": "ext_35f5805dd06c25ca64602f43",
+        "status": "invalid",
+        "validation_problems": [
+          "market_currency_mismatch",
+          "commerce_facts_currency_mismatch"
+        ],
+        "commerce_facts_gate": {
+          "status": "hold",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "EUR",
+          "market_switch_status": "unknown",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "promotions_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": [
+            "market_currency_mismatch",
+            "commerce_facts_currency_mismatch"
+          ]
+        }
+      },
+      "decision": "hold",
+      "reason": "invalid"
+    },
+    {
+      "source": "lhamour",
+      "title": "Sea buckthorn Foot Cream for Cracked Heels | Natural Foot Salve | Lhamour",
+      "target_url": "https://lhamour.com/products/natural-sea-buckthorn-oil-foot-salve",
+      "external_product_id": "ext_636131583ad0ef23eba6dc11",
+      "dry_run": {
+        "seed_id": "eps_4fd551d393d092a4d58c14ed",
+        "external_product_id": "ext_636131583ad0ef23eba6dc11",
+        "status": "invalid",
+        "validation_problems": [
+          "market_currency_mismatch",
+          "commerce_facts_currency_mismatch"
+        ],
+        "commerce_facts_gate": {
+          "status": "hold",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "EUR",
+          "market_switch_status": "unknown",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "promotions_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": [
+            "market_currency_mismatch",
+            "commerce_facts_currency_mismatch"
+          ]
+        }
+      },
+      "decision": "hold",
+      "reason": "invalid"
+    },
+    {
+      "source": "lhamour",
+      "title": "Natural Revitalizing Body Oil for Dry Skin | Moisturizing Body Oil | Lhamour",
+      "target_url": "https://lhamour.com/products/natural-revitalizing-body-oil",
+      "external_product_id": "ext_11c7bf9e2112c6def4d9c3d2",
+      "dry_run": {
+        "seed_id": "eps_eb0151e25c32cadb2f3f2038",
+        "external_product_id": "ext_11c7bf9e2112c6def4d9c3d2",
+        "status": "invalid",
+        "validation_problems": [
+          "market_currency_mismatch",
+          "commerce_facts_currency_mismatch"
+        ],
+        "commerce_facts_gate": {
+          "status": "hold",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "EUR",
+          "market_switch_status": "unknown",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "promotions_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": [
+            "market_currency_mismatch",
+            "commerce_facts_currency_mismatch"
+          ]
+        }
+      },
+      "decision": "hold",
+      "reason": "invalid"
+    },
+    {
+      "source": "lhamour",
+      "title": "Brightening Rosehip Facial Oil for Dry Skin | Natural Face Oil | Lhamour",
+      "target_url": "https://lhamour.com/products/natural-rosehip-facial-oil",
+      "external_product_id": "ext_6ade9bb344af9d8bf5b3c0c5",
+      "dry_run": {
+        "seed_id": "eps_fa51b93caa0a7af7e3af97ee",
+        "external_product_id": "ext_6ade9bb344af9d8bf5b3c0c5",
+        "status": "invalid",
+        "validation_problems": [
+          "market_currency_mismatch",
+          "commerce_facts_currency_mismatch"
+        ],
+        "commerce_facts_gate": {
+          "status": "hold",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "EUR",
+          "market_switch_status": "unknown",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "promotions_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": [
+            "market_currency_mismatch",
+            "commerce_facts_currency_mismatch"
+          ]
+        }
+      },
+      "decision": "hold",
+      "reason": "invalid"
+    },
+    {
+      "source": "lhamour",
+      "title": "Sea Buckthorn Body Butter for Dry Skin | Natural Moisturizer | Lhamour",
+      "target_url": "https://lhamour.com/products/natural-sea-buckthorn-oil-body-butter",
+      "external_product_id": "ext_a3660f11829493165aea3a70",
+      "dry_run": {
+        "seed_id": "eps_d1b5c0f8277921e57412a894",
+        "external_product_id": "ext_a3660f11829493165aea3a70",
+        "status": "invalid",
+        "validation_problems": [
+          "market_currency_mismatch",
+          "commerce_facts_currency_mismatch"
+        ],
+        "commerce_facts_gate": {
+          "status": "hold",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "EUR",
+          "market_switch_status": "unknown",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "promotions_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": [
+            "market_currency_mismatch",
+            "commerce_facts_currency_mismatch"
+          ]
+        }
+      },
+      "decision": "hold",
+      "reason": "invalid"
+    },
+    {
+      "source": "lhamour",
+      "title": "Natural Face Moisturizer for Dry Skin | Organic Face Cream | Lhamour",
+      "target_url": "https://lhamour.com/products/natural-hydrating-facial-cream",
+      "external_product_id": "ext_4ce10e7ee88b371bc2ccc2a6",
+      "dry_run": {
+        "seed_id": "eps_dcddfde937e1b36860b64c14",
+        "external_product_id": "ext_4ce10e7ee88b371bc2ccc2a6",
+        "status": "invalid",
+        "validation_problems": [
+          "market_currency_mismatch",
+          "commerce_facts_currency_mismatch"
+        ],
+        "commerce_facts_gate": {
+          "status": "hold",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "EUR",
+          "market_switch_status": "unknown",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "promotions_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": [
+            "market_currency_mismatch",
+            "commerce_facts_currency_mismatch"
+          ]
+        }
+      },
+      "decision": "hold",
+      "reason": "invalid"
+    },
+    {
+      "source": "daeby",
+      "title": "Exfoliating Facial Scrub",
+      "target_url": "https://daebyskin.com/products/gentle-scrub",
+      "external_product_id": "ext_81a4953ded17be5f84748629",
+      "dry_run": {
+        "seed_id": "eps_fc392be45ce04f8321849c46",
+        "external_product_id": "ext_81a4953ded17be5f84748629",
+        "status": "invalid",
+        "validation_problems": [
+          "market_currency_mismatch"
+        ],
+        "commerce_facts_gate": {
+          "status": "hold",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "ok",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "promotions_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": [
+            "market_currency_mismatch"
+          ]
+        }
+      },
+      "decision": "hold",
+      "reason": "invalid"
+    },
+    {
+      "source": "daeby",
+      "title": "Facial Moisturiser SPF 50+",
+      "target_url": "https://daebyskin.com/products/facial-moisturiser",
+      "external_product_id": "ext_fbdbef3b6bd2807cc115c131",
+      "dry_run": {
+        "seed_id": "eps_f8e71b996d6cd5b213baf303",
+        "external_product_id": "ext_fbdbef3b6bd2807cc115c131",
+        "status": "invalid",
+        "validation_problems": [
+          "market_currency_mismatch"
+        ],
+        "commerce_facts_gate": {
+          "status": "hold",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "ok",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "promotions_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": [
+            "market_currency_mismatch"
+          ]
+        }
+      },
+      "decision": "hold",
+      "reason": "invalid"
+    },
+    {
+      "source": "daeby",
+      "title": "Daily Cleanser",
+      "target_url": "https://daebyskin.com/products/cleanser",
+      "external_product_id": "ext_ea90c9e8010722e068f23122",
+      "dry_run": {
+        "seed_id": "eps_297e284d662efb525f368a09",
+        "external_product_id": "ext_ea90c9e8010722e068f23122",
+        "status": "invalid",
+        "validation_problems": [
+          "market_currency_mismatch"
+        ],
+        "commerce_facts_gate": {
+          "status": "hold",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "ok",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "promotions_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": [
+            "market_currency_mismatch"
+          ]
+        }
+      },
+      "decision": "hold",
+      "reason": "invalid"
+    },
+    {
+      "source": "aetas",
+      "title": "The Serum",
+      "target_url": "https://aetasofficial.com/products/serum",
+      "external_product_id": "ext_38b10ae142ef283bdc0acca8",
+      "dry_run": {
+        "seed_id": "eps_00b1b6dc2b0d11c894a13934",
+        "external_product_id": "ext_38b10ae142ef283bdc0acca8",
+        "status": "would_insert_unverified",
+        "validation_problems": [],
+        "commerce_facts_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "ok",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "promotions_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": []
+        }
+      },
+      "decision": "db_ready_candidate",
+      "reason": "no_db_dry_run_commerce_gate_pass"
+    },
+    {
+      "source": "seresilk",
+      "title": "Silk Night Cream",
+      "target_url": "https://seresilk.com.au/products/silk-night-cream",
+      "external_product_id": "ext_df8aac07d6c970d4c213b43f",
+      "dry_run": {
+        "seed_id": "eps_44c1397b319a538f47b4ca1d",
+        "external_product_id": "ext_df8aac07d6c970d4c213b43f",
+        "status": "would_insert_unverified",
+        "validation_problems": [],
+        "commerce_facts_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "ok",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "promotions_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": []
+        }
+      },
+      "decision": "db_ready_candidate",
+      "reason": "no_db_dry_run_commerce_gate_pass"
+    },
+    {
+      "source": "seresilk",
+      "title": "Silk Night Serum",
+      "target_url": "https://seresilk.com.au/products/silk-night-serum",
+      "external_product_id": "ext_438058253d57a2c8d75f5906",
+      "dry_run": {
+        "seed_id": "eps_68187b19d2f43540ff7e1b59",
+        "external_product_id": "ext_438058253d57a2c8d75f5906",
+        "status": "would_insert_unverified",
+        "validation_problems": [],
+        "commerce_facts_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "ok",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "promotions_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": []
+        }
+      },
+      "decision": "db_ready_candidate",
+      "reason": "no_db_dry_run_commerce_gate_pass"
+    },
+    {
+      "source": "seresilk",
+      "title": "Pure Silk Exfoliator",
+      "target_url": "https://seresilk.com.au/products/pure-silk-exfoliator",
+      "external_product_id": "ext_7c5f8c37e37a5f147672a9f2",
+      "dry_run": {
+        "seed_id": "eps_23e4ebbf8953e0c23fa7fca5",
+        "external_product_id": "ext_7c5f8c37e37a5f147672a9f2",
+        "status": "would_insert_unverified",
+        "validation_problems": [],
+        "commerce_facts_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "ok",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "promotions_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": []
+        }
+      },
+      "decision": "db_ready_candidate",
+      "reason": "no_db_dry_run_commerce_gate_pass"
+    },
+    {
+      "source": "seresilk",
+      "title": "Gentle Silk Cleanser",
+      "target_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+      "external_product_id": "ext_0d4ffd13b899460cabb1f392",
+      "dry_run": {
+        "seed_id": "eps_5ae568728c95aa19d64a9413",
+        "external_product_id": "ext_0d4ffd13b899460cabb1f392",
+        "status": "would_insert_unverified",
+        "validation_problems": [],
+        "commerce_facts_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "ok",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "promotions_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": []
+        }
+      },
+      "decision": "db_ready_candidate",
+      "reason": "no_db_dry_run_commerce_gate_pass"
+    }
+  ]
+}
