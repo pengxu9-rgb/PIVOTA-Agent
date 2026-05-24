@@ -1591,6 +1591,88 @@ describe('PDP grouped offers', () => {
     expect(JSON.stringify(offersData.offers[0])).not.toContain('"amount":11');
   });
 
+  test('preserves catalog offer truth over external-seed detail when identity member carries offer facts', async () => {
+    const app = require('../src/server');
+
+    const offersData = await app._debug.buildOffersFromGroupMembers({
+      productGroupId: 'sig_theordinary_alpha_arbutin',
+      preferredMerchantId: 'external_seed',
+      preferredProductId: 'ext_theordinary_alpha_arbutin_ulta',
+      debug: true,
+      prefetchedProducts: [
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ext_theordinary_alpha_arbutin_ulta',
+          id: 'ext_theordinary_alpha_arbutin_ulta',
+          title: 'Alpha Arbutin 2% + HA',
+          brand: 'The Ordinary',
+          merchant_name: 'Ulta Beauty',
+          price: { amount: 99, currency: 'USD' },
+          price_amount: 99,
+          currency: 'USD',
+          in_stock: true,
+          source: 'external_seed_db',
+          source_url: 'https://www.ulta.com/p/stale-alpha-arbutin',
+          variants: [
+            {
+              variant_id: 'stale-default',
+              title: 'Default',
+              price: 99,
+              currency: 'USD',
+              in_stock: true,
+            },
+          ],
+        },
+      ],
+      members: [
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ext_theordinary_alpha_arbutin_ulta',
+          source_kind: 'canonical_catalog',
+          source_payload: {
+            title: 'Alpha Arbutin 2% + HA',
+            brand: 'The Ordinary',
+            merchant_name: 'Ulta Beauty',
+            price_amount: 11.5,
+            currency: 'USD',
+            destination_url: 'https://www.ulta.com/p/alpha-arbutin-2-ha',
+            catalog_offer_v1: {
+              offer_id: 'catalog_offer_ulta_alpha_arbutin',
+              sku_key: 'sku_ulta_alpha_arbutin',
+            },
+            variants: [
+              {
+                variant_id: 'catalog-30ml',
+                title: '30 ml',
+                price: 11.5,
+                currency: 'USD',
+                in_stock: true,
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    expect(offersData.offers_count).toBe(1);
+    expect(offersData.offers[0]).toEqual(
+      expect.objectContaining({
+        merchant_id: 'external_seed',
+        product_id: 'ext_theordinary_alpha_arbutin_ulta',
+        price: { amount: 11.5, currency: 'USD' },
+        source_url: 'https://www.ulta.com/p/alpha-arbutin-2-ha',
+      }),
+    );
+    expect(offersData.offers[0].variants[0]).toEqual(
+      expect.objectContaining({
+        variant_id: 'catalog-30ml',
+        price: { current: { amount: 11.5, currency: 'USD' } },
+      }),
+    );
+    expect(offersData.diagnostics.build_sources.identity_payload).toBe(1);
+    expect(JSON.stringify(offersData.offers[0])).not.toContain('"amount":99');
+  });
+
   test('uses preferred external-seed product id as default offer when merchant id is shared', async () => {
     const app = require('../src/server');
 
