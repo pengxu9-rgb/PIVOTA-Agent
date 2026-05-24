@@ -184,6 +184,53 @@ async function query(text, params) {
   throw new Error('unreachable');
 }
 
+function normalizeLocalTimeoutMs(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return Math.max(1, Math.min(60_000, Math.trunc(parsed)));
+}
+
+async function queryWithStatementTimeout(text, params, options = {}) {
+  const statementTimeoutMs = normalizeLocalTimeoutMs(options.statementTimeoutMs);
+  const lockTimeoutMs = normalizeLocalTimeoutMs(options.lockTimeoutMs);
+  if (!statementTimeoutMs && !lockTimeoutMs) {
+    return query(text, params);
+  }
+
+  return withClient(async (client) => {
+    let transactionStarted = false;
+    try {
+      await client.query('BEGIN');
+      transactionStarted = true;
+      if (statementTimeoutMs) {
+        await client.query(`SET LOCAL statement_timeout = '${statementTimeoutMs}ms'`);
+      }
+      if (lockTimeoutMs) {
+        await client.query(`SET LOCAL lock_timeout = '${lockTimeoutMs}ms'`);
+      }
+      const result = await client.query(text, params);
+      await client.query('COMMIT');
+      transactionStarted = false;
+      return result;
+    } catch (err) {
+      if (transactionStarted) {
+        try {
+          await client.query('ROLLBACK');
+        } catch (rollbackErr) {
+          logger.warn(
+            {
+              err: rollbackErr?.message || String(rollbackErr),
+              original_err: err?.message || String(err),
+            },
+            'Failed to rollback statement-timeout query transaction',
+          );
+        }
+      }
+      throw err;
+    }
+  });
+}
+
 async function connectWithRetry() {
   const maxRetries = getDbConnectRetries();
   const backoffMs = getDbRetryBackoffMs();
@@ -245,5 +292,6 @@ module.exports = {
   closePool,
   getPool,
   query,
+  queryWithStatementTimeout,
   withClient,
 };

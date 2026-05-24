@@ -348,6 +348,7 @@ const {
   renderVisionMetricsPrometheus,
 } = require('./visionMetrics');
 const { renderDiscoveryMetricsPrometheus } = require('../observability/discoveryMetrics');
+const { renderPdpMetricsPrometheus } = require('../observability/pdpMetrics');
 const {
   selectTemplate,
   renderAssistantMessage,
@@ -84308,7 +84309,8 @@ function mountAuroraBffRoutes(app, { logger }) {
     const qualityMetrics = renderChatQualityMetricsPrometheus();
     const qaMetrics = renderGeminiQaMetricsPrometheus();
     const discoveryMetrics = renderDiscoveryMetricsPrometheus();
-    return res.status(200).send(`${visionMetrics}${recoMetrics}${qualityMetrics}${qaMetrics}${discoveryMetrics}`);
+    const pdpMetrics = renderPdpMetricsPrometheus();
+    return res.status(200).send(`${visionMetrics}${recoMetrics}${qualityMetrics}${qaMetrics}${discoveryMetrics}${pdpMetrics}`);
   });
 
   app.get('/v1/ops/gemini-qa-gate/state', (req, res) => {
