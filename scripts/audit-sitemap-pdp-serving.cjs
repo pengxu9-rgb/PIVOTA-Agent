@@ -62,7 +62,21 @@ async function fetchText(url, timeoutMs) {
   }
 }
 
-async function probePdp(gatewayUrl, productId, timeoutMs) {
+function includesForMode(mode) {
+  if (mode === 'gate' || mode === 'none') return [];
+  if (mode === 'core') return ['offers'];
+  return [
+    'offers',
+    'product_intel',
+    'active_ingredients',
+    'ingredients_inci',
+    'how_to_use',
+    'product_overview',
+    'supplemental_details',
+  ];
+}
+
+async function probePdp(gatewayUrl, productId, timeoutMs, include) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   const startedAt = Date.now();
@@ -78,15 +92,7 @@ async function probePdp(gatewayUrl, productId, timeoutMs) {
         operation: 'get_pdp_v2',
         payload: {
           product_ref: { product_id: productId },
-          include: [
-            'offers',
-            'product_intel',
-            'active_ingredients',
-            'ingredients_inci',
-            'how_to_use',
-            'product_overview',
-            'supplemental_details',
-          ],
+          include,
           options: {
             debug: true,
             no_cache: true,
@@ -178,6 +184,8 @@ async function main() {
   const summaryOutPath = readArg('summary-out', null);
   const progressEvery = readNumberArg('progress-every', 250, 1);
   const quiet = readBooleanArg('quiet', false);
+  const includeMode = String(readArg('include-mode', 'full') || 'full').trim().toLowerCase();
+  const include = includesForMode(includeMode);
 
   await ensureParentDir(outPath);
   await ensureParentDir(jsonlOutPath);
@@ -193,7 +201,7 @@ async function main() {
   const rows = await mapWithConcurrency(
     ids,
     concurrency,
-    (id) => probePdp(gatewayUrl, id, timeoutMs),
+    (id) => probePdp(gatewayUrl, id, timeoutMs, include),
     async (row) => {
       completed += 1;
       if (jsonlOutPath) {
@@ -221,6 +229,7 @@ async function main() {
     generated_at: new Date().toISOString(),
     sitemap_url: sitemapUrl,
     gateway_url: gatewayUrl,
+    include_mode: includeMode,
     total_urls: ids.length,
     ok_count: rows.filter((row) => row.ok).length,
     product_not_servable_count: rows.filter((row) => row.error === 'PRODUCT_NOT_SERVABLE').length,
