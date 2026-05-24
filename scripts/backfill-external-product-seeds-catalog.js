@@ -736,6 +736,7 @@ function sanitizeStoredVariantDescription(value) {
     ) ||
     sectionMarkerCount >= 2;
   if (looksLikePageSoup) return '';
+  if (isUnsafeSeedBackfillDescription(normalized)) return '';
   if (normalized.length > 320) return '';
   return normalized;
 }
@@ -751,7 +752,13 @@ function sanitizeStoredSeedVariantDescriptions(seedData) {
       const rawDescription = normalizeNonEmptyString(
         variant.description || variant.description_html || variant.summary || variant.body_html,
       );
-      if (!rawDescription) return variant;
+      if (!rawDescription) {
+        if (!Object.prototype.hasOwnProperty.call(variant, 'description')) return variant;
+        changed = true;
+        const nextVariant = { ...variant };
+        delete nextVariant.description;
+        return nextVariant;
+      }
       const sanitized = sanitizeStoredVariantDescription(rawDescription);
       if (sanitized === rawDescription) return variant;
       changed = true;
@@ -1618,6 +1625,43 @@ function isStorefrontBoilerplateDescription(value) {
   );
 }
 
+function getSeedBackfillUnsafeDescriptionReason(value) {
+  const text = normalizePdpCopy(value);
+  if (!text) return '';
+  const lower = text.toLowerCase();
+  if (/\b(?:sold out|out of stock|notify me|waitlist|currently unavailable|unavailable|coming soon)\b/i.test(text)) {
+    return 'availability_or_inventory_text';
+  }
+  if (/\b(?:regular price|sale price|unit price|compare at price|price reduced|final sale)\b/i.test(text)) {
+    return 'price_or_sale_text';
+  }
+  if (/(?:[$]\s*\d|\b(?:usd|eur|gbp|cad|aud)\s*\d|\d+(?:\.\d{2})?\s*(?:usd|eur|gbp|cad|aud)\b)/i.test(text)) {
+    return 'price_or_sale_text';
+  }
+  if (/\b(?:add to (?:bag|cart)|buy now|checkout|shop now|afterpay|klarna|shop pay|paypal|pay in \d)\b/i.test(text)) {
+    return 'checkout_or_payment_text';
+  }
+  if (/\b(?:gift with purchase|use code|promo code|discount code|limited time offer)\b/i.test(text)) {
+    return 'promo_or_order_text';
+  }
+  const hasFreePromo =
+    /\bfree\b(?![-\s]*(?:from|of|radicals))(?=[^.?!\n]{0,120}\b(?:orders?|purchase|gift|bag|pouch|shipping|sample|mini|qualified|qualifying|spend|cart|checkout)\b)/i.test(text) ||
+    /\b(?:orders?|purchase|cart|checkout|spend)\b[^.?!\n]{0,120}\b(?:free|gift|discount|promo|offer)\b/i.test(text);
+  if (hasFreePromo) return 'promo_or_order_text';
+  if (
+    /\b(?:track my order|shipping\s*&\s*returns?|returns?\s*&\s*exchanges?|customer service|customer happiness|store locator)\b/i.test(
+      lower,
+    )
+  ) {
+    return 'storefront_service_text';
+  }
+  return '';
+}
+
+function isUnsafeSeedBackfillDescription(value) {
+  return Boolean(getSeedBackfillUnsafeDescriptionReason(value));
+}
+
 function isPromotionalPdpDetailsSection(heading, body) {
   const normalizedHeading = normalizePdpCopy(heading)
     .toLowerCase()
@@ -1743,6 +1787,8 @@ function cleanPdpDescriptionCandidate(value, detailsSections = []) {
     return '';
   }
 
+  if (isUnsafeSeedBackfillDescription(next)) return '';
+
   return stripTrailingPdpDescriptionSectionNoise(next);
 }
 
@@ -1794,6 +1840,7 @@ function cleanPdpDetailsSectionBody(heading, value, { sourceKind = '' } = {}) {
   if (isReviewPollutedPdpDetailsSection(heading, next, sourceKind)) return '';
   if (heading === 'Ingredients') return cleanPdpIngredientsRaw(next);
   if (heading === 'How to Use' || heading === 'FAQ') return next;
+  if (isUnsafeSeedBackfillDescription(next)) return '';
   return stripTrailingPdpSectionNoise(next, { removeFreeFrom: true });
 }
 
@@ -3998,6 +4045,10 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     representativeProduct?.variants?.find((variant) => variant.description)?.description ||
       effectiveSnapshotVariants.find((variant) => variant.description)?.description,
   );
+  const rawRepresentativePdpDescription = normalizePdpCopy(
+    representativeProduct?.description_raw ||
+      representativeProduct?.pdp_description_raw,
+  );
   const pdpDetailsSections = normalizeDetailsSections(
     representativeProduct?.details_sections ||
       representativeProduct?.pdp_details_sections,
@@ -4013,11 +4064,14 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     : Array.isArray(representativeProduct?.pdp_details_sections)
       ? representativeProduct.pdp_details_sections
       : [];
-  const productDescriptionRaw = cleanPdpDescriptionCandidate(
-    representativeProduct?.description_raw ||
-      representativeProduct?.pdp_description_raw,
-    pdpDetailsSections,
-  );
+  const incomingDescriptionGuardReason = [
+    rawRepresentativePdpDescription,
+    rawLiveExtractedDescription,
+    representativeProduct?.description,
+  ]
+    .map(getSeedBackfillUnsafeDescriptionReason)
+    .find(Boolean) || '';
+  const productDescriptionRaw = cleanPdpDescriptionCandidate(rawRepresentativePdpDescription, pdpDetailsSections);
   const liveExtractedDescription = cleanPdpDescriptionCandidate(rawLiveExtractedDescription, pdpDetailsSections);
   const representativeHowToUseSourceRaw = normalizeNonEmptyString(
     representativeProduct?.how_to_use_raw ||
@@ -4080,6 +4134,21 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     representativeProduct?.field_quality_summary ||
       representativeProduct?.pdp_field_quality_summary,
   );
+  if (incomingDescriptionGuardReason) {
+    const existingDescriptionQuality = ensureJsonObject(incomingPdpFieldQualitySummary?.description_raw);
+    incomingPdpFieldQualitySummary = {
+      ...(incomingPdpFieldQualitySummary || {}),
+      description_raw: {
+        ...existingDescriptionQuality,
+        source_quality_status: 'blocked',
+        reason_codes: uniqueStrings([
+          ...(Array.isArray(existingDescriptionQuality.reason_codes) ? existingDescriptionQuality.reason_codes : []),
+          'unsafe_commerce_description_text',
+          incomingDescriptionGuardReason,
+        ]),
+      },
+    };
+  }
   if (
     pdpIngredientsRaw &&
     /\b(?:Active|Inactive|Full)\s+(?:Ingredients?|INCI)\b/i.test(pdpIngredientsRaw) &&
@@ -4259,6 +4328,10 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
       : seedData.pdp_description_raw || snapshot.pdp_description_raw,
     pdpDetailsSections,
   );
+  const guardFallbackPdpDescriptionRaw =
+    incomingDescriptionGuardReason && !identityRepairBackfill
+      ? cleanPdpDescriptionCandidate(seedData.pdp_description_raw || snapshot.pdp_description_raw, pdpDetailsSections)
+      : '';
   const descriptionRawDecision = shouldPreserveExistingPdpContent({
     fieldKey: 'description_raw',
     incomingValue: surfaceableProductDescriptionRaw,
@@ -4281,7 +4354,18 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   const nextPdpDescriptionRaw =
     descriptionRawDecision.preserve
       ? existingPdpDescriptionRaw
-      : (surfaceableProductDescriptionRaw || (descriptionRawDecision.existingApproved ? existingPdpDescriptionRaw : ''));
+      : (
+          surfaceableProductDescriptionRaw ||
+          (descriptionRawDecision.existingApproved ? existingPdpDescriptionRaw : '') ||
+          guardFallbackPdpDescriptionRaw
+        );
+  const restoredPdpDescriptionRawFromGuard = Boolean(
+    incomingDescriptionGuardReason &&
+      guardFallbackPdpDescriptionRaw &&
+      !surfaceableProductDescriptionRaw &&
+      !descriptionRawDecision.preserve &&
+      !descriptionRawDecision.existingApproved,
+  );
   const existingPdpDetailsSections = identityRepairBackfill
     ? []
     : !hasApprovedSnapshotContract && !isSurfaceablePdpField(existingPdpFieldQualitySummary, 'details_sections')
@@ -4559,6 +4643,25 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     (fallbackPollutedRow ? seedData.description : snapshot.description) || seedData.description,
     nextPdpDetailsSections,
   );
+  const guardFallbackSeedDescription =
+    incomingDescriptionGuardReason && !identityRepairBackfill ? fallbackSeedDescription : '';
+  if (incomingDescriptionGuardReason) {
+    const nextQuarantine = snapshotQuarantine && typeof snapshotQuarantine === 'object'
+      ? cloneJsonValue(snapshotQuarantine)
+      : {
+          contract_version: 'external_seed.snapshot_quarantine.v1',
+          source: 'catalog_intelligence',
+        };
+    nextQuarantine.updated_at = new Date().toISOString();
+    nextQuarantine.backfill_description_guard_v1 = {
+      status: 'blocked_unsafe_description',
+      reason: incomingDescriptionGuardReason,
+      source: 'catalog_intelligence',
+      preserved_existing_description: Boolean(guardFallbackSeedDescription),
+      preserved_existing_pdp_description_raw: Boolean(guardFallbackPdpDescriptionRaw),
+    };
+    snapshotQuarantine = nextQuarantine;
+  }
   const clearSyntheticLegacyDescription =
     !manualDescription &&
     !liveExtractedDescription &&
@@ -4598,7 +4701,8 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
             ) ||
               (!suppressStaleDescriptionFallback && displayDescriptionDecision.existingApproved
                 ? fallbackSeedDescription
-                : ''),
+                : '') ||
+              guardFallbackSeedDescription,
           )
     ) ||
     '';
@@ -4965,7 +5069,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     nextPdpActiveIngredientsRaw,
   });
   const authoritativeSnapshot =
-    Boolean(nextPdpDescriptionRaw) ||
+    Boolean(nextPdpDescriptionRaw && !restoredPdpDescriptionRawFromGuard) ||
     nextPdpDetailsSections.length > 0 ||
     Boolean(nextPdpIngredientsRaw) ||
     Boolean(nextPdpActiveIngredientsRaw) ||
@@ -7231,6 +7335,8 @@ module.exports = {
   filterProductIdsMissingPivotaInsights,
   isDisplayableProductIntelKbRow,
   cleanPdpDescriptionCandidate,
+  getSeedBackfillUnsafeDescriptionReason,
+  isUnsafeSeedBackfillDescription,
   cleanPdpIngredientsRaw,
   cleanPdpHowToUseRaw,
   choosePdpHowToUseRaw,

@@ -29,6 +29,8 @@ const {
   isDisplayableProductIntelKbRow,
   cleanPdpIngredientsRaw,
   cleanPdpDescriptionCandidate,
+  getSeedBackfillUnsafeDescriptionReason,
+  isUnsafeSeedBackfillDescription,
   cleanPdpHowToUseRaw,
   choosePdpHowToUseRaw,
   extractHowToUseFromPdpText,
@@ -90,6 +92,151 @@ describe('backfill-external-product-seeds-catalog', () => {
     expect(cleaned).not.toContain('\ufffd');
     expect(cleaned).not.toMatch(/\u00c3|\u00c2|\u00e2/);
     expect(cleaned).not.toMatch(/Caution|How to Use|Full Ingredients/i);
+  });
+
+  test('blocks commerce and promo text from staged PDP descriptions', () => {
+    const promoCopy = 'Free Mini Gloss Bomb on $125+ orders. SOLD OUT';
+
+    expect(getSeedBackfillUnsafeDescriptionReason(promoCopy)).toBe('availability_or_inventory_text');
+    expect(isUnsafeSeedBackfillDescription(promoCopy)).toBe(true);
+    expect(cleanPdpDescriptionCandidate(promoCopy)).toBe('');
+    expect(cleanPdpDescriptionCandidate('Free from fragrance and essential oils.')).toBe(
+      'Free from fragrance and essential oils.',
+    );
+  });
+
+  test('preserves existing safe seed descriptions when incoming catalog description is commerce text', () => {
+    const canonicalUrl = 'https://fentybeauty.com/products/gloss-bomb-holder';
+    const existingDescription = 'A clip-on gloss holder designed to carry a single lip gloss tube.';
+    const payload = buildSeedUpdatePayload(
+      {
+        id: 'eps_fenty_gloss_holder',
+        external_product_id: 'ext_fenty_gloss_holder',
+        title: 'Gloss Bomb Holder',
+        canonical_url: canonicalUrl,
+        destination_url: canonicalUrl,
+        price_amount: 16,
+        price_currency: 'USD',
+        availability: 'in_stock',
+        seed_data: {
+          title: 'Gloss Bomb Holder',
+          description: existingDescription,
+          pdp_description_raw: existingDescription,
+          snapshot: {
+            canonical_url: canonicalUrl,
+            description: existingDescription,
+            pdp_description_raw: existingDescription,
+          },
+        },
+      },
+      {
+        products: [
+          {
+            title: 'Gloss Bomb Holder',
+            url: canonicalUrl,
+            description_raw: 'Free Gloss Bomb Holder with $125+ orders. Add to cart to claim.',
+            field_quality_summary: {
+              description_raw: {
+                source_quality_status: 'high',
+                source_origin: 'shopify_json',
+              },
+            },
+            variants: [
+              {
+                id: 'holder-default',
+                sku: 'HOLDER',
+                description: 'Free Gloss Bomb Holder with $125+ orders. Add to cart to claim.',
+                price: '16.00',
+                currency: 'USD',
+                stock: 'In Stock',
+              },
+            ],
+          },
+        ],
+        variants: [],
+        diagnostics: {},
+      },
+      canonicalUrl,
+    );
+
+    expect(payload.nextRow.seed_data.description).toBe(existingDescription);
+    expect(payload.nextRow.seed_data.pdp_description_raw).toBe(existingDescription);
+    expect(payload.nextRow.seed_data.pdp_field_quality_summary.description_raw).toMatchObject({
+      source_quality_status: 'blocked',
+    });
+    expect(payload.nextRow.seed_data.pdp_field_quality_summary.description_raw.reason_codes).toEqual(
+      expect.arrayContaining(['unsafe_commerce_description_text', 'price_or_sale_text']),
+    );
+    expect(payload.nextRow.seed_data.snapshot_quarantine.backfill_description_guard_v1).toMatchObject({
+      status: 'blocked_unsafe_description',
+      reason: 'price_or_sale_text',
+      preserved_existing_description: true,
+      preserved_existing_pdp_description_raw: true,
+    });
+    expect(payload.nextRow.seed_data.variants[0].description).toBeUndefined();
+  });
+
+  test('drops unsafe incoming seed descriptions when no safe existing copy is available', () => {
+    const canonicalUrl = 'https://fentybeauty.com/products/sold-out-sample';
+    const payload = buildSeedUpdatePayload(
+      {
+        id: 'eps_sold_out_sample',
+        external_product_id: 'ext_sold_out_sample',
+        title: 'Sold Out Sample',
+        canonical_url: canonicalUrl,
+        destination_url: canonicalUrl,
+        price_amount: null,
+        price_currency: 'USD',
+        availability: 'out_of_stock',
+        seed_data: {
+          title: 'Sold Out Sample',
+          snapshot: {
+            canonical_url: canonicalUrl,
+          },
+        },
+      },
+      {
+        products: [
+          {
+            title: 'Sold Out Sample',
+            url: canonicalUrl,
+            description_raw: 'Regular price $0.00. SOLD OUT. Notify me when available.',
+            field_quality_summary: {
+              description_raw: {
+                source_quality_status: 'high',
+                source_origin: 'shopify_json',
+              },
+            },
+            variants: [
+              {
+                id: 'sample-default',
+                sku: 'SAMPLE',
+                description: 'Regular price $0.00. SOLD OUT. Notify me when available.',
+                price: '0.00',
+                currency: 'USD',
+                stock: 'Out of Stock',
+              },
+            ],
+          },
+        ],
+        variants: [],
+        diagnostics: {},
+      },
+      canonicalUrl,
+    );
+
+    expect(payload.nextRow.seed_data.description).toBeUndefined();
+    expect(payload.nextRow.seed_data.pdp_description_raw).toBeUndefined();
+    expect(payload.nextRow.seed_data.seed_description_origin).toBeUndefined();
+    expect(payload.nextRow.seed_data.snapshot.description).toBe('');
+    expect(payload.nextRow.seed_data.snapshot.pdp_description_raw).toBeUndefined();
+    expect(payload.nextRow.seed_data.variants[0].description).toBeUndefined();
+    expect(payload.nextRow.seed_data.snapshot_quarantine.backfill_description_guard_v1).toMatchObject({
+      status: 'blocked_unsafe_description',
+      reason: 'availability_or_inventory_text',
+      preserved_existing_description: false,
+      preserved_existing_pdp_description_raw: false,
+    });
   });
 
   test('collects updated external product ids for post-backfill Pivota Insights coverage', () => {
