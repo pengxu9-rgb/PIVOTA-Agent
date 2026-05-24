@@ -1246,15 +1246,30 @@ Contains four types of peptides`,
     };
 
     expect(findCommerceFactsForBackfill(row, row, responseV2)).toBe(rawFacts);
+    const nextRow = {
+      ...row,
+      price_currency: 'USD',
+      seed_data: {
+        ...row.seed_data,
+        price_currency: 'USD',
+        snapshot: {
+          ...row.seed_data.snapshot,
+          price_currency: 'USD',
+        },
+      },
+    };
     const payload = enrichPayloadWithCommerceFacts({
       row,
-      payload: { changed: false, nextRow: row },
+      payload: { changed: false, nextRow },
       responseV2,
       market: 'US',
     });
 
     expect(payload.changed).toBe(true);
-    expect(payload.nextRow.seed_data.commerce_facts_v1.regional_price.currency).toBe('EUR');
+    expect(payload.nextRow.price_currency).toBe('USD');
+    expect(payload.nextRow.seed_data.price_currency).toBe('USD');
+    expect(payload.nextRow.seed_data.snapshot.price_currency).toBe('USD');
+    expect(payload.nextRow.seed_data.commerce_facts_v1).toBeUndefined();
     expect(payload.commerce_facts_v2.gate).toEqual(
       expect.objectContaining({
         status: 'hold',
@@ -1334,6 +1349,64 @@ Contains four types of peptides`,
     expect(payload.nextRow.seed_data.snapshot.price_currency).toBe('USD');
     expect(payload.nextRow.seed_data.variants[0].currency).toBe('USD');
     expect(payload.nextRow.seed_data.snapshot.variants[0].currency).toBe('USD');
+  });
+
+  test('prefers expected market currency over extracted variant currency during US seed backfill', () => {
+    const row = {
+      id: 'eps_fenty_lip_stain',
+      external_product_id: 'ext_fenty_lip_stain',
+      market: 'US',
+      title: 'Poutsicle Hydrating Lip Stain',
+      canonical_url: 'https://fentybeauty.com/products/poutsicle-hydrating-lip-stain',
+      destination_url: 'https://fentybeauty.com/products/poutsicle-hydrating-lip-stain',
+      image_url: 'https://cdn.example.com/lip-stain.jpg',
+      price_amount: 19.6,
+      price_currency: 'EUR',
+      availability: 'in_stock',
+      seed_data: {
+        title: 'Poutsicle Hydrating Lip Stain',
+        snapshot: {
+          title: 'Poutsicle Hydrating Lip Stain',
+          canonical_url: 'https://fentybeauty.com/products/poutsicle-hydrating-lip-stain',
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: row.title,
+            url: row.canonical_url,
+            image_url: row.image_url,
+            image_urls: [row.image_url],
+            description_raw: 'A hydrating lip stain with a glossy finish.',
+            variants: [
+              {
+                id: 'variant-1',
+                sku: 'FENTY-LIP-STAIN',
+                url: row.destination_url,
+                product_url: row.canonical_url,
+                price: '19.60',
+                currency: 'EUR',
+                stock: 'In Stock',
+                image_url: row.image_url,
+                image_urls: [row.image_url],
+              },
+            ],
+          },
+        ],
+        variants: [],
+        diagnostics: { failure_category: null },
+      },
+      row.canonical_url,
+    );
+
+    expect(payload.nextRow.price_currency).toBe('USD');
+    expect(payload.nextRow.seed_data.price_currency).toBe('USD');
+    expect(payload.nextRow.seed_data.snapshot.price_currency).toBe('USD');
+    expect(payload.nextRow.seed_data.variants[0].currency).toBe('USD');
   });
 
   test('matches commerce facts offers when stored Shopify canonical uses a duplicate suffix', () => {
