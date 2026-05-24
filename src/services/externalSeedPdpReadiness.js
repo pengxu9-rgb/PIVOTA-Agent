@@ -66,6 +66,11 @@ const PRODUCT_INTEL_BLOCKING_ISSUES = new Set([
   'ellipsis_or_truncated',
   'what_it_is_too_long',
   'generic_copy_signal',
+  'public_generic_marketing_copy',
+  'public_sensitive_claim',
+  'public_category_mismatch',
+  'public_promo_availability_copy',
+  'public_truncated_copy',
 ]);
 
 const REGULATORY_ACTIVE_TERMS = [
@@ -159,6 +164,14 @@ const ACNE_REGULATORY_CONTEXT_RE =
   /\b(acne treatment|drug facts|benzoyl peroxide|adapalene)\b/i;
 const GENERIC_INTEL_RE =
   /\b(product data|merchant product data|routine context|positions? itself|formula story|title[-\s]?driven|listing[-\s]?grounded|general use|all skin types|anchors? the product)\b/i;
+const PUBLIC_GENERIC_MARKETING_RE =
+  /\b(?:perfect[-\s]+for[-\s]+[a-z0-9]+|perfect\s+(?:for|statement|addition|amount|pop|wash|pair(?:ing)?|gift|travel|skin|look|set|match|routine|finish|piece)\b|go[-\s]?to\b|ready[-\s]?to[-\s]?go\b|flawless\b|everything\s+you\s+need\b|elevated\s+(?:scent|look|finish|routine|style)\b|looks?\s+that\s+pop\b|must[-\s]?have\b|ultimate\b|popular\b|high[-\s]?quality\b|unique\b|best[-\s]?selling\b|bestselling\b|viral\b|cult[-\s]?favorite\b|widely\s+loved\b|everyone\s+loves\b)/i;
+const PUBLIC_SENSITIVE_CLAIM_RE =
+  /\b(?:vegan|cruelty[-\s]?free|dermatologist[-\s]?tested|ophthalmologist[-\s]?tested|non[-\s]?comedogenic|hypoallergenic|pregnancy[-\s]?safe|reef[-\s]?safe|safe\s+for\s+sensitive\s+skin|clean\s+beauty)\b/i;
+const PUBLIC_PROMO_AVAILABILITY_RE =
+  /\b(?:free\b[^.?!]{0,80}\b(?:orders?|purchase|shipping|gift)|sold\s+out|in\s+stock|out\s+of\s+stock|ships?|shipping|checkout|buy\s+now|add\s+to\s+cart|limited[-\s]?time|promo|promotion|sale|clearance|discount|save\s+\d{1,3}%|\d{1,3}%\s+off)\b/i;
+const PUBLIC_TRUNCATED_COPY_RE =
+  /(?:…|\.{3}|(?:^|\s)-\s*\.?$|\b(?:with|featuring|including|includes?|and|or|for|to|of|the|a|an|plus|mini)\s*[,.]?\s*$)/i;
 const INVALID_ACTIVE_FRAGMENT_RE =
   /^(?:see|learn more|tab on|restores damaged|chapped|none|n\/a)$/i;
 const VARIANT_IDENTITY_OPTION_NAMES = new Set([
@@ -253,6 +266,131 @@ function collectProductIntelTexts(bundle) {
   return texts.map(stripHtml).filter(Boolean);
 }
 
+function publicProductIntelTextItems(bundle) {
+  const core = readProductIntelCore(bundle);
+  const shoppingCard = ensureObject(bundle?.shopping_card || core.shopping_card);
+  const searchCard = ensureObject(bundle?.search_card || core.search_card);
+  const items = [
+    ['product_intel_core.what_it_is.headline', core.what_it_is?.headline],
+    ['product_intel_core.what_it_is.body', core.what_it_is?.body],
+    ['product_intel_core.routine_fit.step', core.routine_fit?.step],
+    ['shopping_card.subtitle', shoppingCard.subtitle],
+    ['shopping_card.highlight', shoppingCard.highlight],
+    ['shopping_card.intro', shoppingCard.intro],
+    ['search_card.compact_candidate', searchCard.compact_candidate],
+    ['search_card.highlight_candidate', searchCard.highlight_candidate],
+    ['search_card.intro_candidate', searchCard.intro_candidate],
+  ];
+  for (const item of asArray(core.routine_fit?.pairing_notes)) {
+    items.push(['product_intel_core.routine_fit.pairing_notes', item]);
+  }
+  for (const item of asArray(core.why_it_stands_out)) {
+    const row = ensureObject(item);
+    items.push(['product_intel_core.why_it_stands_out.headline', row.headline]);
+    items.push(['product_intel_core.why_it_stands_out.body', row.body]);
+  }
+  for (const item of asArray(core.best_for)) {
+    const row = ensureObject(item);
+    items.push(['product_intel_core.best_for.label', row.label || item]);
+    items.push(['product_intel_core.best_for.tag', row.tag]);
+  }
+  for (const item of asArray(core.watchouts)) {
+    const row = ensureObject(item);
+    items.push(['product_intel_core.watchouts.label', row.label || item]);
+    items.push(['product_intel_core.watchouts.body', row.body]);
+  }
+  return items
+    .map(([path, value]) => ({ path, text: stripHtml(value) }))
+    .filter((item) => item.text);
+}
+
+function escapeRegExp(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function removeKnownProductNames(value, bundle) {
+  const candidates = [
+    bundle?.shopping_card?.title,
+    bundle?.search_card?.title_candidate,
+    bundle?.product_intel_core?.display_name,
+  ]
+    .map(asString)
+    .filter((item) => item.length >= 4);
+  let next = stripHtml(value);
+  for (const candidate of candidates) {
+    next = next.replace(new RegExp(escapeRegExp(candidate), 'gi'), ' ');
+  }
+  return next.replace(/\s+/g, ' ').trim();
+}
+
+function detectPublicCategoryMismatch(bundle) {
+  const core = readProductIntelCore(bundle);
+  const shoppingCard = ensureObject(bundle?.shopping_card || core.shopping_card);
+  const searchCard = ensureObject(bundle?.search_card || core.search_card);
+  const title = lowerText(shoppingCard.title || searchCard.title_candidate);
+  const categoryText = lowerText(
+    [
+      core.what_it_is?.headline,
+      shoppingCard.subtitle,
+      shoppingCard.highlight,
+      searchCard.compact_candidate,
+      searchCard.highlight_candidate,
+      core.routine_fit?.step,
+    ].join(' '),
+  );
+  if (!title || !categoryText) return false;
+  if (
+    /\b(?:lip|gloss|glaze|pout|plumping\s+gloss|lip\s+kit|lip\s+set|lip\s+bundle|lip\s+duo)\b/.test(title) &&
+    /\bskincare\b/.test(categoryText) &&
+    !/\b(?:lip|makeup|cheek|gloss)\b/.test(categoryText)
+  ) {
+    return true;
+  }
+  if (
+    /\bcheek\s*(?:&|and|\+)\s*lip\b|\blip\s*(?:&|and|\+)\s*cheek\b/.test(title) &&
+    !/\b(?:cheek|lip[-\s]?and[-\s]?cheek|makeup|color|colour)\b/.test(categoryText)
+  ) {
+    return true;
+  }
+  if (
+    /\bconcealer\s*(?:&|and|\+)\s*brush\b|\bbrush\s*(?:&|and|\+)\s*concealer\b/.test(title) &&
+    !/\b(?:concealer|complexion|makeup)\b/.test(categoryText)
+  ) {
+    return true;
+  }
+  if (
+    /\bcleansing\s+cuffs?\b/.test(title) &&
+    !/\b(?:accessory|tool|cuff|skincare\s+tool)\b/.test(categoryText)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function detectPublicProductIntelQualityIssues(bundle) {
+  const issues = new Set();
+  const textItems = publicProductIntelTextItems(bundle);
+  for (const item of textItems) {
+    const comparable = removeKnownProductNames(item.text, bundle);
+    if (PUBLIC_GENERIC_MARKETING_RE.test(comparable)) {
+      issues.add('public_generic_marketing_copy');
+    }
+    if (PUBLIC_SENSITIVE_CLAIM_RE.test(comparable)) {
+      issues.add('public_sensitive_claim');
+    }
+    if (PUBLIC_PROMO_AVAILABILITY_RE.test(comparable)) {
+      issues.add('public_promo_availability_copy');
+    }
+    if (PUBLIC_TRUNCATED_COPY_RE.test(item.text)) {
+      issues.add('public_truncated_copy');
+    }
+  }
+  if (detectPublicCategoryMismatch(bundle)) {
+    issues.add('public_category_mismatch');
+  }
+  return Array.from(issues);
+}
+
 function readIntelQualityState(bundle, sourceMeta) {
   const core = readProductIntelCore(bundle);
   return lowerText(bundle?.quality_state || core.quality_state || sourceMeta?.quality_state) || 'unknown';
@@ -343,6 +481,7 @@ function classifyProductIntelKbRow(row, options = {}) {
     issues.push('what_it_is_too_long');
   }
   if (texts.some((text) => GENERIC_INTEL_RE.test(text))) issues.push('generic_copy_signal');
+  issues.push(...detectPublicProductIntelQualityIssues(bundle));
   if (!asArray(core.watchouts).length) issues.push('empty_watchouts');
 
   const qualityState = readIntelQualityState(bundle, sourceMeta);
@@ -1142,6 +1281,7 @@ module.exports = {
   HERO_INGREDIENT_TERMS,
   LOW_SIGNAL_ACTIVE_ITEMS,
   classifyProductIntelKbRow,
+  detectPublicProductIntelQualityIssues,
   classifyEffectiveProductIntel,
   classifyActiveIngredientReadiness,
   classifyVariantReadiness,
