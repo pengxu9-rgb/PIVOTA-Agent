@@ -1317,6 +1317,73 @@ describe('RecommendationEngine (PDP)', () => {
     ).toBe(true);
   });
 
+  test('g3) external seed candidates carry official card presentation before wrapper fallback', () => {
+    const candidate = _internals.buildExternalSeedRecommendationCandidate({
+      external_product_id: 'ext_into_you_w725',
+      destination_url: 'https://www.intoyoucosmetics.com/products/w725',
+      seed_data: {
+        title: 'INTO YOU Watery Lip Matt - Custom Shade W725',
+        description: 'A fresh, lightweight lip matt with a breathable watery feel. Comfortable everyday lip color.',
+        product_type: 'Watery Matte Lip',
+        brand: 'INTO YOU',
+        image_url: 'https://cdn.example.test/w725.jpg',
+      },
+    });
+
+    expect(candidate).toEqual(
+      expect.objectContaining({
+        card_title: 'INTO YOU Watery Lip Matt - Custom Shade W725',
+        card_subtitle: 'Watery Matte Lip',
+        card_highlight: 'A fresh, lightweight lip matt with a breathable watery feel',
+        card_highlight_source: 'official_external_seed_card',
+        shopping_card: expect.objectContaining({
+          highlight: 'A fresh, lightweight lip matt with a breathable watery feel',
+          evidence_profile: 'official_external_seed_card',
+        }),
+        search_card: expect.objectContaining({
+          highlight_candidate: 'A fresh, lightweight lip matt with a breathable watery feel',
+          evidence_profile: 'official_external_seed_card',
+        }),
+      }),
+    );
+  });
+
+  test('g4) seller-only product intel does not overwrite official external seed cards', () => {
+    const product = {
+      product_id: 'ext_into_you_w725',
+      merchant_id: 'external_seed',
+      card_highlight: 'A fresh, lightweight lip matt with a breathable watery feel',
+      card_highlight_source: 'official_external_seed_card',
+      shopping_card: {
+        title: 'INTO YOU Watery Lip Matt - Custom Shade W725',
+        subtitle: 'Watery Matte Lip',
+        highlight: 'A fresh, lightweight lip matt with a breathable watery feel',
+        evidence_profile: 'official_external_seed_card',
+      },
+    };
+
+    const out = _internals.applyRecommendationProductIntelBundle(product, {
+      evidence_profile: 'seller_only',
+      shopping_card: {
+        title: 'INTO YOU Watery Lip Matt - Custom Shade W725',
+        subtitle: 'Watery Matte Lip',
+        highlight: 'Seller-only generated copy',
+        evidence_profile: 'seller_only',
+      },
+      search_card: {
+        title_candidate: 'INTO YOU Watery Lip Matt - Custom Shade W725',
+        compact_candidate: 'Watery Matte Lip',
+        highlight_candidate: 'Seller-only generated copy',
+        evidence_profile: 'seller_only',
+      },
+    });
+
+    expect(out.product_intel).toBeTruthy();
+    expect(out.card_highlight).toBe('A fresh, lightweight lip matt with a breathable watery feel');
+    expect(out.card_highlight_source).toBe('official_external_seed_card');
+    expect(out.shopping_card).toEqual(product.shopping_card);
+  });
+
   test('h) cache key includes requested limit k', async () => {
     const base = makeProduct({
       merchant_id: 'merch_store',

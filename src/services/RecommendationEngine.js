@@ -1119,11 +1119,20 @@ function applyRecommendationProductIntelBundle(product, bundle) {
   const cardBadge = recCardString(shoppingCard?.proof_badge || searchCard?.proof_badge_candidate);
   const cardIntro = recCardString(shoppingCard?.intro || searchCard?.intro_candidate);
   if (!shoppingCard && !searchCard && !cardHighlight && !cardSubtitle && !cardIntro) return product;
+  const bundleEvidenceProfile = recCardString(
+    shoppingCard?.evidence_profile ||
+      searchCard?.evidence_profile ||
+      bundle?.evidence_profile,
+  ).toLowerCase();
+  const keepOfficialSeedCard = hasOfficialExternalSeedCard(product) && (
+    bundleEvidenceProfile === 'seller_only' ||
+    bundleEvidenceProfile === 'seller_only_fallback'
+  );
   return {
     ...product,
     product_intel: bundle,
-    ...(shoppingCard ? { shopping_card: shoppingCard } : {}),
-    ...(searchCard ? { search_card: searchCard } : {}),
+    ...(shoppingCard && !keepOfficialSeedCard ? { shopping_card: shoppingCard } : {}),
+    ...(searchCard && !keepOfficialSeedCard ? { search_card: searchCard } : {}),
     ...(cardTitle && !recCardString(product?.card_title) ? { card_title: cardTitle } : {}),
     ...(cardSubtitle && !recCardString(product?.card_subtitle) ? { card_subtitle: cardSubtitle } : {}),
     ...(cardHighlight && !recCardString(product?.card_highlight) ? { card_highlight: cardHighlight } : {}),
@@ -1658,6 +1667,43 @@ function firstImageUrl(...values) {
   return '';
 }
 
+const OFFICIAL_EXTERNAL_SEED_CARD_SOURCE = 'official_external_seed_card';
+
+function normalizeExternalSeedCardText(value, { maxChars = 96 } = {}) {
+  const text = String(value || '')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^[.;,:|\-]+/g, '')
+    .replace(/[.;,:|\-]+$/g, '')
+    .trim();
+  if (!text) return '';
+  if (text.length <= maxChars) return text;
+  return text.slice(0, maxChars).replace(/\s+\S*$/g, '').replace(/[.;,:|\-]+$/g, '').trim();
+}
+
+function deriveOfficialExternalSeedCardHighlight({ description = '', title = '', category = '', productType = '' } = {}) {
+  const firstSentence = String(description || '')
+    .split(/(?<=[.!?])\s+/)
+    .map((part) => normalizeExternalSeedCardText(part, { maxChars: 84 }))
+    .find((part) => part.length >= 12);
+  if (firstSentence) return firstSentence;
+
+  const categoryText = normalizeExternalSeedCardText(productType || category, { maxChars: 48 });
+  if (categoryText) return categoryText;
+
+  return normalizeExternalSeedCardText(title, { maxChars: 72 });
+}
+
+function hasOfficialExternalSeedCard(product = {}) {
+  return (
+    firstNonEmptyText(product.card_highlight_source, product.shopping_card?.evidence_profile) ===
+      OFFICIAL_EXTERNAL_SEED_CARD_SOURCE &&
+    Boolean(firstNonEmptyText(product.card_highlight, product.shopping_card?.highlight, product.search_card?.highlight_candidate))
+  );
+}
+
 function buildExternalSeedRecommendationCandidate(row, options = {}) {
   if (!row || typeof row !== 'object') return null;
 
@@ -1844,6 +1890,32 @@ function buildExternalSeedRecommendationCandidate(row, options = {}) {
     normalizedAvailability
       ? !['out_of_stock', 'sold_out', 'unavailable', 'discontinued'].includes(normalizedAvailability)
       : true;
+  const officialCardHighlight = deriveOfficialExternalSeedCardHighlight({
+    description,
+    title,
+    category,
+    productType,
+  });
+  const officialCard = officialCardHighlight
+    ? {
+        card_title: title,
+        card_subtitle: productType || category,
+        card_highlight: officialCardHighlight,
+        card_highlight_source: OFFICIAL_EXTERNAL_SEED_CARD_SOURCE,
+        shopping_card: {
+          title,
+          subtitle: productType || category,
+          highlight: officialCardHighlight,
+          evidence_profile: OFFICIAL_EXTERNAL_SEED_CARD_SOURCE,
+        },
+        search_card: {
+          title_candidate: title,
+          compact_candidate: productType || category,
+          highlight_candidate: officialCardHighlight,
+          evidence_profile: OFFICIAL_EXTERNAL_SEED_CARD_SOURCE,
+        },
+      }
+    : {};
 
   return applyExternalSeedRuntimeProductClass({
     merchant_id: EXTERNAL_SEED_MERCHANT_ID,
@@ -1856,6 +1928,7 @@ function buildExternalSeedRecommendationCandidate(row, options = {}) {
     ...(productType ? { product_type: productType } : category ? { product_type: category } : {}),
     ...(catalogCategoryPath ? { category_path: catalogCategoryPath, catalog_category_path: catalogCategoryPath } : {}),
     ...(description ? { description } : {}),
+    ...officialCard,
     ...(imageUrl ? { image_url: imageUrl, image: imageUrl } : {}),
     ...(priceAmount != null ? { price: priceAmount, price_amount: priceAmount } : {}),
     ...(priceCurrency ? { currency: priceCurrency, price_currency: priceCurrency } : {}),
@@ -5251,6 +5324,8 @@ module.exports = {
     applyRecommendationProductIntelBundle,
     extractRecommendationProductIntelBundle,
     hydrateRecommendationItemsWithReviewedProductIntel,
+    buildExternalSeedRecommendationCandidate,
+    hasOfficialExternalSeedCard,
     fetchExternalCandidates,
     fetchInternalCandidates,
     loadLiveIdentityRowsForRecommendationProducts,

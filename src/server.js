@@ -23050,6 +23050,7 @@ function readSimilarCardEvidenceProfile(product = {}) {
 }
 
 const TRUSTED_SIMILAR_CARD_HIGHLIGHT_SOURCES = new Set([
+  'official_external_seed_card',
   'source_backed_title_or_intro',
   'official_pdp_seed',
   'official_pdp_seed_title',
