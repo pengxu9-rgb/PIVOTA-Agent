@@ -200,6 +200,19 @@ function existingVariantNeedsTrustedPriceUrlCorrection(seedData, mapping, varian
   return priceAmountsDiffer(existing, incoming) || hasLocalizedProductUrlDrift(existing, sourceUrl);
 }
 
+function existingVariantNeedsTrustedScalarLabelCorrection(seedData, snapshot, mapping) {
+  if (mapping.allow_scalar_variant_label_correction !== true) return false;
+  const label = normalizeText(mapping.variant_detail_label);
+  if (!label) return false;
+  const staleLabels = [
+    seedData.variant_title,
+    snapshot.variant_title,
+    seedData.variant_detail_label,
+    snapshot.variant_detail_label,
+  ].map(normalizeText).filter(Boolean);
+  return staleLabels.some((value) => value !== label);
+}
+
 function normalizeVariant(input, sourceUrl, sourceOrigin) {
   const object = ensureObject(input);
   const rawOptions = asArray(object.options)
@@ -315,7 +328,8 @@ function buildPatch(row, mapping) {
     sourceUrl,
     sourceOrigin,
   );
-  if (protectedVariant && !trustedPriceUrlCorrection) {
+  const trustedScalarLabelCorrection = existingVariantNeedsTrustedScalarLabelCorrection(seedData, snapshot, mapping);
+  if (protectedVariant && !trustedPriceUrlCorrection && !trustedScalarLabelCorrection) {
     return { patchKeys: [], reason: 'blocked_protect_high_quality_variant' };
   }
   seedData.variants = variants;
@@ -323,6 +337,8 @@ function buildPatch(row, mapping) {
   if (mapping.variant_detail_label) {
     seedData.variant_detail_label = normalizeText(mapping.variant_detail_label);
     snapshot.variant_detail_label = seedData.variant_detail_label;
+    seedData.variant_title = seedData.variant_detail_label;
+    snapshot.variant_title = seedData.variant_detail_label;
   }
   const quality = mergeQualitySummary(seedData.pdp_field_quality_summary || snapshot.pdp_field_quality_summary, sourceUrl, sourceOrigin);
   seedData.pdp_field_quality_summary = quality;
@@ -348,6 +364,8 @@ function buildPatch(row, mapping) {
     patchKeys: ['variants'],
     reason: trustedPriceUrlCorrection
       ? 'replace_high_quality_variant_price_url_correction'
+      : trustedScalarLabelCorrection
+        ? 'replace_high_quality_variant_scalar_label_correction'
       : 'replace_force_or_weak_variant',
   };
 }
@@ -362,6 +380,7 @@ function buildServingPayloadPatch(seedData) {
   [
     'variants',
     'variant_detail_label',
+    'variant_title',
     'pdp_field_quality_summary',
     'pdp_content_asset_v1',
     'source_variant_fields_v1',
@@ -383,6 +402,7 @@ function readMappings() {
     variant_axes: item.variant_axes || null,
     match_basis: item.match_basis || null,
     allow_price_url_correction: item.allow_price_url_correction === true,
+    allow_scalar_variant_label_correction: item.allow_scalar_variant_label_correction === true,
   })).filter((item) => item.target_id && item.source_url);
 }
 
