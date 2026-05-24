@@ -2484,6 +2484,44 @@ describe('pdpIdentityGraph', () => {
     });
   });
 
+  test('buildIdentityListingFromProduct resolves selected scent axes on multi-variant body-care PDPs', () => {
+    const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
+
+    const listing = buildIdentityListingFromProduct({
+      merchantId: 'external_seed',
+      productId: 'ext_coconut_hand_balm_lavender',
+      sourceKind: 'external_seed',
+      product: {
+        title: 'NOURISHING HAND BALM - Lavender',
+        brand: 'COCONUT MATTER',
+        source_url: 'https://coconutmatter.com/products/nourishing-hand-balm?variant=39951549431890',
+        selected_variant_id: '39951549431890',
+        variants: [
+          {
+            variant_id: '39951549431890',
+            title: 'Lavender',
+            option_name: 'Scents',
+            option_value: 'Lavender',
+          },
+          {
+            variant_id: '39951560769618',
+            title: 'Jasmine',
+            option_name: 'Scents',
+            option_value: 'Jasmine',
+          },
+        ],
+      },
+    });
+
+    expect(listing.identity_status).toBe('approved');
+    expect(listing.review_required).toBe(false);
+    expect(listing.variant_axes).toEqual({
+      scent: 'lavender',
+      multi_variant: true,
+    });
+    expect(listing.match_basis).toContain('variant_axes:scent:lavender');
+  });
+
   test('composeSyntheticCanonicalProduct keeps exact-item gallery separate from product-line preview and aggregates review scope', () => {
     const { composeSyntheticCanonicalProduct } = require('../../src/services/pdpIdentityGraph');
 

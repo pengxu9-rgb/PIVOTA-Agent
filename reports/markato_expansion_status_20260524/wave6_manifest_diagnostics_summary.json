@@ -1,0 +1,275 @@
+{
+  "generated_at": "2026-05-24T04:50:29.272Z",
+  "mode": "manifest_diagnostic_only_no_db_write",
+  "catalog_source": "https://pivota-catalog-intelligence-production.up.railway.app",
+  "totals": {
+    "candidates": 6,
+    "manifest_failed": 0,
+    "review_passed": 4,
+    "review_blocked": 2,
+    "manifest_items": 135,
+    "accepted_items": 134
+  },
+  "results": [
+    {
+      "brand": "Lhamour",
+      "domain": "lhamour.com",
+      "tier": "P1",
+      "category": "Skincare",
+      "score": 79,
+      "product_signal_count": 20,
+      "lane": "low_risk_beauty_quality",
+      "manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/wave6_manifests/lhamour.json",
+      "review_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/wave6_manifest_reviews/lhamour.json",
+      "accepted_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/wave6_accepted_manifests/lhamour.json",
+      "status": "review_passed",
+      "manifest": {
+        "item_count": 20,
+        "extracted_product_count": 21,
+        "excluded_bundle_like_count": 1,
+        "excluded_non_product_page_count": 0,
+        "excluded_incomplete_transaction_count": 0,
+        "excluded_brand_scope_mismatch_count": 0,
+        "excluded_low_quality_fallback_count": 0,
+        "diagnostics_summary": null,
+        "sample_titles": [
+          "Organic Nipple Butter for Breastfeeding & Sore, Cracked Nipples | Lhamour (Copy)",
+          "Sea buckthorn Hand Cream for Dry Hands | Natural Hand Butter | Lhamour",
+          "Natural Baby Balm for Dry Skin & Diaper Rash | Lhamour",
+          "Sea Buckthorn Lip Balm for Dry Lips | Natural Lip Care | Lhamour",
+          "Natural Yak Milk Soap for Dry & Sensitive Skin | Lhamour",
+          "Natural Shampoo Bar for Healthy Hair & Scalp | Lhamour",
+          "Natural Baby Lotion for Dry & Sensitive Skin | Lhamour",
+          "Natural Baby Shampoo for Sensitive Scalp & Dry Skin | Lhamour"
+        ]
+      },
+      "review": {
+        "ok_to_continue": true,
+        "blocker_reasons": [],
+        "warning_reasons": [],
+        "item_count": 20,
+        "accepted_item_count": 20,
+        "blocked_item_count": 0,
+        "price_coverage_rate": 1,
+        "availability_coverage_rate": 1,
+        "image_coverage_rate": 1
+      },
+      "accepted_manifest_written": true
+    },
+    {
+      "brand": "DAEBY",
+      "domain": "daebyskin.com",
+      "tier": "P1",
+      "category": "Skincare",
+      "score": 77,
+      "product_signal_count": 7,
+      "lane": "low_risk_beauty_quality",
+      "manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/wave6_manifests/daeby.json",
+      "review_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/wave6_manifest_reviews/daeby.json",
+      "accepted_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/wave6_accepted_manifests/daeby.json",
+      "status": "review_passed",
+      "manifest": {
+        "item_count": 3,
+        "extracted_product_count": 7,
+        "excluded_bundle_like_count": 4,
+        "excluded_non_product_page_count": 0,
+        "excluded_incomplete_transaction_count": 0,
+        "excluded_brand_scope_mismatch_count": 0,
+        "excluded_low_quality_fallback_count": 0,
+        "diagnostics_summary": null,
+        "sample_titles": [
+          "Exfoliating Facial Scrub",
+          "Facial Moisturiser SPF 50+",
+          "Daily Cleanser"
+        ]
+      },
+      "review": {
+        "ok_to_continue": true,
+        "blocker_reasons": [],
+        "warning_reasons": [],
+        "item_count": 3,
+        "accepted_item_count": 3,
+        "blocked_item_count": 0,
+        "price_coverage_rate": 1,
+        "availability_coverage_rate": 1,
+        "image_coverage_rate": 1
+      },
+      "accepted_manifest_written": true
+    },
+    {
+      "brand": "Aetas",
+      "domain": "aetasofficial.com",
+      "tier": "P1",
+      "category": "Skincare",
+      "score": 77,
+      "product_signal_count": 6,
+      "lane": "low_risk_beauty_quality",
+      "manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/wave6_manifests/aetas.json",
+      "review_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/wave6_manifest_reviews/aetas.json",
+      "accepted_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/wave6_accepted_manifests/aetas.json",
+      "status": "review_passed",
+      "manifest": {
+        "item_count": 4,
+        "extracted_product_count": 6,
+        "excluded_bundle_like_count": 2,
+        "excluded_non_product_page_count": 0,
+        "excluded_incomplete_transaction_count": 0,
+        "excluded_brand_scope_mismatch_count": 0,
+        "excluded_low_quality_fallback_count": 0,
+        "diagnostics_summary": null,
+        "sample_titles": [
+          "The Serum",
+          "The Moisturizer 50mL",
+          "The Cleanser 200mL",
+          "The Lotion 200mL"
+        ]
+      },
+      "review": {
+        "ok_to_continue": true,
+        "blocker_reasons": [],
+        "warning_reasons": [],
+        "item_count": 4,
+        "accepted_item_count": 4,
+        "blocked_item_count": 0,
+        "price_coverage_rate": 1,
+        "availability_coverage_rate": 1,
+        "image_coverage_rate": 1
+      },
+      "accepted_manifest_written": true
+    },
+    {
+      "brand": "KHUS KHUS modern herbal fusion",
+      "domain": "khus-khus.com",
+      "tier": "P1",
+      "category": "Skincare",
+      "score": 77,
+      "product_signal_count": 6,
+      "lane": "low_risk_beauty_quality",
+      "manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/wave6_manifests/khus-khus-modern-herbal-fusion.json",
+      "review_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/wave6_manifest_reviews/khus-khus-modern-herbal-fusion.json",
+      "accepted_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/wave6_accepted_manifests/khus-khus-modern-herbal-fusion.json",
+      "status": "review_blocked",
+      "manifest": {
+        "item_count": 0,
+        "extracted_product_count": 0,
+        "excluded_bundle_like_count": 0,
+        "excluded_non_product_page_count": 0,
+        "excluded_incomplete_transaction_count": 0,
+        "excluded_brand_scope_mismatch_count": 0,
+        "excluded_low_quality_fallback_count": 0,
+        "diagnostics_summary": null,
+        "sample_titles": []
+      },
+      "review_error": "Error: Command failed: /opt/homebrew/Cellar/node/24.10.0/bin/node scripts/review-external-seed-creation-manifest.cjs --input /Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/wave6_manifests/khus-khus-modern-herbal-fusion.json --out /Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/wave6_manifest_reviews/khus-khus-modern-herbal-fusion.json --out-csv /Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/wave6_manifest_reviews/khus-khus-modern-herbal-fusion.csv --accepted-manifest /Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/wave6_accepted_manifests/khus-khus-modern-herbal-fusion.json\n    at genericNodeError (node:internal/errors:985:15)\n    at wrappedFn (node:internal/errors:539:14)\n    at checkExecSyncError (node:child_process:925:11)\n    at execFileSync (node:child_process:961:15)\n    at runNode (/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/run_wave6_manifest_diagnostics.cjs:33:10)\n    at main (/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/run_wave6_manifest_diagnostics.cjs:120:7)\n    at Object.<anonymous> (/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/run_wave6_manifest_diagnostics.cjs:160:1)\n    at Module._compile (node:internal/modules/cjs/loader:1760:14)\n    at Object..js (node:internal/modules/cjs/loader:1893:10)\n    at Module.load (node:internal/modules/cjs/loader:1480:32)",
+      "review": {
+        "ok_to_continue": false,
+        "blocker_reasons": [
+          "zero_accepted_items_from_extractor"
+        ],
+        "warning_reasons": [],
+        "item_count": 0,
+        "accepted_item_count": 0,
+        "blocked_item_count": 0,
+        "price_coverage_rate": 0,
+        "availability_coverage_rate": 0,
+        "image_coverage_rate": 0
+      },
+      "accepted_manifest_written": false
+    },
+    {
+      "brand": "Seresilk",
+      "domain": "seresilk.com.au",
+      "tier": "P1",
+      "category": "Skincare",
+      "score": 77,
+      "product_signal_count": 10,
+      "lane": "low_risk_beauty_quality",
+      "manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/wave6_manifests/seresilk.json",
+      "review_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/wave6_manifest_reviews/seresilk.json",
+      "accepted_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/wave6_accepted_manifests/seresilk.json",
+      "status": "review_passed",
+      "manifest": {
+        "item_count": 8,
+        "extracted_product_count": 10,
+        "excluded_bundle_like_count": 2,
+        "excluded_non_product_page_count": 0,
+        "excluded_incomplete_transaction_count": 0,
+        "excluded_brand_scope_mismatch_count": 0,
+        "excluded_low_quality_fallback_count": 0,
+        "diagnostics_summary": null,
+        "sample_titles": [
+          "Silk Night Serum (WH)",
+          "Silk Night Cream (WH)",
+          "Pure Silk Exfoliator (WH)",
+          "Gentle Silk Cleanser (WH)",
+          "Silk Night Cream",
+          "Silk Night Serum",
+          "Pure Silk Exfoliator",
+          "Gentle Silk Cleanser"
+        ]
+      },
+      "review": {
+        "ok_to_continue": true,
+        "blocker_reasons": [],
+        "warning_reasons": [],
+        "item_count": 8,
+        "accepted_item_count": 8,
+        "blocked_item_count": 0,
+        "price_coverage_rate": 1,
+        "availability_coverage_rate": 1,
+        "image_coverage_rate": 1
+      },
+      "accepted_manifest_written": true
+    },
+    {
+      "brand": "MASAMI",
+      "domain": "lovemasami.com",
+      "tier": "P0",
+      "category": "Haircare",
+      "score": 81,
+      "product_signal_count": 143,
+      "lane": "strategic_p0_haircare_pilot",
+      "manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/wave6_manifests/masami.json",
+      "review_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/wave6_manifest_reviews/masami.json",
+      "accepted_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/wave6_accepted_manifests/masami.json",
+      "status": "review_blocked",
+      "manifest": {
+        "item_count": 100,
+        "extracted_product_count": 143,
+        "excluded_bundle_like_count": 43,
+        "excluded_non_product_page_count": 0,
+        "excluded_incomplete_transaction_count": 0,
+        "excluded_brand_scope_mismatch_count": 0,
+        "excluded_low_quality_fallback_count": 0,
+        "diagnostics_summary": null,
+        "sample_titles": [
+          "Rose Water Toner by Om Chanti",
+          "Rose Oil Face Cream by Om Chanti",
+          "Coffee Oil Under Eye Serum by Om Chanti",
+          "GLOW Exfoliating Soft Peel by Aloisia Beauty",
+          "RESTORE Propolis Collagen Gel - Ultra Premium Collagen Jelly by Aloisia Beauty",
+          "Noori Girl and a Goat Moisturizer by noori Skincare",
+          "Delicious Hydrating USDA Organic Lip Balm by Sun Drunk",
+          "Aging Defender by Sbeauty+"
+        ]
+      },
+      "review_error": "Error: Command failed: /opt/homebrew/Cellar/node/24.10.0/bin/node scripts/review-external-seed-creation-manifest.cjs --input /Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/wave6_manifests/masami.json --out /Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/wave6_manifest_reviews/masami.json --out-csv /Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/wave6_manifest_reviews/masami.csv --accepted-manifest /Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/wave6_accepted_manifests/masami.json\n    at genericNodeError (node:internal/errors:985:15)\n    at wrappedFn (node:internal/errors:539:14)\n    at checkExecSyncError (node:child_process:925:11)\n    at execFileSync (node:child_process:961:15)\n    at runNode (/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/run_wave6_manifest_diagnostics.cjs:33:10)\n    at main (/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/run_wave6_manifest_diagnostics.cjs:120:7)\n    at Object.<anonymous> (/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/run_wave6_manifest_diagnostics.cjs:160:1)\n    at Module._compile (node:internal/modules/cjs/loader:1760:14)\n    at Object..js (node:internal/modules/cjs/loader:1893:10)\n    at Module.load (node:internal/modules/cjs/loader:1480:32)",
+      "review": {
+        "ok_to_continue": false,
+        "blocker_reasons": [
+          "anti_abuse_signal:perimeterx"
+        ],
+        "warning_reasons": [
+          "row_level_blockers_filtered_from_accepted_manifest"
+        ],
+        "item_count": 100,
+        "accepted_item_count": 99,
+        "blocked_item_count": 1,
+        "price_coverage_rate": 1,
+        "availability_coverage_rate": 1,
+        "image_coverage_rate": 1
+      },
+      "accepted_manifest_written": false
+    }
+  ]
+}

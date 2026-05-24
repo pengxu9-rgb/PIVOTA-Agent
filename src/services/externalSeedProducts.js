@@ -2051,6 +2051,9 @@ const VARIANT_OPTION_QUERY_PARAM_LABELS = new Map([
   ['colour', 'Color'],
   ['shade', 'Shade'],
   ['scent', 'Scent'],
+  ['scents', 'Scent'],
+  ['fragrance', 'Scent'],
+  ['fragrances', 'Scent'],
   ['pack', 'Pack'],
   ['count', 'Count'],
   ['quantity', 'Quantity'],
@@ -2691,7 +2694,7 @@ function inferVariantAxisKind(option, context = {}) {
   if (['strength', 'concentration'].includes(optionName) || strength) {
     return { axis_kind: 'strength', display_label: VARIANT_AXIS_LABELS.strength, normalized_value: strength || optionValue };
   }
-  if (['scent', 'fragrance', 'flavor', 'flavour'].includes(optionName)) {
+  if (['scent', 'scents', 'fragrance', 'fragrances', 'flavor', 'flavors', 'flavour', 'flavours'].includes(optionName)) {
     return { axis_kind: 'scent', display_label: VARIANT_AXIS_LABELS.scent, normalized_value: optionValue };
   }
   if (GENERIC_VARIANT_OPTION_NAMES.has(optionName)) {

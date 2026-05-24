@@ -52,6 +52,24 @@ function uniq(values) {
   return out;
 }
 
+function normalizeInciItem(value) {
+  return text(value)
+    .replace(/\s+\*+\s*Ingredients\s+from\b.*$/i, '')
+    .replace(/\s+\*+\s*(?=\()/g, ' ')
+    .replace(/\s*(?:\*\/\*\*|\/\*\*|\*+)\s*$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function parseInciItems(value) {
+  return uniq(
+    text(value)
+      .split(',')
+      .map(normalizeInciItem)
+      .filter((item) => item.length >= 2),
+  );
+}
+
 function readJson(filePath) {
   const normalized = text(filePath);
   if (!normalized) throw new Error('--manifest is required');
@@ -182,6 +200,22 @@ function hasCanonicalFieldValue(seedData, field) {
   return Boolean(text(seedData[field] || snapshot[field]));
 }
 
+function hasStructuredInci(seedData) {
+  const snapshot = asObject(seedData.snapshot);
+  const rootIntel = asObject(seedData.ingredient_intel);
+  const snapshotIntel = asObject(snapshot.ingredient_intel);
+  return [
+    seedData.ingredients_inci,
+    snapshot.ingredients_inci,
+    seedData.inci_list,
+    snapshot.inci_list,
+    rootIntel.inci_list,
+    rootIntel.inci_normalized,
+    snapshotIntel.inci_list,
+    snapshotIntel.inci_normalized,
+  ].some((value) => Array.isArray(value) && value.length > 0);
+}
+
 function shouldPatchField(seedData, field, nextValue, entry) {
   const normalizedNext = text(nextValue);
   if (!normalizedNext) return { patch: false, reason: 'empty_patch_value' };
@@ -190,6 +224,9 @@ function shouldPatchField(seedData, field, nextValue, entry) {
   if (text(existing).toLowerCase() === normalizedNext.toLowerCase()) {
     if (field === 'pdp_ingredients_raw' && !hasCanonicalFieldValue(seedData, field)) {
       return { patch: true, reason: 'materialize_canonical_pdp_ingredients_raw' };
+    }
+    if (field === 'pdp_ingredients_raw' && !hasStructuredInci(seedData)) {
+      return { patch: true, reason: 'materialize_structured_inci' };
     }
     return { patch: false, reason: 'no_change_same_value' };
   }
@@ -370,8 +407,9 @@ function buildNextSeedData(row, entry, now) {
   else if (cleanHowTo && howToPatchDecision.reason) skippedFields.push(howToPatchDecision.reason);
   if (shouldPatchSections && sections.length && sectionsPatchDecision.patch) fields.push('pdp_details_sections');
   else if (shouldPatchSections && sections.length && sectionsPatchDecision.reason) skippedFields.push(sectionsPatchDecision.reason);
-  if (cleanIngredients && ingredientsPatchDecision.patch) fields.push('pdp_ingredients_raw', 'raw_ingredient_text_clean');
-  else if (cleanIngredients && ingredientsPatchDecision.reason) skippedFields.push(ingredientsPatchDecision.reason);
+  if (cleanIngredients && ingredientsPatchDecision.patch) {
+    fields.push('pdp_ingredients_raw', 'raw_ingredient_text_clean', 'ingredients_inci');
+  } else if (cleanIngredients && ingredientsPatchDecision.reason) skippedFields.push(ingredientsPatchDecision.reason);
 
   if (!fields.length) {
     return {
@@ -403,19 +441,21 @@ function buildNextSeedData(row, entry, now) {
   }
 
   if (fields.includes('pdp_ingredients_raw')) {
+    const ingredientsInci = parseInciItems(cleanIngredients);
     const patchIngredients = (target) => {
       if (!target || typeof target !== 'object') return;
       target.pdp_ingredients_raw = cleanIngredients;
       target.raw_ingredient_text_clean = cleanIngredients;
-      target.inci_list = cleanIngredients;
+      target.ingredients_inci = ingredientsInci;
+      target.inci_list = ingredientsInci;
       const ingredientIntel = asObject(target.ingredient_intel);
       target.ingredient_intel = {
         ...ingredientIntel,
         raw_ingredient_text_clean: cleanIngredients,
         inci_raw: cleanIngredients,
-        inci_list: cleanIngredients,
+        inci_list: ingredientsInci,
+        inci_normalized: ingredientsInci,
       };
-      delete target.ingredient_intel.inci_normalized;
       delete target.ingredient_intel.authoritative;
     };
     patchIngredients(seedData);
@@ -468,6 +508,7 @@ function buildServingPatch(seedData, fields = []) {
   if (fieldSet.has('pdp_ingredients_raw') || fieldSet.has('raw_ingredient_text_clean')) {
     patch.pdp_ingredients_raw = seedData.pdp_ingredients_raw;
     patch.raw_ingredient_text_clean = seedData.raw_ingredient_text_clean;
+    patch.ingredients_inci = seedData.ingredients_inci;
     patch.inci_list = seedData.inci_list;
     patch.ingredient_intel = seedData.ingredient_intel;
   }
@@ -668,6 +709,8 @@ module.exports = {
   _internals: {
     buildNextSeedData,
     buildServingPatch,
+    hasStructuredInci,
+    parseInciItems,
     readManifestEntries,
     validateEntry,
   },

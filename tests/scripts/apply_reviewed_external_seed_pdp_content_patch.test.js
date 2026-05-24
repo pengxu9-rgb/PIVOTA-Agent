@@ -2,6 +2,7 @@ const {
   _internals: {
     buildNextSeedData,
     buildServingPatch,
+    parseInciItems,
     readManifestEntries,
     validateEntry,
   },
@@ -192,6 +193,62 @@ describe('apply-reviewed-external-seed-pdp-content-patch', () => {
     expect(result.fields).toEqual(expect.arrayContaining(['pdp_ingredients_raw']));
     expect(result.seedData.description).toBe(row.seed_data.description);
     expect(result.seedData.pdp_ingredients_raw).toBe(entry.pdp_ingredients_raw);
+    expect(result.seedData.ingredients_inci).toEqual([
+      'Dimethicone',
+      'Silica',
+      'Trimethylsiloxysilicate',
+      'Polyisobutene',
+      'Polyethylene',
+      'Ozokerite',
+      'Titanium Dioxide.',
+    ]);
+  });
+
+  test('normalizes reviewed raw INCI text into a structured ingredients array', () => {
+    expect(
+      parseInciItems(
+        'SIMMONDSIA CHINENSIS SEED OIL */**, SQUALANE *, PARFUM * (natural identical) * Ingredients from natural origin (99.5%)',
+      ),
+    ).toEqual(['SIMMONDSIA CHINENSIS SEED OIL', 'SQUALANE', 'PARFUM (natural identical)']);
+  });
+
+  test('patches same raw INCI when structured ingredients are missing', () => {
+    const [entry] = readManifestEntries({
+      reviewed_by: 'codex',
+      evidence: 'Official PDP ingredients were reviewed and need structured INCI normalization.',
+      source_url: 'https://brand.example/products/oil',
+      source_kind: 'official_pdp_ingredients_reviewed',
+      entries: [
+        {
+          external_product_id: 'ext_same_raw_missing_structured',
+          pdp_ingredients_raw:
+            'SIMMONDSIA CHINENSIS SEED OIL */**, MACADAMIA TERNIFOLIA SEED OIL *, SQUALANE *, TOCOPHEROL *',
+        },
+      ],
+    });
+
+    const result = buildNextSeedData(
+      {
+        external_product_id: 'ext_same_raw_missing_structured',
+        seed_data: {
+          pdp_ingredients_raw: entry.pdp_ingredients_raw,
+          raw_ingredient_text_clean: entry.pdp_ingredients_raw,
+          inci_list: entry.pdp_ingredients_raw,
+          snapshot: {},
+        },
+      },
+      entry,
+      '2026-05-24T00:00:00.000Z',
+    );
+
+    expect(result.changed).toBe(true);
+    expect(result.fields).toEqual(expect.arrayContaining(['ingredients_inci']));
+    expect(result.seedData.ingredients_inci).toEqual([
+      'SIMMONDSIA CHINENSIS SEED OIL',
+      'MACADAMIA TERNIFOLIA SEED OIL',
+      'SQUALANE',
+      'TOCOPHEROL',
+    ]);
   });
 
   test('materializes canonical ingredient fields when only legacy aliases are populated', () => {

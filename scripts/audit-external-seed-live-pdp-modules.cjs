@@ -233,6 +233,13 @@ function analyzeVariant(pdp) {
   };
 }
 
+function requiresVariantClarity(variant) {
+  const comparableVariantAxis = variant.variant_count > 1 || variant.label_count > 1;
+  const unresolvedBadAxis =
+    variant.bad_labels.length > 0 && (variant.variant_count > 1 || variant.label_count > 0);
+  return comparableVariantAxis || unresolvedBadAxis;
+}
+
 function analyzeReviews(pdp) {
   const data = moduleData(pdp, 'reviews_preview');
   const starDistribution = asArray(data.star_distribution || data.rating_distribution);
@@ -400,15 +407,12 @@ function buildRowAudit(row, probe, probedProductId = '') {
   const gallery = analyzeGallery(pdp);
   const similar = analyzeSimilar(pdp);
   const productKind = analyzeProductKind(row, pdp);
-  const requiresVariantClarity =
-    productKind.formula_content_required ||
-    variant.bad_labels.length > 0 ||
-    variant.variant_count > 1;
+  const requiresReadableVariantAxis = requiresVariantClarity(variant);
   const requiresHowTo = productKind.formula_content_required;
 
   const blockingReasons = [];
   if (!gallery.ok) blockingReasons.push('gallery_missing_or_bloated');
-  if (requiresVariantClarity && !variant.ok) blockingReasons.push('missing_variant_clarity');
+  if (requiresReadableVariantAxis && !variant.ok) blockingReasons.push('missing_variant_clarity');
   if (!insights.ok) blockingReasons.push('missing_or_weak_insights');
   if (insights.seller_only_evidence) blockingReasons.push('seller_only_insights');
   if (!reviews.ok) blockingReasons.push('missing_reviews_chart');
@@ -422,7 +426,7 @@ function buildRowAudit(row, probe, probedProductId = '') {
 
   const coreReady =
     gallery.ok &&
-    (!requiresVariantClarity || variant.ok) &&
+    (!requiresReadableVariantAxis || variant.ok) &&
     insights.ok &&
     !insights.seller_only_evidence &&
     reviews.ok &&
@@ -607,5 +611,6 @@ module.exports = {
   analyzeReviews,
   analyzeVariant,
   buildRowAudit,
+  requiresVariantClarity,
   summarize,
 };

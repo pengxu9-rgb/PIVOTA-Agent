@@ -1,0 +1,283 @@
+{
+  "generated_at": "2026-05-24T05:07:18.886Z",
+  "scope": "Wave6 Markato batch 1",
+  "output_dir": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1",
+  "guardrails_observed": {
+    "railway_up": false,
+    "git_push": false,
+    "db_apply_or_production_write": false,
+    "dry_run_database_url_forced_unset": true
+  },
+  "source_note": "MASAMI live manifest extraction hit sandbox DNS block; escalated catalog-intelligence retry was rejected by sandbox reviewer, so cached read-only manifests were used where present. Depuravita has no cached manifest and is represented as a zero-item extractor blocker manifest.",
+  "totals": {
+    "brand_count": 7,
+    "manifest_item_count": 132,
+    "generic_review_accepted_item_count": 131,
+    "conservative_db_ready_count": 1,
+    "conservative_hold_count": 131,
+    "blocker_brand_count": 3,
+    "dry_run_scanned": 1,
+    "dry_run_would_insert_unverified": 1,
+    "dry_run_invalid": 0
+  },
+  "db_ready_candidates": [
+    {
+      "brand": "Aetas",
+      "slug": "aetas",
+      "priority": "P1",
+      "category": "Skincare",
+      "score": 77,
+      "signals": 6,
+      "title": "The Serum",
+      "target_url": "https://aetasofficial.com/products/serum",
+      "external_product_id": "ext_38b10ae142ef283bdc0acca8",
+      "seed_id": "eps_00b1b6dc2b0d11c894a13934",
+      "price_amount": 60,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "decision": "db_ready_candidate",
+      "reason_codes": [],
+      "dry_run_status": "would_insert_unverified",
+      "dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/dry_runs/aetas.json"
+    }
+  ],
+  "holds_by_reason": {
+    "anti_abuse_signal_perimeterx": 100,
+    "marketplace_third_party_contamination": 100,
+    "non_us_currency_market_mismatch": 126,
+    "out_of_stock": 7,
+    "regulated_wellness_supplement_claims_hold": 2,
+    "therapeutic_claims_hold": 6,
+    "therapeutic_or_high_claim_skincare_hold": 16
+  },
+  "brand_summaries": [
+    {
+      "brand": "MASAMI",
+      "category": "Haircare",
+      "manifest_items": 100,
+      "review_ok": false,
+      "review_accepted": 99,
+      "db_ready": 0,
+      "holds": 100,
+      "blockers": [
+        "anti_abuse_signal:perimeterx"
+      ],
+      "hold_reasons": [
+        "anti_abuse_signal_perimeterx",
+        "marketplace_third_party_contamination",
+        "non_us_currency_market_mismatch",
+        "out_of_stock"
+      ],
+      "manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/manifests/masami.json",
+      "review_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/reviews/masami.json"
+    },
+    {
+      "brand": "Herbalore",
+      "category": "Wellness and Supplements",
+      "manifest_items": 2,
+      "review_ok": true,
+      "review_accepted": 2,
+      "db_ready": 0,
+      "holds": 2,
+      "blockers": [],
+      "hold_reasons": [
+        "regulated_wellness_supplement_claims_hold"
+      ],
+      "manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/manifests/herbalore.json",
+      "review_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/reviews/herbalore.json"
+    },
+    {
+      "brand": "NOVOS",
+      "category": "Wellness and Supplements",
+      "manifest_items": 0,
+      "review_ok": false,
+      "review_accepted": 0,
+      "db_ready": 0,
+      "holds": 0,
+      "blockers": [
+        "zero_accepted_items_from_extractor",
+        "zero_accepted_items_from_extractor",
+        "zero_curatable_rows_from_extractor"
+      ],
+      "hold_reasons": [],
+      "manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/manifests/novos.json",
+      "review_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/reviews/novos.json"
+    },
+    {
+      "brand": "Therapy Notebooks",
+      "category": "Wellness and Supplements",
+      "manifest_items": 6,
+      "review_ok": true,
+      "review_accepted": 6,
+      "db_ready": 0,
+      "holds": 6,
+      "blockers": [],
+      "hold_reasons": [
+        "therapeutic_claims_hold",
+        "non_us_currency_market_mismatch"
+      ],
+      "manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/manifests/therapy-notebooks.json",
+      "review_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/reviews/therapy-notebooks.json"
+    },
+    {
+      "brand": "Lhamour",
+      "category": "Skincare",
+      "manifest_items": 20,
+      "review_ok": true,
+      "review_accepted": 20,
+      "db_ready": 0,
+      "holds": 20,
+      "blockers": [],
+      "hold_reasons": [
+        "non_us_currency_market_mismatch",
+        "therapeutic_or_high_claim_skincare_hold"
+      ],
+      "manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/manifests/lhamour.json",
+      "review_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/reviews/lhamour.json"
+    },
+    {
+      "brand": "Depuravita",
+      "category": "Wellness and Supplements",
+      "manifest_items": 0,
+      "review_ok": false,
+      "review_accepted": 0,
+      "db_ready": 0,
+      "holds": 0,
+      "blockers": [
+        "zero_accepted_items_from_extractor",
+        "zero_accepted_items_from_extractor",
+        "catalog_intelligence_dns_blocked_in_sandbox"
+      ],
+      "hold_reasons": [],
+      "manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/manifests/depuravita.json",
+      "review_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/reviews/depuravita.json"
+    },
+    {
+      "brand": "Aetas",
+      "category": "Skincare",
+      "manifest_items": 4,
+      "review_ok": true,
+      "review_accepted": 4,
+      "db_ready": 1,
+      "holds": 3,
+      "blockers": [],
+      "hold_reasons": [
+        "out_of_stock"
+      ],
+      "manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/manifests/aetas.json",
+      "review_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/reviews/aetas.json"
+    }
+  ],
+  "blockers": [
+    {
+      "brand": "MASAMI",
+      "slug": "masami",
+      "blocker_reasons": [
+        "anti_abuse_signal:perimeterx"
+      ],
+      "manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/manifests/masami.json",
+      "review_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/reviews/masami.json"
+    },
+    {
+      "brand": "NOVOS",
+      "slug": "novos",
+      "blocker_reasons": [
+        "zero_accepted_items_from_extractor",
+        "zero_curatable_rows_from_extractor"
+      ],
+      "manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/manifests/novos.json",
+      "review_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/reviews/novos.json"
+    },
+    {
+      "brand": "Depuravita",
+      "slug": "depuravita",
+      "blocker_reasons": [
+        "zero_accepted_items_from_extractor",
+        "catalog_intelligence_dns_blocked_in_sandbox"
+      ],
+      "manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/manifests/depuravita.json",
+      "review_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/reviews/depuravita.json"
+    }
+  ],
+  "dry_run": {
+    "path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/dry_runs/aetas.json",
+    "mode": "dry_run",
+    "database_available": false,
+    "apply_summary": {
+      "mode": "dry_run",
+      "database_available": false,
+      "scanned": 1,
+      "inserted": 0,
+      "skipped_existing": 0,
+      "would_insert": 0,
+      "would_insert_unverified": 1,
+      "invalid": 0,
+      "requires_seed_correction_count": 0
+    },
+    "correction_plan_count": 0
+  },
+  "next_steps": [
+    "Apply nothing from this batch without a separate approved DB/prod write lane.",
+    "Aetas: only The Serum is a DB-ready candidate from this run; if approved later, apply just the curated Aetas manifest and then run a live PDP/no-cache postcheck.",
+    "Aetas: keep The Moisturizer, The Cleanser, and The Lotion held until official inventory is in_stock.",
+    "MASAMI: do not apply the cached manifest; rerun extraction only after catalog-intelligence access is explicitly approved and scope extraction to brand-owned MASAMI PDPs/preferred titles to remove marketplace and third-party contamination.",
+    "Herbalore, NOVOS, Therapy Notebooks, and Depuravita: keep in claims lane only; require regulated wellness/therapeutic claim review before any seed creation.",
+    "Lhamour: hold all rows for US seed creation until USD/US-market extraction is available; separately review high-claim skincare rows before any later apply lane.",
+    "Depuravita: rerun manifest extraction when network/catalog-intelligence access is available; this batch only has a zero-item blocker artifact."
+  ],
+  "files_changed": [
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/accepted_manifests/aetas.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/accepted_manifests/herbalore.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/accepted_manifests/lhamour.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/accepted_manifests/therapy-notebooks.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/batch_summary.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/batch_summary.md",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/curated_manifests/aetas.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/curation/curated_decisions.csv",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/curation/curated_decisions.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/curation/curation_summary.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/dry_runs/aetas.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/logs/aetas.dry_run.stderr.log",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/logs/aetas.dry_run.stdout.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/logs/aetas.review.stderr.log",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/logs/aetas.review.stdout.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/logs/depuravita.manifest.stderr.log",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/logs/depuravita.manifest.stdout.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/logs/depuravita.review.stderr.log",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/logs/depuravita.review.stdout.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/logs/herbalore.review.stderr.log",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/logs/herbalore.review.stdout.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/logs/lhamour.review.stderr.log",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/logs/lhamour.review.stdout.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/logs/masami.manifest.stderr.log",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/logs/masami.manifest.stdout.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/logs/masami.review.stderr.log",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/logs/masami.review.stdout.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/logs/novos.review.stderr.log",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/logs/novos.review.stdout.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/logs/review_runner_status.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/logs/therapy-notebooks.review.stderr.log",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/logs/therapy-notebooks.review.stdout.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/manifests/aetas.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/manifests/depuravita.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/manifests/herbalore.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/manifests/lhamour.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/manifests/masami.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/manifests/novos.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/manifests/therapy-notebooks.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/reviews/aetas.csv",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/reviews/aetas.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/reviews/depuravita.csv",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/reviews/depuravita.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/reviews/herbalore.csv",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/reviews/herbalore.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/reviews/lhamour.csv",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/reviews/lhamour.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/reviews/masami.csv",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/reviews/masami.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/reviews/novos.csv",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/reviews/novos.json",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/reviews/therapy-notebooks.csv",
+    "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/agent_wave6_batch_1/reviews/therapy-notebooks.json"
+  ]
+}

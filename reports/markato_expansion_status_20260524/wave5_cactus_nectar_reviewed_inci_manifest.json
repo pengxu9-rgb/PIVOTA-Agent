@@ -1,0 +1,27 @@
+{
+  "market": "US",
+  "reviewed_by": "codex_review",
+  "reason": "wave5_cactus_nectar_source_backed_inci_normalization",
+  "source_kind": "official_pdp_structured_section",
+  "entries": [
+    {
+      "external_product_id": "ext_ab1e091b3576e74f9c8c69a4",
+      "source_url": "https://joujoubotanicals.com/products/cactus-nectar-hydrating-cream-mist",
+      "evidence": "Catalog extract captured official PDP accordion Ingredients and How to Use sections for Cactus Nectar; current live row is blocked by Shopify variant JSON in raw ingredient fields.",
+      "pdp_how_to_use_raw": "Apply to clean skin. Follow with Face Oil and Moisturizers. Can be used as a makeup primer, body and hair mist, or refreshment during the day.",
+      "pdp_ingredients_raw": "AQUA, BETAINE, PROPANEDIOL, ETHYLHEXYL PELARGONATE, GLYCERYL CITRATE/LACTATE/LINOLEATE/OLEATE, GLYCERYL CAPRYLATE, POLYGLYCERYL-3 CAPRATE, POLYGLYCERYL-4 COCOATE, BENZYL ALCOHOL, ECTOIN, OPUNTIA FICUS-INDICA FRUIT EXTRACT, PARFUM (natural identical), DEHYDROACETIC ACID, LACTOBACILLUS FERMENT",
+      "pdp_details_sections": [
+        {
+          "heading": "How to Use",
+          "body": "Apply to clean skin. Follow with Face Oil and Moisturizers. Can be used as a makeup primer, body and hair mist, or refreshment during the day.",
+          "source_kind": "accordion_how_to_use"
+        },
+        {
+          "heading": "Ingredients",
+          "body": "AQUA, BETAINE, PROPANEDIOL, ETHYLHEXYL PELARGONATE, GLYCERYL CITRATE/LACTATE/LINOLEATE/OLEATE, GLYCERYL CAPRYLATE, POLYGLYCERYL-3 CAPRATE, POLYGLYCERYL-4 COCOATE, BENZYL ALCOHOL, ECTOIN, OPUNTIA FICUS-INDICA FRUIT EXTRACT, PARFUM (natural identical), DEHYDROACETIC ACID, LACTOBACILLUS FERMENT",
+          "source_kind": "accordion_ingredients"
+        }
+      ]
+    }
+  ]
+}

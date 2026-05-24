@@ -1,0 +1,56 @@
+[
+  {
+    "brand": "Lhamour",
+    "domain": "lhamour.com",
+    "tier": "P1",
+    "category": "Skincare",
+    "score": 79,
+    "product_signal_count": 20,
+    "lane": "low_risk_beauty_quality"
+  },
+  {
+    "brand": "DAEBY",
+    "domain": "daebyskin.com",
+    "tier": "P1",
+    "category": "Skincare",
+    "score": 77,
+    "product_signal_count": 7,
+    "lane": "low_risk_beauty_quality"
+  },
+  {
+    "brand": "Aetas",
+    "domain": "aetasofficial.com",
+    "tier": "P1",
+    "category": "Skincare",
+    "score": 77,
+    "product_signal_count": 6,
+    "lane": "low_risk_beauty_quality"
+  },
+  {
+    "brand": "KHUS KHUS modern herbal fusion",
+    "domain": "khus-khus.com",
+    "tier": "P1",
+    "category": "Skincare",
+    "score": 77,
+    "product_signal_count": 6,
+    "lane": "low_risk_beauty_quality"
+  },
+  {
+    "brand": "Seresilk",
+    "domain": "seresilk.com.au",
+    "tier": "P1",
+    "category": "Skincare",
+    "score": 77,
+    "product_signal_count": 10,
+    "lane": "low_risk_beauty_quality"
+  },
+  {
+    "brand": "MASAMI",
+    "domain": "lovemasami.com",
+    "tier": "P0",
+    "category": "Haircare",
+    "score": 81,
+    "product_signal_count": 143,
+    "lane": "strategic_p0_haircare_pilot"
+  }
+]
