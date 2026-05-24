@@ -1,0 +1,2 @@
+brand,slug,decision,reasons,title,url,seed_id,external_product_id,price_amount,price_currency,availability,commerce_facts_gate_status,commerce_facts_problems
+ashbury BLOOM,ashbury_bloom,hold,not_single_product_pdp:category_page|not_single_product_pdp:unrecognized_product_path|commerce_facts_gate_hold|commerce_facts_problem:missing_multi_offer_merge_candidate,Bath and Body,https://ashburybloom.ca/product-category/bath-and-body/,eps_f37741c1da2e6b2c5d4bdc10,ext_da2d77bcd74b0f0a900ccd9e,12,USD,in_stock,hold,missing_multi_offer_merge_candidate

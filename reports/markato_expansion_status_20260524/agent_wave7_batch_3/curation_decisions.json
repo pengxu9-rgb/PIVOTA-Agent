@@ -1,0 +1,1934 @@
+{
+  "generated_at": "2026-05-24T06:14:35.607Z",
+  "decisions": [
+    {
+      "brand": "Bonjour La Vie",
+      "slug": "bonjour-la-vie",
+      "title": "Example product",
+      "seed_id": "eps_7122260ffa416cfa587cea1f",
+      "external_product_id": "ext_a1c17db9a89bbfa7a66e9795",
+      "url": "https://bonjourlavie.it/products/beauty-example-product-4",
+      "price_amount": 100,
+      "price_currency": "EUR",
+      "observed_currency": "EUR",
+      "availability": "out_of_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "missing_description",
+        "non_us_currency_or_market_mismatch",
+        "market_currency_mismatch",
+        "out_of_stock_or_unavailable",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "placeholder_or_demo_product",
+        "non_english_or_local_market_copy_for_us_review"
+      ]
+    },
+    {
+      "brand": "Bonjour La Vie",
+      "slug": "bonjour-la-vie",
+      "title": "Rebalancing Serum Oil",
+      "seed_id": "eps_b370d9977b01d5866e5f447a",
+      "external_product_id": "ext_afe178e28275b9e0bddbb3b2",
+      "url": "https://bonjourlavie.it/products/rebalancing-serum-oil-1",
+      "price_amount": 45,
+      "price_currency": "EUR",
+      "observed_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "missing_description",
+        "non_us_currency_or_market_mismatch",
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "non_english_or_local_market_copy_for_us_review"
+      ]
+    },
+    {
+      "brand": "Bonjour La Vie",
+      "slug": "bonjour-la-vie",
+      "title": "Rebalancing Fresh Cream",
+      "seed_id": "eps_4e8e95db5b10a95be51b30d8",
+      "external_product_id": "ext_4de2a6cbc9092468fb7a5445",
+      "url": "https://bonjourlavie.it/products/rebalancing-fresh-cream-1",
+      "price_amount": 55,
+      "price_currency": "EUR",
+      "observed_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "missing_description",
+        "non_us_currency_or_market_mismatch",
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "non_english_or_local_market_copy_for_us_review"
+      ]
+    },
+    {
+      "brand": "Bonjour La Vie",
+      "slug": "bonjour-la-vie",
+      "title": "Replenish Serum Oil | Journey Edition",
+      "seed_id": "eps_c71c66235ab61022d6eb6c1a",
+      "external_product_id": "ext_931cda3fcb6ac5637ae6519c",
+      "url": "https://bonjourlavie.it/products/replenish-serum-oil-journey-edition",
+      "price_amount": 18,
+      "price_currency": "EUR",
+      "observed_currency": "EUR",
+      "availability": "out_of_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "non_us_currency_or_market_mismatch",
+        "market_currency_mismatch",
+        "out_of_stock_or_unavailable",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "bundle_set_sample_or_travel_size",
+        "non_english_or_local_market_copy_for_us_review"
+      ]
+    },
+    {
+      "brand": "Bonjour La Vie",
+      "slug": "bonjour-la-vie",
+      "title": "Rebalancing Fresh Cream  | Journey Edition",
+      "seed_id": "eps_f9a128aca8508422ebdbbd69",
+      "external_product_id": "ext_14ca03ea36e9e08cea65f262",
+      "url": "https://bonjourlavie.it/products/rebalancing-fresh-cream-journey-edition",
+      "price_amount": 18,
+      "price_currency": "EUR",
+      "observed_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "non_us_currency_or_market_mismatch",
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "bundle_set_sample_or_travel_size",
+        "non_english_or_local_market_copy_for_us_review"
+      ]
+    },
+    {
+      "brand": "Bonjour La Vie",
+      "slug": "bonjour-la-vie",
+      "title": "One Step Cleansing Milk 50 ml",
+      "seed_id": "eps_975abb25d18da9c07d414000",
+      "external_product_id": "ext_46aae47b60845f24855d2ba6",
+      "url": "https://bonjourlavie.it/products/one-step-cleansing-milk-journey-edition",
+      "price_amount": 15,
+      "price_currency": "EUR",
+      "observed_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "missing_description",
+        "non_us_currency_or_market_mismatch",
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "non_english_or_local_market_copy_for_us_review"
+      ]
+    },
+    {
+      "brand": "Bonjour La Vie",
+      "slug": "bonjour-la-vie",
+      "title": "Hydra Comfort Cream | Journey Edition",
+      "seed_id": "eps_853f14fc8da0ae393ba0a481",
+      "external_product_id": "ext_ea7e8dc43ea6f32329f3dd26",
+      "url": "https://bonjourlavie.it/products/hydra-comfort-cream-journey-edition",
+      "price_amount": 18,
+      "price_currency": "EUR",
+      "observed_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "non_us_currency_or_market_mismatch",
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "bundle_set_sample_or_travel_size",
+        "non_english_or_local_market_copy_for_us_review"
+      ]
+    },
+    {
+      "brand": "Bonjour La Vie",
+      "slug": "bonjour-la-vie",
+      "title": "Biphasic MakeUp Remover 50 ml",
+      "seed_id": "eps_08570198378a1ff464eb2c20",
+      "external_product_id": "ext_5ba151aa633db7ada3b2d920",
+      "url": "https://bonjourlavie.it/products/biphasic-makeup-remover-journey-edition",
+      "price_amount": 15,
+      "price_currency": "EUR",
+      "observed_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "missing_description",
+        "non_us_currency_or_market_mismatch",
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "non_english_or_local_market_copy_for_us_review"
+      ]
+    },
+    {
+      "brand": "Bonjour La Vie",
+      "slug": "bonjour-la-vie",
+      "title": "All Over Toner Mist",
+      "seed_id": "eps_de23580cfefb371c6cf6daf9",
+      "external_product_id": "ext_17f17390b0efdb140f404e35",
+      "url": "https://bonjourlavie.it/products/all-over-toner-mist-journey-edition",
+      "price_amount": 15,
+      "price_currency": "EUR",
+      "observed_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "missing_description",
+        "non_us_currency_or_market_mismatch",
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "non_english_or_local_market_copy_for_us_review"
+      ]
+    },
+    {
+      "brand": "Bonjour La Vie",
+      "slug": "bonjour-la-vie",
+      "title": "Replenish Serum Oil",
+      "seed_id": "eps_1f714f51b0e19788e760c092",
+      "external_product_id": "ext_96883b61cc20c489f9668705",
+      "url": "https://bonjourlavie.it/products/replenish-serum-oil",
+      "price_amount": 45,
+      "price_currency": "EUR",
+      "observed_currency": "EUR",
+      "availability": "out_of_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "non_us_currency_or_market_mismatch",
+        "market_currency_mismatch",
+        "out_of_stock_or_unavailable",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "non_english_or_local_market_copy_for_us_review"
+      ]
+    },
+    {
+      "brand": "Bonjour La Vie",
+      "slug": "bonjour-la-vie",
+      "title": "One Step Cleansing Milk",
+      "seed_id": "eps_d063fd6abe6ec78447374ad3",
+      "external_product_id": "ext_73648e724af8e3684cf33b90",
+      "url": "https://bonjourlavie.it/products/one-step-cleansing-milk",
+      "price_amount": 32,
+      "price_currency": "EUR",
+      "observed_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "missing_description",
+        "non_us_currency_or_market_mismatch",
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "non_english_or_local_market_copy_for_us_review"
+      ]
+    },
+    {
+      "brand": "Bonjour La Vie",
+      "slug": "bonjour-la-vie",
+      "title": "Hydra Comfort Cream",
+      "seed_id": "eps_36944c58fdeb1f8fbf8cbf28",
+      "external_product_id": "ext_41ebb421d85f81357a8cd831",
+      "url": "https://bonjourlavie.it/products/hydra-comfort-cream",
+      "price_amount": 55,
+      "price_currency": "EUR",
+      "observed_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "missing_description",
+        "non_us_currency_or_market_mismatch",
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "non_english_or_local_market_copy_for_us_review"
+      ]
+    },
+    {
+      "brand": "Bonjour La Vie",
+      "slug": "bonjour-la-vie",
+      "title": "EverSolution Serum Oil",
+      "seed_id": "eps_04857e58a1780a6b9b9dca81",
+      "external_product_id": "ext_eeaf104684f8acb484de11a1",
+      "url": "https://bonjourlavie.it/products/eversolution-serum-oil",
+      "price_amount": 45,
+      "price_currency": "EUR",
+      "observed_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "missing_description",
+        "non_us_currency_or_market_mismatch",
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "non_english_or_local_market_copy_for_us_review"
+      ]
+    },
+    {
+      "brand": "Bonjour La Vie",
+      "slug": "bonjour-la-vie",
+      "title": "Day And Night BioRevitalizing Cream",
+      "seed_id": "eps_7784f90e8086ee2b158fe87f",
+      "external_product_id": "ext_fcf5b6e17dd72158d47f3d22",
+      "url": "https://bonjourlavie.it/products/day-and-night-biorevitalizing-cream",
+      "price_amount": 65,
+      "price_currency": "EUR",
+      "observed_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "missing_description",
+        "non_us_currency_or_market_mismatch",
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "non_english_or_local_market_copy_for_us_review"
+      ]
+    },
+    {
+      "brand": "Bonjour La Vie",
+      "slug": "bonjour-la-vie",
+      "title": "Biphasic Make-Up Remover",
+      "seed_id": "eps_cc7d83e2b8225304f9b431be",
+      "external_product_id": "ext_b77f975808f6437aa23ae97d",
+      "url": "https://bonjourlavie.it/products/biphasic-makeup-remover-eyes-lips",
+      "price_amount": 32,
+      "price_currency": "EUR",
+      "observed_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "missing_description",
+        "non_us_currency_or_market_mismatch",
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "non_english_or_local_market_copy_for_us_review"
+      ]
+    },
+    {
+      "brand": "Bonjour La Vie",
+      "slug": "bonjour-la-vie",
+      "title": "All In One Eye And Lip Contour Cream",
+      "seed_id": "eps_72a59978c6c84f6becc4c978",
+      "external_product_id": "ext_71c8f622f3925dbe2a4edda7",
+      "url": "https://bonjourlavie.it/products/all-in-one-eye-and-lip-contour-cream",
+      "price_amount": 52,
+      "price_currency": "EUR",
+      "observed_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "missing_description",
+        "non_us_currency_or_market_mismatch",
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "non_english_or_local_market_copy_for_us_review"
+      ]
+    },
+    {
+      "brand": "MANISANTE",
+      "slug": "manisante",
+      "title": "Superskin / Profumo in Olio",
+      "seed_id": "eps_850ba012084a07c0704306ed",
+      "external_product_id": "ext_0bbf182fcd548d4b4521b879",
+      "url": "https://manisante.it/products/superskin-profumo-in-olio",
+      "price_amount": 44,
+      "price_currency": "EUR",
+      "observed_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "non_us_currency_or_market_mismatch",
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "review_gate_blocker:anti_abuse_signal:perimeterx",
+        "non_english_or_local_market_copy_for_us_review"
+      ]
+    },
+    {
+      "brand": "MANISANTE",
+      "slug": "manisante",
+      "title": "Oud / Balsamo per i capelli",
+      "seed_id": "eps_d8d2265764ce2c99fb2aaeb8",
+      "external_product_id": "ext_6ab542b2f47aafea94bc35da",
+      "url": "https://manisante.it/products/oud-balsamo",
+      "price_amount": 33,
+      "price_currency": "EUR",
+      "observed_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "non_us_currency_or_market_mismatch",
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "review_gate_blocker:anti_abuse_signal:perimeterx",
+        "non_english_or_local_market_copy_for_us_review"
+      ]
+    },
+    {
+      "brand": "MANISANTE",
+      "slug": "manisante",
+      "title": "Alajuela Leather / Profumo in Olio",
+      "seed_id": "eps_7b8b90c0d16b1b0e0e57e539",
+      "external_product_id": "ext_7ec2ae6f70fb48fa4694d497",
+      "url": "https://manisante.it/products/alajuela-leather-profumo-in-olio",
+      "price_amount": 44,
+      "price_currency": "EUR",
+      "observed_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "non_us_currency_or_market_mismatch",
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "review_gate_blocker:anti_abuse_signal:perimeterx",
+        "non_english_or_local_market_copy_for_us_review"
+      ]
+    },
+    {
+      "brand": "MANISANTE",
+      "slug": "manisante",
+      "title": "Ice Peach / Profumo in Olio",
+      "seed_id": "eps_078e5a828f3b350340c7c7f8",
+      "external_product_id": "ext_896f31c6edee4d0b579399f9",
+      "url": "https://manisante.it/products/ice-peach-profumo-in-olio",
+      "price_amount": 44,
+      "price_currency": "EUR",
+      "observed_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "non_us_currency_or_market_mismatch",
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "review_gate_blocker:anti_abuse_signal:perimeterx",
+        "non_english_or_local_market_copy_for_us_review"
+      ]
+    },
+    {
+      "brand": "MANISANTE",
+      "slug": "manisante",
+      "title": "Suntan Santal / Profumo in Olio",
+      "seed_id": "eps_8b7f69f9846aa0ff4f80b2d3",
+      "external_product_id": "ext_2ecfb30e38f578e53069193d",
+      "url": "https://manisante.it/products/suntan-santal-profumo-in-olio",
+      "price_amount": 44,
+      "price_currency": "EUR",
+      "observed_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "non_us_currency_or_market_mismatch",
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "review_gate_blocker:anti_abuse_signal:perimeterx",
+        "non_english_or_local_market_copy_for_us_review"
+      ]
+    },
+    {
+      "brand": "MANISANTE",
+      "slug": "manisante",
+      "title": "Tobacco Marquis / Profumo in Olio",
+      "seed_id": "eps_59a2cae8c4aadbf445c108ac",
+      "external_product_id": "ext_102d6cd94c209974d963c33e",
+      "url": "https://manisante.it/products/tobacco-marquis-profumo-in-olio",
+      "price_amount": 44,
+      "price_currency": "EUR",
+      "observed_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "non_us_currency_or_market_mismatch",
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "review_gate_blocker:anti_abuse_signal:perimeterx",
+        "non_english_or_local_market_copy_for_us_review"
+      ]
+    },
+    {
+      "brand": "MANISANTE",
+      "slug": "manisante",
+      "title": "Geranio / Candela Profumata",
+      "seed_id": "eps_39d3df6fc0fe8583f62c0d5b",
+      "external_product_id": "ext_049dc354d20b3d3b7187c08b",
+      "url": "https://manisante.it/products/geranio-candela-profumata",
+      "price_amount": 50,
+      "price_currency": "EUR",
+      "observed_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "non_us_currency_or_market_mismatch",
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "review_gate_blocker:anti_abuse_signal:perimeterx",
+        "accessory_tool_home_or_non_beauty_row",
+        "non_english_or_local_market_copy_for_us_review"
+      ]
+    },
+    {
+      "brand": "MANISANTE",
+      "slug": "manisante",
+      "title": "Vetiver di Java / Candela Profumata",
+      "seed_id": "eps_4d2f41ae4c8a9df87dad7cd0",
+      "external_product_id": "ext_38326e70ec7d40c2c8396ed4",
+      "url": "https://manisante.it/products/vetiver-di-java-candela-profumata",
+      "price_amount": 50,
+      "price_currency": "EUR",
+      "observed_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "non_us_currency_or_market_mismatch",
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "review_gate_blocker:anti_abuse_signal:perimeterx",
+        "accessory_tool_home_or_non_beauty_row",
+        "non_english_or_local_market_copy_for_us_review"
+      ]
+    },
+    {
+      "brand": "MANISANTE",
+      "slug": "manisante",
+      "title": "Foglia di Fico / Candela Profumata",
+      "seed_id": "eps_12b853461e9875bd9a675f0d",
+      "external_product_id": "ext_7cf228ee32ce970fe4b3bace",
+      "url": "https://manisante.it/products/foglia-di-fico-candela-profumata",
+      "price_amount": 50,
+      "price_currency": "EUR",
+      "observed_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "non_us_currency_or_market_mismatch",
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "review_gate_blocker:anti_abuse_signal:perimeterx",
+        "accessory_tool_home_or_non_beauty_row",
+        "non_english_or_local_market_copy_for_us_review"
+      ]
+    },
+    {
+      "brand": "MANISANTE",
+      "slug": "manisante",
+      "title": "Vetiver di Java / Spray per l'ambiente",
+      "seed_id": "eps_f47a3f1a0774381f0005a5d8",
+      "external_product_id": "ext_33b4bc89006febc9656484ee",
+      "url": "https://manisante.it/products/vetiver-di-java-spray-per-lambiente",
+      "price_amount": 30,
+      "price_currency": "EUR",
+      "observed_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "non_us_currency_or_market_mismatch",
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "review_gate_blocker:anti_abuse_signal:perimeterx",
+        "accessory_tool_home_or_non_beauty_row",
+        "non_english_or_local_market_copy_for_us_review"
+      ]
+    },
+    {
+      "brand": "MANISANTE",
+      "slug": "manisante",
+      "title": "Vetiver di Java / Gel doccia per il corpo",
+      "seed_id": "eps_db49f53f033e49c9dfdda0c9",
+      "external_product_id": "ext_7c684511ce9afb7a24984833",
+      "url": "https://manisante.it/products/vetiver-di-java-gel-doccia",
+      "price_amount": 27,
+      "price_currency": "EUR",
+      "observed_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "non_us_currency_or_market_mismatch",
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "review_gate_blocker:anti_abuse_signal:perimeterx",
+        "non_english_or_local_market_copy_for_us_review"
+      ]
+    },
+    {
+      "brand": "MANISANTE",
+      "slug": "manisante",
+      "title": "Oud / Shampoo per i capelli",
+      "seed_id": "eps_030ff9311e91145b1035954f",
+      "external_product_id": "ext_a8964ca91f91fb9a8d00d1e4",
+      "url": "https://manisante.it/products/oud-shampoo-per-i-capelli",
+      "price_amount": 33,
+      "price_currency": "EUR",
+      "observed_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "non_us_currency_or_market_mismatch",
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "review_gate_blocker:anti_abuse_signal:perimeterx",
+        "non_english_or_local_market_copy_for_us_review"
+      ]
+    },
+    {
+      "brand": "MANISANTE",
+      "slug": "manisante",
+      "title": "Vetiver di Java / Crema per il corpo",
+      "seed_id": "eps_bd28fa3334c7e5958e502de8",
+      "external_product_id": "ext_afdb39e5bb0c103b0c5a7f59",
+      "url": "https://manisante.it/products/vetiver-crema-per-il-corpo",
+      "price_amount": 38,
+      "price_currency": "EUR",
+      "observed_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "non_us_currency_or_market_mismatch",
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "review_gate_blocker:anti_abuse_signal:perimeterx",
+        "non_english_or_local_market_copy_for_us_review"
+      ]
+    },
+    {
+      "brand": "MANISANTE",
+      "slug": "manisante",
+      "title": "Cedro / Crema per le mani",
+      "seed_id": "eps_0e4f6a8b2968deadd990524b",
+      "external_product_id": "ext_6cce5e4272dc090a170a8380",
+      "url": "https://manisante.it/products/cedro-crema-per-le-mani",
+      "price_amount": 38,
+      "price_currency": "EUR",
+      "observed_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "non_us_currency_or_market_mismatch",
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "review_gate_blocker:anti_abuse_signal:perimeterx",
+        "non_english_or_local_market_copy_for_us_review"
+      ]
+    },
+    {
+      "brand": "MANISANTE",
+      "slug": "manisante",
+      "title": "Cardamomo / Sapone liquido per le mani",
+      "seed_id": "eps_0c296365da880e0c39869851",
+      "external_product_id": "ext_0e728403020309ed63471440",
+      "url": "https://manisante.it/products/cardamomo-sapone-mani",
+      "price_amount": 27,
+      "price_currency": "EUR",
+      "observed_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "non_us_currency_or_market_mismatch",
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "review_gate_blocker:anti_abuse_signal:perimeterx",
+        "non_english_or_local_market_copy_for_us_review"
+      ]
+    },
+    {
+      "brand": "MANISANTE",
+      "slug": "manisante",
+      "title": "Cedro / Spray per l'ambiente",
+      "seed_id": "eps_28e5f0007e8422820f54782c",
+      "external_product_id": "ext_f07f048387c25351916df853",
+      "url": "https://manisante.it/products/cedro-spray-ambiente",
+      "price_amount": 30,
+      "price_currency": "EUR",
+      "observed_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "non_us_currency_or_market_mismatch",
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "review_gate_blocker:anti_abuse_signal:perimeterx",
+        "accessory_tool_home_or_non_beauty_row",
+        "non_english_or_local_market_copy_for_us_review"
+      ]
+    },
+    {
+      "brand": "MANISANTE",
+      "slug": "manisante",
+      "title": "Cedro / Sapone liquido per le mani",
+      "seed_id": "eps_094c98985f9c3da78520edc9",
+      "external_product_id": "ext_0ed82050f4e5971f3a01baa4",
+      "url": "https://manisante.it/products/cedro-sapone-mani",
+      "price_amount": 27,
+      "price_currency": "EUR",
+      "observed_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "non_us_currency_or_market_mismatch",
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "review_gate_blocker:anti_abuse_signal:perimeterx",
+        "non_english_or_local_market_copy_for_us_review"
+      ]
+    },
+    {
+      "brand": "MANISANTE",
+      "slug": "manisante",
+      "title": "Petitgrain / Spray per l'ambiente",
+      "seed_id": "eps_a49b1865f6023396eb009d46",
+      "external_product_id": "ext_e759ae1b39dcb4af04fcb848",
+      "url": "https://manisante.it/products/petitgrain-spray-ambiente",
+      "price_amount": 30,
+      "price_currency": "EUR",
+      "observed_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "non_us_currency_or_market_mismatch",
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "review_gate_blocker:anti_abuse_signal:perimeterx",
+        "accessory_tool_home_or_non_beauty_row",
+        "non_english_or_local_market_copy_for_us_review"
+      ]
+    },
+    {
+      "brand": "MANISANTE",
+      "slug": "manisante",
+      "title": "Geranio / Gel igienizzante con aloe",
+      "seed_id": "eps_320394248882adb4c90a68a8",
+      "external_product_id": "ext_d9df284fe86aa524fe236643",
+      "url": "https://manisante.it/products/geranio-gel-igienizzante",
+      "price_amount": 24,
+      "price_currency": "EUR",
+      "observed_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "non_us_currency_or_market_mismatch",
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "review_gate_blocker:anti_abuse_signal:perimeterx",
+        "regulated_wellness_supplement_or_therapeutic_claims_lane",
+        "non_english_or_local_market_copy_for_us_review"
+      ]
+    },
+    {
+      "brand": "MANISANTE",
+      "slug": "manisante",
+      "title": "Foglia di fico / Spray per l'ambiente",
+      "seed_id": "eps_e09454637b4fef2e35929cc0",
+      "external_product_id": "ext_4ad59bfac14210ef1aeb9166",
+      "url": "https://manisante.it/products/foglia-di-fico-spray-ambiente",
+      "price_amount": 30,
+      "price_currency": "EUR",
+      "observed_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "non_us_currency_or_market_mismatch",
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "review_gate_blocker:anti_abuse_signal:perimeterx",
+        "accessory_tool_home_or_non_beauty_row",
+        "non_english_or_local_market_copy_for_us_review"
+      ]
+    },
+    {
+      "brand": "MANISANTE",
+      "slug": "manisante",
+      "title": "Petitgrain / Sapone esfoliante per le mani",
+      "seed_id": "eps_1e2f370c07428ebab6437269",
+      "external_product_id": "ext_aab29f5e4d5261dd27cd5ac0",
+      "url": "https://manisante.it/products/petitgrain-sapone-mani-esfoliante",
+      "price_amount": 29,
+      "price_currency": "EUR",
+      "observed_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "non_us_currency_or_market_mismatch",
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "review_gate_blocker:anti_abuse_signal:perimeterx",
+        "non_english_or_local_market_copy_for_us_review"
+      ]
+    },
+    {
+      "brand": "MANISANTE",
+      "slug": "manisante",
+      "title": "Geranio / Gel doccia per il corpo",
+      "seed_id": "eps_f981675b89153fb451bb9fd9",
+      "external_product_id": "ext_3bc00ec0470a80b1c29801d7",
+      "url": "https://manisante.it/products/geranio-gel-doccia",
+      "price_amount": 27,
+      "price_currency": "EUR",
+      "observed_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "non_us_currency_or_market_mismatch",
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "review_gate_blocker:anti_abuse_signal:perimeterx",
+        "non_english_or_local_market_copy_for_us_review"
+      ]
+    },
+    {
+      "brand": "MANISANTE",
+      "slug": "manisante",
+      "title": "Foglia di fico / Gel doccia per il corpo",
+      "seed_id": "eps_5a2829e8b63de7fc56a0503b",
+      "external_product_id": "ext_8ff1f330d14fb51697a117aa",
+      "url": "https://manisante.it/products/foglia-di-fico-gel-doccia",
+      "price_amount": 27,
+      "price_currency": "EUR",
+      "observed_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "non_us_currency_or_market_mismatch",
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "review_gate_blocker:anti_abuse_signal:perimeterx",
+        "non_english_or_local_market_copy_for_us_review"
+      ]
+    },
+    {
+      "brand": "Merindah Botanicals",
+      "slug": "merindah-botanicals",
+      "title": "Hydrating Anti-Ageing Elixir",
+      "seed_id": "eps_d568e82d64c71e06e6e5cce2",
+      "external_product_id": "ext_6c9565974bbe7bf48d69c26a",
+      "url": "https://merindahbotanicals.com.au/products/hydrating-anti-ageing-elixir",
+      "price_amount": 64.95,
+      "price_currency": "USD",
+      "observed_currency": "AUD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "review_gate_blocker:anti_abuse_signal:perimeterx",
+        "regulated_wellness_supplement_or_therapeutic_claims_lane"
+      ]
+    },
+    {
+      "brand": "Merindah Botanicals",
+      "slug": "merindah-botanicals",
+      "title": "Nourishing Hand Cream",
+      "seed_id": "eps_982e29b75dd230930aead414",
+      "external_product_id": "ext_76d6f5f513a92a01e93e56ab",
+      "url": "https://merindahbotanicals.com.au/products/nourishing-hand-cream",
+      "price_amount": 35.95,
+      "price_currency": "USD",
+      "observed_currency": "AUD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "review_gate_blocker:anti_abuse_signal:perimeterx"
+      ]
+    },
+    {
+      "brand": "Merindah Botanicals",
+      "slug": "merindah-botanicals",
+      "title": "Gua Sha",
+      "seed_id": "eps_5a4af0f1c35594c4821215bb",
+      "external_product_id": "ext_e23b7cb98b76b139ff1e9ef0",
+      "url": "https://merindahbotanicals.com.au/products/gua-sha",
+      "price_amount": 29.95,
+      "price_currency": "USD",
+      "observed_currency": "AUD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "review_gate_blocker:anti_abuse_signal:perimeterx",
+        "accessory_tool_home_or_non_beauty_row"
+      ]
+    },
+    {
+      "brand": "Merindah Botanicals",
+      "slug": "merindah-botanicals",
+      "title": "Essential Beauty Pack",
+      "seed_id": "eps_02f9c53b106ba150509ed60b",
+      "external_product_id": "ext_61ed943ed6888c733b1cbab7",
+      "url": "https://merindahbotanicals.com.au/products/essential-beauty-pack",
+      "price_amount": 99.95,
+      "price_currency": "USD",
+      "observed_currency": "AUD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "review_gate_blocker:anti_abuse_signal:perimeterx",
+        "bundle_set_sample_or_travel_size"
+      ]
+    },
+    {
+      "brand": "Merindah Botanicals",
+      "slug": "merindah-botanicals",
+      "title": "Luxurious Face Cream",
+      "seed_id": "eps_e1c4e54758d0255bc4c8e0e6",
+      "external_product_id": "ext_704cae0bbc2c8f1ff59e12c5",
+      "url": "https://merindahbotanicals.com.au/products/luxurious-face-cream",
+      "price_amount": 44.95,
+      "price_currency": "USD",
+      "observed_currency": "AUD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "review_gate_blocker:anti_abuse_signal:perimeterx"
+      ]
+    },
+    {
+      "brand": "Merindah Botanicals",
+      "slug": "merindah-botanicals",
+      "title": "Uplifting Cleanser",
+      "seed_id": "eps_79ff8bfb4c76c07c347addc4",
+      "external_product_id": "ext_1b0dfaa34ac3416793d2a9e2",
+      "url": "https://merindahbotanicals.com.au/products/uplifting-cleanser",
+      "price_amount": 51.95,
+      "price_currency": "USD",
+      "observed_currency": "AUD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "review_gate_blocker:anti_abuse_signal:perimeterx"
+      ]
+    },
+    {
+      "brand": "Merindah Botanicals",
+      "slug": "merindah-botanicals",
+      "title": "Soothing Lip Balm",
+      "seed_id": "eps_82041d49d86770b8d35dcb75",
+      "external_product_id": "ext_72f062ebf6e27ebd2a5e09a7",
+      "url": "https://merindahbotanicals.com.au/products/soothing-lip-balm",
+      "price_amount": 18.95,
+      "price_currency": "USD",
+      "observed_currency": "AUD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "review_gate_blocker:anti_abuse_signal:perimeterx"
+      ]
+    },
+    {
+      "brand": "Merindah Botanicals",
+      "slug": "merindah-botanicals",
+      "title": "Nurturing Rosehip Oil",
+      "seed_id": "eps_5a8441acab32651dcdf40799",
+      "external_product_id": "ext_d8b94398fbae9924c20ddfb6",
+      "url": "https://merindahbotanicals.com.au/products/nurturing-rosehip-oil",
+      "price_amount": 39.95,
+      "price_currency": "USD",
+      "observed_currency": "AUD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "review_gate_blocker:anti_abuse_signal:perimeterx"
+      ]
+    },
+    {
+      "brand": "Merindah Botanicals",
+      "slug": "merindah-botanicals",
+      "title": "Invigorating Body Scrub",
+      "seed_id": "eps_e584e02a6e1c15b50fc311ee",
+      "external_product_id": "ext_318a6c5d8f5203c0c2aedfcb",
+      "url": "https://merindahbotanicals.com.au/products/invigorating-body-scrub",
+      "price_amount": 43.95,
+      "price_currency": "USD",
+      "observed_currency": "AUD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "review_gate_blocker:anti_abuse_signal:perimeterx"
+      ]
+    },
+    {
+      "brand": "Merindah Botanicals",
+      "slug": "merindah-botanicals",
+      "title": "Smoothing Exfoliating Mitt",
+      "seed_id": "eps_99a0e615698eddd22485b1f0",
+      "external_product_id": "ext_787cd6d6f47a8a67f04b7838",
+      "url": "https://merindahbotanicals.com.au/products/smoothing-exfoliating-mitt",
+      "price_amount": 13.95,
+      "price_currency": "USD",
+      "observed_currency": "AUD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "review_gate_blocker:anti_abuse_signal:perimeterx",
+        "accessory_tool_home_or_non_beauty_row",
+        "regulated_wellness_supplement_or_therapeutic_claims_lane"
+      ]
+    },
+    {
+      "brand": "Merindah Botanicals",
+      "slug": "merindah-botanicals",
+      "title": "Calming Toner",
+      "seed_id": "eps_a0c6ed8cb82163804c5b2966",
+      "external_product_id": "ext_534b421d635944e9caf999af",
+      "url": "https://merindahbotanicals.com.au/products/calming-toner",
+      "price_amount": 27.95,
+      "price_currency": "USD",
+      "observed_currency": "AUD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "review_gate_blocker:anti_abuse_signal:perimeterx"
+      ]
+    },
+    {
+      "brand": "Merindah Botanicals",
+      "slug": "merindah-botanicals",
+      "title": "Purifying Konjac Sponge",
+      "seed_id": "eps_9eaa58b348547af0d0bf3784",
+      "external_product_id": "ext_0395bc8c288563380240f8ef",
+      "url": "https://merindahbotanicals.com.au/products/purifying-konjac-sponge",
+      "price_amount": 19.95,
+      "price_currency": "USD",
+      "observed_currency": "AUD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "review_gate_blocker:anti_abuse_signal:perimeterx",
+        "accessory_tool_home_or_non_beauty_row"
+      ]
+    },
+    {
+      "brand": "Merindah Botanicals",
+      "slug": "merindah-botanicals",
+      "title": "Eco Makeup Cloth",
+      "seed_id": "eps_87744524d5fa5ad4172638b2",
+      "external_product_id": "ext_c22ea1d868722d08ca56d8b4",
+      "url": "https://merindahbotanicals.com.au/products/eco-makeup-cloth",
+      "price_amount": 23.95,
+      "price_currency": "USD",
+      "observed_currency": "AUD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "review_gate_blocker:anti_abuse_signal:perimeterx",
+        "accessory_tool_home_or_non_beauty_row"
+      ]
+    },
+    {
+      "brand": "NIMBUS CO",
+      "slug": "nimbus-co",
+      "title": "Head In The Clouds (Cream)",
+      "seed_id": "eps_535db1c8c39b4f075bb18437",
+      "external_product_id": "ext_3467830d2c09904d2764ba1f",
+      "url": "https://nimbusco.com.au/products/head-in-the-clouds-cream",
+      "price_amount": 40,
+      "price_currency": "USD",
+      "observed_currency": "AUD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "accessory_tool_home_or_non_beauty_row"
+      ]
+    },
+    {
+      "brand": "NIMBUS CO",
+      "slug": "nimbus-co",
+      "title": "Magnesium Spray",
+      "seed_id": "eps_9a5b7ff1eab37681fae26dba",
+      "external_product_id": "ext_b5da7956c5bf19f2703d7cc0",
+      "url": "https://nimbusco.com.au/products/magnesium-spray",
+      "price_amount": 39,
+      "price_currency": "USD",
+      "observed_currency": "AUD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "regulated_wellness_supplement_or_therapeutic_claims_lane"
+      ]
+    },
+    {
+      "brand": "NIMBUS CO",
+      "slug": "nimbus-co",
+      "title": "Ice Bath (Steel)",
+      "seed_id": "eps_0ab10b45f76bebe0335cb6e8",
+      "external_product_id": "ext_a91aed198ee16a92fd68d639",
+      "url": "https://nimbusco.com.au/products/ice-bath-steel",
+      "price_amount": 9990,
+      "price_currency": "USD",
+      "observed_currency": "AUD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "price_exceeds_250_usd_threshold",
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "accessory_tool_home_or_non_beauty_row",
+        "regulated_wellness_supplement_or_therapeutic_claims_lane"
+      ]
+    },
+    {
+      "brand": "NIMBUS CO",
+      "slug": "nimbus-co",
+      "title": "Face Gua Sha",
+      "seed_id": "eps_7824db5fcb087c89d58b21a4",
+      "external_product_id": "ext_10396ed87e3e8ed191a10fc9",
+      "url": "https://nimbusco.com.au/products/face-gua-sha",
+      "price_amount": 30,
+      "price_currency": "USD",
+      "observed_currency": "AUD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "accessory_tool_home_or_non_beauty_row",
+        "regulated_wellness_supplement_or_therapeutic_claims_lane"
+      ]
+    },
+    {
+      "brand": "NIMBUS CO",
+      "slug": "nimbus-co",
+      "title": "Ice Bath (Cedar)",
+      "seed_id": "eps_564da70f81a232d75f8e5e22",
+      "external_product_id": "ext_a4b6700b0baad7dd09633abf",
+      "url": "https://nimbusco.com.au/products/ice-bath",
+      "price_amount": 8490,
+      "price_currency": "USD",
+      "observed_currency": "AUD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "price_exceeds_250_usd_threshold",
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "accessory_tool_home_or_non_beauty_row",
+        "regulated_wellness_supplement_or_therapeutic_claims_lane"
+      ]
+    },
+    {
+      "brand": "NIMBUS CO",
+      "slug": "nimbus-co",
+      "title": "Outdoor Full Spectrum Barrel Infrared Sauna",
+      "seed_id": "eps_e093a79314dc8cc402027c4a",
+      "external_product_id": "ext_5d718db8ea0d640f415f93e1",
+      "url": "https://nimbusco.com.au/products/outdoor-full-spectrum-barrel-infrared-sauna",
+      "price_amount": 15990,
+      "price_currency": "USD",
+      "observed_currency": "AUD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "price_exceeds_250_usd_threshold",
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "accessory_tool_home_or_non_beauty_row",
+        "regulated_wellness_supplement_or_therapeutic_claims_lane"
+      ]
+    },
+    {
+      "brand": "NIMBUS CO",
+      "slug": "nimbus-co",
+      "title": "Two Person Full Spectrum Infrared Sauna",
+      "seed_id": "eps_1ea34d3775097b00d614245b",
+      "external_product_id": "ext_6443c7772944600ac19a889e",
+      "url": "https://nimbusco.com.au/products/full-spectrum-infrared-sauna-3-person",
+      "price_amount": 8990,
+      "price_currency": "USD",
+      "observed_currency": "AUD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "price_exceeds_250_usd_threshold",
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "accessory_tool_home_or_non_beauty_row",
+        "regulated_wellness_supplement_or_therapeutic_claims_lane"
+      ]
+    },
+    {
+      "brand": "NIMBUS CO",
+      "slug": "nimbus-co",
+      "title": "Three Person Full Spectrum Infrared Sauna",
+      "seed_id": "eps_16c4436a1eab0e334bc79ed0",
+      "external_product_id": "ext_899a3b525ac25931b864f840",
+      "url": "https://nimbusco.com.au/products/three-person-full-spectrum-infrared-sauna",
+      "price_amount": 9990,
+      "price_currency": "USD",
+      "observed_currency": "AUD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "price_exceeds_250_usd_threshold",
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "accessory_tool_home_or_non_beauty_row",
+        "regulated_wellness_supplement_or_therapeutic_claims_lane"
+      ]
+    },
+    {
+      "brand": "NIMBUS CO",
+      "slug": "nimbus-co",
+      "title": "Cloud Form Electrolyte Powder",
+      "seed_id": "eps_e142fea4fa9cd0bddc34fb71",
+      "external_product_id": "ext_65d768ce1a70c9987b405e4c",
+      "url": "https://nimbusco.com.au/products/cloud-form-electrolyte-powder",
+      "price_amount": 59,
+      "price_currency": "USD",
+      "observed_currency": "AUD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "regulated_wellness_supplement_or_therapeutic_claims_lane"
+      ]
+    },
+    {
+      "brand": "NIMBUS CO",
+      "slug": "nimbus-co",
+      "title": "Body Gua Sha",
+      "seed_id": "eps_b44b6ec287a75e50fe1746e6",
+      "external_product_id": "ext_a2a822b4779e9662bdccbc1d",
+      "url": "https://nimbusco.com.au/products/body-gua-sha",
+      "price_amount": 35,
+      "price_currency": "USD",
+      "observed_currency": "AUD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "accessory_tool_home_or_non_beauty_row"
+      ]
+    },
+    {
+      "brand": "NIMBUS CO",
+      "slug": "nimbus-co",
+      "title": "Tongue Scraper",
+      "seed_id": "eps_2e48b8b438febbef789e9cb6",
+      "external_product_id": "ext_67868bd8f8966d5e95a75633",
+      "url": "https://nimbusco.com.au/products/tongue-scraper",
+      "price_amount": 18,
+      "price_currency": "USD",
+      "observed_currency": "AUD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "accessory_tool_home_or_non_beauty_row",
+        "regulated_wellness_supplement_or_therapeutic_claims_lane"
+      ]
+    },
+    {
+      "brand": "NIMBUS CO",
+      "slug": "nimbus-co",
+      "title": "Scented Body Oil",
+      "seed_id": "eps_138b35d6b1aacc784d71bbfa",
+      "external_product_id": "ext_d4d83033d67f0672923cfc71",
+      "url": "https://nimbusco.com.au/products/body-oil",
+      "price_amount": 49,
+      "price_currency": "USD",
+      "observed_currency": "AUD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ]
+    },
+    {
+      "brand": "NIMBUS CO",
+      "slug": "nimbus-co",
+      "title": "Cloud Form Sachets",
+      "seed_id": "eps_059a4e9f0f5cdc518c36d371",
+      "external_product_id": "ext_1263eeb40ba19340516aeed7",
+      "url": "https://nimbusco.com.au/products/cloud-form-hydration-powder",
+      "price_amount": 72,
+      "price_currency": "USD",
+      "observed_currency": "AUD",
+      "availability": "out_of_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "market_currency_mismatch",
+        "out_of_stock_or_unavailable",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate",
+        "bundle_set_sample_or_travel_size",
+        "regulated_wellness_supplement_or_therapeutic_claims_lane"
+      ]
+    },
+    {
+      "brand": "NIMBUS CO",
+      "slug": "nimbus-co",
+      "title": "Face Oil",
+      "seed_id": "eps_2dd228aa5171b85595a29d0a",
+      "external_product_id": "ext_84b1b9596adc95d6f35e94cd",
+      "url": "https://nimbusco.com.au/products/the-face-oil",
+      "price_amount": 59,
+      "price_currency": "USD",
+      "observed_currency": "AUD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ],
+      "decision": "hold",
+      "reason_codes": [
+        "market_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok",
+        "missing_multi_offer_merge_candidate"
+      ]
+    }
+  ]
+}

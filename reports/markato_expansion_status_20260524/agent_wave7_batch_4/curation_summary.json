@@ -1,0 +1,2625 @@
+{
+  "generated_at": "2026-05-24T06:20:41.050Z",
+  "brands": [
+    {
+      "brand": "GINZAI",
+      "slug": "ginzai",
+      "domain": "ginzai.de",
+      "extracted_product_count": 55,
+      "manifest_item_count": 32,
+      "review_status": "blocked",
+      "review_blockers": [
+        "anti_abuse_signal:perimeterx"
+      ],
+      "review_accepted_item_count": 32,
+      "curated_candidate_count": 0,
+      "held_count": 32,
+      "hold_reasons": {
+        "review_gate_blocker": 32,
+        "anti_abuse_signal:perimeterx": 32,
+        "non_us_currency": 32,
+        "commerce_facts_gate_hold": 32,
+        "commerce:market_currency_mismatch": 32,
+        "commerce:commerce_facts_currency_mismatch": 32,
+        "commerce:commerce_facts_market_switch_not_ok": 32,
+        "non_english_copy": 32,
+        "bundle_set_sample_or_gift": 7,
+        "wellness_supplement_or_regulated_claims": 12,
+        "spf_sunscreen": 3,
+        "therapeutic_or_medical_claims": 15,
+        "accessory_tool_or_non_beauty_product": 3,
+        "out_of_stock": 1
+      },
+      "dry_run_summary": {
+        "mode": "dry_run",
+        "database_available": false,
+        "scanned": 0,
+        "inserted": 0,
+        "skipped_existing": 0,
+        "would_insert": 0,
+        "would_insert_unverified": 0,
+        "invalid": 0,
+        "requires_seed_correction_count": 0
+      },
+      "next_step": "Do not apply from this extraction. Clear the PerimeterX/anti-abuse source issue and find a verified US/USD English official PDP source before re-review."
+    },
+    {
+      "brand": "orora",
+      "slug": "orora",
+      "domain": "orora.jp",
+      "extracted_product_count": 34,
+      "manifest_item_count": 25,
+      "review_status": "pass",
+      "review_blockers": [],
+      "review_accepted_item_count": 25,
+      "curated_candidate_count": 0,
+      "held_count": 25,
+      "hold_reasons": {
+        "commerce_facts_gate_hold": 25,
+        "commerce:commerce_facts_currency_mismatch": 25,
+        "commerce:commerce_facts_market_switch_not_ok": 25,
+        "non_english_copy": 25,
+        "price_over_250_usd": 5,
+        "spf_sunscreen": 2
+      },
+      "dry_run_summary": {
+        "mode": "dry_run",
+        "database_available": false,
+        "scanned": 0,
+        "inserted": 0,
+        "skipped_existing": 0,
+        "would_insert": 0,
+        "would_insert_unverified": 0,
+        "invalid": 0,
+        "requires_seed_correction_count": 0
+      },
+      "next_step": "Find a verified English US/USD official market source, or route this brand to the correct non-US market lane before seed creation."
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "domain": "nubest.com",
+      "extracted_product_count": 66,
+      "manifest_item_count": 51,
+      "review_status": "pass",
+      "review_blockers": [],
+      "review_accepted_item_count": 49,
+      "curated_candidate_count": 0,
+      "held_count": 51,
+      "hold_reasons": {
+        "wellness_supplement_or_regulated_claims": 50,
+        "therapeutic_or_medical_claims": 44,
+        "out_of_stock": 2,
+        "repo_review_row_blocker": 2,
+        "bundle_set_sample_or_gift": 4,
+        "accessory_tool_or_non_beauty_product": 4
+      },
+      "dry_run_summary": {
+        "mode": "dry_run",
+        "database_available": false,
+        "scanned": 0,
+        "inserted": 0,
+        "skipped_existing": 0,
+        "would_insert": 0,
+        "would_insert_unverified": 0,
+        "invalid": 0,
+        "requires_seed_correction_count": 0
+      },
+      "next_step": "Route to the regulated wellness/supplement claims lane; do not create Markato beauty seeds without explicit supplement approval and a passing commerce gate."
+    },
+    {
+      "brand": "YAY NOVELTY",
+      "slug": "yay-novelty",
+      "domain": "yaynovelty.com",
+      "extracted_product_count": 1,
+      "manifest_item_count": 1,
+      "review_status": "pass",
+      "review_blockers": [],
+      "review_accepted_item_count": 1,
+      "curated_candidate_count": 0,
+      "held_count": 1,
+      "hold_reasons": {
+        "accessory_tool_or_non_beauty_product": 1
+      },
+      "dry_run_summary": {
+        "mode": "dry_run",
+        "database_available": false,
+        "scanned": 0,
+        "inserted": 0,
+        "skipped_existing": 0,
+        "would_insert": 0,
+        "would_insert_unverified": 0,
+        "invalid": 0,
+        "requires_seed_correction_count": 0
+      },
+      "next_step": "Exclude from beauty expansion unless a true beauty PDP list is supplied; current row is a greeting-card novelty product."
+    },
+    {
+      "brand": "Anaya",
+      "slug": "anaya",
+      "domain": "anayalife.com",
+      "extracted_product_count": 2,
+      "manifest_item_count": 0,
+      "review_status": "blocked",
+      "review_blockers": [
+        "zero_accepted_items_from_extractor"
+      ],
+      "review_accepted_item_count": 0,
+      "curated_candidate_count": 0,
+      "held_count": 0,
+      "hold_reasons": {},
+      "dry_run_summary": {
+        "mode": "dry_run",
+        "database_available": false,
+        "scanned": 0,
+        "inserted": 0,
+        "skipped_existing": 0,
+        "would_insert": 0,
+        "would_insert_unverified": 0,
+        "invalid": 0,
+        "requires_seed_correction_count": 0
+      },
+      "next_step": "Recover official sellable PDP URLs with transaction-ready commerce facts, then rebuild and review the manifest."
+    }
+  ],
+  "decisions": [
+    {
+      "brand": "GINZAI",
+      "slug": "ginzai",
+      "row_index": 1,
+      "row_key": "ext_ab8aa07467396162ea78e58a",
+      "decision": "hold",
+      "hold_reasons": [
+        "review_gate_blocker",
+        "anti_abuse_signal:perimeterx",
+        "non_us_currency",
+        "commerce_facts_gate_hold",
+        "commerce:market_currency_mismatch",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy",
+        "bundle_set_sample_or_gift",
+        "wellness_supplement_or_regulated_claims",
+        "spf_sunscreen"
+      ],
+      "title": "FRÜHLINGSBUNDLE",
+      "url": "https://ginzai.de/products/fruhlingsbundle",
+      "price_amount": 116,
+      "price_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "GINZAI",
+      "slug": "ginzai",
+      "row_index": 2,
+      "row_key": "ext_d9c56fa1f13513d17687c698",
+      "decision": "hold",
+      "hold_reasons": [
+        "review_gate_blocker",
+        "anti_abuse_signal:perimeterx",
+        "non_us_currency",
+        "commerce_facts_gate_hold",
+        "commerce:market_currency_mismatch",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy",
+        "bundle_set_sample_or_gift",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "Strapaziertes Haar Pflegeset",
+      "url": "https://ginzai.de/products/strapaziertes-haar-pflegeset",
+      "price_amount": 74.4,
+      "price_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "GINZAI",
+      "slug": "ginzai",
+      "row_index": 3,
+      "row_key": "ext_0e68842093db6cf916a30708",
+      "decision": "hold",
+      "hold_reasons": [
+        "review_gate_blocker",
+        "anti_abuse_signal:perimeterx",
+        "non_us_currency",
+        "commerce_facts_gate_hold",
+        "commerce:market_currency_mismatch",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy",
+        "therapeutic_or_medical_claims",
+        "accessory_tool_or_non_beauty_product"
+      ],
+      "title": "SHUKANG® Einlegesohlen – Aktivierende Fußreflexzonenmassage für bessere Durchblutung, mehr Wohlbefinden und ganzheitliche Gesundheit.",
+      "url": "https://ginzai.de/products/shukang-die-patentierte-wellness-einlegesohle",
+      "price_amount": 32,
+      "price_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "GINZAI",
+      "slug": "ginzai",
+      "row_index": 4,
+      "row_key": "ext_5525e46e10b5d8d43aa410d0",
+      "decision": "hold",
+      "hold_reasons": [
+        "review_gate_blocker",
+        "anti_abuse_signal:perimeterx",
+        "non_us_currency",
+        "commerce_facts_gate_hold",
+        "commerce:market_currency_mismatch",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy",
+        "bundle_set_sample_or_gift",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "Normales Haar Pflegeset",
+      "url": "https://ginzai.de/products/normales-haar-pflegeset",
+      "price_amount": 34,
+      "price_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "GINZAI",
+      "slug": "ginzai",
+      "row_index": 5,
+      "row_key": "ext_e9d8edb6421e1e244e3265c4",
+      "decision": "hold",
+      "hold_reasons": [
+        "review_gate_blocker",
+        "anti_abuse_signal:perimeterx",
+        "non_us_currency",
+        "commerce_facts_gate_hold",
+        "commerce:market_currency_mismatch",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy",
+        "bundle_set_sample_or_gift",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "Fettiges Haar Pflegeset",
+      "url": "https://ginzai.de/products/fettiges-haar-pflegeset",
+      "price_amount": 53.55,
+      "price_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "GINZAI",
+      "slug": "ginzai",
+      "row_index": 6,
+      "row_key": "ext_cb713e7ac61e264952426473",
+      "decision": "hold",
+      "hold_reasons": [
+        "review_gate_blocker",
+        "anti_abuse_signal:perimeterx",
+        "non_us_currency",
+        "commerce_facts_gate_hold",
+        "commerce:market_currency_mismatch",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy",
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "Straffende Körperbutter mit Ginseng",
+      "url": "https://ginzai.de/products/straffende-korperbutter-mit-ginseng-kopie",
+      "price_amount": 28,
+      "price_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "GINZAI",
+      "slug": "ginzai",
+      "row_index": 7,
+      "row_key": "ext_f1801bb63bd66b05f83e01a2",
+      "decision": "hold",
+      "hold_reasons": [
+        "review_gate_blocker",
+        "anti_abuse_signal:perimeterx",
+        "non_us_currency",
+        "commerce_facts_gate_hold",
+        "commerce:market_currency_mismatch",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy",
+        "spf_sunscreen",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "SOLO SUNNY - 3in1 Anti Aging Face Cream",
+      "url": "https://ginzai.de/products/ginzai-3in1-anti-aging-face-cream",
+      "price_amount": 43,
+      "price_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "GINZAI",
+      "slug": "ginzai",
+      "row_index": 8,
+      "row_key": "ext_b638f82308482137131eda11",
+      "decision": "hold",
+      "hold_reasons": [
+        "review_gate_blocker",
+        "anti_abuse_signal:perimeterx",
+        "non_us_currency",
+        "commerce_facts_gate_hold",
+        "commerce:market_currency_mismatch",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy"
+      ],
+      "title": "AURA - Straffende Augencreme mit Ginseng",
+      "url": "https://ginzai.de/products/straffende-augencreme-40",
+      "price_amount": 42,
+      "price_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "GINZAI",
+      "slug": "ginzai",
+      "row_index": 9,
+      "row_key": "ext_007d0de313a4417b438b2c88",
+      "decision": "hold",
+      "hold_reasons": [
+        "review_gate_blocker",
+        "anti_abuse_signal:perimeterx",
+        "non_us_currency",
+        "commerce_facts_gate_hold",
+        "commerce:market_currency_mismatch",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy",
+        "wellness_supplement_or_regulated_claims",
+        "spf_sunscreen",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "Hand- und Nagelcreme mit Ginseng",
+      "url": "https://ginzai.de/products/hand-nagelcreme-mit-ginseng",
+      "price_amount": 12,
+      "price_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "GINZAI",
+      "slug": "ginzai",
+      "row_index": 10,
+      "row_key": "ext_0499a875068c1a5cf7301fa7",
+      "decision": "hold",
+      "hold_reasons": [
+        "review_gate_blocker",
+        "anti_abuse_signal:perimeterx",
+        "non_us_currency",
+        "commerce_facts_gate_hold",
+        "commerce:market_currency_mismatch",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy",
+        "bundle_set_sample_or_gift"
+      ],
+      "title": "Conditioner mit Ginseng",
+      "url": "https://ginzai.de/products/ginseng-conditioner",
+      "price_amount": 20,
+      "price_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "GINZAI",
+      "slug": "ginzai",
+      "row_index": 11,
+      "row_key": "ext_2cb507ebaa4db60c5fcb9b9d",
+      "decision": "hold",
+      "hold_reasons": [
+        "review_gate_blocker",
+        "anti_abuse_signal:perimeterx",
+        "non_us_currency",
+        "commerce_facts_gate_hold",
+        "commerce:market_currency_mismatch",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy",
+        "bundle_set_sample_or_gift"
+      ],
+      "title": "Digitaler GINZAI Geschenkgutschein",
+      "url": "https://ginzai.de/products/geschenkgutschein",
+      "price_amount": 25,
+      "price_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "GINZAI",
+      "slug": "ginzai",
+      "row_index": 12,
+      "row_key": "ext_16df287fdc64fb34d3dc216b",
+      "decision": "hold",
+      "hold_reasons": [
+        "review_gate_blocker",
+        "anti_abuse_signal:perimeterx",
+        "non_us_currency",
+        "commerce_facts_gate_hold",
+        "commerce:market_currency_mismatch",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy"
+      ],
+      "title": "Black Hydrogel Eye-Patches mit Ginseng",
+      "url": "https://ginzai.de/products/discovery-black-hydrogel-eye-patch",
+      "price_amount": 38,
+      "price_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "GINZAI",
+      "slug": "ginzai",
+      "row_index": 13,
+      "row_key": "ext_bd3809ecaf4ec42b0508cedb",
+      "decision": "hold",
+      "hold_reasons": [
+        "review_gate_blocker",
+        "anti_abuse_signal:perimeterx",
+        "non_us_currency",
+        "commerce_facts_gate_hold",
+        "commerce:market_currency_mismatch",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy",
+        "wellness_supplement_or_regulated_claims"
+      ],
+      "title": "Feuchtigkeitsspendende Augencreme mit Ginseng",
+      "url": "https://ginzai.de/products/feuchtigkeits-augencreme-25",
+      "price_amount": 30,
+      "price_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "GINZAI",
+      "slug": "ginzai",
+      "row_index": 14,
+      "row_key": "ext_9c9910fe10894d2e55148984",
+      "decision": "hold",
+      "hold_reasons": [
+        "review_gate_blocker",
+        "anti_abuse_signal:perimeterx",
+        "non_us_currency",
+        "commerce_facts_gate_hold",
+        "commerce:market_currency_mismatch",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy",
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "Feuchtigkeitsspendende Körpercreme mit Ginseng",
+      "url": "https://ginzai.de/products/feuchtigkeits-korpercreme-25",
+      "price_amount": 27,
+      "price_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "GINZAI",
+      "slug": "ginzai",
+      "row_index": 15,
+      "row_key": "ext_270bb3d34deccd9acbc42400",
+      "decision": "hold",
+      "hold_reasons": [
+        "review_gate_blocker",
+        "anti_abuse_signal:perimeterx",
+        "non_us_currency",
+        "commerce_facts_gate_hold",
+        "commerce:market_currency_mismatch",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy",
+        "bundle_set_sample_or_gift",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "ROOTY 3 in 1 Black Ginseng Shampoo",
+      "url": "https://ginzai.de/products/ginseng-shampoo-500ml",
+      "price_amount": 20,
+      "price_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "GINZAI",
+      "slug": "ginzai",
+      "row_index": 16,
+      "row_key": "ext_83bf1245e9a4ddc88978ebf7",
+      "decision": "hold",
+      "hold_reasons": [
+        "review_gate_blocker",
+        "anti_abuse_signal:perimeterx",
+        "non_us_currency",
+        "commerce_facts_gate_hold",
+        "commerce:market_currency_mismatch",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy",
+        "accessory_tool_or_non_beauty_product"
+      ],
+      "title": "Haarband mit GINZAI-Logo",
+      "url": "https://ginzai.de/products/2in1-reinigungscreme-mit-ginzai-haarband-limitierte-auflage",
+      "price_amount": 5,
+      "price_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "GINZAI",
+      "slug": "ginzai",
+      "row_index": 17,
+      "row_key": "ext_2187c20772ac359db205923c",
+      "decision": "hold",
+      "hold_reasons": [
+        "review_gate_blocker",
+        "anti_abuse_signal:perimeterx",
+        "non_us_currency",
+        "commerce_facts_gate_hold",
+        "commerce:market_currency_mismatch",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "Serum mit Ginseng - Glow Booster",
+      "url": "https://ginzai.de/products/top-glow-booster-konzentrat-40",
+      "price_amount": 34,
+      "price_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "GINZAI",
+      "slug": "ginzai",
+      "row_index": 18,
+      "row_key": "ext_f247f1f8cff6b8c32929b1f5",
+      "decision": "hold",
+      "hold_reasons": [
+        "review_gate_blocker",
+        "anti_abuse_signal:perimeterx",
+        "non_us_currency",
+        "commerce_facts_gate_hold",
+        "commerce:market_currency_mismatch",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "Haarpflege-Elixir mit Ginseng",
+      "url": "https://ginzai.de/products/hair-ginseng-elixir",
+      "price_amount": 30,
+      "price_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "GINZAI",
+      "slug": "ginzai",
+      "row_index": 19,
+      "row_key": "ext_7aa67b274a12ce445b237b55",
+      "decision": "hold",
+      "hold_reasons": [
+        "review_gate_blocker",
+        "anti_abuse_signal:perimeterx",
+        "non_us_currency",
+        "commerce_facts_gate_hold",
+        "commerce:market_currency_mismatch",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy"
+      ],
+      "title": "Hyaluron Serum mit Ginseng",
+      "url": "https://ginzai.de/products/hyaluron-konzentrat-40",
+      "price_amount": 35,
+      "price_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "GINZAI",
+      "slug": "ginzai",
+      "row_index": 20,
+      "row_key": "ext_c1562d99f734999c7be37610",
+      "decision": "hold",
+      "hold_reasons": [
+        "review_gate_blocker",
+        "anti_abuse_signal:perimeterx",
+        "non_us_currency",
+        "commerce_facts_gate_hold",
+        "commerce:market_currency_mismatch",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy"
+      ],
+      "title": "Gesichtsreinigungsschaum mit Ginseng",
+      "url": "https://ginzai.de/products/magischer-schaum-fur-die-porentiefe-reinigung",
+      "price_amount": 25,
+      "price_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "GINZAI",
+      "slug": "ginzai",
+      "row_index": 21,
+      "row_key": "ext_ecf8dd245acd25440e34e460",
+      "decision": "hold",
+      "hold_reasons": [
+        "review_gate_blocker",
+        "anti_abuse_signal:perimeterx",
+        "non_us_currency",
+        "commerce_facts_gate_hold",
+        "commerce:market_currency_mismatch",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy",
+        "wellness_supplement_or_regulated_claims",
+        "accessory_tool_or_non_beauty_product"
+      ],
+      "title": "2in1 Reinigungscreme + GINZAI Haarband",
+      "url": "https://ginzai.de/products/2in1-reinigungscreme-mit-ginzai-haarband-limitierte-auflage-1",
+      "price_amount": 26,
+      "price_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "GINZAI",
+      "slug": "ginzai",
+      "row_index": 22,
+      "row_key": "ext_cb896680caa696794b24523c",
+      "decision": "hold",
+      "hold_reasons": [
+        "review_gate_blocker",
+        "anti_abuse_signal:perimeterx",
+        "non_us_currency",
+        "commerce_facts_gate_hold",
+        "commerce:market_currency_mismatch",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "24H Gesichtscreme mit Ginseng",
+      "url": "https://ginzai.de/products/silver-24h-moisture-cream",
+      "price_amount": 37,
+      "price_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "GINZAI",
+      "slug": "ginzai",
+      "row_index": 23,
+      "row_key": "ext_4b69f2e716dd8d9aac0300a6",
+      "decision": "hold",
+      "hold_reasons": [
+        "review_gate_blocker",
+        "anti_abuse_signal:perimeterx",
+        "non_us_currency",
+        "commerce_facts_gate_hold",
+        "commerce:market_currency_mismatch",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy",
+        "wellness_supplement_or_regulated_claims"
+      ],
+      "title": "2in1 Reinigungscreme mit Ginseng",
+      "url": "https://ginzai.de/products/2in1-reinigungscreme-25",
+      "price_amount": 26,
+      "price_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "GINZAI",
+      "slug": "ginzai",
+      "row_index": 24,
+      "row_key": "ext_4b6f880c9a8335005a1d45de",
+      "decision": "hold",
+      "hold_reasons": [
+        "review_gate_blocker",
+        "anti_abuse_signal:perimeterx",
+        "non_us_currency",
+        "commerce_facts_gate_hold",
+        "commerce:market_currency_mismatch",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy",
+        "wellness_supplement_or_regulated_claims"
+      ],
+      "title": "24H Collagen Gesichtsserum mit Ginseng",
+      "url": "https://ginzai.de/products/24h-collagen-gesichtsserum",
+      "price_amount": 36,
+      "price_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "GINZAI",
+      "slug": "ginzai",
+      "row_index": 25,
+      "row_key": "ext_d473840daeb79c2a660bac2d",
+      "decision": "hold",
+      "hold_reasons": [
+        "review_gate_blocker",
+        "anti_abuse_signal:perimeterx",
+        "non_us_currency",
+        "commerce_facts_gate_hold",
+        "commerce:market_currency_mismatch",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "Gesichtsmaske zur Beruhigung und Straffung mit Ginseng",
+      "url": "https://ginzai.de/products/overnight-glow-gesichtsmaske-40",
+      "price_amount": 39,
+      "price_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "GINZAI",
+      "slug": "ginzai",
+      "row_index": 26,
+      "row_key": "ext_8f972f4a8ee41622609ee68e",
+      "decision": "hold",
+      "hold_reasons": [
+        "review_gate_blocker",
+        "anti_abuse_signal:perimeterx",
+        "non_us_currency",
+        "commerce_facts_gate_hold",
+        "commerce:market_currency_mismatch",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy",
+        "wellness_supplement_or_regulated_claims"
+      ],
+      "title": "Sanfte Reinigungscreme mit Ginseng",
+      "url": "https://ginzai.de/products/sanfte-reinigungscreme-40",
+      "price_amount": 31,
+      "price_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "GINZAI",
+      "slug": "ginzai",
+      "row_index": 27,
+      "row_key": "ext_6b233ae3843dc180b3cb1e66",
+      "decision": "hold",
+      "hold_reasons": [
+        "review_gate_blocker",
+        "anti_abuse_signal:perimeterx",
+        "non_us_currency",
+        "out_of_stock",
+        "commerce_facts_gate_hold",
+        "commerce:market_currency_mismatch",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy",
+        "wellness_supplement_or_regulated_claims"
+      ],
+      "title": "Serum mit Ginseng - Vitamin Booster",
+      "url": "https://ginzai.de/products/vitamin-booster-konzentrat-40",
+      "price_amount": 34,
+      "price_currency": "EUR",
+      "availability": "out_of_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "GINZAI",
+      "slug": "ginzai",
+      "row_index": 28,
+      "row_key": "ext_9de9c6c4541f0e053074e32a",
+      "decision": "hold",
+      "hold_reasons": [
+        "review_gate_blocker",
+        "anti_abuse_signal:perimeterx",
+        "non_us_currency",
+        "commerce_facts_gate_hold",
+        "commerce:market_currency_mismatch",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy"
+      ],
+      "title": "Wake-Up Toner mit Ginseng",
+      "url": "https://ginzai.de/products/wake-up-toner-40",
+      "price_amount": 25,
+      "price_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "GINZAI",
+      "slug": "ginzai",
+      "row_index": 29,
+      "row_key": "ext_f43aae08e7a6714378475fd0",
+      "decision": "hold",
+      "hold_reasons": [
+        "review_gate_blocker",
+        "anti_abuse_signal:perimeterx",
+        "non_us_currency",
+        "commerce_facts_gate_hold",
+        "commerce:market_currency_mismatch",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy",
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "Straffende Hals- & Dekolleté Creme mit Ginseng",
+      "url": "https://ginzai.de/products/straffende-hals-dekollete-creme-40",
+      "price_amount": 39,
+      "price_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "GINZAI",
+      "slug": "ginzai",
+      "row_index": 30,
+      "row_key": "ext_ac045140468345c9ff36370c",
+      "decision": "hold",
+      "hold_reasons": [
+        "review_gate_blocker",
+        "anti_abuse_signal:perimeterx",
+        "non_us_currency",
+        "commerce_facts_gate_hold",
+        "commerce:market_currency_mismatch",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy",
+        "wellness_supplement_or_regulated_claims"
+      ],
+      "title": "Straffende Nachtcreme mit Ginseng",
+      "url": "https://ginzai.de/products/straffende-nachtcreme-40",
+      "price_amount": 48,
+      "price_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "GINZAI",
+      "slug": "ginzai",
+      "row_index": 31,
+      "row_key": "ext_2902df9a2a414ca1ad9fbea4",
+      "decision": "hold",
+      "hold_reasons": [
+        "review_gate_blocker",
+        "anti_abuse_signal:perimeterx",
+        "non_us_currency",
+        "commerce_facts_gate_hold",
+        "commerce:market_currency_mismatch",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "Straffende Tagescreme mit Ginseng",
+      "url": "https://ginzai.de/products/straffende-tagescreme-40",
+      "price_amount": 48,
+      "price_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "GINZAI",
+      "slug": "ginzai",
+      "row_index": 32,
+      "row_key": "ext_1bb3c51eb13c5b8d10ebbcd1",
+      "decision": "hold",
+      "hold_reasons": [
+        "review_gate_blocker",
+        "anti_abuse_signal:perimeterx",
+        "non_us_currency",
+        "commerce_facts_gate_hold",
+        "commerce:market_currency_mismatch",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy"
+      ],
+      "title": "Peeling-Gesichtsmaske mit Ginseng",
+      "url": "https://ginzai.de/products/silver-peel-fresh-mask",
+      "price_amount": 26,
+      "price_currency": "EUR",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "market_currency_mismatch",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "orora",
+      "slug": "orora",
+      "row_index": 1,
+      "row_key": "ext_f48b3f8b8fb8dfbec35dfc5a",
+      "decision": "hold",
+      "hold_reasons": [
+        "commerce_facts_gate_hold",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy"
+      ],
+      "title": "ディープクレンジングシャンプー(500ml)",
+      "url": "https://orora.jp/products/薄荷深層清潔洗髮乳",
+      "price_amount": 190,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "orora",
+      "slug": "orora",
+      "row_index": 2,
+      "row_key": "ext_c1f4df2f6aef195b4e8b6cdd",
+      "decision": "hold",
+      "hold_reasons": [
+        "commerce_facts_gate_hold",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy"
+      ],
+      "title": "マカダミアオイル保湿栄養補給シャンプー(500ml)",
+      "url": "https://orora.jp/products/堅果油保濕滋養洗髮乳",
+      "price_amount": 190,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "orora",
+      "slug": "orora",
+      "row_index": 3,
+      "row_key": "ext_11abba68bef41153f40d96cf",
+      "decision": "hold",
+      "hold_reasons": [
+        "commerce_facts_gate_hold",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy"
+      ],
+      "title": "アルガンオイル栄養補給シャンプー(500ml)",
+      "url": "https://orora.jp/products/摩洛哥堅果油滋養洗髮乳",
+      "price_amount": 190,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "orora",
+      "slug": "orora",
+      "row_index": 4,
+      "row_key": "ext_b2d7597304ecc8f412454f14",
+      "decision": "hold",
+      "hold_reasons": [
+        "price_over_250_usd",
+        "commerce_facts_gate_hold",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy"
+      ],
+      "title": "リペア＆シルキーコンディショナー (500ml)",
+      "url": "https://orora.jp/products/修護絲滑護髮素",
+      "price_amount": 420,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "orora",
+      "slug": "orora",
+      "row_index": 5,
+      "row_key": "ext_bdfe14266c9019c450782512",
+      "decision": "hold",
+      "hold_reasons": [
+        "price_over_250_usd",
+        "commerce_facts_gate_hold",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy"
+      ],
+      "title": "ローズヒップオイル ヘアナリシングセラム(100ml)",
+      "url": "https://orora.jp/products/堅果油頭髮-身體滋養精華素",
+      "price_amount": 252,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "orora",
+      "slug": "orora",
+      "row_index": 6,
+      "row_key": "ext_b92a1ec9558d604366f316a4",
+      "decision": "hold",
+      "hold_reasons": [
+        "commerce_facts_gate_hold",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy"
+      ],
+      "title": "エクストリームレングスシャンプー (300ml)",
+      "url": "https://orora.jp/products/頭髮急急長洗髮乳",
+      "price_amount": 190,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "orora",
+      "slug": "orora",
+      "row_index": 7,
+      "row_key": "ext_9914f5f2ff51ad3efc64271b",
+      "decision": "hold",
+      "hold_reasons": [
+        "commerce_facts_gate_hold",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy"
+      ],
+      "title": "エキストリームレングスコンディショナー(300ml)",
+      "url": "https://orora.jp/products/頭髮急急長護髮素",
+      "price_amount": 190,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "orora",
+      "slug": "orora",
+      "row_index": 8,
+      "row_key": "ext_4d594fd1e920df21bc9dab25",
+      "decision": "hold",
+      "hold_reasons": [
+        "price_over_250_usd",
+        "commerce_facts_gate_hold",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy"
+      ],
+      "title": "ビオチン＆コラーゲンディープコンデ ィショニングヘアマスク(300g)",
+      "url": "https://orora.jp/products/維生素-膠原蛋白深層調理髮膜",
+      "price_amount": 360,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "orora",
+      "slug": "orora",
+      "row_index": 9,
+      "row_key": "ext_107e5c557e5d0d3d05d57a76",
+      "decision": "hold",
+      "hold_reasons": [
+        "price_over_250_usd",
+        "commerce_facts_gate_hold",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy"
+      ],
+      "title": "アドバンスドビオチン ヘアグロース スカルプセラム(100ml)",
+      "url": "https://orora.jp/products/維生素生髮頭皮精華素",
+      "price_amount": 280,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "orora",
+      "slug": "orora",
+      "row_index": 10,
+      "row_key": "ext_939e184b4a68cbb3f78c654a",
+      "decision": "hold",
+      "hold_reasons": [
+        "commerce_facts_gate_hold",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy"
+      ],
+      "title": "グロウトニック(150ml)",
+      "url": "https://orora.jp/products/嫩肌去角質爽膚水",
+      "price_amount": 180,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "orora",
+      "slug": "orora",
+      "row_index": 11,
+      "row_key": "ext_fd6bfc8c85e79b8a00f493e6",
+      "decision": "hold",
+      "hold_reasons": [
+        "commerce_facts_gate_hold",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy",
+        "spf_sunscreen"
+      ],
+      "title": "ミラクル タッチスキン スムージング ファンデーション(SPF 35+)",
+      "url": "https://orora.jp/products/奇蹟親肌柔滑粉底液spf-35",
+      "price_amount": 182,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "orora",
+      "slug": "orora",
+      "row_index": 12,
+      "row_key": "ext_fc56ba325d2d3a667888c449",
+      "decision": "hold",
+      "hold_reasons": [
+        "commerce_facts_gate_hold",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy"
+      ],
+      "title": "レッドティーツリートナー(120ml)",
+      "url": "https://orora.jp/products/敏感肌紅茶樹爽膚水",
+      "price_amount": 195,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "orora",
+      "slug": "orora",
+      "row_index": 13,
+      "row_key": "ext_d080c5973d7e807b0b408333",
+      "decision": "hold",
+      "hold_reasons": [
+        "commerce_facts_gate_hold",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy",
+        "spf_sunscreen"
+      ],
+      "title": "メイクアップパウダー(SPF 50+/PA+++)",
+      "url": "https://orora.jp/products/膠原霧緻控油粉餅spf-50-pa",
+      "price_amount": 238,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "orora",
+      "slug": "orora",
+      "row_index": 14,
+      "row_key": "ext_6608068b5ff62214f1b441eb",
+      "decision": "hold",
+      "hold_reasons": [
+        "commerce_facts_gate_hold",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy"
+      ],
+      "title": "セルラークリーム(50g)",
+      "url": "https://orora.jp/products/抗氧玫瑰面霜",
+      "price_amount": 186,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "orora",
+      "slug": "orora",
+      "row_index": 15,
+      "row_key": "ext_12a7e6bcedb63b782126a241",
+      "decision": "hold",
+      "hold_reasons": [
+        "commerce_facts_gate_hold",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy"
+      ],
+      "title": "0.1mm極細ペンリキッドタイプ(ダークブラウン/黒)",
+      "url": "https://orora.jp/products/0-1mm特細刷液型液體眼線筆",
+      "price_amount": 120,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "orora",
+      "slug": "orora",
+      "row_index": 16,
+      "row_key": "ext_8870e5d4f018d19293ea3bb3",
+      "decision": "hold",
+      "hold_reasons": [
+        "price_over_250_usd",
+        "commerce_facts_gate_hold",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy"
+      ],
+      "title": "ブラックシードヘアオイル(200g)",
+      "url": "https://orora.jp/products/頭髮急急長洗髮乳1支-頭髮急急長護髮素1支套裝",
+      "price_amount": 280,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "orora",
+      "slug": "orora",
+      "row_index": 17,
+      "row_key": "ext_40e70f19c0505fdc94b45aa4",
+      "decision": "hold",
+      "hold_reasons": [
+        "commerce_facts_gate_hold",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy"
+      ],
+      "title": "京都少女 ファインフレグランス・ ボディミスト(250ml)",
+      "url": "https://orora.jp/products/頭髮急急長洗髮乳2支-頭髮急急長護髮素1支套裝2-4個月用量",
+      "price_amount": 150,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "orora",
+      "slug": "orora",
+      "row_index": 18,
+      "row_key": "ext_2dfedfa360f35da1a9129709",
+      "decision": "hold",
+      "hold_reasons": [
+        "commerce_facts_gate_hold",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy"
+      ],
+      "title": "京都少女 ファインフレグランス・ シャワージェル(250ml)",
+      "url": "https://orora.jp/products/京都少女-ファインフレグランス-シャワージェル226g",
+      "price_amount": 108,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "orora",
+      "slug": "orora",
+      "row_index": 19,
+      "row_key": "ext_c7fbb417fb825c8bf698d8a4",
+      "decision": "hold",
+      "hold_reasons": [
+        "commerce_facts_gate_hold",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy"
+      ],
+      "title": "京都少女 ファインフレグランス・ ボディローション(226g)",
+      "url": "https://orora.jp/products/京都少女-ファインフレグランス-ボディローション226g",
+      "price_amount": 99,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "orora",
+      "slug": "orora",
+      "row_index": 20,
+      "row_key": "ext_7131f2137c7399710cefd6bf",
+      "decision": "hold",
+      "hold_reasons": [
+        "commerce_facts_gate_hold",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy"
+      ],
+      "title": "幸子の心 ファインフレグラン(250ml)",
+      "url": "https://orora.jp/products/幸子の心-ファインフレグラン250ml",
+      "price_amount": 150,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "orora",
+      "slug": "orora",
+      "row_index": 21,
+      "row_key": "ext_fd9c37356da3e85c21cf4765",
+      "decision": "hold",
+      "hold_reasons": [
+        "commerce_facts_gate_hold",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy"
+      ],
+      "title": "幸子の心 ファインフレグランス・ シャワージェル(250ml)",
+      "url": "https://orora.jp/products/幸子の心-ファインフレグランス-シャワージェル250g",
+      "price_amount": 108,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "orora",
+      "slug": "orora",
+      "row_index": 22,
+      "row_key": "ext_fb57857c62761765fc439b13",
+      "decision": "hold",
+      "hold_reasons": [
+        "commerce_facts_gate_hold",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy"
+      ],
+      "title": "幸子の心 ファインフレグランス・ ボディローション(226g)",
+      "url": "https://orora.jp/products/幸子の心-ファインフレグランス-ボディローション226g",
+      "price_amount": 99,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "orora",
+      "slug": "orora",
+      "row_index": 23,
+      "row_key": "ext_e6be2c06b205efb4f7cd44f4",
+      "decision": "hold",
+      "hold_reasons": [
+        "commerce_facts_gate_hold",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy"
+      ],
+      "title": "永遠の愛 ファインフレグランス・ シャワージェル(250ml)",
+      "url": "https://orora.jp/products/永遠の愛-ファインフレグランス-ボディミスト250ml",
+      "price_amount": 108,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "orora",
+      "slug": "orora",
+      "row_index": 24,
+      "row_key": "ext_2771742f67e37c5eb737017b",
+      "decision": "hold",
+      "hold_reasons": [
+        "commerce_facts_gate_hold",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy"
+      ],
+      "title": "永遠の愛 ファインフレグランス・ ボディローション(226g)",
+      "url": "https://orora.jp/products/永遠の愛-ファインフレグランス-ボディローション226g",
+      "price_amount": 100,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "orora",
+      "slug": "orora",
+      "row_index": 25,
+      "row_key": "ext_fedea7aece58fcaaa9f13245",
+      "decision": "hold",
+      "hold_reasons": [
+        "commerce_facts_gate_hold",
+        "commerce:commerce_facts_currency_mismatch",
+        "commerce:commerce_facts_market_switch_not_ok",
+        "non_english_copy"
+      ],
+      "title": "永遠の愛ファインフレグランス・ ボディミスト(250ml)",
+      "url": "https://orora.jp/products/永遠の愛mist250ml",
+      "price_amount": 150,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "hold",
+      "commerce_gate_problems": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_market_switch_not_ok"
+      ]
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 1,
+      "row_key": "ext_d6eb3ee536ac3d49561aaa5f",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "NuBest Immune Gummies for Kids (Ages 4+) - 19 Essential Nutrients for Immune Support & Healthy Development - Raspberry Flavor (60 Count)",
+      "url": "https://www.nubest.com/products/nubest-immune-gummies",
+      "price_amount": 26.99,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 2,
+      "row_key": "ext_0380ea665d124b30208e679c",
+      "decision": "hold",
+      "hold_reasons": [
+        "out_of_stock",
+        "wellness_supplement_or_regulated_claims"
+      ],
+      "title": "NuBest Multi Collagen Peptides",
+      "url": "https://www.nubest.com/products/nubest-multi-collagen-peptides",
+      "price_amount": 39.99,
+      "price_currency": "USD",
+      "availability": "out_of_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 3,
+      "row_key": "ext_97ffa9c22f3a8ea415454e83",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "NuBest Tall 10+ - Powerful Growth Support for Teens - 60 Capsules",
+      "url": "https://www.nubest.com/products/nubest-tall-10-powerful-growth-support-for-teens-60-capsules",
+      "price_amount": 55,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 4,
+      "row_key": "ext_320d1f37e6fd1e7a2c2d3c6f",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "NuBest Women’s Multi - Women’s Vitality & Well-Being, 60 Vegan Capsules",
+      "url": "https://www.nubest.com/products/shopping-nubest-women-s-multi-women-s-vitality-well-being-60-vegan-capsules",
+      "price_amount": 32.89,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 5,
+      "row_key": "ext_59ac9039c8ce477e89c6f42f",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "Men's Multi, Men Xtra, Energy, Immunity & Health Boost, 60 Vegan Capsules",
+      "url": "https://www.nubest.com/products/shopping-mens-multi-men-xtra-energy-immunity-health-boost-60-vegan-capsules",
+      "price_amount": 32.89,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 6,
+      "row_key": "ext_b96f6ec3a26538af0d1982d7",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "Joint Xtra, Advanced Formula for Joint Strength, Flexibility & Comfort, 90 Capsules",
+      "url": "https://www.nubest.com/products/shopping-joint-xtra-advanced-formula-for-joint-strength-flexibility-comfort-90-capsules",
+      "price_amount": 39.89,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 7,
+      "row_key": "ext_c88b58041aa5517ce259768d",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "LiverTox, Advanced Formula for Liver Detox, Cleanse & Digestion, 60 Vegan Capsules",
+      "url": "https://www.nubest.com/products/shopping-livertox-advanced-formula-for-liver-detox-cleanse-digestion-60-vegan-capsules",
+      "price_amount": 28.89,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 8,
+      "row_key": "ext_dbda0b8e34dc4952bd61b4c5",
+      "decision": "hold",
+      "hold_reasons": [
+        "repo_review_row_blocker",
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "NuBest Magnesium Complex – Relaxation, Bone & Muscle Health, 90 Vegan Caps",
+      "url": "https://www.nubest.com/products/shopping-nubest-magnesium-complex-relaxation-bone-muscle-health-90-vegan-caps",
+      "price_amount": 28.99,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 9,
+      "row_key": "ext_fa5d0bd5542125dfce1fbce6",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "Hair Xtra, Premium Hair Growth Support for Men & Women, 60 Vegan Capsules",
+      "url": "https://www.nubest.com/products/shopping-hair-xtra-premium-hair-growth-support-for-men-women-60-vegan-capsules",
+      "price_amount": 28.89,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 10,
+      "row_key": "ext_b5774c6eeb7bd84cba9ceb62",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "Collagen NuBest, Healthy Skin, Hair & Nails, 90 Capsules",
+      "url": "https://www.nubest.com/products/shopping-collagen-nubest-healthy-skin-hair-nails-90-capsules",
+      "price_amount": 32.89,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 11,
+      "row_key": "ext_0a523dbe6414bc05a88d03bd",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "Bone Xtra - Plant-based Formula to Support Healthy Bone Growth For Teens, 120 Vegan Capsules",
+      "url": "https://www.nubest.com/products/shopping-bone-xtra-advanced-bone-strength-for-adults-and-teens-697929",
+      "price_amount": 29.99,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 12,
+      "row_key": "ext_d6f78ec76732918fef0b7d5b",
+      "decision": "hold",
+      "hold_reasons": [
+        "bundle_set_sample_or_gift",
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "NuBest Tall Protein Vanilla Shake for Kids Ages 4+, 10 Vegan Servings - Pack 1",
+      "url": "https://www.nubest.com/products/shopping-nubest-tall-protein-vanilla-shake-for-kids-ages-4-10-vegan-servings-pack-1",
+      "price_amount": 35.99,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 13,
+      "row_key": "ext_461efc4478853cf6cac8d4e9",
+      "decision": "hold",
+      "hold_reasons": [
+        "bundle_set_sample_or_gift",
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "NuBest Tall Protein, Chocolate Shake, 15 servings - Pack 1",
+      "url": "https://www.nubest.com/products/shopping-nubest-tall-protein-chocolate-shake-15-servings-pack-1",
+      "price_amount": 45.99,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 14,
+      "row_key": "ext_fb76b45f22e546e331d4904f",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "Doctor Taller Kids Multivitamins – Grape Flavor, Vegan Chewables for Ages 2–9 (90 Count)",
+      "url": "https://www.nubest.com/products/shopping-doctor-taller-kids-grape-multivitamins-ages-2-9-90-vegan-chewables",
+      "price_amount": 59,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 15,
+      "row_key": "ext_1030e828c320440354e98895",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "Doctor Taller Kids – Grape Multivitamin Chewables for Children Ages 2–9, 60 Vegan Gummies",
+      "url": "https://www.nubest.com/products/shopping-doctor-taller-kids-grape-multivitamins-ages-2-9-60-vegan-chewables",
+      "price_amount": 39.9,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 16,
+      "row_key": "ext_acff84a9f77766e338b83f44",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "NuBest Tall Kids – Berry Multivitamin Chewables for Ages 2–9, 60 Count",
+      "url": "https://www.nubest.com/products/shopping-nubest-tall-kids-multivitamins-berry-flavor-ages-2-9-60-chewables",
+      "price_amount": 39,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 17,
+      "row_key": "ext_dcc2bc2ea0fe61decdd117bc",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "Sleep Xtra – Natural Sleep Aid for Teens & Adults",
+      "url": "https://www.nubest.com/products/shopping-sleep-xtra-natural-non-habit-forming-sleep-aid-for-teens-adults-60-vegan-capsules",
+      "price_amount": 23.89,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 18,
+      "row_key": "ext_957e33240556ab4101d7a2aa",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "NuBrain – Advanced Brain Support for Focus & Clarity - 60 Vegan Capsules",
+      "url": "https://www.nubest.com/products/shopping-nubrain-advanced-brain-support-for-focus-clarity-60-vegan-capsules",
+      "price_amount": 39,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 19,
+      "row_key": "ext_9fbfa632c4a275917f5a0da0",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "Omega-3 Vegan Gummies for Kids & Teens - 60 Count",
+      "url": "https://www.nubest.com/products/shopping-omega-3-vegan-gummies-for-kids-teens-60-count",
+      "price_amount": 26.99,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 20,
+      "row_key": "ext_2da6f7615154860df7bdb07b",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "Doctor Plus, For Children & Teens - 60 Capsules",
+      "url": "https://www.nubest.com/products/shopping-doctor-plus-for-children-teens-60-capsules",
+      "price_amount": 57,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 21,
+      "row_key": "ext_8ceb57fb3bf586b6dde1ba06",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "NuBest Blood Sugar Balance – Metabolic Support, Energy & Immunity - 60 Vegan Capsules",
+      "url": "https://www.nubest.com/products/shopping-nubest-blood-sugar",
+      "price_amount": 28.89,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 22,
+      "row_key": "ext_4e7ae04d68622ea157a494da",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "Grow Power Capsules for Kids & Teens – 60 Count",
+      "url": "https://www.nubest.com/products/shopping-grow-power-capsules-for-kids-teens-60-count",
+      "price_amount": 38.79,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 23,
+      "row_key": "ext_3309142057cb4c7f8fecb5c4",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "NuBest Tall Gummies | Ages 2+, Vegan, No Sugar Added, 60 Gummies",
+      "url": "https://www.nubest.com/products/shopping-nubest-tall-gummies",
+      "price_amount": 55,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 24,
+      "row_key": "ext_0b2739675ad65d7053dd3520",
+      "decision": "hold",
+      "hold_reasons": [
+        "out_of_stock",
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "NuBest Tall Fizzy – Height Growth & Bone Strength, Orange Flavor, 10 Effervescent Tabs",
+      "url": "https://www.nubest.com/products/shopping-nubest-tall-fizzy",
+      "price_amount": 15.99,
+      "price_currency": "USD",
+      "availability": "out_of_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 25,
+      "row_key": "ext_81e3e4d3281fb7a18c38b4d3",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "NuBest Tall, Powerful Growth for Kids & Teens (5+), Non-Milk Drinkers, 60 Capsules",
+      "url": "https://www.nubest.com/products/shopping-nubest-tall-powerful-growth-for-kids-teens-5-non-milk-drinkers-60-capsules",
+      "price_amount": 55,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 26,
+      "row_key": "ext_10d539ae6b2d9d6ece289502",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "NuBest Tall Kids, Berry Flavor, 90 Chewables",
+      "url": "https://www.nubest.com/products/shopping-nubest-tall-kids-berry-flavor-90-chewables",
+      "price_amount": 55,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 27,
+      "row_key": "ext_40212e96cb3b95a0d146ec09",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "Doctor Taller, For Children (8+) & Teens, 60 Vegan Capsules",
+      "url": "https://www.nubest.com/products/shopping-doctor-taller-for-children-8-teens-60-vegan-capsules",
+      "price_amount": 59,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 28,
+      "row_key": "ext_337adba5a2347bd2f67390d6",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims"
+      ],
+      "title": "NuBest White, Skin Brightening Formula, 60 Vegan Capsules",
+      "url": "https://www.nubest.com/products/shopping-nubest-white-skin-brightening-formula-60-vegan-capsules",
+      "price_amount": 48,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 29,
+      "row_key": "ext_4422979e03c8e4b54800c05b",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "NuBest Tall 10+, Powerful Growth Support for Teens - 60 Capsules",
+      "url": "https://www.nubest.com/products/shopping-nubest-tall-10-powerful-growth-support-for-teens-60-capsules",
+      "price_amount": 55,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 30,
+      "row_key": "ext_e66d3c907b83f3d4fd4c7a3a",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "NuBest Tall Gummies for Ages 2+ & Teens, No Added Sugar, 60 Vegan Gummies",
+      "url": "https://www.nubest.com/products/nubest-tall-gummies",
+      "price_amount": 55,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 31,
+      "row_key": "ext_0f2850aed65d7b657eb82a2b",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "Omega-3 Vegan Gummies for Kids & Teens (60 Count)",
+      "url": "https://www.nubest.com/products/nubest-omega-3-gummies",
+      "price_amount": 26.99,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 32,
+      "row_key": "ext_e4812992c9ab31bac4c7bba0",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims",
+        "accessory_tool_or_non_beauty_product"
+      ],
+      "title": "NuBest Eye Health – Advanced Vision & Blue Light Protection, 60 Vegan Capsules",
+      "url": "https://www.nubest.com/products/nubest-eye-health",
+      "price_amount": 30.99,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 33,
+      "row_key": "ext_9a42cb1c1eb4b630db14e445",
+      "decision": "hold",
+      "hold_reasons": [
+        "bundle_set_sample_or_gift",
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims",
+        "accessory_tool_or_non_beauty_product"
+      ],
+      "title": "NuBest Protein Shaker",
+      "url": "https://www.nubest.com/products/nubest-protein-shaker",
+      "price_amount": 12.89,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 34,
+      "row_key": "ext_b8816bb042eb5b9c8b92f42d",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims"
+      ],
+      "title": "NuBest White - Skin Brightening Formula - 60 Vegan Capsules",
+      "url": "https://www.nubest.com/products/nubest-white-skin-brightening-formula-60-vegan-capsules-150124",
+      "price_amount": 48,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 35,
+      "row_key": "ext_2ace06bd5408892bd9bb5913",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims"
+      ],
+      "title": "NuBest White - Natural Skin Brightening and Anti-Aging Formula",
+      "url": "https://www.nubest.com/products/nubest-white-natural-skin-brightening-and-anti-aging-formula",
+      "price_amount": 48,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 36,
+      "row_key": "ext_4fb87231294c8c36c3ed13ef",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "Bone Xtra - Plant-based Formula to Support Healthy Bones, 120 Vegan Capsules",
+      "url": "https://www.nubest.com/products/bone-xtra-plant-based-formula-to-support-healthy-bones-for-adults-120-vegan-capsules",
+      "price_amount": 29.99,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 37,
+      "row_key": "ext_0456ed40b1fdb01de6ccf2ca",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims"
+      ],
+      "title": "NuBest White - Skin Brightening Formula, 60 Vegan Capsules",
+      "url": "https://www.nubest.com/products/nubest-white-skin-brightening-formula-60-vegan-capsules-bd-3n96839",
+      "price_amount": 48,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 38,
+      "row_key": "ext_7b42b238e202527a7b8a9881",
+      "decision": "hold",
+      "hold_reasons": [
+        "bundle_set_sample_or_gift",
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims",
+        "accessory_tool_or_non_beauty_product"
+      ],
+      "title": "3X TALL COMBO",
+      "url": "https://www.nubest.com/products/3x-tall-combo",
+      "price_amount": 129.99,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 39,
+      "row_key": "ext_7d6a0a41dd87cd24cdf6c6ca",
+      "decision": "hold",
+      "hold_reasons": [
+        "repo_review_row_blocker",
+        "accessory_tool_or_non_beauty_product"
+      ],
+      "title": "Shipping Protection",
+      "url": "https://www.nubest.com/products/shipping-protection",
+      "price_amount": 2.5,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 40,
+      "row_key": "ext_43c6340a81ae7efbc34cd94f",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "NuBest Tall Protein Vanilla Shake for Kids Ages 4+, 10 Vegan Servings",
+      "url": "https://www.nubest.com/products/nubesttall-protein-powder-super-growth-boost-for-ages-4-to-teens-vanilla-10-vegan-servs-693909",
+      "price_amount": 35.99,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 41,
+      "row_key": "ext_938114e75ef8db89fe6bacc8",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "Bone Xtra - Plant-based Formula to Support Healthy Bones For Adults, 120 Vegan Capsules",
+      "url": "https://www.nubest.com/products/bone-xtra-advanced-bone-strength-for-adults-and-teens-697929",
+      "price_amount": 29.99,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 42,
+      "row_key": "ext_a8da1daad34315476410e794",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "NuBest Tall Protein for Growth and Development, Kids and Teens 3+, Chocolate",
+      "url": "https://www.nubest.com/products/nubesttall-protein-powder-super-growth-boost-for-ages-2-to-teens-chocolate-15-servs-696808",
+      "price_amount": 45.99,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 43,
+      "row_key": "ext_25ba454c0323e72ec65d77e2",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "NuBest Blood Sugar Balance – Metabolic Support, Energy & Immunity, 60 Vegan Capsules",
+      "url": "https://www.nubest.com/products/blood-sugar-healthy-glucose-balance-support-with-herbs-immunity-diabetic-support-683928",
+      "price_amount": 28.89,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 44,
+      "row_key": "ext_ef7e21a20a50bb031ccd440e",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "Sleep Xtra, Natural Non-Habit Forming Sleep Aid for Teens & Adults, 60 Vegan Capsules",
+      "url": "https://www.nubest.com/products/sleep-xtra-advanced-sleep-aid-supplement-fall-sleep-faster-stress-relaxation-support-693619",
+      "price_amount": 23.89,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 45,
+      "row_key": "ext_61153752ea6e0f0e4e887b2e",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "Doctor Taller Kids, Grape Multivitamins, Ages 2-9, 60 Vegan Chewables",
+      "url": "https://www.nubest.com/products/doctor-taller-kids-multivitamins-and-multi-minerals-for-kids-ages-2-to-9-vegan-chewable-920108",
+      "price_amount": 39.9,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 46,
+      "row_key": "ext_66da6e19612f0b49437e8443",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "NuBest Tall Kids, Multivitamins, Berry Flavor, Ages 2-9, 60 Chewables",
+      "url": "https://www.nubest.com/products/nubest-tall-kids-helps-children-grow-taller-aged-2-to-9-doctor-recommended-352010",
+      "price_amount": 39,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 47,
+      "row_key": "ext_bf9e9b46f2508ac22d7a8d00",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "Doctor Taller Kids, Grape Multivitamins, Ages 2-9, 90 Vegan Chewables",
+      "url": "https://www.nubest.com/products/doctor-taller-kids-multivitamins-and-multi-minerals-for-kids-ages-2-to-9-vegan-chewable-996229",
+      "price_amount": 59,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 48,
+      "row_key": "ext_1c2629a051bb280ab4560920",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "NuBrain – Advanced Brain Support for Focus & Clarity, 60 Vegan Capsules",
+      "url": "https://www.nubest.com/products/nu-brain-supports-healthy-brain-functions-enhance-memory-focus-sleep-aid-312508",
+      "price_amount": 39,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 49,
+      "row_key": "ext_99bc9c5c5abc3abb4dfecda3",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "NuBest Tall 10+, Powerful Growth Support for Teens (60 Capsules)",
+      "url": "https://www.nubest.com/products/nubesttall-for-children-and-teenagers-from-10-years-old-doctor-recommended-182008",
+      "price_amount": 55,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 50,
+      "row_key": "ext_9c7a303981e022e88fd5c7df",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "Grow Power, For Children & Teens, 60 Capsules",
+      "url": "https://www.nubest.com/products/grow-power-for-children-teens-60-capsules",
+      "price_amount": 38.79,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "row_index": 51,
+      "row_key": "ext_06847c693180d224f0078a93",
+      "decision": "hold",
+      "hold_reasons": [
+        "wellness_supplement_or_regulated_claims",
+        "therapeutic_or_medical_claims"
+      ],
+      "title": "Doctor Plus, For Children & Teens, 60 Capsules",
+      "url": "https://www.nubest.com/products/doctor-plus-60-capsules-height-growth-nanometer-calcium-herb-by-nubest-usa-230057",
+      "price_amount": 57,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    },
+    {
+      "brand": "YAY NOVELTY",
+      "slug": "yay-novelty",
+      "row_index": 1,
+      "row_key": "ext_c68d1e6e5c21eb655fbbafa6",
+      "decision": "hold",
+      "hold_reasons": [
+        "accessory_tool_or_non_beauty_product"
+      ],
+      "title": "Anniversary Cards - USA-Made A2 Greeting Card with Pearlescent Accents and Shimmering Heavy Paper Stock - Apple Blossom",
+      "url": "https://yaynovelty.com/anniversary-cards-cards-usa-made-a2-greeting-card-with-pearlescent-accents-and-shimmering-heavy-paper-stock-apple-blossom/",
+      "price_amount": 6,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "commerce_gate_status": "pass",
+      "commerce_gate_problems": []
+    }
+  ]
+}

@@ -1,0 +1,293 @@
+{
+  "generated_at": "2026-05-24T06:20:41.050Z",
+  "mode": "wave7_markato_batch4_read_only_no_db",
+  "guardrails_observed": {
+    "railway_up": false,
+    "git_push": false,
+    "db_apply_or_production_write": false,
+    "dry_runs_database_url_unset": true,
+    "seller_only_fallback_used": false,
+    "force_filled_ingredients": false
+  },
+  "brands": [
+    {
+      "brand": "GINZAI",
+      "slug": "ginzai",
+      "domain": "ginzai.de",
+      "extracted_product_count": 55,
+      "manifest_item_count": 32,
+      "review_status": "blocked",
+      "review_blockers": [
+        "anti_abuse_signal:perimeterx"
+      ],
+      "review_accepted_item_count": 32,
+      "curated_candidate_count": 0,
+      "held_count": 32,
+      "hold_reasons": {
+        "review_gate_blocker": 32,
+        "anti_abuse_signal:perimeterx": 32,
+        "non_us_currency": 32,
+        "commerce_facts_gate_hold": 32,
+        "commerce:market_currency_mismatch": 32,
+        "commerce:commerce_facts_currency_mismatch": 32,
+        "commerce:commerce_facts_market_switch_not_ok": 32,
+        "non_english_copy": 32,
+        "bundle_set_sample_or_gift": 7,
+        "wellness_supplement_or_regulated_claims": 12,
+        "spf_sunscreen": 3,
+        "therapeutic_or_medical_claims": 15,
+        "accessory_tool_or_non_beauty_product": 3,
+        "out_of_stock": 1
+      },
+      "dry_run_summary": {
+        "mode": "dry_run",
+        "database_available": false,
+        "scanned": 0,
+        "inserted": 0,
+        "skipped_existing": 0,
+        "would_insert": 0,
+        "would_insert_unverified": 0,
+        "invalid": 0,
+        "requires_seed_correction_count": 0
+      },
+      "next_step": "Do not apply from this extraction. Clear the PerimeterX/anti-abuse source issue and find a verified US/USD English official PDP source before re-review."
+    },
+    {
+      "brand": "orora",
+      "slug": "orora",
+      "domain": "orora.jp",
+      "extracted_product_count": 34,
+      "manifest_item_count": 25,
+      "review_status": "pass",
+      "review_blockers": [],
+      "review_accepted_item_count": 25,
+      "curated_candidate_count": 0,
+      "held_count": 25,
+      "hold_reasons": {
+        "commerce_facts_gate_hold": 25,
+        "commerce:commerce_facts_currency_mismatch": 25,
+        "commerce:commerce_facts_market_switch_not_ok": 25,
+        "non_english_copy": 25,
+        "price_over_250_usd": 5,
+        "spf_sunscreen": 2
+      },
+      "dry_run_summary": {
+        "mode": "dry_run",
+        "database_available": false,
+        "scanned": 0,
+        "inserted": 0,
+        "skipped_existing": 0,
+        "would_insert": 0,
+        "would_insert_unverified": 0,
+        "invalid": 0,
+        "requires_seed_correction_count": 0
+      },
+      "next_step": "Find a verified English US/USD official market source, or route this brand to the correct non-US market lane before seed creation."
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "domain": "nubest.com",
+      "extracted_product_count": 66,
+      "manifest_item_count": 51,
+      "review_status": "pass",
+      "review_blockers": [],
+      "review_accepted_item_count": 49,
+      "curated_candidate_count": 0,
+      "held_count": 51,
+      "hold_reasons": {
+        "wellness_supplement_or_regulated_claims": 50,
+        "therapeutic_or_medical_claims": 44,
+        "out_of_stock": 2,
+        "repo_review_row_blocker": 2,
+        "bundle_set_sample_or_gift": 4,
+        "accessory_tool_or_non_beauty_product": 4
+      },
+      "dry_run_summary": {
+        "mode": "dry_run",
+        "database_available": false,
+        "scanned": 0,
+        "inserted": 0,
+        "skipped_existing": 0,
+        "would_insert": 0,
+        "would_insert_unverified": 0,
+        "invalid": 0,
+        "requires_seed_correction_count": 0
+      },
+      "next_step": "Route to the regulated wellness/supplement claims lane; do not create Markato beauty seeds without explicit supplement approval and a passing commerce gate."
+    },
+    {
+      "brand": "YAY NOVELTY",
+      "slug": "yay-novelty",
+      "domain": "yaynovelty.com",
+      "extracted_product_count": 1,
+      "manifest_item_count": 1,
+      "review_status": "pass",
+      "review_blockers": [],
+      "review_accepted_item_count": 1,
+      "curated_candidate_count": 0,
+      "held_count": 1,
+      "hold_reasons": {
+        "accessory_tool_or_non_beauty_product": 1
+      },
+      "dry_run_summary": {
+        "mode": "dry_run",
+        "database_available": false,
+        "scanned": 0,
+        "inserted": 0,
+        "skipped_existing": 0,
+        "would_insert": 0,
+        "would_insert_unverified": 0,
+        "invalid": 0,
+        "requires_seed_correction_count": 0
+      },
+      "next_step": "Exclude from beauty expansion unless a true beauty PDP list is supplied; current row is a greeting-card novelty product."
+    },
+    {
+      "brand": "Anaya",
+      "slug": "anaya",
+      "domain": "anayalife.com",
+      "extracted_product_count": 2,
+      "manifest_item_count": 0,
+      "review_status": "blocked",
+      "review_blockers": [
+        "zero_accepted_items_from_extractor"
+      ],
+      "review_accepted_item_count": 0,
+      "curated_candidate_count": 0,
+      "held_count": 0,
+      "hold_reasons": {},
+      "dry_run_summary": {
+        "mode": "dry_run",
+        "database_available": false,
+        "scanned": 0,
+        "inserted": 0,
+        "skipped_existing": 0,
+        "would_insert": 0,
+        "would_insert_unverified": 0,
+        "invalid": 0,
+        "requires_seed_correction_count": 0
+      },
+      "next_step": "Recover official sellable PDP URLs with transaction-ready commerce facts, then rebuild and review the manifest."
+    }
+  ],
+  "totals": {
+    "brands": 5,
+    "manifests_attempted": 5,
+    "manifests_written": 5,
+    "extracted_products": 158,
+    "manifest_items": 109,
+    "review_passed_brands": 3,
+    "review_blocked_brands": 2,
+    "review_accepted_items_including_blocked_brand_rows": 107,
+    "curated_candidate_rows": 0,
+    "held_rows": 109,
+    "db_ready_candidate_rows": 0,
+    "dry_run_manifests": 5,
+    "dry_run_scanned_rows": 0,
+    "dry_run_would_insert_unverified": 0,
+    "dry_run_invalid_rows": 0
+  },
+  "dry_run_totals": {
+    "scanned": 0,
+    "inserted": 0,
+    "skipped_existing": 0,
+    "would_insert": 0,
+    "would_insert_unverified": 0,
+    "invalid": 0,
+    "requires_seed_correction_count": 0
+  },
+  "db_ready_candidate_rows": [],
+  "blockers": [
+    {
+      "brand": "GINZAI",
+      "slug": "ginzai",
+      "review_blockers": [
+        "anti_abuse_signal:perimeterx"
+      ],
+      "hold_reasons": {
+        "review_gate_blocker": 32,
+        "anti_abuse_signal:perimeterx": 32,
+        "non_us_currency": 32,
+        "commerce_facts_gate_hold": 32,
+        "commerce:market_currency_mismatch": 32,
+        "commerce:commerce_facts_currency_mismatch": 32,
+        "commerce:commerce_facts_market_switch_not_ok": 32,
+        "non_english_copy": 32,
+        "bundle_set_sample_or_gift": 7,
+        "wellness_supplement_or_regulated_claims": 12,
+        "spf_sunscreen": 3,
+        "therapeutic_or_medical_claims": 15,
+        "accessory_tool_or_non_beauty_product": 3,
+        "out_of_stock": 1
+      },
+      "next_step": "Do not apply from this extraction. Clear the PerimeterX/anti-abuse source issue and find a verified US/USD English official PDP source before re-review."
+    },
+    {
+      "brand": "orora",
+      "slug": "orora",
+      "review_blockers": [],
+      "hold_reasons": {
+        "commerce_facts_gate_hold": 25,
+        "commerce:commerce_facts_currency_mismatch": 25,
+        "commerce:commerce_facts_market_switch_not_ok": 25,
+        "non_english_copy": 25,
+        "price_over_250_usd": 5,
+        "spf_sunscreen": 2
+      },
+      "next_step": "Find a verified English US/USD official market source, or route this brand to the correct non-US market lane before seed creation."
+    },
+    {
+      "brand": "NuBest",
+      "slug": "nubest",
+      "review_blockers": [],
+      "hold_reasons": {
+        "wellness_supplement_or_regulated_claims": 50,
+        "therapeutic_or_medical_claims": 44,
+        "out_of_stock": 2,
+        "repo_review_row_blocker": 2,
+        "bundle_set_sample_or_gift": 4,
+        "accessory_tool_or_non_beauty_product": 4
+      },
+      "next_step": "Route to the regulated wellness/supplement claims lane; do not create Markato beauty seeds without explicit supplement approval and a passing commerce gate."
+    },
+    {
+      "brand": "YAY NOVELTY",
+      "slug": "yay-novelty",
+      "review_blockers": [],
+      "hold_reasons": {
+        "accessory_tool_or_non_beauty_product": 1
+      },
+      "next_step": "Exclude from beauty expansion unless a true beauty PDP list is supplied; current row is a greeting-card novelty product."
+    },
+    {
+      "brand": "Anaya",
+      "slug": "anaya",
+      "review_blockers": [
+        "zero_accepted_items_from_extractor"
+      ],
+      "hold_reasons": {},
+      "next_step": "Recover official sellable PDP URLs with transaction-ready commerce facts, then rebuild and review the manifest."
+    }
+  ],
+  "exact_next_steps": [
+    "Keep this batch read-only until an operator approves a separate DB apply lane.",
+    "No row from this batch is DB-ready: every extracted row is held by commerce-facts gate hold and/or stricter curation rules.",
+    "Before any apply, rebuild only verified official US/USD English PDP sources, rerun repo review, and rerun a DB-backed dry-run/postcheck.",
+    "Do not continue GINZAI until the PerimeterX anti-abuse signal is cleared and a US/USD source is verified.",
+    "Route NuBest to the regulated wellness/supplement claims lane; do not force-fill ingredients or seed claims-heavy supplement rows in this beauty lane.",
+    "Exclude YAY NOVELTY from beauty expansion unless a true beauty/product-care PDP source is supplied.",
+    "Recover Anaya official PDPs before any further seed creation work."
+  ],
+  "artifacts": {
+    "batch_summary_json": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_4/batch_summary.json",
+    "batch_summary_md": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_4/batch_summary.md",
+    "db_ready_candidate_manifest": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_4/db_ready_candidate_manifest.json",
+    "curation_decisions_csv": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_4/curation_decisions.csv",
+    "curation_summary_json": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_4/curation_summary.json",
+    "dry_runs_dir": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_4/dry_runs",
+    "manifests_dir": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_4/manifests",
+    "reviews_dir": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_4/reviews",
+    "curated_manifests_dir": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_4/curated_manifests"
+  }
+}

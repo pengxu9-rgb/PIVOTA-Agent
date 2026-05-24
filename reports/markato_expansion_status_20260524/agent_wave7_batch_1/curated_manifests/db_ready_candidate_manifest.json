@@ -1,0 +1,13 @@
+{
+  "generated_at": "2026-05-24T06:16:03.145Z",
+  "brand": "Wave7 Markato Batch 1",
+  "domain": null,
+  "market": "US",
+  "item_count": 0,
+  "curation_gate": {
+    "decision": "no_db_ready_candidates",
+    "no_db_apply": true,
+    "no_production_write": true
+  },
+  "items": []
+}

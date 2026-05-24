@@ -1,0 +1,1459 @@
+{
+  "generated_at": "2026-05-24T06:14:38.814Z",
+  "mode": "dry_run",
+  "batch_size": null,
+  "requested_ids": 7,
+  "fetched_rows": 7,
+  "mirror_rows": 7,
+  "planned_sku_rows": 7,
+  "planned_offer_rows": 7,
+  "planned_index_state_rows": 7,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "dry_run",
+    "existing_before": {
+      "catalog_products": 0,
+      "catalog_skus": 0,
+      "catalog_offers": 0,
+      "product_group_members": 0
+    },
+    "batch_size": null,
+    "batches": 1,
+    "product_upserts": 0,
+    "sku_upserts": 0,
+    "offer_upserts": 0,
+    "group_member_upserts": 0,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 0,
+    "identity_live_read_updates": 0
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_df8aac07d6c970d4c213b43f",
+      "product_key": "prod::external_seed::external_seed::ext_df8aac07d6c970d4c213b43f",
+      "product_group_id": "sig_1407668a361efa420e640001159f9b58",
+      "title": "Silk Night Cream",
+      "brand": "Seresilk",
+      "product_type": "Moisturizer",
+      "category": "Moisturizer",
+      "category_path": "beauty/skincare/moisturizer",
+      "canonical_url": "https://seresilk.com.au/products/silk-night-cream",
+      "pivota_signature_id": "sig_1407668a361efa420e640001159f9b58",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_df8aac07d6c970d4c213b43f::sku_3f15e22436f54f347102",
+        "product_key": "prod::external_seed::external_seed::ext_df8aac07d6c970d4c213b43f",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_df8aac07d6c970d4c213b43f",
+        "source_variant_id": "ext_df8aac07d6c970d4c213b43f:40087701061711",
+        "sku": "7701061711",
+        "title": "Silk Night Cream",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_SilkNightCream.jpg?v=1754113861",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_df8aac07d6c970d4c213b43f",
+          "raw_variant_id": "40087701061711",
+          "source_variant_id": "ext_df8aac07d6c970d4c213b43f:40087701061711",
+          "variant_sku": "7701061711",
+          "source_url": "https://seresilk.com.au/products/silk-night-cream",
+          "external_redirect_url": "https://seresilk.com.au/products/silk-night-cream",
+          "price": "79.97",
+          "price_amount": 79.97,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_SilkNightCream.jpg?v=1754113861",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "7701061711",
+            "url": "https://seresilk.com.au/products/silk-night-cream",
+            "price": "79.97",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_SilkNightCream.jpg?v=1754113861",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_SilkNightCream.jpg?v=1754113861",
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Texture_Square_SilkNightCream.webp?v=1754113861",
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/EditorialSquareNightCream.webp?v=1754113861"
+            ],
+            "variant_id": "40087701061711",
+            "description": "50ml \n\nThe Silk Night Cream is a rich, restorative treatment designed to deeply hydrate, firm, and reinforce the skin’s barrier overnight. Enriched with the proprietary Hydrolysed Silk Complex HSC01-A™ , squalene, and vitamin E, the cream delivers intense moisture while supporting elasticity and cell renewal.\n\nIts velvety texture melts into the skin, creating a soft, breathable veil that leaves the complexion visibly firmer and more radiant by morning.\n\nBENEFITS \nImmediately: Skin feels nourished, soothed, and comforted. With continued use: Skin appears firmer, more elastic, and visibly revitalised.\n\nDermatologically tested and approved. Patch test before application.\nApproved under the Leaping Bunny programme.",
+            "option_name": "Size",
+            "option_value": "50ml"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:6881a46aed6ddf3fb2241678c8646851",
+        "sku_key": "prod::external_seed::external_seed::ext_df8aac07d6c970d4c213b43f::sku_3f15e22436f54f347102",
+        "product_key": "prod::external_seed::external_seed::ext_df8aac07d6c970d4c213b43f",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 79.97,
+        "merchant_effective_price": 79.97,
+        "estimated_best_price": 79.97,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_44c1397b319a538f47b4ca1d",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_44c1397b319a538f47b4ca1d",
+          "external_product_id": "ext_df8aac07d6c970d4c213b43f",
+          "domain": "seresilk.com.au",
+          "market": "US",
+          "product_title": "Silk Night Cream",
+          "variant_title": "Silk Night Cream",
+          "variant_sku": "7701061711",
+          "raw_variant_id": "40087701061711",
+          "url": "https://seresilk.com.au/products/silk-night-cream",
+          "offer_url": "https://seresilk.com.au/products/silk-night-cream",
+          "canonical_url": "https://seresilk.com.au/products/silk-night-cream",
+          "destination_url": "https://seresilk.com.au/products/silk-night-cream",
+          "external_redirect_url": "https://seresilk.com.au/products/silk-night-cream",
+          "merchant_display_name": "Seresilk",
+          "price": "79.97",
+          "price_amount": 79.97,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T05:00:18.772Z",
+            "evidence_url": "https://seresilk.com.au/products/silk-night-cream",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-24T05:00:18.772Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://seresilk.com.au/products/silk-night-cream"
+            },
+            "regional_price": {
+              "amount": 79.97,
+              "currency": "USD",
+              "display_raw": "79.97",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://seresilk.com.au/products/silk-night-cream",
+              "captured_at": "2026-05-24T05:00:18.772Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T05:00:18.772Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T05:00:18.772Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T05:00:18.772Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 79.97,
+              "currency": "USD",
+              "display_raw": "79.97",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://seresilk.com.au/products/silk-night-cream",
+              "captured_at": "2026-05-24T05:00:18.772Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T05:00:18.772Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": false,
+        "contentQualityScore": 70,
+        "blockerCode": "identity_not_live_approved",
+        "blockerDetail": "identity_not_live_approved",
+        "identityResolved": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 720
+      }
+    },
+    {
+      "external_product_id": "ext_438058253d57a2c8d75f5906",
+      "product_key": "prod::external_seed::external_seed::ext_438058253d57a2c8d75f5906",
+      "product_group_id": "sig_3a44e5c9d4b6060034ac619ba688dfa9",
+      "title": "Silk Night Serum",
+      "brand": "Seresilk",
+      "product_type": "Serum",
+      "category": "Serum",
+      "category_path": "beauty/skincare/serum",
+      "canonical_url": "https://seresilk.com.au/products/silk-night-serum",
+      "pivota_signature_id": "sig_3a44e5c9d4b6060034ac619ba688dfa9",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_438058253d57a2c8d75f5906::sku_4763982c5670e1bfb295",
+        "product_key": "prod::external_seed::external_seed::ext_438058253d57a2c8d75f5906",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_438058253d57a2c8d75f5906",
+        "source_variant_id": "ext_438058253d57a2c8d75f5906:40087700471887",
+        "sku": "7700471887",
+        "title": "Silk Night Serum",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_SilkNightSerum.jpg?v=1753242176",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_438058253d57a2c8d75f5906",
+          "raw_variant_id": "40087700471887",
+          "source_variant_id": "ext_438058253d57a2c8d75f5906:40087700471887",
+          "variant_sku": "7700471887",
+          "source_url": "https://seresilk.com.au/products/silk-night-serum",
+          "external_redirect_url": "https://seresilk.com.au/products/silk-night-serum",
+          "price": "94.51",
+          "price_amount": 94.51,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_SilkNightSerum.jpg?v=1753242176",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "7700471887",
+            "url": "https://seresilk.com.au/products/silk-night-serum",
+            "price": "94.51",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_SilkNightSerum.jpg?v=1753242176",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_SilkNightSerum.jpg?v=1753242176",
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Texture_Square_SilkNightSerum.webp?v=1753242176",
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/EditorialSilkNightSerumSquare.webp?v=1753242176"
+            ],
+            "variant_id": "40087700471887",
+            "description": "30ml \n\nThe Silk Night Serum is a concentrated formula developed to support the skin’s overnight regenerative processes. Infused with the proprietary Hydrolysed Silk Complex HSC01-A™ , vitamin A, and hyaluronic acid, this serum helps refine skin texture, improve tone, and visibly reduce the appearance of fine lines.\n\nIts lightweight, fast-absorbing texture delivers immediate hydration and a refined finish, preparing the skin for optimal overnight recovery.\n\nBENEFITS \nImmediately: Skin feels hydrated and soothed. Over time: Skin appears smoother, more even, and visibly renewed by morning.\n\nDermatologically tested and approved. Patch test before application.\nApproved under the Leaping Bunny programme.",
+            "option_name": "Size",
+            "option_value": "30ml"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:fe9456bdf3847de9738ab968f17c7011",
+        "sku_key": "prod::external_seed::external_seed::ext_438058253d57a2c8d75f5906::sku_4763982c5670e1bfb295",
+        "product_key": "prod::external_seed::external_seed::ext_438058253d57a2c8d75f5906",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 94.51,
+        "merchant_effective_price": 94.51,
+        "estimated_best_price": 94.51,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_68187b19d2f43540ff7e1b59",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_68187b19d2f43540ff7e1b59",
+          "external_product_id": "ext_438058253d57a2c8d75f5906",
+          "domain": "seresilk.com.au",
+          "market": "US",
+          "product_title": "Silk Night Serum",
+          "variant_title": "Silk Night Serum",
+          "variant_sku": "7700471887",
+          "raw_variant_id": "40087700471887",
+          "url": "https://seresilk.com.au/products/silk-night-serum",
+          "offer_url": "https://seresilk.com.au/products/silk-night-serum",
+          "canonical_url": "https://seresilk.com.au/products/silk-night-serum",
+          "destination_url": "https://seresilk.com.au/products/silk-night-serum",
+          "external_redirect_url": "https://seresilk.com.au/products/silk-night-serum",
+          "merchant_display_name": "Seresilk",
+          "price": "94.51",
+          "price_amount": 94.51,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T05:00:18.772Z",
+            "evidence_url": "https://seresilk.com.au/products/silk-night-serum",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-24T05:00:18.772Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://seresilk.com.au/products/silk-night-serum"
+            },
+            "regional_price": {
+              "amount": 94.51,
+              "currency": "USD",
+              "display_raw": "94.51",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://seresilk.com.au/products/silk-night-serum",
+              "captured_at": "2026-05-24T05:00:18.772Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T05:00:18.772Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T05:00:18.772Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T05:00:18.772Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 94.51,
+              "currency": "USD",
+              "display_raw": "94.51",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://seresilk.com.au/products/silk-night-serum",
+              "captured_at": "2026-05-24T05:00:18.772Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T05:00:18.772Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": false,
+        "contentQualityScore": 70,
+        "blockerCode": "identity_not_live_approved",
+        "blockerDetail": "identity_not_live_approved",
+        "identityResolved": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 707
+      }
+    },
+    {
+      "external_product_id": "ext_0d4ffd13b899460cabb1f392",
+      "product_key": "prod::external_seed::external_seed::ext_0d4ffd13b899460cabb1f392",
+      "product_group_id": "sig_3afb59990ec7438897e075f274cf77be",
+      "title": "Gentle Silk Cleanser",
+      "brand": "Seresilk",
+      "product_type": "Cleanser",
+      "category": "Cleanser",
+      "category_path": "beauty/skincare/cleanser",
+      "canonical_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+      "pivota_signature_id": "sig_3afb59990ec7438897e075f274cf77be",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_0d4ffd13b899460cabb1f392::sku_c27c557f31a3d3c4792c",
+        "product_key": "prod::external_seed::external_seed::ext_0d4ffd13b899460cabb1f392",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_0d4ffd13b899460cabb1f392",
+        "source_variant_id": "ext_0d4ffd13b899460cabb1f392:40067068100687",
+        "sku": "7068100687",
+        "title": "Gentle Silk Cleanser",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_GentleSilkCleanser.jpg?v=1753242356",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_0d4ffd13b899460cabb1f392",
+          "raw_variant_id": "40067068100687",
+          "source_variant_id": "ext_0d4ffd13b899460cabb1f392:40067068100687",
+          "variant_sku": "7068100687",
+          "source_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+          "external_redirect_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+          "price": "54.52",
+          "price_amount": 54.52,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_GentleSilkCleanser.jpg?v=1753242356",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "7068100687",
+            "url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+            "price": "54.52",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_GentleSilkCleanser.jpg?v=1753242356",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_GentleSilkCleanser.jpg?v=1753242356",
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Texture_Square_GentleSilkCleanser.webp?v=1753242356",
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/EditorialGentleSilkCleanserSquare.webp?v=1753242356"
+            ],
+            "variant_id": "40067068100687",
+            "description": "100ml \n\nThe Gentle Silk Cleanser is a daily cleansing formula enriched with the proprietary Hydrolysed Silk Complex HSC01-A™ and glycerin to purify the skin while preserving its essential lipids. Designed to respect the skin’s natural barrier, it removes impurities, environmental residue, and excess oil without disturbing the skin’s optimum hydration equilibrium.\n\nIts lightweight, feather-soft texture transforms on contact with water, emulsifying into a milky fluid that rinses away effortlessly. The result is a complexion that feels clean, comfortable, and prepared for exfoliation.\n\nBENEFITS\nImmediately: Skin is refreshed, softened, and hydrated. With continued use: Skin appears smoother, more balanced, and visibly more radiant.\n\nDermatologically tested and approved. Patch test before application.\nApproved under the Leaping Bunny programme.",
+            "option_name": "Size",
+            "option_value": "100ml"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:f9caa9ae6d5cc22bbd7650e0f20327c1",
+        "sku_key": "prod::external_seed::external_seed::ext_0d4ffd13b899460cabb1f392::sku_c27c557f31a3d3c4792c",
+        "product_key": "prod::external_seed::external_seed::ext_0d4ffd13b899460cabb1f392",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 54.52,
+        "merchant_effective_price": 54.52,
+        "estimated_best_price": 54.52,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_5ae568728c95aa19d64a9413",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_5ae568728c95aa19d64a9413",
+          "external_product_id": "ext_0d4ffd13b899460cabb1f392",
+          "domain": "seresilk.com.au",
+          "market": "US",
+          "product_title": "Gentle Silk Cleanser",
+          "variant_title": "Gentle Silk Cleanser",
+          "variant_sku": "7068100687",
+          "raw_variant_id": "40067068100687",
+          "url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+          "offer_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+          "canonical_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+          "destination_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+          "external_redirect_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+          "merchant_display_name": "Seresilk",
+          "price": "54.52",
+          "price_amount": 54.52,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T05:00:18.772Z",
+            "evidence_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-24T05:00:18.772Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://seresilk.com.au/products/gentle-silk-cleanser"
+            },
+            "regional_price": {
+              "amount": 54.52,
+              "currency": "USD",
+              "display_raw": "54.52",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+              "captured_at": "2026-05-24T05:00:18.772Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T05:00:18.772Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T05:00:18.772Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T05:00:18.772Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 54.52,
+              "currency": "USD",
+              "display_raw": "54.52",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+              "captured_at": "2026-05-24T05:00:18.772Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T05:00:18.772Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": false,
+        "contentQualityScore": 70,
+        "blockerCode": "identity_not_live_approved",
+        "blockerDetail": "identity_not_live_approved",
+        "identityResolved": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 852
+      }
+    },
+    {
+      "external_product_id": "ext_065337312a937f0f26d50865",
+      "product_key": "prod::external_seed::external_seed::ext_065337312a937f0f26d50865",
+      "product_group_id": "sig_89b7228c4664aaa187d5547025e5e849",
+      "title": "Lucamar Baalm 50g  UNSCENTED",
+      "brand": "Lucamar Skin Care",
+      "product_type": "Beauty Product",
+      "category": "Beauty Product",
+      "category_path": "beauty",
+      "canonical_url": "https://lucamarskincare.com/products/lucamar-baalm-50g-unscented",
+      "pivota_signature_id": "sig_89b7228c4664aaa187d5547025e5e849",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_065337312a937f0f26d50865::sku_506b8613c20479e202a5",
+        "product_key": "prod::external_seed::external_seed::ext_065337312a937f0f26d50865",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_065337312a937f0f26d50865",
+        "source_variant_id": "ext_065337312a937f0f26d50865:62597126095007",
+        "sku": "SHOPIFY-62597126095007",
+        "title": "Lucamar Baalm 50g  UNSCENTED",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/2713/6250/files/1_dc7a4c5e-2478-4e51-9339-0d45c6fb421e.png?v=1701341626",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_065337312a937f0f26d50865",
+          "raw_variant_id": "62597126095007",
+          "source_variant_id": "ext_065337312a937f0f26d50865:62597126095007",
+          "variant_sku": "SHOPIFY-62597126095007",
+          "source_url": "https://lucamarskincare.com/products/lucamar-baalm-50g-unscented",
+          "external_redirect_url": "https://lucamarskincare.com/products/lucamar-baalm-50g-unscented",
+          "price": "14",
+          "price_amount": 14,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/2713/6250/files/1_dc7a4c5e-2478-4e51-9339-0d45c6fb421e.png?v=1701341626",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "SHOPIFY-62597126095007",
+            "url": "https://lucamarskincare.com/products/lucamar-baalm-50g-unscented",
+            "price": "14",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/2713/6250/files/1_dc7a4c5e-2478-4e51-9339-0d45c6fb421e.png?v=1701341626",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/2713/6250/files/1_dc7a4c5e-2478-4e51-9339-0d45c6fb421e.png?v=1701341626",
+              "https://cdn.shopify.com/s/files/1/2713/6250/files/2_b400dbb8-f696-4d71-9689-43b214e4bf30.png?v=1701341625",
+              "https://cdn.shopify.com/s/files/1/2713/6250/files/UntitledDesign-3-Edited.png?v=1701341891"
+            ],
+            "variant_id": "62597126095007",
+            "description": "Uncover the classic power of our Skin Baalm, a refined blend of lanolin and hemp seed oil, designed to care for skin, hands, beards and tattoo's. \n\nThis luxurious balm draws from time-honoured grooming traditions, deeply moisturising and restoring with every use. Lanolin's rich emollient properties work to soften &amp; protect, while the nourishing essence of hemp seed oil helps to rejuvenate and maintain healthy skin. \n\nWhether soothing dry, cracked hands, taming facial hair, or enhancing the vibrancy of your tattoo, this balm delivers the care your body deserves. \n\nA timeless companion for the modern man, embracing the strength and elegance of old-world craftsmanship with every application. \n\nINGREDIENTS: \n\nPure Australian Anhydrous Lanolin, Humanely Sourced Vitellaria paradoxa. Organic Shea Butter , Australian Hemp extract. Cera Alba, Australian Bees Wax, Vitamin A, E, Frankincense &amp; Ginger Body Safe fragrance \n\nNo parabéns, petrolatum, Peg's, Mineral oil, sulphates. \n\nDAILY RITUAL: \n\nSoften balm between hands and apply on the required areas. Only a little is needed as it goes a long way . \n\nProudly Made In South Australia \n\nCruelty Free",
+            "option_name": "Size",
+            "option_value": "50g"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:f96d07ab1441e62ba688672b3b739b5e",
+        "sku_key": "prod::external_seed::external_seed::ext_065337312a937f0f26d50865::sku_506b8613c20479e202a5",
+        "product_key": "prod::external_seed::external_seed::ext_065337312a937f0f26d50865",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 14,
+        "merchant_effective_price": 14,
+        "estimated_best_price": 14,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_0d072fad09b3413bc8b13c49",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_0d072fad09b3413bc8b13c49",
+          "external_product_id": "ext_065337312a937f0f26d50865",
+          "domain": "lucamarskincare.com",
+          "market": "US",
+          "product_title": "Lucamar Baalm 50g  UNSCENTED",
+          "variant_title": "Lucamar Baalm 50g  UNSCENTED",
+          "variant_sku": "SHOPIFY-62597126095007",
+          "raw_variant_id": "62597126095007",
+          "url": "https://lucamarskincare.com/products/lucamar-baalm-50g-unscented",
+          "offer_url": "https://lucamarskincare.com/products/lucamar-baalm-50g-unscented",
+          "canonical_url": "https://lucamarskincare.com/products/lucamar-baalm-50g-unscented",
+          "destination_url": "https://lucamarskincare.com/products/lucamar-baalm-50g-unscented",
+          "external_redirect_url": "https://lucamarskincare.com/products/lucamar-baalm-50g-unscented",
+          "merchant_display_name": "Lucamar Skin Care",
+          "price": "14",
+          "price_amount": 14,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T04:59:49.034Z",
+            "evidence_url": "https://lucamarskincare.com/products/lucamar-baalm-50g-unscented",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-24T04:59:49.034Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://lucamarskincare.com/products/lucamar-baalm-50g-unscented"
+            },
+            "regional_price": {
+              "amount": 14,
+              "currency": "USD",
+              "display_raw": "14.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://lucamarskincare.com/products/lucamar-baalm-50g-unscented",
+              "captured_at": "2026-05-24T04:59:49.034Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T04:59:49.034Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T04:59:49.034Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T04:59:49.034Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 14,
+              "currency": "USD",
+              "display_raw": "14.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://lucamarskincare.com/products/lucamar-baalm-50g-unscented",
+              "captured_at": "2026-05-24T04:59:49.034Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T04:59:49.034Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": false,
+        "contentQualityScore": 70,
+        "blockerCode": "identity_not_live_approved",
+        "blockerDetail": "identity_not_live_approved",
+        "identityResolved": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 1162
+      }
+    },
+    {
+      "external_product_id": "ext_05c5a41a67fb37dcf352853e",
+      "product_key": "prod::external_seed::external_seed::ext_05c5a41a67fb37dcf352853e",
+      "product_group_id": "sig_57dd1304eb68fb89fd65142cefb10ac0",
+      "title": "Lucamar Baalm 50g",
+      "brand": "Lucamar Skin Care",
+      "product_type": "Beauty Product",
+      "category": "Beauty Product",
+      "category_path": "beauty",
+      "canonical_url": "https://lucamarskincare.com/products/lucamar-baalm",
+      "pivota_signature_id": "sig_57dd1304eb68fb89fd65142cefb10ac0",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_05c5a41a67fb37dcf352853e::sku_060e342889c07509d911",
+        "product_key": "prod::external_seed::external_seed::ext_05c5a41a67fb37dcf352853e",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_05c5a41a67fb37dcf352853e",
+        "source_variant_id": "ext_05c5a41a67fb37dcf352853e:14527464767530",
+        "sku": "SHOPIFY-14527464767530",
+        "title": "Lucamar Baalm 50g",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/2713/6250/files/1_dc7a4c5e-2478-4e51-9339-0d45c6fb421e.png?v=1701341626",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_05c5a41a67fb37dcf352853e",
+          "raw_variant_id": "14527464767530",
+          "source_variant_id": "ext_05c5a41a67fb37dcf352853e:14527464767530",
+          "variant_sku": "SHOPIFY-14527464767530",
+          "source_url": "https://lucamarskincare.com/products/lucamar-baalm",
+          "external_redirect_url": "https://lucamarskincare.com/products/lucamar-baalm",
+          "price": "14",
+          "price_amount": 14,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/2713/6250/files/1_dc7a4c5e-2478-4e51-9339-0d45c6fb421e.png?v=1701341626",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "SHOPIFY-14527464767530",
+            "url": "https://lucamarskincare.com/products/lucamar-baalm",
+            "price": "14",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/2713/6250/files/1_dc7a4c5e-2478-4e51-9339-0d45c6fb421e.png?v=1701341626",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/2713/6250/files/1_dc7a4c5e-2478-4e51-9339-0d45c6fb421e.png?v=1701341626",
+              "https://cdn.shopify.com/s/files/1/2713/6250/files/2_b400dbb8-f696-4d71-9689-43b214e4bf30.png?v=1701341625",
+              "https://cdn.shopify.com/s/files/1/2713/6250/files/UntitledDesign-3-Edited.png?v=1701341891"
+            ],
+            "variant_id": "14527464767530",
+            "description": "Uncover the classic power of our Skin Baalm, a refined blend of lanolin and hemp seed oil, designed to care for skin, hands, beards and tattoo's. \n\nThis luxurious balm draws from time-honoured grooming traditions, deeply moisturising and restoring with every use. Lanolin's rich emollient properties work to soften &amp; protect, while the nourishing essence of hemp seed oil helps to rejuvenate and maintain healthy skin. \n\nWhether soothing dry, cracked hands, taming facial hair, or enhancing the vibrancy of your tattoo, this balm delivers the care your body deserves. \n\nA timeless companion for the modern man, embracing the strength and elegance of old-world craftsmanship with every application. \n\nINGREDIENTS: \n\nPure Australian Anhydrous Lanolin, Humanely Sourced Vitellaria paradoxa. Organic Shea Butter , Australian Hemp extract. Cera Alba, Australian Bees Wax, Vitamin A, E, Frankincense &amp; Ginger Body Safe fragrance \n\nNo parabéns, petrolatum, Peg's, Mineral oil, sulphates. \n\nDAILY RITUAL: \n\nSoften balm between hands and apply on the required areas. Only a little is needed as it goes a long way . \n\nProudly Made In South Australia \n\nCruelty Free",
+            "option_name": "Size",
+            "option_value": "50g"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:0fb373cbef1b7988c72eab2b5f269ea1",
+        "sku_key": "prod::external_seed::external_seed::ext_05c5a41a67fb37dcf352853e::sku_060e342889c07509d911",
+        "product_key": "prod::external_seed::external_seed::ext_05c5a41a67fb37dcf352853e",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 14,
+        "merchant_effective_price": 14,
+        "estimated_best_price": 14,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_499592237ce0da6e864a8846",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_499592237ce0da6e864a8846",
+          "external_product_id": "ext_05c5a41a67fb37dcf352853e",
+          "domain": "lucamarskincare.com",
+          "market": "US",
+          "product_title": "Lucamar Baalm 50g",
+          "variant_title": "Lucamar Baalm 50g",
+          "variant_sku": "SHOPIFY-14527464767530",
+          "raw_variant_id": "14527464767530",
+          "url": "https://lucamarskincare.com/products/lucamar-baalm",
+          "offer_url": "https://lucamarskincare.com/products/lucamar-baalm",
+          "canonical_url": "https://lucamarskincare.com/products/lucamar-baalm",
+          "destination_url": "https://lucamarskincare.com/products/lucamar-baalm",
+          "external_redirect_url": "https://lucamarskincare.com/products/lucamar-baalm",
+          "merchant_display_name": "Lucamar Skin Care",
+          "price": "14",
+          "price_amount": 14,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T04:59:49.034Z",
+            "evidence_url": "https://lucamarskincare.com/products/lucamar-baalm",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-24T04:59:49.034Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://lucamarskincare.com/products/lucamar-baalm"
+            },
+            "regional_price": {
+              "amount": 14,
+              "currency": "USD",
+              "display_raw": "14.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://lucamarskincare.com/products/lucamar-baalm",
+              "captured_at": "2026-05-24T04:59:49.034Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T04:59:49.034Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T04:59:49.034Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T04:59:49.034Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 14,
+              "currency": "USD",
+              "display_raw": "14.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://lucamarskincare.com/products/lucamar-baalm",
+              "captured_at": "2026-05-24T04:59:49.034Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T04:59:49.034Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": false,
+        "contentQualityScore": 70,
+        "blockerCode": "identity_not_live_approved",
+        "blockerDetail": "identity_not_live_approved",
+        "identityResolved": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 1162
+      }
+    },
+    {
+      "external_product_id": "ext_c463dcd674e1138b1284ff37",
+      "product_key": "prod::external_seed::external_seed::ext_c463dcd674e1138b1284ff37",
+      "product_group_id": "sig_e2ce35b6d9ba4674d4388923b5e67de2",
+      "title": "Kakadu Plum Super Serum with Vit C",
+      "brand": "Rohr Remedy",
+      "product_type": "Serum",
+      "category": "Serum",
+      "category_path": "beauty/skincare/serum",
+      "canonical_url": "https://rohrremedy.com/products/kakadu-plum-face-serum-with-vit-c",
+      "pivota_signature_id": "sig_e2ce35b6d9ba4674d4388923b5e67de2",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_c463dcd674e1138b1284ff37::sku_fcd00e281e23bf8a4cff",
+        "product_key": "prod::external_seed::external_seed::ext_c463dcd674e1138b1284ff37",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_c463dcd674e1138b1284ff37",
+        "source_variant_id": "ext_c463dcd674e1138b1284ff37:31273173352559",
+        "sku": "KPFS006",
+        "title": "Kakadu Plum Super Serum with Vit C",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0237/1131/files/Kakaduplumserumwithfruitandflowers.jpg?v=1771231343",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_c463dcd674e1138b1284ff37",
+          "raw_variant_id": "31273173352559",
+          "source_variant_id": "ext_c463dcd674e1138b1284ff37:31273173352559",
+          "variant_sku": "KPFS006",
+          "source_url": "https://rohrremedy.com/products/kakadu-plum-face-serum-with-vit-c",
+          "external_redirect_url": "https://rohrremedy.com/products/kakadu-plum-face-serum-with-vit-c",
+          "price": "44",
+          "price_amount": 44,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0237/1131/files/Kakaduplumserumwithfruitandflowers.jpg?v=1771231343",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "KPFS006",
+            "url": "https://rohrremedy.com/products/kakadu-plum-face-serum-with-vit-c",
+            "price": "44",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0237/1131/files/Kakaduplumserumwithfruitandflowers.jpg?v=1771231343",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0237/1131/files/Kakaduplumserumwithfruitandflowers.jpg?v=1771231343",
+              "https://cdn.shopify.com/s/files/1/0237/1131/files/13_e7ff3d40-c65e-4dea-923b-112ca12865d9.png?v=1771231343",
+              "https://cdn.shopify.com/s/files/1/0237/1131/files/Kakadu_plum_website.png?v=1771231343",
+              "https://cdn.shopify.com/s/files/1/0237/1131/files/kakadu_plum_serum3.jpg?v=1771231343",
+              "https://cdn.shopify.com/s/files/1/0237/1131/products/RohrRemedy_KakaduPlumVitaminCFaceSerum.jpg?v=1771231343",
+              "https://cdn.shopify.com/s/files/1/0237/1131/files/BeachStillLife792.jpg?v=1771231343",
+              "https://cdn.shopify.com/s/files/1/0237/1131/files/bouganvilliakakaduplumsandserum.jpg?v=1771231343"
+            ],
+            "variant_id": "31273173352559",
+            "description": "A hydrating skin-firming oil-free serum for normal skin. Contains highly concentrated levels of (25%) Kakadu Plum , which has the highest source of Vitamin C in the world.",
+            "option_name": "Size",
+            "option_value": "50ml"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:170a80faf96466b982b6ad096f1ed819",
+        "sku_key": "prod::external_seed::external_seed::ext_c463dcd674e1138b1284ff37::sku_fcd00e281e23bf8a4cff",
+        "product_key": "prod::external_seed::external_seed::ext_c463dcd674e1138b1284ff37",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 44,
+        "merchant_effective_price": 44,
+        "estimated_best_price": 44,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_5b49f8c120d2920838ae83d6",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_5b49f8c120d2920838ae83d6",
+          "external_product_id": "ext_c463dcd674e1138b1284ff37",
+          "domain": "rohrremedy.com",
+          "market": "US",
+          "product_title": "Kakadu Plum Super Serum with Vit C",
+          "variant_title": "Kakadu Plum Super Serum with Vit C",
+          "variant_sku": "KPFS006",
+          "raw_variant_id": "31273173352559",
+          "url": "https://rohrremedy.com/products/kakadu-plum-face-serum-with-vit-c",
+          "offer_url": "https://rohrremedy.com/products/kakadu-plum-face-serum-with-vit-c",
+          "canonical_url": "https://rohrremedy.com/products/kakadu-plum-face-serum-with-vit-c",
+          "destination_url": "https://rohrremedy.com/products/kakadu-plum-face-serum-with-vit-c",
+          "external_redirect_url": "https://rohrremedy.com/products/kakadu-plum-face-serum-with-vit-c",
+          "merchant_display_name": "Rohr Remedy",
+          "price": "44",
+          "price_amount": 44,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T05:00:18.176Z",
+            "evidence_url": "https://rohrremedy.com/products/kakadu-plum-face-serum-with-vit-c",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "low",
+              "checked_at": "2026-05-24T05:00:18.176Z",
+              "reason_codes": [
+                "market_currency_not_verified",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://rohrremedy.com/products/kakadu-plum-face-serum-with-vit-c"
+            },
+            "regional_price": {
+              "amount": 44,
+              "currency": "USD",
+              "display_raw": "44.00",
+              "price_type": "list",
+              "compare_at_amount": 44,
+              "compare_at_currency": null,
+              "compare_at_display_raw": "44.00",
+              "tax_included": "unknown",
+              "confidence": "low",
+              "market_switch_status": "unknown",
+              "observed_currency": "USD",
+              "source_url": "https://rohrremedy.com/products/kakadu-plum-face-serum-with-vit-c",
+              "captured_at": "2026-05-24T05:00:18.176Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T05:00:18.176Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T05:00:18.176Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T05:00:18.176Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "status": "unverified",
+              "reason": "low_confidence_or_market_mismatch"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T05:00:18.176Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": false,
+        "contentQualityScore": 70,
+        "blockerCode": "identity_not_live_approved",
+        "blockerDetail": "identity_not_live_approved",
+        "identityResolved": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 171
+      }
+    },
+    {
+      "external_product_id": "ext_1b95875bc9bdeee751d0cee1",
+      "product_key": "prod::external_seed::external_seed::ext_1b95875bc9bdeee751d0cee1",
+      "product_group_id": "sig_11c41cb8c4d70a8ecd72dc7df85a25e0",
+      "title": "Lilly Pilly Face Moisturiser with Omega-3",
+      "brand": "Rohr Remedy",
+      "product_type": "Moisturizer",
+      "category": "Moisturizer",
+      "category_path": "beauty/skincare/moisturizer",
+      "canonical_url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser",
+      "pivota_signature_id": "sig_11c41cb8c4d70a8ecd72dc7df85a25e0",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_1b95875bc9bdeee751d0cee1::sku_51ce6f9798d7fcbdcb0b",
+        "product_key": "prod::external_seed::external_seed::ext_1b95875bc9bdeee751d0cee1",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_1b95875bc9bdeee751d0cee1",
+        "source_variant_id": "ext_1b95875bc9bdeee751d0cee1:31273097658479",
+        "sku": "UBLMP24",
+        "title": "Lilly Pilly Face Moisturiser with Omega-3",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0237/1131/files/Lilly_pilly_with_flowers.jpg?v=1771234667",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_1b95875bc9bdeee751d0cee1",
+          "raw_variant_id": "31273097658479",
+          "source_variant_id": "ext_1b95875bc9bdeee751d0cee1:31273097658479",
+          "variant_sku": "UBLMP24",
+          "source_url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser",
+          "external_redirect_url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser",
+          "price": "30",
+          "price_amount": 30,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0237/1131/files/Lilly_pilly_with_flowers.jpg?v=1771234667",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "UBLMP24",
+            "url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser",
+            "price": "30",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0237/1131/files/Lilly_pilly_with_flowers.jpg?v=1771234667",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0237/1131/files/Lilly_pilly_with_flowers.jpg?v=1771234667",
+              "https://cdn.shopify.com/s/files/1/0237/1131/files/5_2b58a2ad-9a7b-4d7b-8ec3-0c8c81f0cd10.png?v=1771234667",
+              "https://cdn.shopify.com/s/files/1/0237/1131/products/IMG_1036_002.jpg?v=1771234667",
+              "https://cdn.shopify.com/s/files/1/0237/1131/files/LillyPillyFace_2.jpg?v=1771234667"
+            ],
+            "variant_id": "31273097658479",
+            "description": "An enriching everyday moisturiser for normal skin. Combining Lilly Pilly extract with Omega 3 oils. \n\nMultibuy\nThis item qualifies for a multibuy discount. Add three to your cart and the discount will be automatically applied at checkout. \n\nAGE: Teens - 20s, 30s, 40s, 50s+\nSKIN CONCERN: Dull, dry or dehydrated skin, First signs of ageing, Oiliness and shine\nSKIN TYPE: Normal to dry, Normal to oily",
+            "option_name": "Size",
+            "option_value": "50ml"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:9e979d56be545f894e4e68a52afdf617",
+        "sku_key": "prod::external_seed::external_seed::ext_1b95875bc9bdeee751d0cee1::sku_51ce6f9798d7fcbdcb0b",
+        "product_key": "prod::external_seed::external_seed::ext_1b95875bc9bdeee751d0cee1",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 30,
+        "merchant_effective_price": 30,
+        "estimated_best_price": 30,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_5ee0b414653347fb5af51740",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_5ee0b414653347fb5af51740",
+          "external_product_id": "ext_1b95875bc9bdeee751d0cee1",
+          "domain": "rohrremedy.com",
+          "market": "US",
+          "product_title": "Lilly Pilly Face Moisturiser with Omega-3",
+          "variant_title": "Lilly Pilly Face Moisturiser with Omega-3",
+          "variant_sku": "UBLMP24",
+          "raw_variant_id": "31273097658479",
+          "url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser",
+          "offer_url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser",
+          "canonical_url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser",
+          "destination_url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser",
+          "external_redirect_url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser",
+          "merchant_display_name": "Rohr Remedy",
+          "price": "30",
+          "price_amount": 30,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T05:00:18.176Z",
+            "evidence_url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "low",
+              "checked_at": "2026-05-24T05:00:18.176Z",
+              "reason_codes": [
+                "market_currency_not_verified",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser"
+            },
+            "regional_price": {
+              "amount": 30,
+              "currency": "USD",
+              "display_raw": "30.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "low",
+              "market_switch_status": "unknown",
+              "observed_currency": "USD",
+              "source_url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser",
+              "captured_at": "2026-05-24T05:00:18.176Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T05:00:18.176Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T05:00:18.176Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T05:00:18.176Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "status": "unverified",
+              "reason": "low_confidence_or_market_mismatch"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T05:00:18.176Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": false,
+        "contentQualityScore": 70,
+        "blockerCode": "identity_not_live_approved",
+        "blockerDetail": "identity_not_live_approved",
+        "identityResolved": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 400
+      }
+    }
+  ]
+}

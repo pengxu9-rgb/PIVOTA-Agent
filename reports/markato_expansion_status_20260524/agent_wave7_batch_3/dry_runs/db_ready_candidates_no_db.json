@@ -1,0 +1,27 @@
+{
+  "generated_at": "2026-05-24T06:14:46.581Z",
+  "manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_3/curated_manifests/db_ready_candidate_manifest.json",
+  "mode": "dry_run",
+  "database_available": false,
+  "correction_script_available": true,
+  "apply_result": {
+    "generated_at": "2026-05-24T06:14:46.578Z",
+    "input_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_3/curated_manifests/db_ready_candidate_manifest.json",
+    "summary": {
+      "mode": "dry_run",
+      "database_available": false,
+      "scanned": 0,
+      "inserted": 0,
+      "skipped_existing": 0,
+      "would_insert": 0,
+      "would_insert_unverified": 0,
+      "invalid": 0,
+      "requires_seed_correction_count": 0
+    },
+    "correction_followups": [],
+    "items": []
+  },
+  "correction_plans": [],
+  "correction_results": [],
+  "runtime_reprobe_targets": []
+}

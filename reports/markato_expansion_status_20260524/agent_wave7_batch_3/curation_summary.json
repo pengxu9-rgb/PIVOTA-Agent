@@ -1,0 +1,269 @@
+{
+  "generated_at": "2026-05-24T06:14:35.607Z",
+  "totals": {
+    "brands": 4,
+    "manifest_rows": 66,
+    "curated_db_ready_candidates": 0,
+    "held_rows": 66
+  },
+  "brands": [
+    {
+      "slug": "bonjour-la-vie",
+      "brand": "Bonjour La Vie",
+      "domain": "bonjourlavie.it",
+      "manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_3/manifests/bonjour-la-vie.json",
+      "review_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_3/reviews/bonjour-la-vie.json",
+      "review_csv_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_3/reviews/bonjour-la-vie.csv",
+      "accepted_manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_3/accepted_manifests/bonjour-la-vie.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_3/curated_manifests/bonjour-la-vie.json",
+      "dry_run_path": null,
+      "extractor": {
+        "extracted_product_count": 23,
+        "manifest_item_count": 16,
+        "diagnostics": [
+          {
+            "discovery_strategy": "shopify_json",
+            "failure_category": null,
+            "block_provider": null
+          }
+        ],
+        "excluded_bundle_like_count": 7,
+        "excluded_non_product_page_count": 0,
+        "excluded_incomplete_transaction_count": 0,
+        "excluded_brand_scope_mismatch_count": 0
+      },
+      "review_gate": {
+        "ok_to_continue": true,
+        "blocker_reasons": [],
+        "accepted_item_count": 16,
+        "blocked_item_count": 0,
+        "price_coverage_rate": 1,
+        "availability_coverage_rate": 1,
+        "image_coverage_rate": 1
+      },
+      "curation": {
+        "status": "hold",
+        "db_ready_candidate_count": 0,
+        "held_row_count": 16,
+        "hold_reason_counts": {
+          "commerce_facts_currency_mismatch": 16,
+          "commerce_facts_gate_hold": 16,
+          "commerce_facts_market_switch_not_ok": 16,
+          "market_currency_mismatch": 16,
+          "missing_multi_offer_merge_candidate": 16,
+          "non_english_or_local_market_copy_for_us_review": 16,
+          "non_us_currency_or_market_mismatch": 16,
+          "missing_description": 12,
+          "bundle_set_sample_or_travel_size": 3,
+          "out_of_stock_or_unavailable": 3,
+          "placeholder_or_demo_product": 1
+        },
+        "db_ready_candidate_rows": []
+      },
+      "blockers": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_market_switch_not_ok",
+        "market_currency_mismatch",
+        "missing_multi_offer_merge_candidate",
+        "non_english_or_local_market_copy_for_us_review",
+        "non_us_currency_or_market_mismatch",
+        "missing_description"
+      ]
+    },
+    {
+      "slug": "manisante",
+      "brand": "MANISANTE",
+      "domain": "manisante.it",
+      "manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_3/manifests/manisante.json",
+      "review_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_3/reviews/manisante.json",
+      "review_csv_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_3/reviews/manisante.csv",
+      "accepted_manifest_path": null,
+      "curated_manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_3/curated_manifests/manisante.json",
+      "dry_run_path": null,
+      "extractor": {
+        "extracted_product_count": 25,
+        "manifest_item_count": 23,
+        "diagnostics": [
+          {
+            "discovery_strategy": "shopify_json",
+            "failure_category": null,
+            "block_provider": "perimeterx"
+          }
+        ],
+        "excluded_bundle_like_count": 2,
+        "excluded_non_product_page_count": 0,
+        "excluded_incomplete_transaction_count": 0,
+        "excluded_brand_scope_mismatch_count": 0
+      },
+      "review_gate": {
+        "ok_to_continue": false,
+        "blocker_reasons": [
+          "anti_abuse_signal:perimeterx"
+        ],
+        "accepted_item_count": 23,
+        "blocked_item_count": 0,
+        "price_coverage_rate": 1,
+        "availability_coverage_rate": 1,
+        "image_coverage_rate": 1
+      },
+      "curation": {
+        "status": "hold",
+        "db_ready_candidate_count": 0,
+        "held_row_count": 23,
+        "hold_reason_counts": {
+          "commerce_facts_currency_mismatch": 23,
+          "commerce_facts_gate_hold": 23,
+          "commerce_facts_market_switch_not_ok": 23,
+          "market_currency_mismatch": 23,
+          "missing_multi_offer_merge_candidate": 23,
+          "non_english_or_local_market_copy_for_us_review": 23,
+          "non_us_currency_or_market_mismatch": 23,
+          "review_gate_blocker:anti_abuse_signal:perimeterx": 23,
+          "accessory_tool_home_or_non_beauty_row": 7,
+          "regulated_wellness_supplement_or_therapeutic_claims_lane": 1
+        },
+        "db_ready_candidate_rows": []
+      },
+      "blockers": [
+        "anti_abuse_signal:perimeterx",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_market_switch_not_ok",
+        "market_currency_mismatch",
+        "missing_multi_offer_merge_candidate",
+        "non_english_or_local_market_copy_for_us_review",
+        "non_us_currency_or_market_mismatch",
+        "review_gate_blocker:anti_abuse_signal:perimeterx"
+      ]
+    },
+    {
+      "slug": "merindah-botanicals",
+      "brand": "Merindah Botanicals",
+      "domain": "merindahbotanicals.com.au",
+      "manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_3/manifests/merindah-botanicals.json",
+      "review_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_3/reviews/merindah-botanicals.json",
+      "review_csv_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_3/reviews/merindah-botanicals.csv",
+      "accepted_manifest_path": null,
+      "curated_manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_3/curated_manifests/merindah-botanicals.json",
+      "dry_run_path": null,
+      "extractor": {
+        "extracted_product_count": 23,
+        "manifest_item_count": 13,
+        "diagnostics": [
+          {
+            "discovery_strategy": "shopify_json",
+            "failure_category": null,
+            "block_provider": "perimeterx"
+          }
+        ],
+        "excluded_bundle_like_count": 9,
+        "excluded_non_product_page_count": 0,
+        "excluded_incomplete_transaction_count": 1,
+        "excluded_brand_scope_mismatch_count": 0
+      },
+      "review_gate": {
+        "ok_to_continue": false,
+        "blocker_reasons": [
+          "anti_abuse_signal:perimeterx"
+        ],
+        "accepted_item_count": 13,
+        "blocked_item_count": 0,
+        "price_coverage_rate": 1,
+        "availability_coverage_rate": 1,
+        "image_coverage_rate": 1
+      },
+      "curation": {
+        "status": "hold",
+        "db_ready_candidate_count": 0,
+        "held_row_count": 13,
+        "hold_reason_counts": {
+          "commerce_facts_currency_mismatch": 13,
+          "commerce_facts_gate_hold": 13,
+          "commerce_facts_market_switch_not_ok": 13,
+          "market_currency_mismatch": 13,
+          "missing_multi_offer_merge_candidate": 13,
+          "review_gate_blocker:anti_abuse_signal:perimeterx": 13,
+          "accessory_tool_home_or_non_beauty_row": 4,
+          "regulated_wellness_supplement_or_therapeutic_claims_lane": 2,
+          "bundle_set_sample_or_travel_size": 1
+        },
+        "db_ready_candidate_rows": []
+      },
+      "blockers": [
+        "anti_abuse_signal:perimeterx",
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_market_switch_not_ok",
+        "market_currency_mismatch",
+        "missing_multi_offer_merge_candidate",
+        "review_gate_blocker:anti_abuse_signal:perimeterx",
+        "accessory_tool_home_or_non_beauty_row",
+        "regulated_wellness_supplement_or_therapeutic_claims_lane"
+      ]
+    },
+    {
+      "slug": "nimbus-co",
+      "brand": "NIMBUS CO",
+      "domain": "nimbusco.com.au",
+      "manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_3/manifests/nimbus-co.json",
+      "review_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_3/reviews/nimbus-co.json",
+      "review_csv_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_3/reviews/nimbus-co.csv",
+      "accepted_manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_3/accepted_manifests/nimbus-co.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_3/curated_manifests/nimbus-co.json",
+      "dry_run_path": null,
+      "extractor": {
+        "extracted_product_count": 24,
+        "manifest_item_count": 14,
+        "diagnostics": [
+          {
+            "discovery_strategy": "shopify_json",
+            "failure_category": null,
+            "block_provider": null
+          }
+        ],
+        "excluded_bundle_like_count": 10,
+        "excluded_non_product_page_count": 0,
+        "excluded_incomplete_transaction_count": 0,
+        "excluded_brand_scope_mismatch_count": 0
+      },
+      "review_gate": {
+        "ok_to_continue": true,
+        "blocker_reasons": [],
+        "accepted_item_count": 14,
+        "blocked_item_count": 0,
+        "price_coverage_rate": 1,
+        "availability_coverage_rate": 1,
+        "image_coverage_rate": 1
+      },
+      "curation": {
+        "status": "hold",
+        "db_ready_candidate_count": 0,
+        "held_row_count": 14,
+        "hold_reason_counts": {
+          "commerce_facts_currency_mismatch": 14,
+          "commerce_facts_gate_hold": 14,
+          "commerce_facts_market_switch_not_ok": 14,
+          "market_currency_mismatch": 14,
+          "missing_multi_offer_merge_candidate": 14,
+          "regulated_wellness_supplement_or_therapeutic_claims_lane": 10,
+          "accessory_tool_home_or_non_beauty_row": 9,
+          "price_exceeds_250_usd_threshold": 5,
+          "bundle_set_sample_or_travel_size": 1,
+          "out_of_stock_or_unavailable": 1
+        },
+        "db_ready_candidate_rows": []
+      },
+      "blockers": [
+        "commerce_facts_currency_mismatch",
+        "commerce_facts_gate_hold",
+        "commerce_facts_market_switch_not_ok",
+        "market_currency_mismatch",
+        "missing_multi_offer_merge_candidate",
+        "regulated_wellness_supplement_or_therapeutic_claims_lane",
+        "accessory_tool_home_or_non_beauty_row",
+        "price_exceeds_250_usd_threshold"
+      ]
+    }
+  ]
+}

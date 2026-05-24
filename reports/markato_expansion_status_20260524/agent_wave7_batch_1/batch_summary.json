@@ -1,0 +1,178 @@
+{
+  "generated_at": "2026-05-24T06:17:32.441Z",
+  "scope": "Wave7 Markato batch 1",
+  "output_dir": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_1",
+  "guardrails_observed": {
+    "railway_up": false,
+    "git_push": false,
+    "db_apply_or_production_write": false,
+    "seller_only_fallback": false,
+    "force_filled_ingredients": false,
+    "dry_run_database_url_forced_unset": true
+  },
+  "source_note": "Initial sandboxed catalog-intelligence DNS lookup failed for OIlÙJ; the required manifest extraction was rerun with approved network access. No cached manifests, DB apply, Railway deploy, git push, seller-only fallback, or force-filled ingredient data were used.",
+  "totals": {
+    "brand_count": 5,
+    "manifest_item_count": 5,
+    "generic_review_accepted_item_count": 5,
+    "conservative_db_ready_count": 0,
+    "conservative_hold_count": 5,
+    "review_or_extractor_blocker_brand_count": 4,
+    "dry_run_scanned": 0,
+    "dry_run_would_insert": 0,
+    "dry_run_would_insert_unverified": 0,
+    "dry_run_invalid": 0,
+    "dry_run_database_available": false
+  },
+  "db_ready_candidates": [],
+  "holds_by_reason": {
+    "commerce_facts_gate_not_pass": 5,
+    "commerce_facts_missing_multi_offer_merge_candidate": 5,
+    "source_requires_multi_offer_merge_validation": 5
+  },
+  "brand_summaries": [
+    {
+      "brand": "OIlÙJ",
+      "slug": "oiluj",
+      "domain": "oiluj.com",
+      "manifest_items": 5,
+      "extracted_product_count": 8,
+      "review_ok": true,
+      "review_accepted": 5,
+      "db_ready": 0,
+      "holds": 5,
+      "blockers": [],
+      "hold_reasons": [
+        "commerce_facts_gate_not_pass",
+        "commerce_facts_missing_multi_offer_merge_candidate",
+        "source_requires_multi_offer_merge_validation"
+      ],
+      "manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_1/manifests/oiluj.json",
+      "review_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_1/reviews/oiluj.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_1/curated_manifests/oiluj.json",
+      "outcome": "held: commerce_facts_gate_not_pass; commerce_facts_missing_multi_offer_merge_candidate; source_requires_multi_offer_merge_validation",
+      "dry_run_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_1/dry_runs/oiluj.json"
+    },
+    {
+      "brand": "Scented Life",
+      "slug": "scented-life",
+      "domain": "scentedlife.com.au",
+      "manifest_items": 0,
+      "extracted_product_count": 0,
+      "review_ok": false,
+      "review_accepted": 0,
+      "db_ready": 0,
+      "holds": 0,
+      "blockers": [
+        "zero_accepted_items_from_extractor",
+        "extractor_failure_dead_sitemap"
+      ],
+      "hold_reasons": [],
+      "manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_1/manifests/scented-life.json",
+      "review_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_1/reviews/scented-life.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_1/curated_manifests/scented-life.json",
+      "outcome": "blocked: zero_accepted_items_from_extractor; extractor_failure_dead_sitemap",
+      "dry_run_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_1/dry_runs/scented-life.json"
+    },
+    {
+      "brand": "Serich",
+      "slug": "serich",
+      "domain": "serich.sg",
+      "manifest_items": 0,
+      "extracted_product_count": 0,
+      "review_ok": false,
+      "review_accepted": 0,
+      "db_ready": 0,
+      "holds": 0,
+      "blockers": [
+        "zero_accepted_items_from_extractor",
+        "extractor_failure_dead_sitemap"
+      ],
+      "hold_reasons": [],
+      "manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_1/manifests/serich.json",
+      "review_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_1/reviews/serich.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_1/curated_manifests/serich.json",
+      "outcome": "blocked: zero_accepted_items_from_extractor; extractor_failure_dead_sitemap",
+      "dry_run_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_1/dry_runs/serich.json"
+    },
+    {
+      "brand": "Cosmydor",
+      "slug": "cosmydor",
+      "domain": "cosmydor.paris",
+      "manifest_items": 0,
+      "extracted_product_count": 0,
+      "review_ok": false,
+      "review_accepted": 0,
+      "db_ready": 0,
+      "holds": 0,
+      "blockers": [
+        "zero_accepted_items_from_extractor",
+        "extractor_failure_bot_challenge"
+      ],
+      "hold_reasons": [],
+      "manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_1/manifests/cosmydor.json",
+      "review_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_1/reviews/cosmydor.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_1/curated_manifests/cosmydor.json",
+      "outcome": "blocked: zero_accepted_items_from_extractor; extractor_failure_bot_challenge",
+      "dry_run_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_1/dry_runs/cosmydor.json"
+    },
+    {
+      "brand": "YOUTH LAB.",
+      "slug": "youth-lab",
+      "domain": "youthlab.com",
+      "manifest_items": 0,
+      "extracted_product_count": 2,
+      "review_ok": false,
+      "review_accepted": 0,
+      "db_ready": 0,
+      "holds": 0,
+      "blockers": [
+        "zero_accepted_items_from_extractor",
+        "zero_rows_after_incomplete_transaction_filter"
+      ],
+      "hold_reasons": [],
+      "manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_1/manifests/youth-lab.json",
+      "review_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_1/reviews/youth-lab.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_1/curated_manifests/youth-lab.json",
+      "outcome": "blocked: zero_accepted_items_from_extractor; zero_rows_after_incomplete_transaction_filter",
+      "dry_run_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_1/dry_runs/youth-lab.json"
+    }
+  ],
+  "blockers": {
+    "Scented Life": [
+      "zero accepted extractor rows",
+      "dead_sitemap diagnostic"
+    ],
+    "Serich": [
+      "zero accepted extractor rows",
+      "dead_sitemap diagnostic"
+    ],
+    "Cosmydor": [
+      "zero accepted extractor rows",
+      "bot_challenge diagnostic"
+    ],
+    "YOUTH LAB.": [
+      "zero accepted extractor rows",
+      "two products excluded by incomplete transaction data"
+    ]
+  },
+  "exact_next_steps": [
+    "Apply nothing from this batch without a separate explicitly approved DB/prod write lane; the consolidated DB-ready manifest is empty.",
+    "OIlÙJ: keep all five official-domain product rows held until commerce facts can pass, including multi-offer/market verification; do not force-fill the missing merge candidate.",
+    "Scented Life and Serich: rerun extractor with official PDP/preferred-title input or improved discovery because current catalog-intelligence returned dead_sitemap and zero rows.",
+    "Cosmydor: rerun only through an anti-abuse-safe official PDP discovery path; current extraction hit bot_challenge and produced no rows.",
+    "YOUTH LAB.: rerun with preferred official PDPs or improved transaction extraction; current two discovered products were filtered as incomplete transaction rows.",
+    "After any rerun, repeat review, conservative curation, and no-DB dry-run before proposing a DB apply lane."
+  ],
+  "key_artifacts": {
+    "raw_manifests_dir": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_1/manifests",
+    "reviews_dir": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_1/reviews",
+    "accepted_manifests_dir": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_1/accepted_manifests",
+    "curated_manifests_dir": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_1/curated_manifests",
+    "dry_runs_dir": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_1/dry_runs",
+    "curation_summary": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_1/curated_manifests/curation_summary.json",
+    "curated_decisions_csv": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_1/curated_manifests/curated_decisions.csv",
+    "db_ready_candidate_manifest": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_1/curated_manifests/db_ready_candidate_manifest.json",
+    "consolidated_no_db_dry_run": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_1/dry_runs/db_ready_candidate_manifest.json"
+  }
+}

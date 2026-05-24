@@ -1,0 +1,157 @@
+[
+  {
+    "brand": "OIlÙJ",
+    "slug": "oiluj",
+    "title": "OILÙJ, Life Oil: Organic Moringa/Sandalwood Blend",
+    "target_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+    "seed_id": "eps_dc72b5d18cbbbffe502bfa20",
+    "external_product_id": "ext_07cfaab25950196c3ec1b5f3",
+    "price_amount": 65,
+    "price_currency": "USD",
+    "availability": "in_stock",
+    "commerce_facts_gate": {
+      "status": "hold",
+      "market_id": "US",
+      "expected_currency": "USD",
+      "observed_currency": "USD",
+      "market_switch_status": "unknown",
+      "sellable_region_status": "unknown",
+      "shipping_status": "unknown",
+      "promotions_status": "unknown",
+      "availability_status": "unknown",
+      "problems": [
+        "missing_multi_offer_merge_candidate"
+      ]
+    },
+    "decision": "hold",
+    "reason_codes": [
+      "commerce_facts_gate_not_pass",
+      "commerce_facts_missing_multi_offer_merge_candidate",
+      "source_requires_multi_offer_merge_validation"
+    ]
+  },
+  {
+    "brand": "OIlÙJ",
+    "slug": "oiluj",
+    "title": "OILÙJ, Life Oil: Organic Moringa/ French Lavender Blend",
+    "target_url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+    "seed_id": "eps_788807b1346798f50430e971",
+    "external_product_id": "ext_1493a61baf165a6c00e4977b",
+    "price_amount": 65,
+    "price_currency": "USD",
+    "availability": "in_stock",
+    "commerce_facts_gate": {
+      "status": "hold",
+      "market_id": "US",
+      "expected_currency": "USD",
+      "observed_currency": "USD",
+      "market_switch_status": "unknown",
+      "sellable_region_status": "unknown",
+      "shipping_status": "unknown",
+      "promotions_status": "unknown",
+      "availability_status": "unknown",
+      "problems": [
+        "missing_multi_offer_merge_candidate"
+      ]
+    },
+    "decision": "hold",
+    "reason_codes": [
+      "commerce_facts_gate_not_pass",
+      "commerce_facts_missing_multi_offer_merge_candidate",
+      "source_requires_multi_offer_merge_validation"
+    ]
+  },
+  {
+    "brand": "OIlÙJ",
+    "slug": "oiluj",
+    "title": "OILÙJ, \"Eye Live\"",
+    "target_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+    "seed_id": "eps_f44441b9491577f7041972cc",
+    "external_product_id": "ext_3a16e6a6300af832ae3ccdb7",
+    "price_amount": 35,
+    "price_currency": "USD",
+    "availability": "in_stock",
+    "commerce_facts_gate": {
+      "status": "hold",
+      "market_id": "US",
+      "expected_currency": "USD",
+      "observed_currency": "USD",
+      "market_switch_status": "unknown",
+      "sellable_region_status": "unknown",
+      "shipping_status": "unknown",
+      "promotions_status": "unknown",
+      "availability_status": "unknown",
+      "problems": [
+        "missing_multi_offer_merge_candidate"
+      ]
+    },
+    "decision": "hold",
+    "reason_codes": [
+      "commerce_facts_gate_not_pass",
+      "commerce_facts_missing_multi_offer_merge_candidate",
+      "source_requires_multi_offer_merge_validation"
+    ]
+  },
+  {
+    "brand": "OIlÙJ",
+    "slug": "oiluj",
+    "title": "OILÙJ, \"Lip Life\"",
+    "target_url": "http://www.oiluj.com/store/p17/OIL%C3%99J%2C_%22Lip_Life%22.html",
+    "seed_id": "eps_c7fd84cd5bb7e47f0d2eb06f",
+    "external_product_id": "ext_79fc9f55f8b092590e168c8d",
+    "price_amount": 15,
+    "price_currency": "USD",
+    "availability": "in_stock",
+    "commerce_facts_gate": {
+      "status": "hold",
+      "market_id": "US",
+      "expected_currency": "USD",
+      "observed_currency": "USD",
+      "market_switch_status": "unknown",
+      "sellable_region_status": "unknown",
+      "shipping_status": "unknown",
+      "promotions_status": "unknown",
+      "availability_status": "unknown",
+      "problems": [
+        "missing_multi_offer_merge_candidate"
+      ]
+    },
+    "decision": "hold",
+    "reason_codes": [
+      "commerce_facts_gate_not_pass",
+      "commerce_facts_missing_multi_offer_merge_candidate",
+      "source_requires_multi_offer_merge_validation"
+    ]
+  },
+  {
+    "brand": "OIlÙJ",
+    "slug": "oiluj",
+    "title": "OILÙJ, Life Oil",
+    "target_url": "http://www.oiluj.com/store/p5/OIL%C3%99J%2C_Life_Oil.html",
+    "seed_id": "eps_b7a050ba2f78906f4c033659",
+    "external_product_id": "ext_ab35eb07e8635bb1e1be3ebf",
+    "price_amount": 65,
+    "price_currency": "USD",
+    "availability": "in_stock",
+    "commerce_facts_gate": {
+      "status": "hold",
+      "market_id": "US",
+      "expected_currency": "USD",
+      "observed_currency": "USD",
+      "market_switch_status": "unknown",
+      "sellable_region_status": "unknown",
+      "shipping_status": "unknown",
+      "promotions_status": "unknown",
+      "availability_status": "unknown",
+      "problems": [
+        "missing_multi_offer_merge_candidate"
+      ]
+    },
+    "decision": "hold",
+    "reason_codes": [
+      "commerce_facts_gate_not_pass",
+      "commerce_facts_missing_multi_offer_merge_candidate",
+      "source_requires_multi_offer_merge_validation"
+    ]
+  }
+]

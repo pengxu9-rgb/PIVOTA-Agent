@@ -1,0 +1,222 @@
+{
+  "generated_at": "2026-05-24T06:18:58.192Z",
+  "brands": [
+    {
+      "generated_at": "2026-05-24T06:18:58.192Z",
+      "brand": "KHUS KHUS",
+      "slug": "khus-khus",
+      "domain": "https://khus-khus.com",
+      "manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_5/manifests/khus-khus.json",
+      "manifest_error_path": null,
+      "review_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_5/reviews/khus-khus.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_5/curated_manifests/khus-khus.json",
+      "review_ok_to_continue": false,
+      "review_blocker_reasons": [
+        "zero_accepted_items_from_extractor"
+      ],
+      "diagnostics": [
+        {
+          "discovery_strategy": "browser_discovery",
+          "failure_category": "dead_sitemap",
+          "block_provider": null
+        }
+      ],
+      "source_item_count": 0,
+      "accepted_item_count": 0,
+      "conservative_candidate_count": 0,
+      "conservative_hold_count": 0,
+      "hold_reason_counts": {},
+      "decisions": []
+    },
+    {
+      "generated_at": "2026-05-24T06:18:58.192Z",
+      "brand": "Apiceuticals",
+      "slug": "apiceuticals",
+      "domain": "https://apiceuticals.com",
+      "manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_5/manifests/apiceuticals.json",
+      "manifest_error_path": null,
+      "review_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_5/reviews/apiceuticals.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_5/curated_manifests/apiceuticals.json",
+      "review_ok_to_continue": false,
+      "review_blocker_reasons": [
+        "zero_accepted_items_from_extractor"
+      ],
+      "diagnostics": [
+        {
+          "discovery_strategy": "sitemap",
+          "failure_category": "timeout",
+          "block_provider": null
+        }
+      ],
+      "source_item_count": 0,
+      "accepted_item_count": 0,
+      "conservative_candidate_count": 0,
+      "conservative_hold_count": 0,
+      "hold_reason_counts": {},
+      "decisions": []
+    },
+    {
+      "generated_at": "2026-05-24T06:18:58.192Z",
+      "brand": "Pairfum",
+      "slug": "pairfum",
+      "domain": "https://pairfum.com",
+      "manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_5/manifests/pairfum.json",
+      "manifest_error_path": null,
+      "review_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_5/reviews/pairfum.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_5/curated_manifests/pairfum.json",
+      "review_ok_to_continue": false,
+      "review_blocker_reasons": [
+        "zero_accepted_items_from_extractor",
+        "anti_abuse_signal:cloudflare"
+      ],
+      "diagnostics": [
+        {
+          "discovery_strategy": "seed_page",
+          "failure_category": "bot_challenge",
+          "block_provider": "cloudflare"
+        }
+      ],
+      "source_item_count": 0,
+      "accepted_item_count": 0,
+      "conservative_candidate_count": 0,
+      "conservative_hold_count": 0,
+      "hold_reason_counts": {},
+      "decisions": []
+    },
+    {
+      "generated_at": "2026-05-24T06:18:58.192Z",
+      "brand": "LIME",
+      "slug": "lime",
+      "domain": "https://en.limecosmetic.com",
+      "manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_5/manifests/lime.json",
+      "manifest_error_path": null,
+      "review_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_5/reviews/lime.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_5/curated_manifests/lime.json",
+      "review_ok_to_continue": false,
+      "review_blocker_reasons": [
+        "zero_accepted_items_from_extractor"
+      ],
+      "diagnostics": [
+        {
+          "discovery_strategy": "seed_page",
+          "failure_category": "bot_challenge",
+          "block_provider": null
+        }
+      ],
+      "source_item_count": 0,
+      "accepted_item_count": 0,
+      "conservative_candidate_count": 0,
+      "conservative_hold_count": 0,
+      "hold_reason_counts": {},
+      "decisions": []
+    },
+    {
+      "generated_at": "2026-05-24T06:18:58.192Z",
+      "brand": "Lazy Society",
+      "slug": "lazy-society",
+      "domain": "https://lazysociety.co.kr",
+      "manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_5/manifests/lazy-society.json",
+      "manifest_error_path": null,
+      "review_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_5/reviews/lazy-society.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_5/curated_manifests/lazy-society.json",
+      "review_ok_to_continue": false,
+      "review_blocker_reasons": [
+        "zero_accepted_items_from_extractor"
+      ],
+      "diagnostics": [
+        {
+          "discovery_strategy": "seed_page",
+          "failure_category": "timeout",
+          "block_provider": null
+        }
+      ],
+      "source_item_count": 0,
+      "accepted_item_count": 0,
+      "conservative_candidate_count": 0,
+      "conservative_hold_count": 0,
+      "hold_reason_counts": {},
+      "decisions": []
+    },
+    {
+      "generated_at": "2026-05-24T06:18:58.192Z",
+      "brand": "ADVANCED COSMETICA",
+      "slug": "advanced-cosmetica",
+      "domain": "https://advancedcosmetica.com.au",
+      "manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_5/manifests/advanced-cosmetica.json",
+      "manifest_error_path": null,
+      "review_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_5/reviews/advanced-cosmetica.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_5/curated_manifests/advanced-cosmetica.json",
+      "review_ok_to_continue": false,
+      "review_blocker_reasons": [
+        "zero_accepted_items_from_extractor"
+      ],
+      "diagnostics": [
+        {
+          "discovery_strategy": null,
+          "failure_category": "no_product_urls",
+          "block_provider": null
+        }
+      ],
+      "source_item_count": 0,
+      "accepted_item_count": 0,
+      "conservative_candidate_count": 0,
+      "conservative_hold_count": 0,
+      "hold_reason_counts": {},
+      "decisions": []
+    },
+    {
+      "generated_at": "2026-05-24T06:18:58.192Z",
+      "brand": "Ilmma Beauty",
+      "slug": "ilmma-beauty",
+      "domain": "https://ilmmabeauty.com",
+      "manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_5/manifests/ilmma-beauty.json",
+      "manifest_error_path": null,
+      "review_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_5/reviews/ilmma-beauty.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_5/curated_manifests/ilmma-beauty.json",
+      "review_ok_to_continue": false,
+      "review_blocker_reasons": [
+        "zero_accepted_items_from_extractor"
+      ],
+      "diagnostics": [
+        {
+          "discovery_strategy": null,
+          "failure_category": "no_product_urls",
+          "block_provider": null
+        }
+      ],
+      "source_item_count": 0,
+      "accepted_item_count": 0,
+      "conservative_candidate_count": 0,
+      "conservative_hold_count": 0,
+      "hold_reason_counts": {},
+      "decisions": []
+    },
+    {
+      "generated_at": "2026-05-24T06:18:58.192Z",
+      "brand": "Vegan Fox",
+      "slug": "vegan-fox",
+      "domain": "https://vegan-fox.com",
+      "manifest_path": null,
+      "manifest_error_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_5/manifests/vegan-fox.error.json",
+      "review_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_5/reviews/vegan-fox.json",
+      "curated_manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_5/curated_manifests/vegan-fox.json",
+      "review_ok_to_continue": false,
+      "review_blocker_reasons": [
+        "manifest_extraction_timeout"
+      ],
+      "diagnostics": [
+        {
+          "discovery_strategy": null,
+          "failure_category": "timeout",
+          "block_provider": null
+        }
+      ],
+      "source_item_count": 0,
+      "accepted_item_count": 0,
+      "conservative_candidate_count": 0,
+      "conservative_hold_count": 0,
+      "hold_reason_counts": {},
+      "decisions": []
+    }
+  ]
+}

@@ -1,0 +1,292 @@
+{
+  "generated_at": "2026-05-24T06:19:33.495Z",
+  "guardrails_observed": {
+    "railway_up": false,
+    "git_push": false,
+    "db_apply_or_production_write": false,
+    "database_url_unset_for_seed_dry_run": true,
+    "seller_only_fallback_used_for_candidates": false,
+    "force_filled_ingredients": false,
+    "write_scope": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_2"
+  },
+  "totals": {
+    "brands": 4,
+    "extracted_product_count": 18,
+    "manifest_rows_before_curation": 1,
+    "structural_review_ok_brands": 1,
+    "structural_review_blocked_brands": 3,
+    "structural_accepted_rows": 1,
+    "held_rows": 1,
+    "db_ready_candidate_rows_no_db_dedupe": 0,
+    "dry_run_scanned": 0,
+    "dry_run_would_insert_unverified": 0,
+    "dry_run_would_insert": 0,
+    "dry_run_invalid": 0,
+    "dry_run_database_available": false
+  },
+  "holds_by_reason": {
+    "not_single_product_pdp:category_page": 1,
+    "not_single_product_pdp:unrecognized_product_path": 1,
+    "commerce_facts_gate_hold": 1,
+    "commerce_facts_problem:missing_multi_offer_merge_candidate": 1
+  },
+  "db_ready_candidate_rows": [],
+  "brands": [
+    {
+      "slug": "ashbury_bloom",
+      "brand": "ashbury BLOOM",
+      "domain": "ashburybloom.ca",
+      "diagnostics": [
+        {
+          "discovery_strategy": "seed_page",
+          "failure_category": null,
+          "block_provider": null
+        }
+      ],
+      "extracted_product_count": 1,
+      "manifest_item_count": 1,
+      "excluded_incomplete_transaction_count": 0,
+      "excluded_bundle_like_count": 0,
+      "excluded_non_product_page_count": 0,
+      "review_ok_to_continue": true,
+      "review_blocker_reasons": [],
+      "structural_accepted_item_count": 1,
+      "curated_candidate_count": 0,
+      "held_count": 1,
+      "held_rows": [
+        {
+          "brand": "ashbury BLOOM",
+          "slug": "ashbury_bloom",
+          "decision": "hold",
+          "reasons": [
+            "not_single_product_pdp:category_page",
+            "not_single_product_pdp:unrecognized_product_path",
+            "commerce_facts_gate_hold",
+            "commerce_facts_problem:missing_multi_offer_merge_candidate"
+          ],
+          "title": "Bath and Body",
+          "url": "https://ashburybloom.ca/product-category/bath-and-body/",
+          "seed_id": "eps_f37741c1da2e6b2c5d4bdc10",
+          "external_product_id": "ext_da2d77bcd74b0f0a900ccd9e",
+          "price_amount": 12,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_gate_status": "hold",
+          "commerce_facts_problems": [
+            "missing_multi_offer_merge_candidate"
+          ]
+        }
+      ],
+      "candidate_rows": [],
+      "dry_run_summary": {
+        "mode": "dry_run",
+        "database_available": false,
+        "scanned": 0,
+        "inserted": 0,
+        "skipped_existing": 0,
+        "would_insert": 0,
+        "would_insert_unverified": 0,
+        "invalid": 0,
+        "requires_seed_correction_count": 0
+      },
+      "paths": {
+        "manifest": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_2/manifests/ashbury_bloom.json",
+        "review_json": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_2/reviews/ashbury_bloom.json",
+        "review_csv": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_2/reviews/ashbury_bloom.csv",
+        "accepted_manifest": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_2/accepted_manifests/ashbury_bloom.json",
+        "curated_manifest": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_2/curated_manifests/ashbury_bloom.json",
+        "dry_run": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_2/dry_runs/ashbury_bloom.json"
+      },
+      "next_steps": [
+        "Hold category/listing output; rerun with official product-detail URLs or an extractor fix that returns single sellable PDPs.",
+        "Only reconsider rows after commerce facts gate passes for US sellability, shipping, availability, and offer merge evidence."
+      ]
+    },
+    {
+      "slug": "isodent",
+      "brand": "ISODENT",
+      "domain": "isodent.fi",
+      "diagnostics": [
+        {
+          "discovery_strategy": "seed_page",
+          "failure_category": null,
+          "block_provider": null
+        }
+      ],
+      "extracted_product_count": 6,
+      "manifest_item_count": 0,
+      "excluded_incomplete_transaction_count": 6,
+      "excluded_bundle_like_count": 0,
+      "excluded_non_product_page_count": 0,
+      "review_ok_to_continue": false,
+      "review_blocker_reasons": [
+        "zero_accepted_items_from_extractor"
+      ],
+      "structural_accepted_item_count": 0,
+      "curated_candidate_count": 0,
+      "held_count": 0,
+      "held_rows": [],
+      "candidate_rows": [],
+      "dry_run_summary": {
+        "mode": "dry_run",
+        "database_available": false,
+        "scanned": 0,
+        "inserted": 0,
+        "skipped_existing": 0,
+        "would_insert": 0,
+        "would_insert_unverified": 0,
+        "invalid": 0,
+        "requires_seed_correction_count": 0
+      },
+      "paths": {
+        "manifest": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_2/manifests/isodent.json",
+        "review_json": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_2/reviews/isodent.json",
+        "review_csv": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_2/reviews/isodent.csv",
+        "accepted_manifest": null,
+        "curated_manifest": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_2/curated_manifests/isodent.json",
+        "dry_run": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_2/dry_runs/isodent.json"
+      },
+      "next_steps": [
+        "Do not create seeds from this run; extractor reported 6 products but no transaction-ready PDP rows."
+      ]
+    },
+    {
+      "slug": "natural_deodorant_co",
+      "brand": "The Natural Deodorant Co.",
+      "domain": "naturaldeoco.com",
+      "diagnostics": [
+        {
+          "discovery_strategy": "seed_page",
+          "failure_category": null,
+          "block_provider": "cloudflare"
+        }
+      ],
+      "extracted_product_count": 9,
+      "manifest_item_count": 0,
+      "excluded_incomplete_transaction_count": 9,
+      "excluded_bundle_like_count": 0,
+      "excluded_non_product_page_count": 0,
+      "review_ok_to_continue": false,
+      "review_blocker_reasons": [
+        "zero_accepted_items_from_extractor",
+        "anti_abuse_signal:cloudflare"
+      ],
+      "structural_accepted_item_count": 0,
+      "curated_candidate_count": 0,
+      "held_count": 0,
+      "held_rows": [],
+      "candidate_rows": [],
+      "dry_run_summary": {
+        "mode": "dry_run",
+        "database_available": false,
+        "scanned": 0,
+        "inserted": 0,
+        "skipped_existing": 0,
+        "would_insert": 0,
+        "would_insert_unverified": 0,
+        "invalid": 0,
+        "requires_seed_correction_count": 0
+      },
+      "paths": {
+        "manifest": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_2/manifests/natural_deodorant_co.json",
+        "review_json": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_2/reviews/natural_deodorant_co.json",
+        "review_csv": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_2/reviews/natural_deodorant_co.csv",
+        "accepted_manifest": null,
+        "curated_manifest": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_2/curated_manifests/natural_deodorant_co.json",
+        "dry_run": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_2/dry_runs/natural_deodorant_co.json"
+      },
+      "next_steps": [
+        "Do not create seeds from this run; recover a non-blocked official PDP source or rerun through approved managed-browser/catalog support."
+      ]
+    },
+    {
+      "slug": "usva_cosmetics",
+      "brand": "Usva Cosmetics",
+      "domain": "usvacosmetics.fi",
+      "diagnostics": [
+        {
+          "discovery_strategy": "seed_page",
+          "failure_category": null,
+          "block_provider": null
+        }
+      ],
+      "extracted_product_count": 2,
+      "manifest_item_count": 0,
+      "excluded_incomplete_transaction_count": 2,
+      "excluded_bundle_like_count": 0,
+      "excluded_non_product_page_count": 0,
+      "review_ok_to_continue": false,
+      "review_blocker_reasons": [
+        "zero_accepted_items_from_extractor"
+      ],
+      "structural_accepted_item_count": 0,
+      "curated_candidate_count": 0,
+      "held_count": 0,
+      "held_rows": [],
+      "candidate_rows": [],
+      "dry_run_summary": {
+        "mode": "dry_run",
+        "database_available": false,
+        "scanned": 0,
+        "inserted": 0,
+        "skipped_existing": 0,
+        "would_insert": 0,
+        "would_insert_unverified": 0,
+        "invalid": 0,
+        "requires_seed_correction_count": 0
+      },
+      "paths": {
+        "manifest": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_2/manifests/usva_cosmetics.json",
+        "review_json": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_2/reviews/usva_cosmetics.json",
+        "review_csv": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_2/reviews/usva_cosmetics.csv",
+        "accepted_manifest": null,
+        "curated_manifest": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_2/curated_manifests/usva_cosmetics.json",
+        "dry_run": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/agent_wave7_batch_2/dry_runs/usva_cosmetics.json"
+      },
+      "next_steps": [
+        "Do not create seeds from this run; extractor reported 2 products but no transaction-ready PDP rows."
+      ]
+    }
+  ],
+  "blockers": [
+    {
+      "brand": "ashbury BLOOM",
+      "type": "curation_hold",
+      "reasons": [
+        "not_single_product_pdp:category_page",
+        "not_single_product_pdp:unrecognized_product_path",
+        "commerce_facts_gate_hold",
+        "commerce_facts_problem:missing_multi_offer_merge_candidate"
+      ]
+    },
+    {
+      "brand": "ISODENT",
+      "type": "review_blocker",
+      "reasons": [
+        "zero_accepted_items_from_extractor"
+      ]
+    },
+    {
+      "brand": "The Natural Deodorant Co.",
+      "type": "review_blocker",
+      "reasons": [
+        "zero_accepted_items_from_extractor",
+        "anti_abuse_signal:cloudflare"
+      ]
+    },
+    {
+      "brand": "Usva Cosmetics",
+      "type": "review_blocker",
+      "reasons": [
+        "zero_accepted_items_from_extractor"
+      ]
+    }
+  ],
+  "exact_next_steps": [
+    "ashbury BLOOM: Hold category/listing output; rerun with official product-detail URLs or an extractor fix that returns single sellable PDPs.",
+    "ashbury BLOOM: Only reconsider rows after commerce facts gate passes for US sellability, shipping, availability, and offer merge evidence.",
+    "ISODENT: Do not create seeds from this run; extractor reported 6 products but no transaction-ready PDP rows.",
+    "The Natural Deodorant Co.: Do not create seeds from this run; recover a non-blocked official PDP source or rerun through approved managed-browser/catalog support.",
+    "Usva Cosmetics: Do not create seeds from this run; extractor reported 2 products but no transaction-ready PDP rows."
+  ]
+}

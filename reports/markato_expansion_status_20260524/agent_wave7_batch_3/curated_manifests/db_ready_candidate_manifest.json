@@ -1,0 +1,17 @@
+{
+  "generated_at": "2026-05-24T06:14:35.607Z",
+  "brand_batch": "markato_wave7_batch_3",
+  "market": "US",
+  "curation_gate": {
+    "status": "hold",
+    "db_ready_candidate_count": 0,
+    "held_row_count": 66,
+    "guardrails": {
+      "no_db_apply_or_production_write": true,
+      "no_seller_only_fallback": true,
+      "no_force_filled_ingredients": true
+    }
+  },
+  "item_count": 0,
+  "items": []
+}

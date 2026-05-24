@@ -1,0 +1,166 @@
+{
+  "generated_at": "2026-05-24T06:31:00.000Z",
+  "source": "main_agent_cross_batch_validation_after_overall_validator_timeout",
+  "guardrails_observed": {
+    "railway_up": false,
+    "git_push_during_worker_analysis": false,
+    "db_apply_or_production_write_for_wave7": false,
+    "seller_only_fallback": false,
+    "force_filled_ingredients": false
+  },
+  "validator_note": "The requested overall validation agent was started but did not produce files after repeated waits and a status interrupt. It was shut down, and the main agent reconciled the five batch summaries and candidate manifests.",
+  "batch_summary_paths": [
+    "reports/markato_expansion_status_20260524/agent_wave7_batch_1/batch_summary.json",
+    "reports/markato_expansion_status_20260524/agent_wave7_batch_2/batch_summary.json",
+    "reports/markato_expansion_status_20260524/agent_wave7_batch_3/batch_summary.json",
+    "reports/markato_expansion_status_20260524/agent_wave7_batch_4/batch_summary.json",
+    "reports/markato_expansion_status_20260524/agent_wave7_batch_5/batch_summary.json"
+  ],
+  "summary": {
+    "batches": 5,
+    "brands_processed": 26,
+    "extracted_products": 281,
+    "manifest_rows": 181,
+    "review_pass_brands": 7,
+    "review_blocked_brands": 19,
+    "held_rows": 181,
+    "db_ready_candidates": 0,
+    "no_db_dry_run_scanned": 0,
+    "no_db_dry_run_invalid": 0
+  },
+  "batch_rollup": [
+    {
+      "batch": 1,
+      "brands_processed": 5,
+      "extracted_products": 10,
+      "manifest_rows": 5,
+      "review_pass_brands": 1,
+      "review_blocked_brands": 4,
+      "held_rows": 5,
+      "db_ready_candidates": 0,
+      "primary_blockers": [
+        "commerce_facts_gate_not_pass",
+        "missing_multi_offer_merge_candidate",
+        "dead_sitemap",
+        "bot_challenge",
+        "zero_rows_after_incomplete_transaction_filter"
+      ]
+    },
+    {
+      "batch": 2,
+      "brands_processed": 4,
+      "extracted_products": 18,
+      "manifest_rows": 1,
+      "review_pass_brands": 1,
+      "review_blocked_brands": 3,
+      "held_rows": 1,
+      "db_ready_candidates": 0,
+      "primary_blockers": [
+        "category_or_listing_page",
+        "commerce_facts_gate_hold",
+        "zero_transaction_ready_rows",
+        "cloudflare"
+      ]
+    },
+    {
+      "batch": 3,
+      "brands_processed": 4,
+      "extracted_products": 95,
+      "manifest_rows": 66,
+      "review_pass_brands": 2,
+      "review_blocked_brands": 2,
+      "held_rows": 66,
+      "db_ready_candidates": 0,
+      "primary_blockers": [
+        "non_us_currency_or_market_mismatch",
+        "commerce_facts_gate_hold",
+        "perimeterx",
+        "bundle_or_accessory",
+        "out_of_stock",
+        "non_english_or_local_market_copy"
+      ]
+    },
+    {
+      "batch": 4,
+      "brands_processed": 5,
+      "extracted_products": 158,
+      "manifest_rows": 109,
+      "review_pass_brands": 3,
+      "review_blocked_brands": 2,
+      "held_rows": 109,
+      "db_ready_candidates": 0,
+      "primary_blockers": [
+        "perimeterx",
+        "non_us_currency",
+        "commerce_facts_gate_hold",
+        "non_english_copy",
+        "wellness_supplement_or_regulated_claims",
+        "novelty_non_beauty_product"
+      ]
+    },
+    {
+      "batch": 5,
+      "brands_processed": 8,
+      "extracted_products": 0,
+      "manifest_rows": 0,
+      "review_pass_brands": 0,
+      "review_blocked_brands": 8,
+      "held_rows": 0,
+      "db_ready_candidates": 0,
+      "primary_blockers": [
+        "zero_accepted_items_from_extractor",
+        "cloudflare",
+        "manifest_extraction_timeout",
+        "dead_sitemap",
+        "no_product_urls"
+      ]
+    }
+  ],
+  "candidate_validation": {
+    "candidate_manifests_checked": 5,
+    "candidate_rows_found": 0,
+    "duplicate_external_product_ids": [],
+    "duplicate_canonical_urls": [],
+    "tier_a_prod_db_dry_run_manifest_required": false
+  },
+  "interpretation": [
+    "Wave7 broad P2/P1-recovery blind scanning produced no safe seed candidates.",
+    "The low yield is not a seed pipeline failure. It is primarily source/access and market-fit failure: non-US storefronts, blocked sources, category/listing pages, missing transaction rows, and regulated or non-beauty product classes.",
+    "The next expansion loop should shift from blind brand-domain extraction to direct official PDP-list recovery, partner/source feed intake, or managed-browser/source-access recovery for selected brands."
+  ],
+  "recommended_next_steps": [
+    {
+      "priority": 1,
+      "lane": "wave6_post_apply_serving_sync",
+      "action": "Run production catalog/serving sync apply for the 7 Wave6 inserted seeds only after explicit approval, then rerun direct gateway probes and live PDP audit.",
+      "evidence": "wave6_prod_apply_catalog_sync_dry_run.json planned 7 mirror rows, 7 SKU rows, 7 offer rows, and 7 index-state rows with no skips."
+    },
+    {
+      "priority": 2,
+      "lane": "source_recovery",
+      "action": "Build direct official PDP lists for high-fit blocked brands before another extraction pass.",
+      "candidate_brands": [
+        "OIlUJ",
+        "Merindah Botanicals",
+        "NIMBUS CO",
+        "Bonjour La Vie",
+        "MANISANTE",
+        "KHUS KHUS",
+        "Apiceuticals",
+        "Pairfum",
+        "LIME",
+        "Lazy Society"
+      ]
+    },
+    {
+      "priority": 3,
+      "lane": "exclude_or_claims_lane",
+      "action": "Route wellness/supplement or non-beauty rows away from the beauty seed lane.",
+      "candidate_brands": [
+        "NuBest",
+        "YAY NOVELTY",
+        "Anaya"
+      ]
+    }
+  ]
+}

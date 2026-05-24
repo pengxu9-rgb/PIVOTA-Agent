@@ -1,0 +1,65 @@
+{
+  "generated_at": "2026-05-24T06:31:00.000Z",
+  "source": "direct_production_gateway_probe",
+  "gateway_url": "https://agent.pivota.cc/api/gateway",
+  "operation": "get_pdp_v2",
+  "merchant_id": "external_seed",
+  "summary": {
+    "scanned": 7,
+    "ok": 0,
+    "product_not_servable": 7,
+    "serving_eligibility_missing": 7
+  },
+  "rows": [
+    {
+      "external_product_id": "ext_df8aac07d6c970d4c213b43f",
+      "error": "PRODUCT_NOT_SERVABLE",
+      "reason_code": "PRODUCT_NOT_SERVABLE",
+      "details_reason": "serving_eligibility_missing",
+      "resolution_source": "external_seed_product_id"
+    },
+    {
+      "external_product_id": "ext_438058253d57a2c8d75f5906",
+      "error": "PRODUCT_NOT_SERVABLE",
+      "reason_code": "PRODUCT_NOT_SERVABLE",
+      "details_reason": "serving_eligibility_missing",
+      "resolution_source": "external_seed_product_id"
+    },
+    {
+      "external_product_id": "ext_0d4ffd13b899460cabb1f392",
+      "error": "PRODUCT_NOT_SERVABLE",
+      "reason_code": "PRODUCT_NOT_SERVABLE",
+      "details_reason": "serving_eligibility_missing",
+      "resolution_source": "external_seed_product_id"
+    },
+    {
+      "external_product_id": "ext_065337312a937f0f26d50865",
+      "error": "PRODUCT_NOT_SERVABLE",
+      "reason_code": "PRODUCT_NOT_SERVABLE",
+      "details_reason": "serving_eligibility_missing",
+      "resolution_source": "external_seed_product_id"
+    },
+    {
+      "external_product_id": "ext_05c5a41a67fb37dcf352853e",
+      "error": "PRODUCT_NOT_SERVABLE",
+      "reason_code": "PRODUCT_NOT_SERVABLE",
+      "details_reason": "serving_eligibility_missing",
+      "resolution_source": "external_seed_product_id"
+    },
+    {
+      "external_product_id": "ext_c463dcd674e1138b1284ff37",
+      "error": "PRODUCT_NOT_SERVABLE",
+      "reason_code": "PRODUCT_NOT_SERVABLE",
+      "details_reason": "serving_eligibility_missing",
+      "resolution_source": "external_seed_product_id"
+    },
+    {
+      "external_product_id": "ext_1b95875bc9bdeee751d0cee1",
+      "error": "PRODUCT_NOT_SERVABLE",
+      "reason_code": "PRODUCT_NOT_SERVABLE",
+      "details_reason": "serving_eligibility_missing",
+      "resolution_source": "external_seed_product_id"
+    }
+  ],
+  "next_required_action": "Run reviewed catalog/serving sync apply for these 7 external_product_ids, then rerun direct gateway probes and live PDP module audit."
+}
