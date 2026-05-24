@@ -23050,6 +23050,7 @@ function readSimilarCardEvidenceProfile(product = {}) {
 }
 
 const TRUSTED_SIMILAR_CARD_HIGHLIGHT_SOURCES = new Set([
+  'catalog_product',
   'official_external_seed_card',
   'source_backed_title_or_intro',
   'official_pdp_seed',
@@ -24088,6 +24089,156 @@ function promoteVisibleSimilarProductSigIds(products) {
   return Array.isArray(products) ? products.map((product) => promoteVisibleSimilarProductSigId(product)) : [];
 }
 
+function deriveCatalogSimilarCardHighlight({
+  description = '',
+  category = '',
+  productType = '',
+  title = '',
+} = {}) {
+  const descriptionText = String(description || '').replace(/\s+/g, ' ').trim();
+  if (descriptionText) {
+    const firstSentence = descriptionText
+      .split(/(?<=[.!?])\s+/)
+      .map((part) => normalizeSimilarCardFallbackText(part, { maxChars: 84 }))
+      .find((part) => part.length >= 12);
+    if (firstSentence) return firstSentence;
+  }
+  return normalizeSimilarCardFallbackText(productType || category || title, { maxChars: 72 });
+}
+
+function buildSimilarCatalogProductProjection(product = {}, catalogRow = {}) {
+  if (!product || typeof product !== 'object' || Array.isArray(product)) return product;
+  if (!catalogRow || typeof catalogRow !== 'object' || Array.isArray(catalogRow)) return product;
+
+  const sigId = firstNonEmptyString(catalogRow.pivota_signature_id, product.pivota_signature_id, product.signature_id);
+  if (!isPivotaSignatureProductId(sigId)) return product;
+
+  const catalogPayload = parseCanonicalCatalogPayload(catalogRow.product_payload);
+  const seedData = isPlainObject(catalogPayload.seed_data) ? catalogPayload.seed_data : {};
+  const snapshot = isPlainObject(seedData.snapshot) ? seedData.snapshot : {};
+  const sourceProductId = firstNonEmptyString(
+    catalogRow.source_product_id,
+    product.source_product_id,
+    product.external_product_id,
+    product.external_seed_product_id,
+    product.platform_product_id,
+  );
+  const destinationUrl = firstNonEmptyString(
+    product.destination_url,
+    catalogRow.destination_url,
+    catalogPayload.destination_url,
+    seedData.destination_url,
+    snapshot.destination_url,
+    product.canonical_url,
+    product.url,
+  );
+  const publicUrl = `https://agent.pivota.cc/products/${sigId}`;
+  const title = firstNonEmptyString(catalogRow.title, catalogPayload.title, product.title, product.name);
+  const description = firstNonEmptyString(
+    catalogRow.description,
+    catalogPayload.description,
+    catalogPayload.summary,
+    seedData.description,
+    seedData.summary,
+    seedData.pdp_description_raw,
+    snapshot.description,
+    snapshot.summary,
+    snapshot.pdp_description_raw,
+    product.description,
+  );
+  const categoryPath = firstNonEmptyString(
+    catalogRow.category_path,
+    catalogPayload.category_path,
+    catalogPayload.catalog_category_path,
+    seedData.category_path,
+    seedData.catalog_category_path,
+    product.catalog_category_path,
+    product.category_path,
+  );
+  const category = firstNonEmptyString(catalogRow.category, catalogPayload.category, product.category, product.product_type);
+  const productType = firstNonEmptyString(catalogRow.product_type, catalogPayload.product_type, catalogPayload.productType, product.product_type, category);
+  const imageUrl = firstNonEmptyString(
+    catalogRow.image_url,
+    catalogPayload.image_url,
+    Array.isArray(catalogPayload.images) ? catalogPayload.images[0] : null,
+    seedData.image_url,
+    Array.isArray(seedData.images) ? seedData.images[0] : null,
+    snapshot.image_url,
+    Array.isArray(snapshot.images) ? snapshot.images[0] : null,
+    product.image_url,
+    product.image,
+  );
+  const merchantId = firstNonEmptyString(catalogRow.merchant_id, product.merchant_id, EXTERNAL_SEED_MERCHANT_ID);
+  const platform = firstNonEmptyString(catalogRow.platform, product.platform, EXTERNAL_SEED_MERCHANT_ID);
+  const cardHighlight = deriveCatalogSimilarCardHighlight({
+    description,
+    category,
+    productType,
+    title,
+  });
+  const cardSource = 'catalog_product';
+
+  return {
+    ...product,
+    merchant_id: merchantId,
+    platform,
+    product_id: sigId,
+    id: sigId,
+    pivota_signature_id: sigId,
+    signature_id: sigId,
+    source: 'catalog_products',
+    entity_source: 'catalog_products',
+    product_identity_source: 'catalog_products',
+    source_kind: product.source_kind || (sourceProductId ? 'external_seed' : undefined),
+    product_key: firstNonEmptyString(catalogRow.product_key, product.product_key),
+    catalog_product_key: firstNonEmptyString(catalogRow.product_key, product.catalog_product_key, product.product_key),
+    ...(sourceProductId
+      ? {
+          source_product_id: sourceProductId,
+          external_product_id: product.external_product_id || sourceProductId,
+          source_provenance: {
+            kind: 'external_seed',
+            external_product_id: sourceProductId,
+          },
+        }
+      : {}),
+    ...(title ? { title, name: title } : {}),
+    ...(description ? { description } : {}),
+    ...(category ? { category } : {}),
+    ...(productType ? { product_type: productType } : {}),
+    ...(categoryPath ? { category_path: categoryPath, catalog_category_path: categoryPath } : {}),
+    ...(cardHighlight
+      ? {
+          card_title: title,
+          card_subtitle: productType || category,
+          card_highlight: cardHighlight,
+          card_highlight_source: cardSource,
+          shopping_card: {
+            ...(isPlainObject(product.shopping_card) ? product.shopping_card : {}),
+            title,
+            subtitle: productType || category,
+            highlight: cardHighlight,
+            evidence_profile: cardSource,
+            highlight_source: cardSource,
+          },
+          search_card: {
+            ...(isPlainObject(product.search_card) ? product.search_card : {}),
+            title_candidate: title,
+            compact_candidate: productType || category,
+            highlight_candidate: cardHighlight,
+            evidence_profile: cardSource,
+            highlight_source: cardSource,
+          },
+        }
+      : {}),
+    ...(imageUrl ? { image_url: imageUrl, image: imageUrl } : {}),
+    canonical_url: publicUrl,
+    pivota_canonical_url: publicUrl,
+    url: publicUrl,
+    ...(destinationUrl ? { destination_url: destinationUrl, merchant_canonical_url: destinationUrl } : {}),
+  };
+}
+
 async function hydrateVisibleSimilarProductSigIdsFromCatalog(products) {
   const promoted = promoteVisibleSimilarProductSigIds(products);
   if (!process.env.DATABASE_URL || !promoted.length) return promoted;
@@ -24101,16 +24252,35 @@ async function hydrateVisibleSimilarProductSigIdsFromCatalog(products) {
   );
   if (!unresolvedExternalIds.length) return promoted;
 
+  const catalogBySourceProductId = new Map();
   const sigBySourceProductId = new Map();
   try {
     const result = await query(
       `
-        SELECT source_product_id, pivota_signature_id
+        SELECT
+          merchant_id,
+          platform,
+          source_product_id,
+          product_key,
+          pivota_signature_id,
+          title,
+          description,
+          brand,
+          category,
+          product_type,
+          category_path,
+          image_url,
+          canonical_url,
+          product_payload
         FROM catalog_products
         WHERE merchant_id = $1
           AND platform = $1
           AND source_product_id = ANY($2::text[])
           AND pivota_signature_id LIKE 'sig\\_%' ESCAPE '\\'
+        ORDER BY
+          CASE WHEN sync_status = 'live' THEN 0 ELSE 1 END,
+          updated_at DESC NULLS LAST,
+          product_key ASC
       `,
       [EXTERNAL_SEED_MERCHANT_ID, unresolvedExternalIds],
     );
@@ -24119,6 +24289,9 @@ async function hydrateVisibleSimilarProductSigIdsFromCatalog(products) {
       const sigId = firstNonEmptyString(row.pivota_signature_id);
       if (sourceProductId && /^sig[_:]/i.test(sigId)) {
         sigBySourceProductId.set(sourceProductId, sigId);
+        if (!catalogBySourceProductId.has(sourceProductId)) {
+          catalogBySourceProductId.set(sourceProductId, row);
+        }
       }
     }
   } catch (err) {
@@ -24171,7 +24344,14 @@ async function hydrateVisibleSimilarProductSigIdsFromCatalog(products) {
   if (!sigBySourceProductId.size) return promoted;
   try {
     return promoted.map((product) => {
-      const sigId = collectExternalSeedIdCandidatesForVisibleCatalogHydration(product)
+      const externalSeedIds = collectExternalSeedIdCandidatesForVisibleCatalogHydration(product);
+      const catalogRow = externalSeedIds
+        .map((productId) => catalogBySourceProductId.get(productId))
+        .find((candidate) => candidate && typeof candidate === 'object');
+      if (catalogRow) {
+        return buildSimilarCatalogProductProjection(product, catalogRow);
+      }
+      const sigId = externalSeedIds
         .map((productId) => sigBySourceProductId.get(productId))
         .find((candidate) => isPivotaSignatureProductId(candidate));
       return sigId
@@ -43498,6 +43678,7 @@ module.exports._debug = {
   resolveVisibleSimilarProductSigId,
   promoteVisibleSimilarProductSigId,
   promoteVisibleSimilarProductSigIds,
+  buildSimilarCatalogProductProjection,
   hydrateVisibleSimilarProductSigIdsFromCatalog,
   filterPublicVisibleSimilarProducts,
   dedupeSimilarCandidatesByMerchantProductId,

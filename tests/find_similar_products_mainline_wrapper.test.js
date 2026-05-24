@@ -540,6 +540,73 @@ describe('find_similar_products mainline wrapper', () => {
     expect(out.map((item) => item.product_id)).toEqual(['sig_mirrored', 'internal_1']);
   });
 
+  it('hydrates external-seed similar candidates into catalog product identity for public cards', async () => {
+    process.env.DATABASE_URL = 'postgres://test';
+    const dbQueryMock = jest.fn().mockResolvedValue({
+      rows: [
+        {
+          merchant_id: 'external_seed',
+          platform: 'external_seed',
+          source_product_id: 'ext_into_you_w725',
+          product_key: 'prod::external_seed::external_seed::ext_into_you_w725',
+          pivota_signature_id: 'sig_1a310126e75795655997ed9e',
+          title: 'Catalog Watery Lip Matt W725',
+          description: 'Catalog-owned display copy for W725.',
+          brand: 'INTO YOU',
+          category: 'Lip Makeup',
+          product_type: 'Watery Matte Lip',
+          category_path: 'beauty/makeup/lip',
+          image_url: 'https://cdn.example.test/catalog-w725.jpg',
+          canonical_url: 'https://merchant.example.test/w725',
+          product_payload: {
+            destination_url: 'https://merchant.example.test/w725',
+          },
+        },
+      ],
+    });
+    jest.doMock('../src/db', () => ({
+      query: dbQueryMock,
+    }));
+    const app = require('../src/server');
+
+    const out = await app._debug.hydrateVisibleSimilarProductSigIdsFromCatalog([
+      {
+        product_id: 'ext_into_you_w725',
+        external_product_id: 'ext_into_you_w725',
+        merchant_id: 'external_seed',
+        title: 'Seed Watery Lip Matt W725',
+        card_highlight: 'Seed card copy',
+        card_highlight_source: 'official_external_seed_card',
+      },
+    ]);
+
+    expect(out[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'sig_1a310126e75795655997ed9e',
+        id: 'sig_1a310126e75795655997ed9e',
+        pivota_signature_id: 'sig_1a310126e75795655997ed9e',
+        product_key: 'prod::external_seed::external_seed::ext_into_you_w725',
+        title: 'Catalog Watery Lip Matt W725',
+        description: 'Catalog-owned display copy for W725.',
+        source: 'catalog_products',
+        entity_source: 'catalog_products',
+        product_identity_source: 'catalog_products',
+        card_highlight: 'Catalog-owned display copy for W725',
+        card_highlight_source: 'catalog_product',
+        shopping_card: expect.objectContaining({
+          highlight: 'Catalog-owned display copy for W725',
+          evidence_profile: 'catalog_product',
+        }),
+        source_provenance: {
+          kind: 'external_seed',
+          external_product_id: 'ext_into_you_w725',
+        },
+        canonical_url: 'https://agent.pivota.cc/products/sig_1a310126e75795655997ed9e',
+        destination_url: 'https://merchant.example.test/w725',
+      }),
+    );
+  });
+
   it('collects only reviewed external seed component refs for PDP similar', async () => {
     const app = require('../src/server');
 
