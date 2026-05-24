@@ -31,7 +31,7 @@ const SAFE_REWRITE_QUALITY_STATES = new Set(['limited', 'eligible']);
 const SAFE_REWRITE_EVIDENCE_PROFILES = new Set(['seller_only', 'seller_plus_formula']);
 const SAFE_REWRITE_BLOCKERS = new Set(['kb_blocked', 'kb_displayable_limited']);
 const NON_CORE_PUBLIC_REWRITE_TITLE_RE = /\b(?:sample|e-gift|gift card|hoodie|hat|tote|bucket|bag)\b/i;
-const MULTI_ITEM_PUBLIC_REWRITE_TITLE_RE = /\b(?:set|kit|duo|trio|bundle|routine|collection|must-haves?|choose your|gift set|gift trio)\b/i;
+const MULTI_ITEM_PUBLIC_REWRITE_TITLE_RE = /\b(?:set|kit|duo|trio|bundle|routine|collection|essentials|must-haves?|choose your|gift set|gift trio)\b/i;
 
 function text(value) {
   if (typeof value === 'string') return value.replace(/\s+/g, ' ').trim();
@@ -391,12 +391,12 @@ function inferSetKind(titleCategoryText, descriptionText) {
     return 'skincare_tool_set';
   }
   if (/\b(?:eau de parfum|parfum|perfume|pen spray|body mist|hair\s*&\s*body mist|hair and body mist)\b/.test(fragranceSignalText)) return 'fragrance_set';
-  if (/\b(?:lip patch|lippatch|lip treat|liptreat|liptone|lip butter|butter balm|lip combo|lip oil|lip glaze|lip tint|lip liner|precision pout|powder matte lip|high gloss|lip kit|lip set|lip bundle|lip duo|lip trio|lip favourites|lip favorites)\b/.test(titleCategoryText)) return 'lip_set';
+  if (/\b(?:lip patch|lippatch|lip care|lip sav|lip treat|liptreat|liptone|lip butter|butter balm|lip combo|lip oil|lip glaze|lip tint|lip liner|precision pout|powder matte lip|high gloss|lip kit|lip set|lip bundle|lip duo|lip trio|lip favourites|lip favorites)\b/.test(titleCategoryText)) return 'lip_set';
   if (/\b(?:eye patch|eye patches|eye care kit|eye care set|detoxifeye|fortifeye|dream-yeye|antioxifeye|beautifeye)\b/.test(titleCategoryText)) return 'eye_care_set';
   if (makeupSignal.test(titleCategoryText)) {
     return 'makeup_set';
   }
-  if (/\b(?:lip treat|liptreat|liptone|lip butter|butter balm|lip combo|lip oil|lip glaze|lip tint|lip liner|precision pout|powder matte lip|high gloss|lip kit|lip set|lip bundle|lip duo|lip trio|lip favourites|lip favorites)\b/.test(joined) && !makeupSignal.test(joined)) return 'lip_set';
+  if (/\b(?:lip care|lip sav|lip treat|liptreat|liptone|lip butter|butter balm|lip combo|lip oil|lip glaze|lip tint|lip liner|precision pout|powder matte lip|high gloss|lip kit|lip set|lip bundle|lip duo|lip trio|lip favourites|lip favorites)\b/.test(joined) && !makeupSignal.test(joined)) return 'lip_set';
   if (/\b(?:lip\s*(?:&|and)\s*cheek|blush|blush tint|powder blush|bronze|bronzer|glow balm|eye pen|eyeliner|eye liner)\b/.test(joined) && !strongSkincareSignal.test(joined)) return 'makeup_set';
   if (skincareSignal.test(titleCategoryText)) {
     return 'skincare_set';
@@ -438,7 +438,7 @@ function inferKind(title, category, categoryPath, description = '') {
   ) {
     return 'brush_set';
   }
-  if (/\b(?:set|kit|duo|trio|quad|sampler|bundle|vault|box|must-haves?|favourites|favorites|collection|routine|best of|holiday edition|choose your shades)\b/.test(titleCategoryText)) {
+  if (/\b(?:set|kit|duo|trio|quad|sampler|bundle|vault|box|essentials|must-haves?|favourites|favorites|collection|routine|best of|holiday edition|choose your shades)\b/.test(titleCategoryText)) {
     return inferSetKind(titleCategoryText, descriptionText);
   }
   if (brushCareDescriptionPattern.test(descriptionText)) return 'brush_care';
@@ -762,7 +762,7 @@ function ingredientSignals(seedData) {
   const snapshot = asObject(seedData.snapshot);
   const ingredientLikePattern = /\b(?:aqua|water|glycerin|sodium|aloe|simmondsia|helianthus|extract|oil|glycol|alcohol|acid|butter|wax|ester|triglyceride|caprylic|fragrance|parfum|cetearyl|citric|tocopherol|niacinamide|squalane|retinol|peptide|polysorbate|xanthan|benzyl|linalool|limonene|ayurvedic complex|key actives?)\b/i;
   const boilerplatePattern = /\b(?:vstar_review_settings|loox_global_hash|visitor_level_referral|schema\.org|@context|@type|productgroup|wholesale\s+affiliate\s+program|refer-a-friend|social\s+instagram|add to cart|sold out)\b/i;
-  const nonFormulaPattern = /\b(?:how to use|directions?|shipping|returns?|privacy policy|terms of service|customer service|subscribe|newsletter)\b/i;
+  const nonFormulaPattern = /\b(?:how to use|directions?|shipping|returns?|privacy policy|terms of service|customer service|subscribe|newsletter|signature fragrance|notes of|scent profile)\b/i;
   function formulaCandidate(value) {
     const cleaned = sanitizeFormulaSummary(value);
     if (cleaned.length < 20) return '';
@@ -877,6 +877,7 @@ function buildHighlightPhrase(kind, category, description, title = '') {
   const desc = description.toLowerCase();
   const titleText = `${title}`.toLowerCase();
   const signalText = `${category} ${description} ${title}`.toLowerCase();
+  if (kind === 'foundation' && /soft'?lit|naturally\s+luminous|luminous|longwear/.test(signalText)) return 'Luminous longwear base';
   if (kind === 'foundation' && /soft-?matte|blurring|blur/.test(signalText)) return 'Soft-matte blurring base';
   if (kind === 'concealer' && /conceal|soft-?matte|shade/.test(signalText)) return 'Complexion coverage detail';
   if (kind === 'primer' && /pore|blur|shine|smooth/.test(signalText)) return 'Pore-blurring primer detail';
@@ -922,7 +923,7 @@ function buildHighlightPhrase(kind, category, description, title = '') {
     if (noteTerms.length === 1) return `${noteTerms[0]} scent profile`;
     return 'Official scent note profile';
   }
-  if (kind === 'foundation') return 'Complexion base detail';
+  if (kind === 'foundation') return 'Longwear complexion base';
   if (kind === 'brow') return 'Brow-shaping format detail';
   if (kind === 'primer') return 'Primer format detail';
   if (kind === 'eye_treatment') return /patch|goggle|caffeine|de-?puff|hydrate/.test(signalText) ? 'Eye-care format detail' : 'Eye treatment detail';
@@ -930,7 +931,10 @@ function buildHighlightPhrase(kind, category, description, title = '') {
   if (kind === 'face_palette') return 'Complexion palette detail';
   if (kind === 'blush') return 'Cheek color formula detail';
   if (kind === 'bronzer') return 'Bronzing complexion detail';
-  if (kind === 'highlighter') return 'Highlighter formula detail';
+  if (kind === 'highlighter') {
+    if (/light[-\s]?diffusing|superfine pearls?|lowkey glow|glow/.test(signalText)) return 'Light-diffusing glow';
+    return 'Highlighter formula detail';
+  }
   if (kind === 'face_powder') return 'Complexion powder detail';
   if (kind === 'body_oil') return 'Body oil formula detail';
   if (kind === 'dry_shampoo') return 'Post-workout dry shampoo';
@@ -969,7 +973,10 @@ function buildHighlightPhrase(kind, category, description, title = '') {
   }
   if (kind === 'sunscreen') return /baby|children|kids?/.test(signalText) ? 'Child sunscreen format detail' : 'Sunscreen format detail';
   if (kind === 'blemish_patch') return 'Spot-care format detail';
-  if (kind === 'cleanser') return /glycolic|retinol|mud|jasmine/.test(signalText) ? 'Active cleanser detail' : 'Cleanser formula detail';
+  if (kind === 'cleanser') {
+    if (/jelly\s+oil|makeup[-\s]?melting|melt\s+awf|remove all types of makeup/.test(signalText)) return 'Jelly-oil makeup melt';
+    return /glycolic|retinol|mud|jasmine/.test(signalText) ? 'Active cleanser detail' : 'Cleanser formula detail';
+  }
   if (kind === 'cleansing_pads') return 'Reusable cleansing pads';
   if (kind === 'makeup_sharpener') return 'Pencil sharpener tool';
   if (kind === 'skincare_tool') return 'Cleansing cloth tool';
