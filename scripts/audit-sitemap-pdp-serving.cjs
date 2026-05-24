@@ -76,7 +76,24 @@ function includesForMode(mode) {
   ];
 }
 
-async function probePdp(gatewayUrl, productId, timeoutMs, include) {
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function normalizeBodyError(error) {
+  if (!error) return null;
+  if (typeof error === 'string') return error;
+  if (typeof error === 'object') return error.code || error.message || JSON.stringify(error);
+  return String(error);
+}
+
+function shouldRetryProbe(row) {
+  if (!row || row.ok) return false;
+  if (row.error === 'PROBE_FAILED') return true;
+  return row.status === 429 || row.status === 500 || row.status === 502 || row.status === 503 || row.status === 504;
+}
+
+async function probePdpOnce(gatewayUrl, productId, timeoutMs, include) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   const startedAt = Date.now();
@@ -110,12 +127,13 @@ async function probePdp(gatewayUrl, productId, timeoutMs, include) {
       body = { parse_error: text.slice(0, 500) };
     }
     const missing = Array.isArray(body.missing) ? body.missing : [];
+    const error = normalizeBodyError(body.error);
     return {
       product_id: productId,
       status: res.status,
-      ok: res.ok && !body.error,
-      error: body.error || null,
-      reason: body.details?.reason || null,
+      ok: res.ok && !error,
+      error,
+      reason: body.details?.reason || body.error?.message || null,
       blocker_code:
         body.details?.blocker_code ||
         body.details?.serving_eligibility?.blocker_code ||
@@ -153,6 +171,17 @@ async function probePdp(gatewayUrl, productId, timeoutMs, include) {
   }
 }
 
+async function probePdp(gatewayUrl, productId, timeoutMs, include, retries, retryDelayMs) {
+  let row = null;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    row = await probePdpOnce(gatewayUrl, productId, timeoutMs, include);
+    row.attempts = attempt + 1;
+    if (!shouldRetryProbe(row) || attempt === retries) return row;
+    await sleep(retryDelayMs * (attempt + 1));
+  }
+  return row;
+}
+
 async function mapWithConcurrency(items, concurrency, worker, onResult = null) {
   const out = new Array(items.length);
   let next = 0;
@@ -180,6 +209,8 @@ async function main() {
   const concurrency = readNumberArg('concurrency', 8, 1);
   const limit = readNumberArg('limit', Number.MAX_SAFE_INTEGER, 1);
   const offset = readNumberArg('offset', 0, 0);
+  const retries = readNumberArg('retries', 0, 0);
+  const retryDelayMs = readNumberArg('retry-delay-ms', 1000, 0);
   const outPath = readArg('out', null);
   const jsonlOutPath = readArg('jsonl-out', null);
   const summaryOutPath = readArg('summary-out', null);
@@ -203,7 +234,7 @@ async function main() {
   const rows = await mapWithConcurrency(
     ids,
     concurrency,
-    (id) => probePdp(gatewayUrl, id, timeoutMs, include),
+    (id) => probePdp(gatewayUrl, id, timeoutMs, include, retries, retryDelayMs),
     async (row) => {
       completed += 1;
       if (jsonlOutPath) {
@@ -234,6 +265,8 @@ async function main() {
     include_mode: includeMode,
     source_total_urls: allIds.length,
     offset,
+    retries,
+    retry_delay_ms: retryDelayMs,
     total_urls: ids.length,
     ok_count: rows.filter((row) => row.ok).length,
     product_not_servable_count: rows.filter((row) => row.error === 'PRODUCT_NOT_SERVABLE').length,
