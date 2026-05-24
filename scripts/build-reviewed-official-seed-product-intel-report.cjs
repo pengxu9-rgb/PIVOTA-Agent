@@ -510,6 +510,7 @@ function inferKind(title, category, categoryPath, description = '') {
     /\b(?:palmat|brush cleanser|brush cleaning|brush cleaner|brushampoo|sigmagic|travel\s+switch|switch\s+set|dry['’]?n\s+shape|brush\s+cleaning\s+mat|brush\s+cleaning\s+tool|deep cleans? your brushes)\b|sigma\W*switch\b/;
   if (/\b(?:grwm routine|look)\b/.test(titleCategoryText)) return 'makeup_set';
   if (/\bfenty\s+icon\s+the\s+case\b|\brefillable\s+lipstick\s+case\b/.test(titleCategoryText)) return 'beauty_accessory';
+  if (/\b(?:under[-\s]?eye|undereye)\s+stickers?\b/.test(titleCategoryText)) return 'beauty_accessory';
   if (/\b(?:handheld\s+beauty\s+mirror|beauty\s+mirror|led\s+compact\s+mirror|compact\s+mirror|gloss\s+bomb\s+(?:holder|key\s*chain)|makeup\s+bag|flat-lay\s+makeup\s+bag)\b/.test(titleCategoryText)) return 'beauty_accessory';
   if (/\b(?:cosmetic|makeup|fragrance)?\s*pouch\b|\b(?:cosmetic|makeup)\s+bag\b/.test(titleCategoryText)) return 'beauty_accessory';
   if (/\b(?:brush\s+cup|brush\s+holder|brush\s+case|brush\s+bag|brush\s+storage|makeup\s+brush\s+cup)\b/.test(titleCategoryText)) return 'brush_storage';
