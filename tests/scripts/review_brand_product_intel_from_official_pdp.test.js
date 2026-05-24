@@ -613,6 +613,34 @@ describe('official PDP manual insight review', () => {
     expect(plan.preview.best_for.map((item) => item.tag)).toContain('exfoliating_toner_step');
   });
 
+  test('uses bronzer and contour cues for corrected Fenty cream bronzer rows', () => {
+    const plan = buildPlan(
+      row({
+        external_product_id: 'ext_fenty_cream_bronzer_amber',
+        title: 'Cheeks Out Freestyle Cream Bronzer — Amber',
+        brand: 'FENTY BEAUTY',
+        canonical_url: 'https://fentybeauty.com/products/cheeks-out-freestyle-cream-bronzer-amber',
+        seed_data: {
+          brand: 'FENTY BEAUTY',
+          pdp_description_raw:
+            'Cheeks Out Freestyle Cream Bronzer in Amber is a cream bronzer for warming, defining, or contouring the face, with a blendable cream texture and shade-specific bronze/contour role.',
+          pdp_ingredients_raw:
+            'Amber: Octyldodecanol, Isononyl Isononanoate, Caprylic/Capric Triglyceride, Synthetic Wax, Mica, Silica Silylate, Iron Oxides.',
+          pdp_how_to_use_raw:
+            'Use fingertips or a face shaping brush to apply where the sun naturally hits your face. Layer to build pigment or apply to hollows for soft contour.',
+          variants: [{ title: 'Amber', options: [{ name: 'Shade', value: 'Amber' }] }],
+        },
+      }),
+      { brand: 'Fenty Beauty', includeStrong: false },
+    );
+
+    expect(plan.blocked).toBe(false);
+    expect(plan.preview.headline).toBe('Face color makeup');
+    expect(plan.preview.what_it_is).toContain('bronzing or contour definition');
+    expect(plan.preview.shopping_highlight).toContain('bronzing/contour role');
+    expect(plan.preview.what_it_is).not.toContain('glow payoff');
+  });
+
   test('writes specific copy for Fenty dry shampoo powder', () => {
     const plan = buildPlan(
       row({

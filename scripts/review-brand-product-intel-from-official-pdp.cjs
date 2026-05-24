@@ -478,6 +478,7 @@ function findTokens(text, patterns) {
 
 function inferAnchors(facts, role) {
   const text = combinedText(facts);
+  const titleText = asString(facts.title).toLowerCase();
   const scentAnchors = role.step === 'fragrance' || role.step === 'body fragrance' || role.step === 'home fragrance'
     ? findTokens(text, [
       ['leather', /\bleather\b/],
@@ -534,10 +535,12 @@ function inferAnchors(facts, role) {
       ['shade clarity', /\bshade|color|colour\b/],
     ]);
   } else if (role.step === 'face color') {
+    const bronzerLike = /\bbronzer|bronze|contour\b/.test(titleText);
     productAnchors = findTokens(text, [
+      ['bronzing/contour role', /\bbronze|bronzer|contour|define|warm\b/],
       ['long-wear color', /\b(?:longwear|long-wear|all[-\s]?day)\b/],
       ['cream-powder texture', /\bcream[-\s]?powder|powder\b/],
-      ['glow payoff', /\bglow|dayglow|highlight|luminous|radiance\b/],
+      ['glow payoff', bronzerLike ? /$a/ : /\bglow|dayglow|highlight|luminous|radiance\b/],
       ['matte finish', /\bmatte\b/],
       ['shade range', /\bshade|color|colour\b/],
     ]);
@@ -915,10 +918,12 @@ function buildEvidenceAnchoredWhatItIs(facts, role) {
         : /\bbronzer\b/.test(lowerTitle)
           ? 'bronzer'
           : 'face color product';
+    const bronzerLike = /\bbronzer|bronze|contour\b/.test(lowerTitle);
     const claims = joinClaims([
       /\blongwear|long-wear\b/i.test(text) ? 'long-wear color' : '',
       /\bcream[-\s]?powder|powder\b/i.test(text) ? 'a cream-powder texture' : '',
-      /\bglow|dayglow|highlight|luminous\b/i.test(text) ? 'glow payoff' : '',
+      /\bbronze|bronzer|contour|define|warm\b/i.test(text) ? 'bronzing or contour definition' : '',
+      !bronzerLike && /\bglow|dayglow|highlight|luminous\b/i.test(text) ? 'glow payoff' : '',
     ]);
     return sentence(`${facts.title} is a ${format} from ${facts.brand}${shade ? ` in shade ${shade}` : ''}${claims ? `, with source-backed cues around ${claims}` : ''}`);
   }
