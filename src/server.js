@@ -2796,6 +2796,17 @@ const PDP_SIMILAR_SYNC_BUDGET_MS = Math.min(
     ),
   ),
 );
+const PDP_SIMILAR_BACKGROUND_SYNC_BUDGET_MS = Math.min(
+  8000,
+  Math.max(
+    PDP_SIMILAR_SYNC_BUDGET_MS,
+    parseTimeoutMs(
+      process.env.PDP_SIMILAR_BACKGROUND_SYNC_BUDGET_MS ||
+        process.env.PDP_SIMILAR_POST_CORE_SYNC_BUDGET_MS,
+      6500,
+    ),
+  ),
+);
 const PDP_SIMILAR_DEFAULT_DISPLAY_LIMIT = Math.max(
   6,
   Math.min(24, Number(process.env.PDP_SIMILAR_DEFAULT_DISPLAY_LIMIT || 12) || 12),
@@ -3947,6 +3958,55 @@ function buildPdpSimilarFetchArgs({
       },
     },
   };
+}
+
+const PDP_CORE_BLOCKING_INCLUDE_SET = new Set([
+  'offers',
+  'variant_selector',
+  'variants',
+  'product_overview',
+  'product_details',
+  'product_facts',
+  'supplemental_details',
+  'active_ingredients',
+  'ingredients_inci',
+  'how_to_use',
+  'reviews_preview',
+  'product_intel',
+  'all',
+]);
+
+function resolvePdpSimilarRequestMode({ payload = {}, options = {}, includeList = [] } = {}) {
+  const rawMode = String(
+    options.similar_mode ||
+      options.similarMode ||
+      options.similar_request_mode ||
+      options.similarRequestMode ||
+      options.module_context ||
+      options.moduleContext ||
+      payload?.similar?.mode ||
+      payload?.similar?.request_mode ||
+      '',
+  )
+    .trim()
+    .toLowerCase();
+
+  if (['post_core', 'post-core', 'background', 'module', 'retry', 'deferred_retry'].includes(rawMode)) {
+    return 'background';
+  }
+  if (['first_paint', 'first-paint', 'inline', 'sync'].includes(rawMode)) {
+    return 'first_paint';
+  }
+
+  const normalizedInclude = Array.isArray(includeList)
+    ? includeList.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean)
+    : [];
+  const asksForSimilar = normalizedInclude.some((value) => value === 'similar' || value === 'recommendations');
+  const asksForBlockingCore = normalizedInclude.some((value) => PDP_CORE_BLOCKING_INCLUDE_SET.has(value));
+  if (asksForSimilar && !asksForBlockingCore) {
+    return 'background';
+  }
+  return 'first_paint';
 }
 
 function trimOldestInflightEntries(map, maxEntries) {
@@ -12770,18 +12830,22 @@ async function withStageBudget(promise, timeoutMs, timeoutLabel) {
 async function resolvePdpSimilarWithBudget(
   promise,
   budgetMs = PDP_SIMILAR_SYNC_BUDGET_MS,
+  options = {},
 ) {
+  const reasonCode = String(options?.reasonCode || 'SIMILAR_DEFERRED_FIRST_PAINT').trim() || 'SIMILAR_DEFERRED_FIRST_PAINT';
+  const requestMode = String(options?.requestMode || 'first_paint').trim() || 'first_paint';
   return await withStageBudget(promise, budgetMs, 'pdp_similar').catch((err) => {
     if (err?.code === 'STAGE_TIMEOUT') {
       return {
         status: 'deferred',
         strategy: 'related_products',
-        reason_code: 'SIMILAR_DEFERRED_FIRST_PAINT',
+        reason_code: reasonCode,
         items: [],
         metadata: {
           similar_status: 'deferred',
-          reason_code: 'SIMILAR_DEFERRED_FIRST_PAINT',
+          reason_code: reasonCode,
           timeout_reason_code: 'SIMILAR_STAGE_BUDGET_EXCEEDED',
+          request_mode: requestMode,
           sync_budget_ms: Math.max(1, Number(budgetMs || 0) || 0),
         },
       };
@@ -33829,6 +33893,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         includeList.includes('bundle_composition') ||
         includeList.includes('similar') ||
         includeList.includes('recommendations');
+      const similarRequestMode = resolvePdpSimilarRequestMode({
+        payload,
+        options,
+        includeList,
+      });
+      const similarSyncBudgetMs =
+        similarRequestMode === 'background'
+          ? PDP_SIMILAR_BACKGROUND_SYNC_BUDGET_MS
+          : PDP_SIMILAR_SYNC_BUDGET_MS;
 		      markPdpV2Phase('parse_request', parseRequestStartedAt);
 
 		      // Resolve the canonical product group first so every client sees the same details.
@@ -34921,7 +34994,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 bypassCache: similarCacheBypass,
                 debug,
               });
-              return await resolvePdpSimilarWithBudget(fetchSimilarProductsDeduped(fetchArgs));
+              return await resolvePdpSimilarWithBudget(
+                fetchSimilarProductsDeduped(fetchArgs),
+                similarSyncBudgetMs,
+                {
+                  requestMode: similarRequestMode,
+                  reasonCode:
+                    similarRequestMode === 'background'
+                      ? 'SIMILAR_DEFERRED_BACKGROUND_LOAD'
+                      : 'SIMILAR_DEFERRED_FIRST_PAINT',
+                },
+              );
             } finally {
               markPdpV2Module('similar', moduleStartedAt);
             }
@@ -35084,7 +35167,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               ? relatedProductsEnvelope.metadata
               : {}),
             similar_cache_bypass: similarCacheBypass,
-            similar_sync_budget_ms: PDP_SIMILAR_SYNC_BUDGET_MS,
+            similar_request_mode: similarRequestMode,
+            similar_sync_budget_ms: similarSyncBudgetMs,
           },
         };
       }
@@ -35473,7 +35557,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         relatedProductsEnvelope?.metadata?.similar_status === 'deferred' ||
         relatedProductsEnvelope?.status === 'deferred';
       if (wantsSimilar && similarDeferred) {
-        recordSimilarDeferred({ source: 'first_paint_budget' });
+        recordSimilarDeferred({
+          source: similarRequestMode === 'background' ? 'post_core_budget' : 'first_paint_budget',
+        });
       }
       const similarUnavailable =
         relatedProductsEnvelope?.metadata?.similar_status === 'unavailable' ||
@@ -43394,6 +43480,7 @@ module.exports._debug = {
   storeDiscountBadges,
   resolvePdpSimilarCacheBypass,
   buildPdpSimilarFetchArgs,
+  resolvePdpSimilarRequestMode,
   hasSimilarCardImage,
   resolvePdpSimilarWithBudget,
   mergeRecommendationModuleWithEnvelope,

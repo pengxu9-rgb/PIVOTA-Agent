@@ -41,4 +41,52 @@ describeIfRuntimeDeps('PDP similar first-paint budget', () => {
       }),
     );
   });
+
+  test('marks post-core similar timeouts separately from first-paint timeouts', async () => {
+    jest.resetModules();
+    const app = require('../../src/server');
+
+    const envelope = await app._debug.resolvePdpSimilarWithBudget(
+      new Promise(() => {}),
+      20,
+      {
+        requestMode: 'background',
+        reasonCode: 'SIMILAR_DEFERRED_BACKGROUND_LOAD',
+      },
+    );
+
+    expect(envelope).toEqual(
+      expect.objectContaining({
+        status: 'deferred',
+        reason_code: 'SIMILAR_DEFERRED_BACKGROUND_LOAD',
+        metadata: expect.objectContaining({
+          request_mode: 'background',
+          reason_code: 'SIMILAR_DEFERRED_BACKGROUND_LOAD',
+          sync_budget_ms: 20,
+        }),
+      }),
+    );
+  });
+
+  test('uses background mode for standalone/post-core similar requests only', () => {
+    jest.resetModules();
+    const app = require('../../src/server');
+
+    expect(
+      app._debug.resolvePdpSimilarRequestMode({
+        options: { similar_mode: 'post_core' },
+        includeList: ['similar'],
+      }),
+    ).toBe('background');
+    expect(
+      app._debug.resolvePdpSimilarRequestMode({
+        includeList: ['similar'],
+      }),
+    ).toBe('background');
+    expect(
+      app._debug.resolvePdpSimilarRequestMode({
+        includeList: ['offers', 'variant_selector', 'product_overview', 'similar'],
+      }),
+    ).toBe('first_paint');
+  });
 });
