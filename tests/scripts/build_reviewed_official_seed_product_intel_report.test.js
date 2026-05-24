@@ -800,14 +800,14 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
         title: 'LipTone Trio',
         description: 'Gloss works with lips pH level for a tint.',
       }).shopping_card,
-    ).toMatchObject({ subtitle: 'Lip Set', highlight: 'Lip-care routine set' });
+    ).toMatchObject({ subtitle: 'Lip Set', highlight: 'Lip gloss routine set' });
     expect(
       buildPixiBundle({
         id: 'glow_go_trio',
         title: 'Glow & Go Trio',
         description: 'LipTone gloss trio with pH adaptive pigment.',
       }).shopping_card,
-    ).toMatchObject({ subtitle: 'Lip Set', highlight: 'Lip-care routine set' });
+    ).toMatchObject({ subtitle: 'Lip Set', highlight: 'Lip gloss routine set' });
     expect(
       buildPixiBundle({
         id: 'cleansing_cloths_set',
@@ -1886,7 +1886,7 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
         '',
         'A hair styling gel built around soothing support for hold and styling definition.',
       ),
-    ).toBe('beauty_set');
+    ).toBe('hair_care_set');
     expect(
       isConservativeRewriteCandidate(
         { ...baseCandidate, title: 'Lip Sav’rs Lip Care Essentials' },
@@ -2069,6 +2069,268 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     expect(hairGelBundle.shopping_card.subtitle).toBe('Hair Styling');
     expect(hairGelBundle.shopping_card.highlight).toBe('Hair gel format detail');
     expect(JSON.stringify([settingSprayBundle, hairGelBundle])).not.toMatch(/beauty product|skincare product/i);
+  });
+
+  test('classifies remaining Fenty seller-only accessories and bundles without low-quality fallback', () => {
+    expect(inferKind("Showstopp'r Football Sponge", '', '', 'A football-shape makeup sponge.')).toBe(
+      'makeup_applicator',
+    );
+    expect(inferKind('Patch Ya Bags Reusable Under Eye Masks', '', '', 'Reusable under eye masks.')).toBe(
+      'eye_treatment',
+    );
+    expect(inferKind("Smurfette n' Reflect Handheld Beauty Mirror", '', '', 'A handheld beauty mirror.')).toBe(
+      'beauty_accessory',
+    );
+    expect(inferKind('Gloss Bomb Key Chain', '', '', 'A key chain accessory.')).toBe('beauty_accessory');
+    expect(inferKind('Fuzzy Gloss Bomb Holder', '', '', 'A gloss holder accessory.')).toBe(
+      'beauty_accessory',
+    );
+    expect(
+      inferKind('Fenty Icon The Case Semi-Matte Refillable Lipstick — Navy Edition', '', '', 'A refillable lipstick case.'),
+    ).toBe('beauty_accessory');
+    expect(inferKind("Fenty Skin Travel-Size Start'r Set with Mineral SPF - EU", '', '', 'A skin set with SPF.')).toBe(
+      'skincare_set',
+    );
+    expect(inferKind('Butta Drop Body Care Bundle', '', '', 'A body care and fragrance bundle.')).toBe(
+      'body_care_set',
+    );
+    expect(inferKind('Build Your Own AM + PM Moisturizer Bundle', '', '', 'A moisturizer bundle.')).toBe(
+      'skincare_set',
+    );
+    expect(inferKind('Build Your Own Blush + Brush Bundle', '', '', 'A blush and brush bundle.')).toBe(
+      'makeup_set',
+    );
+    expect(inferKind('Match Stix Shimmer Skinstick - Starstruck', '', '', 'A shimmer skinstick.')).toBe(
+      'highlighter',
+    );
+    expect(inferKind('Invisimatte Blotting Paper Refill', '', '', 'A blotting paper refill in a compact.')).toBe(
+      'blotting_paper',
+    );
+    expect(inferKind('Slick-Back Styling Essentials', '', '', 'A hair styling gel set.')).toBe('hair_care_set');
+    expect(inferKind('Build Your Own Maintenance Crew Bundle', '', '', 'Shop Fenty Hair to repair hair.')).toBe(
+      'hair_care_set',
+    );
+    expect(
+      inferKind('Build Your Own Body Care + Fragrance Bundle', '', '', 'Hydration plus spicy floral fragrance.'),
+    ).toBe('body_care_set');
+    expect(inferKind('Glossy Posse VIII 3-Piece Lip Luminizer Set', '', '', 'Shop lip gloss.')).toBe(
+      'lip_set',
+    );
+    expect(inferKind('Lux Balm Trio', '', '', 'A lip balm essentials set.')).toBe('lip_set');
+    expect(inferKind('Build Your Own 5-Piece Lip Gloss Vault', '', '', 'A customizable lip routine.')).toBe(
+      'lip_set',
+    );
+    expect(inferKind('Double Gloss Lip Layering Duo', '', '', 'Lip gloss layering duo.')).toBe('lip_set');
+    expect(inferKind('Build Your Own Prime + Set Bundle', '', '', 'Choose primer + setting powder + setting spray.')).toBe(
+      'makeup_set',
+    );
+    expect(sanitizePublicSourceText('Bleenndd, perfeeccttt, HIKE!')).not.toMatch(/perfect|perfeeccttt/i);
+    expect(sanitizePublicSourceText('A perfect wash of color.')).toContain('sheer wash of color');
+    expect(
+      sanitizePublicSourceText(
+        'An ultra comfortable sheer lipstick with the perfect amount of nourishing color and shine.',
+      ),
+    ).not.toMatch(/\bperfect\b/i);
+    expect(sanitizePublicSourceText('NEW! Free Fuzzy Gloss Bomb Holder on + orders.')).not.toMatch(
+      /\b(?:free|orders?)\b/i,
+    );
+
+    const spongeBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_fenty_football_sponge',
+        title: "Showstopp'r Football Sponge",
+        canonical_url: 'https://fentybeauty.com/products/showstoppr-football-sponge',
+        seed_data: {
+          brand: 'Fenty Beauty',
+          description:
+            'Bleenndd, perfeeccttt, HIKE! Get that Fenty Face game-day ready with this seasonal sponge in a football-shape design.',
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_fenty_football_sponge',
+        sellable_item_group_id: 'sig_fenty_football_sponge',
+      },
+      generatedAt: '2026-05-24T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+    const mirrorBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_fenty_mirror',
+        title: "Smurfette n' Reflect Handheld Beauty Mirror",
+        canonical_url: 'https://fentybeauty.com/products/smurfette-reflect-handheld-beauty-mirror',
+        seed_data: {
+          brand: 'Fenty Beauty',
+          description: 'A handheld beauty mirror for makeup routines.',
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_fenty_mirror',
+        sellable_item_group_id: 'sig_fenty_mirror',
+      },
+      generatedAt: '2026-05-24T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+    const blottingBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_fenty_blotting_paper',
+        title: 'Invisimatte Blotting Paper Refill',
+        canonical_url: 'https://fentybeauty.com/products/invisimatte-blotting-paper-refill',
+        seed_data: {
+          brand: 'Fenty Beauty',
+          description:
+            'Ultra portable blotting paper that lets you touch up in stealth mode, made to refill the mirrored compact that looks like a lipstick case.',
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_fenty_blotting_paper',
+        sellable_item_group_id: 'sig_fenty_blotting_paper',
+      },
+      generatedAt: '2026-05-24T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+    const hairSetBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_fenty_hair_set',
+        title: 'Slick-Back Styling Essentials',
+        canonical_url: 'https://fentybeauty.com/products/slick-back-styling-essentials',
+        seed_data: {
+          brand: 'Fenty Beauty',
+          description:
+            'A hair styling gel built around ectoin/bisabolol-style soothing support for hold, shape control, and styling definition in hair styling routines.',
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_fenty_hair_set',
+        sellable_item_group_id: 'sig_fenty_hair_set',
+      },
+      generatedAt: '2026-05-24T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+    const powderBrushBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_fenty_powder_brush',
+        title: 'Build Your Own Setting Powder + Brush Bundle',
+        canonical_url: 'https://fentybeauty.com/products/build-your-own-setting-powder-brush-bundle',
+        seed_data: {
+          brand: 'Fenty Beauty',
+          description: 'Keep your look fresh with a setting powder + compatible brush of your choice.',
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_fenty_powder_brush',
+        sellable_item_group_id: 'sig_fenty_powder_brush',
+      },
+      generatedAt: '2026-05-24T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+    const lipGlossBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_fenty_lip_gloss_vault',
+        title: 'Build Your Own 5-Piece Lip Gloss Vault',
+        canonical_url: 'https://fentybeauty.com/products/build-your-own-lip-gloss-vault',
+        seed_data: {
+          brand: 'Fenty Beauty',
+          description: 'Prep, line + fill your pout with this customizable lip routine.',
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_fenty_lip_gloss_vault',
+        sellable_item_group_id: 'sig_fenty_lip_gloss_vault',
+      },
+      generatedAt: '2026-05-24T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+    const keychainBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_fenty_keychain',
+        title: 'Gloss Bomb Key Chain',
+        canonical_url: 'https://fentybeauty.com/products/gloss-bomb-key-chain',
+        seed_data: {
+          brand: 'Fenty Beauty',
+          description: 'NEW! Free Fuzzy Gloss Bomb Holder on + orders.',
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_fenty_keychain',
+        sellable_item_group_id: 'sig_fenty_keychain',
+      },
+      generatedAt: '2026-05-24T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+    const lipLinerBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_fenty_lip_liner',
+        title: "Trace'd Out Longwear Waterproof Pencil Lip Liner — Extra Thigh",
+        canonical_url: 'https://fentybeauty.com/products/traced-out-pencil-lip-liner',
+        seed_data: {
+          brand: 'Fenty Beauty',
+          description: 'An eyeliner for defining lash lines and shaping eye looks.',
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_fenty_lip_liner',
+        sellable_item_group_id: 'sig_fenty_lip_liner',
+      },
+      generatedAt: '2026-05-24T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+    const lipstickCaseBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_fenty_icon_case',
+        title: 'Fenty Icon The Case Semi-Matte Refillable Lipstick — Navy Edition',
+        canonical_url: 'https://fentybeauty.com/products/fenty-icon-case-navy-edition',
+        seed_data: {
+          brand: 'Fenty Beauty',
+          description:
+            'Fenty Icon is made to be seen. The Fill and the Case were designed to work together, so pair your fave shade with this ultra-luxe case.',
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_fenty_icon_case',
+        sellable_item_group_id: 'sig_fenty_icon_case',
+      },
+      generatedAt: '2026-05-24T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+
+    expect(spongeBundle.shopping_card.subtitle).toBe('Makeup Applicator');
+    expect(spongeBundle.shopping_card.highlight).toBe('Makeup sponge format detail');
+    expect(mirrorBundle.shopping_card.subtitle).toBe('Beauty Accessory');
+    expect(mirrorBundle.shopping_card.highlight).toBe('Accessory format detail');
+    expect(blottingBundle.shopping_card.subtitle).toBe('Blotting Paper');
+    expect(blottingBundle.shopping_card.highlight).toBe('Oil-blotting paper refill');
+    expect(hairSetBundle.shopping_card.subtitle).toBe('Hair Care Set');
+    expect(hairSetBundle.shopping_card.highlight).toBe('Hair styling set');
+    expect(powderBrushBundle.shopping_card.subtitle).toBe('Makeup Set');
+    expect(powderBrushBundle.shopping_card.highlight).toBe('Setting powder and brush set');
+    expect(lipGlossBundle.shopping_card.subtitle).toBe('Lip Set');
+    expect(lipGlossBundle.shopping_card.highlight).toBe('Lip gloss routine set');
+    expect(keychainBundle.shopping_card.subtitle).toBe('Beauty Accessory');
+    expect(lipLinerBundle.shopping_card.subtitle).toBe('Lip Product');
+    expect(lipLinerBundle.shopping_card.intro).toContain('lip liner');
+    expect(lipstickCaseBundle.shopping_card.subtitle).toBe('Beauty Accessory');
+    expect(JSON.stringify([
+      spongeBundle,
+      mirrorBundle,
+      blottingBundle,
+      hairSetBundle,
+      powderBrushBundle,
+      lipGlossBundle,
+      keychainBundle,
+      lipLinerBundle,
+      lipstickCaseBundle,
+    ])).not.toMatch(
+      /beauty product|perfeeccttt|perfect amount|\bfree\b|\borders?\b|eyeliner for defining lash|lip product listed on the official source page as Invisimatte/i,
+    );
   });
 
   test('does not fall back to a Tom Ford brand when seed brand metadata is missing', () => {
