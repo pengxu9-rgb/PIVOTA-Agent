@@ -2283,6 +2283,24 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
       batchName: 'test_batch',
       reviewer: 'codex_test',
     });
+    const undereyeStickerBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_fenty_undereye_sticker',
+        title: "Showstopp'r Undereye Sticker",
+        canonical_url: 'https://fentybeauty.com/products/showstoppr-undereye-sticker',
+        seed_data: {
+          brand: 'Fenty Beauty',
+          description: 'An undereye sticker listed by the official source for decorative face looks.',
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_fenty_undereye_sticker',
+        sellable_item_group_id: 'sig_fenty_undereye_sticker',
+      },
+      generatedAt: '2026-05-24T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
     const lipLinerBundle = buildBundle({
       seed: {
         external_product_id: 'ext_fenty_lip_liner',
@@ -2336,6 +2354,7 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     expect(lipGlossBundle.shopping_card.subtitle).toBe('Lip Set');
     expect(lipGlossBundle.shopping_card.highlight).toBe('Lip gloss routine set');
     expect(keychainBundle.shopping_card.subtitle).toBe('Beauty Accessory');
+    expect(undereyeStickerBundle.shopping_card.subtitle).toBe('Beauty Accessory');
     expect(lipLinerBundle.shopping_card.subtitle).toBe('Lip Product');
     expect(lipLinerBundle.shopping_card.intro).toContain('lip liner');
     expect(lipstickCaseBundle.shopping_card.subtitle).toBe('Beauty Accessory');
@@ -2348,6 +2367,7 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
       powderBrushBundle,
       lipGlossBundle,
       keychainBundle,
+      undereyeStickerBundle,
       lipLinerBundle,
       lipstickCaseBundle,
     ])).not.toMatch(
