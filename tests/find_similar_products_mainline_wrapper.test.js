@@ -593,7 +593,6 @@ describe('find_similar_products mainline wrapper', () => {
         product_id: 'sig_1a310126e75795655997ed9e',
         id: 'sig_1a310126e75795655997ed9e',
         pivota_signature_id: 'sig_1a310126e75795655997ed9e',
-        product_key: 'prod::external_seed::external_seed::ext_into_you_w725',
         title: 'Catalog Watery Lip Matt W725',
         description: 'Catalog-owned display copy for W725.',
         source: 'catalog_products',
@@ -619,6 +618,7 @@ describe('find_similar_products mainline wrapper', () => {
           merchant_id: 'external_seed',
           platform: 'external_seed',
           external_product_id: 'ext_into_you_w725',
+          catalog_product_key: 'prod::external_seed::external_seed::ext_into_you_w725',
         },
         product_intel: expect.objectContaining({
           canonical_product_ref: expect.objectContaining({
@@ -638,6 +638,11 @@ describe('find_similar_products mainline wrapper', () => {
     expect(out[0].merchant_id).toBeUndefined();
     expect(out[0].platform).toBeUndefined();
     expect(out[0].source_kind).toBeUndefined();
+    expect(out[0].product_key).toBeUndefined();
+    expect(out[0].catalog_product_key).toBeUndefined();
+    expect(out[0].canonical_product_ref.product_key).toBeUndefined();
+    expect(out[0].canonical_product_ref.catalog_product_key).toBeUndefined();
+    expect(out[0].product_ref.product_key).toBeUndefined();
     expect(out[0].product_intel.canonical_product_ref.product_id).not.toBe('ext_into_you_w725');
   });
 

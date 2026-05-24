@@ -24178,7 +24178,6 @@ function buildSimilarCatalogProductProjection(product = {}, catalogRow = {}) {
     source: 'catalog_products',
     entity_source: 'catalog_products',
     product_identity_source: 'catalog_products',
-    ...(productKey ? { product_key: productKey, catalog_product_key: productKey } : {}),
   };
   const cardHighlight = deriveCatalogSimilarCardHighlight({
     description,
@@ -24214,6 +24213,7 @@ function buildSimilarCatalogProductProjection(product = {}, catalogRow = {}) {
         merchant_id: merchantId,
         platform,
         external_product_id: sourceProductId,
+        ...(productKey ? { catalog_product_key: productKey } : {}),
       }
     : null;
   const productIntel = isPlainObject(rawProductIntel)
@@ -24235,8 +24235,6 @@ function buildSimilarCatalogProductProjection(product = {}, catalogRow = {}) {
     product_identity_source: 'catalog_products',
     product_ref: catalogProductRef,
     canonical_product_ref: catalogProductRef,
-    product_key: productKey,
-    catalog_product_key: firstNonEmptyString(productKey, product.catalog_product_key),
     ...(productIntel ? { product_intel: productIntel } : {}),
     ...(sourceProvenance ? { source_provenance: sourceProvenance } : {}),
     ...(title ? { title, name: title } : {}),
