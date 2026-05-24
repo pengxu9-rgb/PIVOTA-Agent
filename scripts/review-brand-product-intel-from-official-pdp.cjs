@@ -398,6 +398,13 @@ function inferRole(facts) {
   if (/\b(?:parfum|eau de parfum|eau de toilette|fragrance|perfume|cologne|layering balm)\b/.test(titleText)) {
     return { label: 'Fine fragrance', step: 'fragrance', amPm: ['as_needed'] };
   }
+  if (/\b(?:cleanser\s*\+\s*toner|toner serum duo)\b/.test(titleText)) {
+    return { label: 'Skincare set', step: 'skincare', amPm: ['am', 'pm'] };
+  }
+  if (/\btoner\b/.test(titleText)) {
+    const exfoliating = /\b(?:bha|aha|pha|salicylic|glycolic|lactic|exfoliat|pore\s+purify)\b/.test(titleText);
+    return { label: exfoliating ? 'Exfoliating toner' : 'Face toner', step: 'skincare', amPm: ['am', 'pm'] };
+  }
   if (/\bdry\s+shampoo\b/.test(titleText)) {
     return { label: /\bpowder\b/.test(titleText) ? 'Dry shampoo powder' : 'Dry shampoo', step: 'hair care', amPm: ['as_needed'] };
   }
@@ -421,9 +428,6 @@ function inferRole(facts) {
   if (/\b(?:setting spray|4-in-1 mist|4 in 1 mist|face mist)\b/.test(titleText)) return { label: 'Setting mist', step: 'complexion', amPm: ['as_needed'] };
   if (/\b(?:setting powder|finishing powder|powder|bronzer|blush|highlighter|luminizer)\b/.test(titleText)) return { label: 'Face color makeup', step: 'face color', amPm: ['as_needed'] };
   if (/\bprimer|base perfecting|pore prep\b/.test(titleText)) return { label: 'Makeup primer', step: 'primer', amPm: ['as_needed'] };
-  if (/\b(?:cleanser\s*\+\s*toner|toner serum duo)\b/.test(titleText)) {
-    return { label: 'Skincare set', step: 'skincare', amPm: ['am', 'pm'] };
-  }
   if (/\bbody\s+wash\b/.test(titleText)) return { label: 'Body cleanser', step: 'cleanser', amPm: ['am', 'pm'] };
   if (/\bcleanser|cleansing\b/.test(titleText)) return { label: 'Face cleanser', step: 'cleanser', amPm: ['am', 'pm'] };
   if (/\bbody\s+lotion|body\s+cream|body\s+mousse|hand\s+cream|moisturizer|spf|sunscreen|serum|cream|lotion|mask|treatment\b/.test(titleText)) {
@@ -438,7 +442,12 @@ function inferRole(facts) {
   if (/\b(?:fenty hair|leave[-\s]?in|conditioner|heat protectant|shampoo|styling cream|styler|frizz|scalp)\b/.test(text)) {
     return { label: 'Hair treatment', step: 'hair care', amPm: ['as_needed'] };
   }
-  if (/\bparfum|eau de parfum|eau de toilette|fragrance|perfume|cologne\b/.test(text)) {
+  if (/\btoner\b/.test(titleText) || (/\btoner\b/.test(text) && /\b(?:skin|skincare|pore|bha|aha|pha|salicylic|aloe|exfoliat)\b/.test(text))) {
+    const exfoliating = /\b(?:bha|aha|pha|salicylic|glycolic|lactic|exfoliat|pore\s+purify)\b/.test(text);
+    return { label: exfoliating ? 'Exfoliating toner' : 'Face toner', step: 'skincare', amPm: ['am', 'pm'] };
+  }
+  const titleLooksLikeSkincareFormula = /\b(?:toner|cleanser|cleansing|moisturizer|serum|cream|lotion|mask|spf|sunscreen|treatment|bha|aha|pha|salicylic|aloe)\b/.test(titleText);
+  if (!titleLooksLikeSkincareFormula && /\bparfum|eau de parfum|eau de toilette|fragrance|perfume|cologne\b/.test(text)) {
     return { label: 'Fine fragrance', step: 'fragrance', amPm: ['as_needed'] };
   }
   if (/\bbrow\s+pencil|eyebrow|brow\b/.test(text)) return { label: 'Brow product', step: 'brow definition', amPm: ['as_needed'] };
@@ -524,6 +533,14 @@ function inferAnchors(facts, role) {
       ['sharpenable pencil', /\bsharpenable|sharpener|pencil\b/],
       ['shade clarity', /\bshade|color|colour\b/],
     ]);
+  } else if (role.step === 'face color') {
+    productAnchors = findTokens(text, [
+      ['long-wear color', /\b(?:longwear|long-wear|all[-\s]?day)\b/],
+      ['cream-powder texture', /\bcream[-\s]?powder|powder\b/],
+      ['glow payoff', /\bglow|dayglow|highlight|luminous|radiance\b/],
+      ['matte finish', /\bmatte\b/],
+      ['shade range', /\bshade|color|colour\b/],
+    ]);
   } else if (role.step === 'beauty routine') {
     productAnchors = findTokens(text, [
       ['travel organization', /\btravel|organize|organizer|toiletry|pouch|bag|tote|backpack|clutch|carryall\b/],
@@ -557,6 +574,24 @@ function inferAnchors(facts, role) {
       ['pore cleansing', /\bpores?|dirt|oil|impurities\b/],
       ['non-stripping cleanse', /\bwithout leaving skin feeling tight|non[-\s]?stripping|stripping|drying\b/],
       ['makeup removal', /\bmakeup\b/],
+    ]);
+  } else if (role.step === 'sunscreen') {
+    productAnchors = findTokens(text, [
+      ['sun protection', /\bspf|sunscreen|uva|uvb|broad\s+spectrum\b/],
+      ['niacinamide', /\bniacinamide\b/],
+      ['hydration', /\bhydrat|hyaluronic|moistur|aloe\b/],
+      ['mineral SPF', /\bzinc oxide|mineral\b/],
+      ['tinted coverage', /\btinted|shade|coverage\b/],
+      ['refillable format', /\brefill|case\b/],
+    ]);
+  } else if (role.step === 'skincare' || role.step === 'body care' || role.step === 'serum') {
+    productAnchors = findTokens(text, [
+      ['BHA/salicylic acid', /\bbha\b|\bsalicylic\b/],
+      ['AHA exfoliation', /\baha\b|\bglycolic\b|\blactic\b/],
+      ['aloe juice', /\baloe\b/],
+      ['toning step', /\btoner|toning\b/],
+      ['hydration', /\bhydrat|hyaluronic|moistur\b/],
+      ['barrier support', /\bbarrier|squalane|shea|ceramide\b/],
     ]);
   }
   const normalizeAnchorLabel = (value) =>
@@ -611,6 +646,7 @@ function inferBestFor(facts, role, anchors) {
     ]);
   } else if (role.step === 'skincare' || role.step === 'serum' || role.step === 'sunscreen' || role.step === 'body care' || role.step === 'body care set') {
     labels = findTokens(text, [
+      ['exfoliating toner step', /\bbha\b|\bsalicylic\b|\baha\b|\bglycolic\b|\blactic\b|\btoner\b/],
       ['hydration', /\bhydrat|hyaluronic|moistur\b/],
       ['firmness', /\bfirm|peptide|elastic|lift\b/],
       ['radiance', /\bradiance|bright|glow\b/],
@@ -964,11 +1000,11 @@ function buildEvidenceAnchoredWhatItIs(facts, role) {
   if (role.step === 'skincare' || role.step === 'body care') {
     const claims = joinClaims([
       /\bcleanse|cleanser|cleansing\b/i.test(text) ? 'cleansing' : '',
-      /\btoner|tone\b/i.test(text) ? 'toning' : '',
+      /\btoner|toning\b/i.test(text) ? 'toning' : '',
       /\bhydrat|moistur|shea|hyaluronic\b/i.test(text) ? 'hydration' : '',
       /\bbright|dark spots|niacinamide\b/i.test(text) ? 'brightening support' : '',
     ]);
-    return sentence(`${facts.title} is a ${role.label.toLowerCase()} from ${facts.brand}${size ? ` in ${size}` : ''}${claims ? `, with source-backed cues around ${claims}` : ''}`);
+    return sentence(`${facts.title} is ${articleFor(role.label)} ${role.label.toLowerCase()} from ${facts.brand}${size ? ` in ${size}` : ''}${claims ? `, with source-backed cues around ${claims}` : ''}`);
   }
 
   return '';
@@ -1082,7 +1118,7 @@ function buildWhyItStandsOut(facts, role, anchors) {
     if (meaningfulVariantLabels.length) {
       why.push({
         headline: 'Shade selection is unambiguous',
-        body: sentence(`The visible SKU data identifies ${meaningfulVariantLabels.slice(0, 3).join(', ')}, so the Rose Amber row does not read like a generic default variant`),
+        body: sentence(`The visible SKU data identifies ${meaningfulVariantLabels.slice(0, 3).join(', ')}, so this row does not read like a generic default variant`),
         evidence_strength: 'official_pdp_reviewed',
       });
     }
@@ -1092,11 +1128,30 @@ function buildWhyItStandsOut(facts, role, anchors) {
   const why = [];
   const anchorText = anchors.filter((item) => !/^full inci/i.test(item)).slice(0, 4).join(', ');
   if (anchorText) {
+    let anchorHeadline = 'Product cues are source-backed';
+    let anchorBody = `Reviewed PDP cues such as ${anchorText} give shoppers specific comparison points within ${facts.brand}, rather than category-only copy`;
+    if (role.step === 'fragrance' || role.step === 'body fragrance' || role.step === 'home fragrance') {
+      anchorHeadline = 'Scent profile cues';
+      anchorBody = `Reviewed scent cues such as ${anchorText} help shoppers compare the fragrance profile without relying on generic scent copy`;
+    } else if (role.step === 'face color') {
+      anchorHeadline = 'Color payoff cues are specific';
+      anchorBody = `Reviewed color cues such as ${anchorText} help shoppers compare shade, finish, or texture instead of seeing a generic blush/bronzer/highlighter card`;
+    } else if (role.step === 'lip color') {
+      anchorHeadline = 'Lip finish cues are specific';
+      anchorBody = `Reviewed lip cues such as ${anchorText} identify finish, shade, or formula context before the shopper leaves Pivota`;
+    } else if (role.step === 'complexion') {
+      anchorHeadline = 'Coverage and finish cues are clear';
+      anchorBody = `Reviewed complexion cues such as ${anchorText} support a more precise read on coverage, finish, or shade fit`;
+    } else if (role.step === 'skincare' || role.step === 'serum' || role.step === 'body care') {
+      anchorHeadline = 'Routine step cues are specific';
+      anchorBody = `Reviewed skincare cues such as ${anchorText} identify the routine role or key ingredient context without inventing unsupported benefits`;
+    } else if (role.step === 'sunscreen') {
+      anchorHeadline = 'SPF format cues are clear';
+      anchorBody = `Reviewed SPF cues such as ${anchorText} clarify protection format, hydration support, or refill status without replacing the official sunscreen facts`;
+    }
     why.push({
-      headline: role.step === 'fragrance' || role.step === 'body fragrance' || role.step === 'home fragrance'
-        ? 'Scent profile cues'
-        : 'Concrete product cues',
-      body: sentence(`Cues such as ${anchorText} give shoppers specific comparison points within ${facts.brand}, rather than category-only copy`),
+      headline: anchorHeadline,
+      body: sentence(anchorBody),
       evidence_strength: 'official_pdp_reviewed',
     });
   }
