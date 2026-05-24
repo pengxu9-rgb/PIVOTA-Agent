@@ -24177,9 +24177,20 @@ function buildSimilarCatalogProductProjection(product = {}, catalogRow = {}) {
     title,
   });
   const cardSource = 'catalog_product';
+  const {
+    external_product_id: _externalProductId,
+    externalProductId: _externalProductIdCamel,
+    external_seed_product_id: _externalSeedProductId,
+    externalSeedProductId: _externalSeedProductIdCamel,
+    source_product_id: _sourceProductId,
+    sourceProductId: _sourceProductIdCamel,
+    platform_product_id: _platformProductId,
+    platformProductId: _platformProductIdCamel,
+    ...catalogProductBase
+  } = product;
 
   return {
-    ...product,
+    ...catalogProductBase,
     merchant_id: merchantId,
     platform,
     product_id: sigId,
@@ -24194,8 +24205,6 @@ function buildSimilarCatalogProductProjection(product = {}, catalogRow = {}) {
     catalog_product_key: firstNonEmptyString(catalogRow.product_key, product.catalog_product_key, product.product_key),
     ...(sourceProductId
       ? {
-          source_product_id: sourceProductId,
-          external_product_id: product.external_product_id || sourceProductId,
           source_provenance: {
             kind: 'external_seed',
             external_product_id: sourceProductId,

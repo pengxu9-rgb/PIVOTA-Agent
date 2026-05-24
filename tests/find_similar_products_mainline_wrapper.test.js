@@ -605,6 +605,8 @@ describe('find_similar_products mainline wrapper', () => {
         destination_url: 'https://merchant.example.test/w725',
       }),
     );
+    expect(out[0].external_product_id).toBeUndefined();
+    expect(out[0].source_product_id).toBeUndefined();
   });
 
   it('collects only reviewed external seed component refs for PDP similar', async () => {
