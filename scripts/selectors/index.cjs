@@ -228,9 +228,9 @@ WHERE cp.source_system = 'external_product_seeds_mirror_v1'
 ORDER BY cp.updated_at DESC NULLS LAST, cp.product_key
 `.trim(),
   },
-  // FIXME: count diverges from audit by ~601% on 2026-05-24
-  // (selector=1388, audit=198). This selector only counts rows where the
-  // source seed still has a quality summary but the catalog mirror lost it.
+  // FIXME: count diverges from audit by ~504% on 2026-05-24
+  // (selector=1195, audit=198). The join now uses the canonical attachment key;
+  // remaining gap appears to be catalog payload summary-location scope.
   {
     name: 'catalog_quality_summary_lost',
     description: 'External-seed mirror catalog rows missing PDP field quality summary in payload and snapshot.',
@@ -246,7 +246,7 @@ SELECT
   eps.updated_at AS seed_updated_at
 FROM catalog_products cp
 JOIN external_product_seeds eps
-  ON eps.external_product_id = cp.source_product_id
+  ON eps.attached_product_key = cp.product_key
 WHERE cp.source_system = 'external_product_seeds_mirror_v1'
   AND eps.status = 'active'
   AND (
