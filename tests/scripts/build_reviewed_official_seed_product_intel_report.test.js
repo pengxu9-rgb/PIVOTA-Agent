@@ -1463,6 +1463,194 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     expect(lipButterBundle.shopping_card.intro).not.toMatch(/best-selling/i);
   });
 
+  test('classifies Naturium treatment sprays, cleansing balms, and Vitamin C serums conservatively', () => {
+    expect(
+      inferKind(
+        'Salicylic Acid Body Spray 2%',
+        '',
+        '',
+        '4 FL OZ / 120 ML An acne-fighting spray that clears and prevents blemishes.',
+      ),
+    ).toBe('body_spray_treatment');
+    expect(
+      inferKind(
+        'Purple Ginseng Cleansing Balm',
+        '',
+        '',
+        'A cleansing balm that dissolves makeup and helps remove sunscreen.',
+      ),
+    ).toBe('cleanser');
+    expect(
+      inferKind(
+        'The Glow Getter Multi-Oil Body Butter',
+        '',
+        '',
+        'A whipped, multi-oil body butter with shea butter and squalane.',
+      ),
+    ).toBe('moisturizer');
+    expect(
+      inferKind(
+        'Marshmallow Root Barrier Balm',
+        '',
+        '',
+        'A balm formulated with marshmallow root and colloidal oatmeal to support the skin barrier.',
+      ),
+    ).toBe('moisturizer');
+    expect(
+      inferKind(
+        'AHA Exfoliating Mask 10%',
+        '',
+        '',
+        'A glycolic and lactic acid exfoliating mask with rice powder and clay.',
+      ),
+    ).toBe('skincare');
+    expect(
+      inferKind(
+        'Intense Overnight Sleeping Cream - Jumbo',
+        '',
+        '',
+        'A sleeping cream with plant oils and moisture barrier support.',
+      ),
+    ).toBe('moisturizer');
+
+    const sprayBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_naturium_spray',
+        title: 'Salicylic Acid Body Spray 2%',
+        canonical_url: 'https://naturium.com/products/salicylic-acid-body-spray-2',
+        seed_data: {
+          brand: 'Naturium',
+          description:
+            '4 FL OZ / 120 ML An acne-fighting spray that clears and prevents blemishes. Formula highlights include salicylic acid, niacinamide, zinc PCA.',
+          ingredient_tokens: ['Salicylic Acid', 'Niacinamide', 'Zinc PCA'],
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_naturium_spray',
+        sellable_item_group_id: 'sig_naturium_spray',
+      },
+      generatedAt: '2026-05-24T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+    const balmBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_naturium_balm',
+        title: 'Purple Ginseng Cleansing Balm',
+        canonical_url: 'https://naturium.com/products/purple-ginseng-cleansing-balm',
+        seed_data: {
+          brand: 'Naturium',
+          description:
+            'Our cleansing balm is formulated with purple ginseng, plant-based esters and a nourishing blend to remove makeup and sunscreen.',
+          ingredient_tokens: ['Ginseng Extract', 'Helianthus Annuus Seed Oil', 'Caprylic/Capric Triglyceride'],
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_naturium_balm',
+        sellable_item_group_id: 'sig_naturium_balm',
+      },
+      generatedAt: '2026-05-24T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+    const vitaminCBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_naturium_vitamin_c',
+        title: 'Vitamin C Super Serum Plus - Jumbo',
+        canonical_url: 'https://naturium.com/products/vitamin-c-super-serum-plus-jumbo',
+        seed_data: {
+          brand: 'Naturium',
+          description:
+            'A supercharged, multi-benefit serum with vitamin C, retinol, niacinamide and salicylic acid.',
+          ingredient_tokens: ['Vitamin C', 'Retinol', 'Niacinamide', 'Salicylic Acid'],
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_naturium_vitamin_c',
+        sellable_item_group_id: 'sig_naturium_vitamin_c',
+      },
+      generatedAt: '2026-05-24T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+    const azelaicBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_naturium_azelaic',
+        title: 'Azelaic Acid Derivative Complex 10% - Jumbo',
+        canonical_url: 'https://naturium.com/products/azelaic-acid-derivative-complex-10-jumbo',
+        seed_data: {
+          brand: 'Naturium',
+          description:
+            'Double up and save with this jumbo size of our topical azelaic acid serum containing niacinamide, vitamin C and coffee seed extract to help improve.',
+          ingredient_tokens: ['Potassium Azeloyl Diglycinate', 'Niacinamide', 'Ethyl Ascorbic Acid'],
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_naturium_azelaic',
+        sellable_item_group_id: 'sig_naturium_azelaic',
+      },
+      generatedAt: '2026-05-24T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+    const genericMenuBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_naturium_barrier',
+        title: 'Marshmallow Root Barrier Balm',
+        canonical_url: 'https://naturium.com/products/marshmallow-root-barrier-balm',
+        seed_data: {
+          brand: 'Naturium',
+          description:
+            'Our balm is formulated with a soothing blend of marshmallow root, centella asiatica, colloidal oatmeal, arnica and milk thistle.',
+          ingredient_tokens: [
+            'Panthenol (B5), Niacinamide, Salicylic acid, Azelaic acid, Vitamin C (Ascorbic acid), Retinol, Glycerin, Hyaluronic acid, Alpha Arbutin, Squalane, Centella',
+          ],
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_naturium_barrier',
+        sellable_item_group_id: 'sig_naturium_barrier',
+      },
+      generatedAt: '2026-05-24T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+
+    expect(sprayBundle.shopping_card.subtitle).toBe('Body Treatment');
+    expect(sprayBundle.shopping_card.highlight).toBe('Body blemish spray detail');
+    expect(JSON.stringify(sprayBundle)).not.toMatch(/fragrance|acne-fighting|clears and prevents|4 FL OZ|120 ML/i);
+    expect(balmBundle.shopping_card.subtitle).toBe('Cleanser');
+    expect(balmBundle.shopping_card.highlight).toBe('Cleanser formula detail');
+    expect(balmBundle.product_intel_core.what_it_is.body).toContain('Naturium cleanser');
+    expect(vitaminCBundle.shopping_card.highlight).toBe('Vitamin C serum detail');
+    expect(azelaicBundle.shopping_card.highlight).toBe('Azelaic acid serum detail');
+    expect(azelaicBundle.product_intel_core.what_it_is.body).toContain("This jumbo size is the brand's topical azelaic acid serum");
+    expect(azelaicBundle.product_intel_core.what_it_is.body).not.toMatch(/save|help improve\./i);
+    expect(genericMenuBundle.shopping_card.subtitle).toBe('Moisturizer');
+    expect(genericMenuBundle.evidence_profile).toBe('official_pdp_seed');
+    expect(JSON.stringify(genericMenuBundle)).not.toMatch(/Formula context captured|Alpha Arbutin|Retinol/i);
+    expect(
+      buildBundle({
+        seed: {
+          external_product_id: 'ext_naturium_niacinamide',
+          title: 'Niacinamide Serum 12% Plus Zinc 2% - Jumbo',
+          canonical_url: 'https://naturium.com/products/niacinamide-serum-12-plus-zinc-2-jumbo',
+          seed_data: {
+            brand: 'Naturium',
+            description: 'A concentrated niacinamide serum with zinc PCA.',
+          },
+        },
+        inventoryRow: {
+          external_product_id: 'ext_naturium_niacinamide',
+          sellable_item_group_id: 'sig_naturium_niacinamide',
+        },
+        generatedAt: '2026-05-24T00:00:00.000Z',
+        batchName: 'test_batch',
+        reviewer: 'codex_test',
+      }).shopping_card.highlight,
+    ).toBe('Niacinamide serum detail');
+  });
+
   test('keeps Fenty essentials out of single-item batches and avoids generic highlights', () => {
     const baseCandidate = {
       domain: 'fentybeauty.com',
