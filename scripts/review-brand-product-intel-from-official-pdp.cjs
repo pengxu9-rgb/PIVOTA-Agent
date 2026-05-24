@@ -1510,6 +1510,7 @@ function isWeakExistingInsight(entry) {
     /\bformula context captured\b/i,
     /\blipstick identity\b/i,
     /\bfragrance identity\b/i,
+    /\bconcrete product cues\b/i,
     /\bbeauty product listed\b/i,
     /\ba .* product listed on the official\b/i,
     /\bofficial pdp fields identify\s*$/i,
