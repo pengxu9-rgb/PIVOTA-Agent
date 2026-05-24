@@ -4608,6 +4608,65 @@ const RESOLVE_CATALOG_SIGNATURE_CACHE_MAX_ENTRIES = Math.max(
 const RESOLVE_CATALOG_SIGNATURE_CACHE = new Map(); // sigId -> { value, expiresAtMs }
 const RESOLVE_CATALOG_SIGNATURE_INFLIGHT = new Map(); // sigId -> Promise
 
+function buildCatalogSignatureGroupMemberFromIdentityRow(row, canonicalRef = {}) {
+  if (!row || typeof row !== 'object') return null;
+  const sourcePayload = { ...(isPlainObject(row.source_payload) ? row.source_payload : {}) };
+  const catalogOfferPrice = Number(row.catalog_offer_price);
+  const catalogOfferCurrency = firstNonEmptyString(row.catalog_offer_currency, sourcePayload.currency, 'USD');
+  if (Number.isFinite(catalogOfferPrice) && catalogOfferPrice > 0) {
+    sourcePayload.price = { amount: catalogOfferPrice, currency: catalogOfferCurrency };
+    sourcePayload.price_amount = catalogOfferPrice;
+    sourcePayload.currency = catalogOfferCurrency;
+    sourcePayload.catalog_offer_v1 = {
+      offer_id: firstNonEmptyString(row.catalog_offer_id),
+      sku_key: firstNonEmptyString(row.catalog_sku_key),
+      source_system: firstNonEmptyString(row.catalog_offer_source_system),
+      source_ref: firstNonEmptyString(row.catalog_offer_source_ref),
+    };
+  }
+  for (const [targetKey, sourceValue] of [
+    ['title', row.catalog_title],
+    ['brand', row.catalog_brand],
+    ['canonical_url', row.catalog_canonical_url],
+    ['destination_url', row.catalog_canonical_url],
+    ['source_url', row.catalog_canonical_url],
+    ['image_url', row.catalog_image_url],
+  ]) {
+    if (!firstNonEmptyString(sourcePayload[targetKey]) && firstNonEmptyString(sourceValue)) {
+      sourcePayload[targetKey] = firstNonEmptyString(sourceValue);
+    }
+  }
+  const variantAxes = isPlainObject(row.variant_axes) ? row.variant_axes : {};
+  const merchantId = firstNonEmptyString(row.merchant_id);
+  const productId = firstNonEmptyString(row.product_id);
+  if (!merchantId || !productId) return null;
+  const merchantName = firstNonEmptyString(
+    row.merchant_name,
+    sourcePayload.merchant_name,
+    sourcePayload.merchantName,
+    sourcePayload.store_name,
+    sourcePayload.storeName,
+    sourcePayload.seller_name,
+    sourcePayload.sellerName,
+    sourcePayload.seller_of_record,
+    sourcePayload.sellerOfRecord,
+  );
+  return {
+    merchant_id: merchantId,
+    product_id: productId,
+    source_listing_ref: firstNonEmptyString(row.source_listing_ref),
+    source_kind: firstNonEmptyString(row.source_kind),
+    source_tier: firstNonEmptyString(row.source_tier),
+    ...(row.platform ? { platform: String(row.platform).trim() } : {}),
+    ...(Object.keys(sourcePayload).length ? { source_payload: sourcePayload } : {}),
+    ...(merchantName ? { merchant_name: merchantName } : {}),
+    ...(Object.keys(variantAxes).length ? { variant_axes: variantAxes } : {}),
+    is_primary:
+      merchantId === firstNonEmptyString(canonicalRef.merchant_id) &&
+      productId === firstNonEmptyString(canonicalRef.product_id),
+  };
+}
+
 async function resolveCatalogProductRefFromPivotaSignature(productId) {
   if (!process.env.DATABASE_URL) return null;
   const normalizedProductId = String(productId || '').trim();
@@ -4729,6 +4788,145 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
           }
         }
       }
+      const exactIdentityGroupId = firstNonEmptyString(exactIdentityRow?.sellable_item_group_id);
+      let exactIdentityGroup = null;
+      if (exactIdentityGroupId) {
+        try {
+          const groupRowsResult = await query(
+            `
+              SELECT
+                pil.source_listing_ref,
+                pil.merchant_id,
+                pil.product_id,
+                pil.source_kind,
+                pil.source_tier,
+                pil.source_payload,
+                pil.variant_axes,
+                cp_offer.title AS catalog_title,
+                cp_offer.brand AS catalog_brand,
+                cp_offer.canonical_url AS catalog_canonical_url,
+                cp_offer.image_url AS catalog_image_url,
+                offer_row.offer_id AS catalog_offer_id,
+                offer_row.sku_key AS catalog_sku_key,
+                offer_row.currency AS catalog_offer_currency,
+                COALESCE(
+                  offer_row.merchant_effective_price,
+                  offer_row.estimated_best_price,
+                  offer_row.list_price
+                ) AS catalog_offer_price,
+                offer_row.source_system AS catalog_offer_source_system,
+                offer_row.source_ref AS catalog_offer_source_ref
+              FROM pdp_identity_listing pil
+              LEFT JOIN catalog_products cp_offer
+                ON cp_offer.merchant_id = pil.merchant_id
+               AND cp_offer.source_product_id = pil.product_id
+              LEFT JOIN LATERAL (
+                SELECT
+                  o.offer_id,
+                  o.sku_key,
+                  o.currency,
+                  o.merchant_effective_price,
+                  o.estimated_best_price,
+                  o.list_price,
+                  o.source_system,
+                  o.source_ref
+                FROM catalog_skus s
+                JOIN catalog_offers o ON o.sku_key = s.sku_key
+                WHERE s.product_key = cp_offer.product_key
+                ORDER BY
+                  CASE WHEN o.availability ILIKE 'in%stock%' THEN 0 ELSE 1 END,
+                  o.updated_at DESC NULLS LAST,
+                  o.offer_id ASC
+                LIMIT 1
+              ) offer_row ON true
+              WHERE pil.sellable_item_group_id = $1
+                AND pil.identity_status = 'approved'
+                AND pil.live_read_enabled IS TRUE
+                AND COALESCE(pil.review_required, false) IS NOT TRUE
+                AND (
+                  pil.source_kind <> 'external_seed'
+                  OR EXISTS (
+                    SELECT 1
+                    FROM external_product_seeds eps
+                    JOIN catalog_products cp_active
+                      ON cp_active.merchant_id = 'external_seed'
+                     AND cp_active.platform = 'external_seed'
+                     AND cp_active.source_system = 'external_product_seeds_mirror_v1'
+                     AND cp_active.source_product_id = eps.external_product_id
+                     AND cp_active.sync_status = 'live'
+                    JOIN index_pipeline_state ips_active
+                      ON ips_active.content_key = cp_active.content_key
+                     AND ips_active.serving_eligible = TRUE
+                    WHERE eps.external_product_id = pil.product_id
+                      AND eps.status = 'active'
+                  )
+                )
+              ORDER BY
+                CASE WHEN pil.source_tier = 'brand' THEN 0 ELSE 1 END,
+                pil.identity_confidence DESC NULLS LAST,
+                pil.updated_at DESC NULLS LAST,
+                pil.created_at DESC NULLS LAST
+              LIMIT 200
+            `,
+            [exactIdentityGroupId],
+          );
+          const directGroupMembers = (Array.isArray(groupRowsResult?.rows) ? groupRowsResult.rows : [])
+            .map((row) => buildCatalogSignatureGroupMemberFromIdentityRow(row, {
+              merchant_id: exactMerchantId,
+              product_id: exactSourceProductId,
+            }))
+            .filter(Boolean);
+          if (directGroupMembers.length > 0) {
+            exactIdentityGroup = {
+              product_group_id: exactIdentityGroupId,
+              sellable_item_group_id: exactIdentityGroupId,
+              canonical_product_ref: {
+                merchant_id: exactMerchantId,
+                product_id: exactSourceProductId,
+              },
+              group_members: directGroupMembers,
+            };
+          }
+        } catch (err) {
+          const message = String(err?.message || err || '');
+          if (!(err?.code === 'NO_DATABASE' || (message.includes('pdp_identity_listing') && message.includes('does not exist')))) {
+            logger.debug?.(
+              {
+                err: err?.message || String(err),
+                product_id: exactSourceProductId,
+                sellable_item_group_id: exactIdentityGroupId,
+              },
+              'Failed to hydrate exact signature identity group members via direct query',
+            );
+          }
+        }
+      }
+      if (exactIdentityGroupId && !exactIdentityGroup?.group_members?.length) {
+        try {
+          exactIdentityGroup = await resolveLivePdpIdentityGroupForPdp({
+            productGroupId: exactIdentityGroupId,
+            queryFn: query,
+          });
+        } catch (err) {
+          logger.debug?.(
+            {
+              err: err?.message || String(err),
+              product_id: exactSourceProductId,
+              sellable_item_group_id: exactIdentityGroupId,
+            },
+            'Failed to hydrate exact signature identity group members',
+          );
+        }
+      }
+      const exactIdentityGroupMembers = Array.isArray(exactIdentityGroup?.group_members)
+        ? exactIdentityGroup.group_members
+        : [];
+      const exactEffectiveSellableGroupId = firstNonEmptyString(
+        exactIdentityGroup?.sellable_item_group_id,
+        exactIdentityGroup?.product_group_id,
+        exactIdentityGroupId,
+        normalizedProductId,
+      );
       return {
         merchant_id: exactMerchantId,
         product_id: exactSourceProductId,
@@ -4742,10 +4940,13 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
         category_confidence: Number.isFinite(Number(exactRow?.category_confidence))
           ? Number(exactRow.category_confidence)
           : undefined,
-        product_group_id: normalizedProductId,
-        sellable_item_group_id: normalizedProductId,
-        canonical_sig_id: normalizedProductId,
-        identity_sellable_item_group_id: firstNonEmptyString(exactIdentityRow?.sellable_item_group_id),
+        product_group_id: exactEffectiveSellableGroupId,
+        sellable_item_group_id: exactEffectiveSellableGroupId,
+        canonical_sig_id: exactEffectiveSellableGroupId,
+        public_pdp_id: normalizedProductId,
+        requested_pivota_signature_id: normalizedProductId,
+        catalog_pivota_signature_id: normalizedProductId,
+        identity_sellable_item_group_id: exactIdentityGroupId,
         product_line_id: firstNonEmptyString(exactIdentityRow?.product_line_id),
         review_family_id: firstNonEmptyString(exactIdentityRow?.review_family_id),
         identity_confidence: Number.isFinite(Number(exactIdentityRow?.identity_confidence))
@@ -4761,9 +4962,15 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
         external_seed_updated_at: exactRow?.external_seed_updated_at || null,
         external_seed_created_at: exactRow?.external_seed_created_at || null,
         content_key: firstNonEmptyString(exactRow?.content_key) || null,
-        members: [],
-        group_members: [],
-        member_sig_ids: [normalizedProductId],
+        members: exactIdentityGroupMembers,
+        group_members: exactIdentityGroupMembers,
+        member_sig_ids: uniqueStrings([
+          normalizedProductId,
+          exactEffectiveSellableGroupId,
+          ...exactIdentityGroupMembers
+            .map((member) => firstNonEmptyString(member?.pivota_signature_id, member?.signature_id))
+            .filter(Boolean),
+        ]),
         source: 'catalog_products_signature_exact',
       };
     }
@@ -8102,7 +8309,17 @@ async function buildOffersFromGroupMembers(args) {
           prefetchedProductByKey.get(`${m.merchant_id}:${m.product_id}`) || null;
         const memberPayloadProduct = buildExternalSeedOfferProductFromMember(m);
         const usedPrefetchedProduct = Boolean(prefetchedProduct);
-        const prefersFreshExternalSeedProduct = m.merchant_id === EXTERNAL_SEED_MERCHANT_ID;
+        const memberPayloadCarriesCatalogOfferTruth = Boolean(
+          m.merchant_id === EXTERNAL_SEED_MERCHANT_ID &&
+          memberPayloadProduct &&
+          m.source_payload &&
+          typeof m.source_payload === 'object' &&
+          !Array.isArray(m.source_payload) &&
+          m.source_payload.catalog_offer_v1 &&
+          typeof m.source_payload.catalog_offer_v1 === 'object',
+        );
+        const prefersFreshExternalSeedProduct =
+          m.merchant_id === EXTERNAL_SEED_MERCHANT_ID && !memberPayloadCarriesCatalogOfferTruth;
         if (memberPayloadProduct && !prefersFreshExternalSeedProduct) {
           buildSourceStats.identity_payload += 1;
           source = 'identity_payload';
@@ -35107,10 +35324,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           String(canonicalPayload?.product?.platform || canonicalProductForPdp?.platform || '').trim() ||
           null,
       };
+      const selectedCommerceProductIdForPdp =
+        requestedPivotaSignatureId && canonicalProductRef?.product_id
+          ? canonicalProductRef.product_id
+          : entryProductId || productId;
       const selectedCommerceRef =
         identityGraphLive?.synthetic_product?.selected_commerce_ref ||
         (requestedMerchantId
-          ? { merchant_id: requestedMerchantId, product_id: entryProductId || productId }
+          ? { merchant_id: requestedMerchantId, product_id: selectedCommerceProductIdForPdp }
           : canonicalProductRef);
       const contentBaseRef =
         identityGraphLive?.synthetic_product?.canonical_content_ref ||
@@ -35122,16 +35343,27 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const contentReviewState =
         identityGraphLive?.content_review_state ||
         (pdpContentSource === 'canonical_inherited' ? 'pending' : 'not_needed');
-      const offerSource = groupMembers.length > 0 ? 'group_fused' : 'self';
-      const commerceSource = requestedMerchantId ? 'selected_seller_store' : 'canonical_seller_store';
-      const effectiveCanonicalScope =
-        identityGraphLive?.canonical_scope ||
-        (productGroupId && groupMembers.length > 1 ? 'multi_merchant_canonical' : null);
       const identityBackedExternalSeedGroupId =
         canonicalProductRef?.merchant_id === EXTERNAL_SEED_MERCHANT_ID &&
         isExternalSeedProductId(canonicalProductRef?.product_id)
           ? catalogIdentity?.sellable_item_group_id || catalogIdentity?.product_group_id || null
           : null;
+      const identityBackedGroupExpected =
+        requestedPivotaSignatureId &&
+        identityBackedExternalSeedGroupId &&
+        isPivotaSignatureProductId(identityBackedExternalSeedGroupId);
+      const identityGroupMembersMissing =
+        Boolean(identityBackedGroupExpected) &&
+        (!Array.isArray(groupMembers) || groupMembers.length === 0);
+      const offerSource = groupMembers.length > 0
+        ? 'group_fused'
+        : identityGroupMembersMissing
+          ? 'multi_offer_blocked'
+          : 'self';
+      const commerceSource = requestedMerchantId ? 'selected_seller_store' : 'canonical_seller_store';
+      const effectiveCanonicalScope =
+        identityGraphLive?.canonical_scope ||
+        (productGroupId && groupMembers.length > 1 ? 'multi_merchant_canonical' : null);
       const effectiveSellableItemGroupId =
         identityGraphLive?.sellable_item_group_id ||
         identityBackedExternalSeedGroupId ||
@@ -35241,13 +35473,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         try {
           if (groupMembers.length > 0) {
             offersData = await buildOffersFromGroupMembers({
-              productGroupId,
+              productGroupId: effectiveSellableItemGroupId || effectiveProductGroupId || productGroupId,
               members: groupMembers,
               checkoutToken,
               bypassCache,
               limit: payload?.offers?.limit || 10,
               preferredMerchantId: requestedMerchantId || null,
-              preferredProductId: entryProductId || productId || null,
+              preferredProductId: selectedCommerceProductIdForPdp || null,
               debug,
               prefetchedProducts: [
                 canonicalProductForPdp,
@@ -35255,6 +35487,32 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 precheckedMerchantProduct,
               ].filter(Boolean),
             });
+          } else if (identityGroupMembersMissing) {
+            const blockedProductGroupId =
+              effectiveSellableItemGroupId ||
+              effectiveProductGroupId ||
+              identityBackedExternalSeedGroupId ||
+              productGroupId ||
+              null;
+            offersData = {
+              status: 'blocked',
+              product_group_id: blockedProductGroupId,
+              canonical_product_ref: canonicalProductRef,
+              offers_count: 0,
+              offers: [],
+              default_offer_id: null,
+              best_price_offer_id: null,
+              quality_state: 'multi_offer_blocked',
+              offer_source: 'multi_offer_blocked',
+              reason_codes: ['identity_group_members_missing'],
+              diagnostics: debug
+                ? {
+                    requested_pivota_signature_id: requestedPivotaSignatureId,
+                    identity_sellable_item_group_id: identityBackedExternalSeedGroupId,
+                    selected_commerce_ref: selectedCommerceRef,
+                  }
+                : undefined,
+            };
           } else if (PDP_SELF_OFFER_FALLBACK_ENABLED) {
             const fallbackProductGroupId =
               effectiveSellableItemGroupId ||
@@ -35370,6 +35628,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
         if (offersData) {
           const offersCount = Number(offersData.offers_count);
+          const resolvedOffersSource =
+            firstNonEmptyString(offersData.offer_source) ||
+            (Array.isArray(groupMembers) && groupMembers.length > 0
+              ? 'group_fused'
+              : identityGroupMembersMissing
+                ? 'multi_offer_blocked'
+                : 'self');
           const offersProductGroupId =
             String(effectiveSellableItemGroupId || offersData.product_group_id || productGroupId || '').trim() ||
             null;
@@ -35393,7 +35658,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           offersData = {
             ...offersData,
             product_group_id: offersProductGroupId || offersData.product_group_id || null,
-            offer_source: Array.isArray(groupMembers) && groupMembers.length > 0 ? 'group_fused' : 'self',
+            offer_source: resolvedOffersSource,
             commerce_source: 'selected_seller_store',
             content_review_state: contentReviewState,
             offers: annotateOffersWithCommerceMetadata(
@@ -35401,8 +35666,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             ).map((offer) => ({
               ...offer,
               product_group_id: offersProductGroupId || offer.product_group_id,
-              offer_source:
-                Array.isArray(groupMembers) && groupMembers.length > 0 ? 'group_fused' : 'self',
+              offer_source: resolvedOffersSource,
               commerce_source: 'selected_seller_store',
             })),
           };

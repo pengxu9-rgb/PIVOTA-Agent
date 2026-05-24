@@ -1636,6 +1636,239 @@ describe('external seed product detail hydration', () => {
     );
   });
 
+  test('get_pdp_v2 lifts exact sig_* catalog routes to identity group offers while preserving the public sig id', async () => {
+    const { app, db } = loadServerWithDb({
+      PIVOTA_API_BASE: 'https://backend.test',
+      PIVOTA_API_KEY: 'test-token',
+    });
+
+    const groupId = 'sig_theordinaryalphaarbutingroup';
+    const channelSig = 'sig_theordinaryalphaarbutinulta';
+    const officialExt = 'ext_theordinary_alpha_arbutin_official';
+    const channelExt = 'ext_theordinary_alpha_arbutin_ulta';
+    const exactCatalogRow = {
+      merchant_id: 'external_seed',
+      platform: 'external_seed',
+      source_product_id: channelExt,
+      product_key: `prod::external_seed::external_seed::${channelExt}`,
+      pivota_signature_id: channelSig,
+      category_path: 'beauty/skincare/serum',
+      external_seed_id: `eps_${channelExt}`,
+      external_seed_external_product_id: channelExt,
+      external_seed_status: 'active',
+    };
+    const identityRows = [
+      {
+        source_listing_ref: `external_seed:${officialExt}`,
+        merchant_id: 'external_seed',
+        platform: 'external_seed',
+        product_id: officialExt,
+        source_kind: 'external_seed',
+        source_tier: 'brand',
+        sellable_item_group_id: groupId,
+        product_line_id: 'pl_theordinary_alpha_arbutin',
+        review_family_id: 'rf_theordinary_alpha_arbutin',
+        identity_confidence: 0.99,
+        match_basis: ['official_url_axes'],
+        identity_status: 'approved',
+        live_read_enabled: true,
+        review_required: false,
+        source_payload: {
+          title: 'Alpha Arbutin 2% + HA',
+          brand: 'The Ordinary',
+          merchant_id: 'external_seed',
+          product_id: officialExt,
+          price: { amount: 8.85, currency: 'USD' },
+          currency: 'USD',
+          source_url: 'https://theordinary.com/en-us/alpha-arbutin-2-ha-serum.html',
+        },
+      },
+      {
+        source_listing_ref: `external_seed:${channelExt}`,
+        merchant_id: 'external_seed',
+        platform: 'external_seed',
+        product_id: channelExt,
+        source_kind: 'external_seed',
+        source_tier: 'merchant',
+        sellable_item_group_id: groupId,
+        product_line_id: 'pl_theordinary_alpha_arbutin',
+        review_family_id: 'rf_theordinary_alpha_arbutin',
+        identity_confidence: 0.98,
+        match_basis: ['reviewed_multi_offer_merge'],
+        identity_status: 'approved',
+        live_read_enabled: true,
+        review_required: false,
+        source_payload: {
+          title: 'Alpha Arbutin 2% + Hyaluronic Acid for Hyperpigmentation',
+          brand: 'The Ordinary',
+          merchant_id: 'external_seed',
+          product_id: channelExt,
+          price: { amount: 11.5, currency: 'USD' },
+          currency: 'USD',
+          source_url: 'https://www.ulta.com/p/alpha-arbutin-2-hyaluronic-acid-hyperpigmentation-pimprod2007108?sku=2551165',
+        },
+      },
+    ];
+    const buildSeedDetail = (externalProductId, priceAmount, canonicalUrl) => ({
+      id: `eps_${externalProductId}`,
+      external_product_id: externalProductId,
+      status: 'active',
+      canonical_url: canonicalUrl,
+      destination_url: canonicalUrl,
+      title:
+        externalProductId === officialExt
+          ? 'Alpha Arbutin 2% + HA'
+          : 'Alpha Arbutin 2% + Hyaluronic Acid for Hyperpigmentation',
+      image_url: 'https://cdn.example.com/theordinary-alpha.jpg',
+      price_amount: String(priceAmount),
+      price_currency: 'USD',
+      availability: 'In Stock',
+      seed_data: {
+        brand: 'The Ordinary',
+        description: 'A serum for uneven tone.',
+        snapshot: {
+          canonical_url: canonicalUrl,
+          product_id: externalProductId,
+          variants: [
+            {
+              variant_id: `${externalProductId}-30ml`,
+              title: '30ml',
+              price: String(priceAmount),
+              currency: 'USD',
+              stock: 'In Stock',
+            },
+          ],
+        },
+      },
+    });
+    const officialDetail = buildSeedDetail(
+      officialExt,
+      8.85,
+      'https://theordinary.com/en-us/alpha-arbutin-2-ha-serum.html',
+    );
+    const channelDetail = buildSeedDetail(
+      channelExt,
+      11.5,
+      'https://www.ulta.com/p/alpha-arbutin-2-hyaluronic-acid-hyperpigmentation-pimprod2007108?sku=2551165',
+    );
+    const servingEligibilityRow = {
+      content_key: 'content::theordinary::alpha-arbutin',
+      product_key: exactCatalogRow.product_key,
+      source_system: 'external_product_seeds_mirror_v1',
+      source_product_id: channelExt,
+      pivota_signature_id: channelSig,
+      catalog_title: exactCatalogRow.title,
+      catalog_image_url: 'https://cdn.example.com/theordinary-alpha.jpg',
+      catalog_description: 'A serum for uneven tone.',
+      sync_status: 'live',
+      pdp_lifecycle_stage: 'published',
+      serving_eligible: true,
+      pipeline_stage: 'ready',
+      blocker_code: null,
+      blocker_detail: null,
+      content_quality_score: 92,
+      active_external_seed_source_match: true,
+    };
+
+    db.query.mockImplementation((sql, params = []) => {
+      const text = String(sql || '');
+      if (text.includes('FROM catalog_products cp') && text.includes('LEFT JOIN index_pipeline_state ips')) {
+        return Promise.resolve({ rows: [servingEligibilityRow] });
+      }
+      if (text.includes('FROM catalog_products cp') && text.includes('WHERE cp.pivota_signature_id = $1')) {
+        return Promise.resolve({ rows: [exactCatalogRow] });
+      }
+      if (text.includes('FROM pdp_identity_listing pil') && text.includes('WHERE pil.source_listing_ref = $1')) {
+        return Promise.resolve({ rows: [identityRows[1]] });
+      }
+      if (text.includes('FROM pdp_identity_listing') && text.includes('sellable_item_group_id = $1')) {
+        return Promise.resolve({ rows: identityRows });
+      }
+      if (text.includes('FROM external_product_seeds') && text.includes('destination_url')) {
+        const requested = String(params[0] || params[1] || '');
+        if (requested === officialExt) return Promise.resolve({ rows: [officialDetail] });
+        if (requested === channelExt) return Promise.resolve({ rows: [channelDetail] });
+        return Promise.resolve({ rows: [] });
+      }
+      if (text.includes('FROM external_product_seeds') && text.includes('status')) {
+        const requested = String(params[0] || params[1] || '');
+        return Promise.resolve({
+          rows: [
+            {
+              id: `eps_${requested || channelExt}`,
+              external_product_id: requested || channelExt,
+              status: 'active',
+            },
+          ],
+        });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'get_pdp_v2',
+        payload: {
+          include: ['offers'],
+          product_ref: {
+            merchant_id: 'external_seed',
+            product_id: channelSig,
+          },
+        },
+      })
+      .expect(200);
+
+    const canonicalModule = res.body.modules?.find((module) => module?.type === 'canonical');
+    const offersModule = res.body.modules?.find((module) => module?.type === 'offers');
+    expect(canonicalModule?.data?.pdp_payload?.product).toEqual(
+      expect.objectContaining({
+        product_id: channelSig,
+        source_product_id: channelExt,
+      }),
+    );
+    expect(canonicalModule?.data).toEqual(
+      expect.objectContaining({
+        product_group_id: groupId,
+        sellable_item_group_id: groupId,
+        offer_source: 'group_fused',
+        selected_commerce_ref: {
+          merchant_id: 'external_seed',
+          product_id: channelExt,
+        },
+      }),
+    );
+    expect(offersModule?.data).toEqual(
+      expect.objectContaining({
+        product_group_id: groupId,
+        offer_source: 'group_fused',
+        offers_count: 2,
+      }),
+    );
+    expect(offersModule?.data?.offers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          merchant_id: 'external_seed',
+          product_id: officialExt,
+          price: { amount: 8.85, currency: 'USD' },
+        }),
+        expect.objectContaining({
+          merchant_id: 'external_seed',
+          product_id: channelExt,
+          price: { amount: 11.5, currency: 'USD' },
+        }),
+      ]),
+    );
+    const defaultOffer = offersModule?.data?.offers?.find(
+      (offer) => offer?.offer_id === offersModule?.data?.default_offer_id,
+    );
+    expect(defaultOffer).toEqual(
+      expect.objectContaining({
+        product_id: channelExt,
+      }),
+    );
+  });
+
   test('get_pdp_v2 skips live identity graph for rich direct external_seed same-merchant groups', async () => {
     const { app, db } = loadServerWithDb({
       PIVOTA_API_BASE: 'https://backend.test',
