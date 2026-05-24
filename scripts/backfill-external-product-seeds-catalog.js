@@ -136,6 +136,24 @@ function normalizeCurrencyCode(value) {
   return /^[A-Z]{3}$/.test(code) ? code : '';
 }
 
+function expectedCurrencyForMarket(value) {
+  const market = normalizeNonEmptyString(value).toUpperCase();
+  const map = {
+    US: 'USD',
+    USA: 'USD',
+    CA: 'CAD',
+    CAN: 'CAD',
+    GB: 'GBP',
+    UK: 'GBP',
+    EU: 'EUR',
+    DE: 'EUR',
+    FR: 'EUR',
+    ES: 'EUR',
+    IT: 'EUR',
+  };
+  return map[market] || '';
+}
+
 function extractCurrentPricingCurrency(value) {
   const pricing = ensureJsonObject(value);
   return normalizeCurrencyCode(
@@ -150,11 +168,12 @@ function resolveBackfillCurrency({ selectedSnapshotVariant, effectiveSnapshotVar
   return (
     extractCurrentPricingCurrency(seedData?.pricing) ||
     extractCurrentPricingCurrency(snapshot?.pricing) ||
-    normalizeCurrencyCode(selectedSnapshotVariant?.currency) ||
-    normalizeCurrencyCode(effectiveSnapshotVariants.find((variant) => variant?.currency)?.currency) ||
+    expectedCurrencyForMarket(row?.market || seedData?.market || snapshot?.market) ||
     normalizeCurrencyCode(row?.price_currency) ||
     normalizeCurrencyCode(seedData?.price_currency) ||
     normalizeCurrencyCode(snapshot?.price_currency) ||
+    normalizeCurrencyCode(selectedSnapshotVariant?.currency) ||
+    normalizeCurrencyCode(effectiveSnapshotVariants.find((variant) => variant?.currency)?.currency) ||
     'USD'
   );
 }
@@ -6616,7 +6635,8 @@ function enrichPayloadWithCommerceFacts({ row, payload, responseV2, market }) {
   const patchedVariants = applyOfferCommerceFactsToVariants(patchedTopLevel, responseV2);
   const withFacts = attachCommerceFactsToSeedRow(patchedVariants, rawFacts, { market: market || row?.market });
   const gate = validateCommerceFactsGateForSeedRow(withFacts);
-  const gatedRow = attachCommerceFactsGateToRow(withFacts, gate);
+  const acceptedFacts = normalizeNonEmptyString(gate?.status).toLowerCase() === 'pass';
+  const gatedRow = attachCommerceFactsGateToRow(acceptedFacts ? withFacts : nextRow, gate);
   return {
     ...payload,
     nextRow: gatedRow,
