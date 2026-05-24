@@ -81,6 +81,70 @@ describe('RecommendationEngine external candidate fetch', () => {
     }
   });
 
+  test('external recall returns sparse same-domain lip intent candidates before slow broad stages', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const rows = [
+      makeExternalRow({
+        id: 'eps_base',
+        external_product_id: 'ext_lip_serum',
+        title: 'INTO YOU Tinted Repair Lip Serum - Custom Shade TR88',
+        brand: 'INTO YOU',
+        category: 'Serum',
+        domain: 'intoyoucosmetics.com',
+      }),
+      makeExternalRow({
+        id: 'eps_lip_matt',
+        external_product_id: 'ext_lip_matt',
+        title: 'INTO YOU Watery Lip Matt - Custom Shade W725',
+        brand: 'INTO YOU',
+        category: 'Lip Matte',
+        domain: 'intoyoucosmetics.com',
+      }),
+      makeExternalRow({
+        id: 'eps_lip_glaze',
+        external_product_id: 'ext_lip_glaze',
+        title: 'INTO YOU Aqua Burst Lip Glaze',
+        brand: 'INTO YOU',
+        category: 'Lip Glaze',
+        domain: 'intoyoucosmetics.com',
+      }),
+    ];
+    const queryWithStatementTimeoutMock = jest.fn(async (sql) => {
+      expect(String(sql)).toContain('domain = ANY($4)');
+      expect(String(sql)).toContain('LIKE ANY($5::text[])');
+      return { rows };
+    });
+
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async () => ({ rows: [] })),
+      queryWithStatementTimeout: queryWithStatementTimeoutMock,
+    }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const result = await _internals.fetchExternalCandidates({
+      brandHint: 'INTO YOU',
+      categoryHint: 'Serum',
+      categoryPathHint: 'beauty/skincare/serum',
+      verticalHint: 'skincare',
+      intentFamilyHint: 'lip_treatment',
+      domainHints: ['intoyoucosmetics.com'],
+      limit: 48,
+      minFocusedCandidates: 6,
+      deepDomainRecall: true,
+    });
+
+    expect(queryWithStatementTimeoutMock).toHaveBeenCalledTimes(1);
+    expect(result.map((item) => item.product_id)).toEqual(
+      expect.arrayContaining(['ext_lip_serum', 'ext_lip_matt', 'ext_lip_glaze']),
+    );
+    expect(result.__externalFetchStats?.stages.map((stage) => stage.name)).toEqual([
+      'external_domain_intent_family',
+    ]);
+    expect(result.__externalFetchStats?.total_returned_count).toBe(3);
+  });
+
   test('identity dedupe lookup uses database statement and lock timeouts', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 
@@ -3089,6 +3153,95 @@ describe('RecommendationEngine external candidate fetch', () => {
       expect.arrayContaining(['ext_lip_balm', 'ext_lip_plumper', 'ext_lip_mask']),
     );
     expect(result.items.map((item) => item.product_id)).not.toContain('ext_eye_liner');
+  });
+
+  test('recommend rescues stale skincare serum categorization for lip serum PDPs', async () => {
+    const { recommend, _internals } = require('../../src/services/RecommendationEngine');
+    _internals.resetCache();
+
+    expect(_internals.getSimilarIntentFamilyFromText('INTO YOU Tinted Repair Lip Serum')).toBe('lip_treatment');
+    expect(_internals.getSimilarIntentFamilyFromText('INTO YOU Watery Lip Matt')).toBe('lip_treatment');
+
+    const result = await recommend({
+      pdp_product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_into_you_lip_serum',
+        title: 'INTO YOU Tinted Repair Lip Serum - Custom Shade TR88',
+        brand: 'INTO YOU',
+        category: 'Serum',
+        product_type: 'Serum',
+        category_path: 'beauty/skincare/serum',
+        semantic_vertical: 'skincare',
+        price: 13.99,
+        currency: 'USD',
+        inventory_quantity: 10,
+        status: 'active',
+        source: 'external_seed',
+      },
+      k: 4,
+      options: {
+        debug: true,
+        no_cache: true,
+        internal_candidates: [],
+        external_candidates: [
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_into_you_watery_lip_matt',
+            title: 'INTO YOU Watery Lip Matt - Custom Shade W725',
+            brand: 'INTO YOU',
+            category: 'Lip Matte',
+            product_type: 'Lip Matte',
+            category_path: 'beauty/makeup/lips/lip-matte',
+            semantic_vertical: 'makeup',
+            price: 12,
+            currency: 'USD',
+            inventory_quantity: 10,
+            status: 'active',
+            source: 'external_seed',
+          },
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_into_you_aqua_burst_lip_glaze',
+            title: 'INTO YOU Aqua Burst Lip Glaze',
+            brand: 'INTO YOU',
+            category: 'Lip Glaze',
+            product_type: 'Lip Glaze',
+            category_path: 'beauty/makeup/lips/lip-gloss',
+            semantic_vertical: 'makeup',
+            price: 13,
+            currency: 'USD',
+            inventory_quantity: 10,
+            status: 'active',
+            source: 'external_seed',
+          },
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_into_you_eyeliner',
+            title: 'INTO YOU Gel Eyeliner',
+            brand: 'INTO YOU',
+            category: 'Eyeliner',
+            product_type: 'Eyeliner',
+            category_path: 'beauty/makeup/eyes/eyeliner',
+            semantic_vertical: 'makeup',
+            price: 12,
+            currency: 'USD',
+            inventory_quantity: 10,
+            status: 'active',
+            source: 'external_seed',
+          },
+        ],
+      },
+    });
+
+    expect(result.debug?.fetch_strategy?.base_intent_family).toBe('lip_treatment');
+    expect(result.metadata.base_semantic.vertical).toBe('makeup');
+    expect(result.items.map((item) => item.product_id)).toEqual(
+      expect.arrayContaining([
+        'ext_into_you_watery_lip_matt',
+        'ext_into_you_aqua_burst_lip_glaze',
+      ]),
+    );
+    expect(result.items.map((item) => item.product_id)).not.toContain('ext_into_you_eyeliner');
   });
 
   test('recommend lets catalog category path override stale external seed vertical before picking similar products', async () => {
