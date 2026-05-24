@@ -1,0 +1,155 @@
+{
+  "generated_at": "2026-05-24T05:36:47.016Z",
+  "source_manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/wave6_tier_a_prod_db_dry_run_candidate_manifest.json",
+  "source_prod_dry_run_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/markato_expansion_status_20260524/wave6_tier_a_prod_db_dry_run.json",
+  "item_count": 13,
+  "holds_by_reason": {
+    "non_english_source_copy_needs_us_review": 1,
+    "price_sanity_hold_usd_amount_ge_250": 12
+  },
+  "items": [
+    {
+      "brand": "Aetas",
+      "title": "The Serum",
+      "canonical_url": "https://aetasofficial.com/products/serum",
+      "external_product_id": "ext_38b10ae142ef283bdc0acca8",
+      "price_amount": 60,
+      "price_currency": "USD",
+      "reasons": [
+        "non_english_source_copy_needs_us_review"
+      ]
+    },
+    {
+      "brand": "AFRAKARI",
+      "title": "Radiance Elixir",
+      "canonical_url": "https://afrakari.com/products/radiance-elixir",
+      "external_product_id": "ext_63426418919f510613d11dfc",
+      "price_amount": 1500,
+      "price_currency": "USD",
+      "reasons": [
+        "price_sanity_hold_usd_amount_ge_250"
+      ]
+    },
+    {
+      "brand": "AFRAKARI",
+      "title": "Prickly Pear Elixir",
+      "canonical_url": "https://afrakari.com/products/prickly-pear-elixir",
+      "external_product_id": "ext_212d963582191d90a381b919",
+      "price_amount": 1000,
+      "price_currency": "USD",
+      "reasons": [
+        "price_sanity_hold_usd_amount_ge_250"
+      ]
+    },
+    {
+      "brand": "AFRAKARI",
+      "title": "Recovery Serum",
+      "canonical_url": "https://afrakari.com/products/recovery-serum",
+      "external_product_id": "ext_92fd955718af4577fe7a921f",
+      "price_amount": 2950,
+      "price_currency": "USD",
+      "reasons": [
+        "price_sanity_hold_usd_amount_ge_250"
+      ]
+    },
+    {
+      "brand": "AFRAKARI",
+      "title": "Kalahari Melon Seed Oil",
+      "canonical_url": "https://afrakari.com/products/kalahari-melon-seed-oil",
+      "external_product_id": "ext_4d2036846dfde9236a2e5db9",
+      "price_amount": 900,
+      "price_currency": "USD",
+      "reasons": [
+        "price_sanity_hold_usd_amount_ge_250"
+      ]
+    },
+    {
+      "brand": "AFRAKARI",
+      "title": "Pure Marula Oil",
+      "canonical_url": "https://afrakari.com/products/pure-marula-oil",
+      "external_product_id": "ext_d72da473fbf1b8456b2e9ab8",
+      "price_amount": 900,
+      "price_currency": "USD",
+      "reasons": [
+        "price_sanity_hold_usd_amount_ge_250"
+      ]
+    },
+    {
+      "brand": "AFRAKARI",
+      "title": "Renewal Facial Oil",
+      "canonical_url": "https://afrakari.com/products/renewal-facial-oil",
+      "external_product_id": "ext_3d1d0b42b8eca59a501ff39e",
+      "price_amount": 1650,
+      "price_currency": "USD",
+      "reasons": [
+        "price_sanity_hold_usd_amount_ge_250"
+      ]
+    },
+    {
+      "brand": "AFRAKARI",
+      "title": "Cape Kelp Hydrating Cleanser",
+      "canonical_url": "https://afrakari.com/products/cape-kelp-hydrating-cleanser",
+      "external_product_id": "ext_81b379a35a0ad778e3650f0e",
+      "price_amount": 975,
+      "price_currency": "USD",
+      "reasons": [
+        "price_sanity_hold_usd_amount_ge_250"
+      ]
+    },
+    {
+      "brand": "7Journeys",
+      "title": "7 Journeys Extra Soft Glow Renewal Moisturizer 50g - Hydrating & Firming",
+      "canonical_url": "https://7journeys.com/products/7-journeys-extra-soft-glow-renewal-moisturizer-50g",
+      "external_product_id": "ext_c3feb615476441d19d3d7cad",
+      "price_amount": 480,
+      "price_currency": "USD",
+      "reasons": [
+        "price_sanity_hold_usd_amount_ge_250"
+      ]
+    },
+    {
+      "brand": "7Journeys",
+      "title": "7 Journeys Miracle Timeless Eye Cream 30g (Hydrating & Glowing)",
+      "canonical_url": "https://7journeys.com/products/7-journeys-miracle-timeless-eye-cream-30g",
+      "external_product_id": "ext_0d1e0a286ec9983daa6588e9",
+      "price_amount": 540,
+      "price_currency": "USD",
+      "reasons": [
+        "price_sanity_hold_usd_amount_ge_250"
+      ]
+    },
+    {
+      "brand": "7Journeys",
+      "title": "7 Journeys Antarctic Timeless Serum 45ml (Hydration & Anti-aging)",
+      "canonical_url": "https://7journeys.com/products/7-journeys-anatctic-timeless-serum-45ml",
+      "external_product_id": "ext_ab73ef0b2176992ac7edae2e",
+      "price_amount": 540,
+      "price_currency": "USD",
+      "reasons": [
+        "price_sanity_hold_usd_amount_ge_250"
+      ]
+    },
+    {
+      "brand": "7Journeys",
+      "title": "7 Journeys Glow Renewal Serum 45ml (Hydrated & Glowing Skin)",
+      "canonical_url": "https://7journeys.com/products/7-journeys-glow-renewal-serum-45ml",
+      "external_product_id": "ext_ebe749514b521fc5985e2347",
+      "price_amount": 660,
+      "price_currency": "USD",
+      "reasons": [
+        "price_sanity_hold_usd_amount_ge_250"
+      ]
+    },
+    {
+      "brand": "7Journeys",
+      "title": "7 Journeys Miracle Glow Serum Mask 25ml (10 Sheets)",
+      "canonical_url": "https://7journeys.com/products/7journeys-miracle-glow-serum-mask-10-sheets",
+      "external_product_id": "ext_824c5edce946bb360f763cac",
+      "price_amount": 550,
+      "price_currency": "USD",
+      "reasons": [
+        "price_sanity_hold_usd_amount_ge_250"
+      ]
+    }
+  ]
+}
