@@ -259,6 +259,61 @@ describe('official PDP manual insight review', () => {
     expect(plan.preview.why_it_stands_out.map((item) => item.headline)).toContain('Ingredient list is available');
   });
 
+  test('keeps Fenty hydrating primer out of foundation coverage and matte language', () => {
+    const plan = buildPlan(
+      row({
+        external_product_id: 'ext_fenty_soft_silk_primer',
+        title: "Pro Filt'r Hydrating Primer - Soft Silk",
+        brand: 'FENTY BEAUTY',
+        canonical_url: 'https://fentybeauty.com/products/pro-filtr-hydrating-primer-soft-silk',
+        seed_data: {
+          brand: 'FENTY BEAUTY',
+          pdp_description_raw:
+            'A lightweight hydrating makeup primer for normal to dry skin, designed to soften dry patches, create a silky soft-focus canvas, and help foundation apply smoothly and wear longer.',
+          pdp_ingredients_raw:
+            'Aqua/Water/Eau, Dimethicone, Glycerin, Sodium Hyaluronate, Vitis Vinifera (Grape) Seed Oil, Tocopheryl Acetate.',
+          pdp_how_to_use_raw:
+            'Apply 1-2 pumps, starting at the center of the face and blending outward. For dry skin, apply all over; for normal or combination skin, apply where skin tends to feel dry.',
+          pdp_details_sections: [
+            {
+              heading: 'Related complexion line',
+              body: "The related Pro Filt'r complexion line also includes Soft Matte Longwear Foundation, but this SKU is the hydrating primer step.",
+            },
+          ],
+          variants: [
+            {
+              title: 'Standard',
+              options: [{ name: 'Size', value: 'Standard' }],
+            },
+            {
+              title: 'Mini',
+              options: [{ name: 'Size', value: 'Mini' }],
+            },
+          ],
+        },
+        product_key: 'pk_fenty_soft_silk_primer',
+        pivota_signature_id: 'sig_fenty_soft_silk_primer',
+      }),
+      { brand: 'Fenty Beauty', includeStrong: false },
+    );
+
+    const previewText = JSON.stringify(plan.preview).toLowerCase();
+    expect(plan.blocked).toBe(false);
+    expect(plan.preview.headline).toBe('Makeup primer');
+    expect(plan.preview.what_it_is).toContain('makeup primer');
+    expect(plan.preview.what_it_is).toContain('hydrating prep');
+    expect(plan.preview.what_it_is).toContain('smoother makeup canvas');
+    expect(plan.preview.what_it_is).toContain('makeup-wear support');
+    expect(plan.preview.shopping_highlight).toMatch(/makeup prep|hydration|soft-focus canvas/);
+    expect(previewText).not.toContain('matte finish');
+    expect(previewText).not.toContain('complexion coverage');
+    expect(plan.preview.best_for.map((item) => item.tag)).not.toContain('complexion_coverage');
+    expect(previewText).not.toContain('standard');
+    expect(previewText).not.toContain('mini');
+    expect(plan.preview.shopping_highlight).not.toContain('Standard');
+    expect(plan.preview.shopping_highlight).not.toContain('Mini');
+  });
+
   test('allows Kylie component lip combos through the reviewed official-PDP template', () => {
     const plan = buildPlan(
       row({
@@ -964,6 +1019,30 @@ describe('official PDP manual insight review', () => {
     const extWrite = plan.writes.find((write) => write.kb_key === 'product:ext_tf_lip');
     expect(extWrite.action).toBe('skip');
     expect(extWrite.reason).toBe('protected_high_quality_existing:reviewed');
+    const sigWrite = plan.writes.find((write) => write.kb_key === 'product:sig_tf_lip');
+    expect(sigWrite.action).toBe('insert');
+  });
+
+  test('protects community-supported existing content even when the legacy weak detector fires', () => {
+    const communityBundle = weakBundle();
+    communityBundle.evidence_profile = 'community_supported';
+    communityBundle.product_intel_core.evidence_profile = 'community_supported';
+
+    expect(isWeakExistingInsight(kbEntry(communityBundle))).toBe(true);
+
+    const plan = buildPlan(
+      row({
+        ext_kb_key: 'product:ext_tf_lip',
+        ext_analysis: { product_intel_v1: communityBundle },
+        ext_source: 'aurora_product_intel_kb',
+        ext_source_meta: { quality_state: 'reviewed', evidence_profile: 'community_supported' },
+      }),
+      { brand: 'tom ford', includeStrong: false },
+    );
+
+    const extWrite = plan.writes.find((write) => write.kb_key === 'product:ext_tf_lip');
+    expect(extWrite.action).toBe('skip');
+    expect(extWrite.reason).toBe('protected_evidence_profile_existing:community_supported');
     const sigWrite = plan.writes.find((write) => write.kb_key === 'product:sig_tf_lip');
     expect(sigWrite.action).toBe('insert');
   });

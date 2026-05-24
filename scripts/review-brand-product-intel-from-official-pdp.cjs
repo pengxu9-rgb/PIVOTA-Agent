@@ -18,6 +18,7 @@ const {
 const REVIEW_SOURCE = 'pivota_insights_official_pdp_manual_review_v1';
 const REVIEWER = 'codex_manual_review';
 const PROTECTED_QUALITY_STATES = new Set(['reviewed', 'verified', 'published', 'ready']);
+const PROTECTED_EVIDENCE_PROFILES = new Set(['community_supported']);
 const SUPPORTED_BRANDS = new Set([
   'fenty',
   'fenty beauty',
@@ -526,6 +527,14 @@ function inferAnchors(facts, role) {
       ['precision application', /\bprecise|precision|contour|concealer|eyeshadow|cheek|foundation|brush\b/],
       ['face blending', /\bblend|blending|buff|diffuse|seamless\b/],
     ]);
+  } else if (role.step === 'primer') {
+    productAnchors = findTokens(text, [
+      ['makeup prep', /\bprimer|prep|base\b/],
+      ['hydration', /\bhydrat|hyaluronic|moistur|sodium hyaluronate|normal to dry\b/],
+      ['soft-focus canvas', /\bsoft[-\s]?focus|blur|smooth|smoother|silky|soft silk\b/],
+      ['makeup-wear support', /\bfoundation\s+(?:wear|last|application)|makeup\s+(?:last|wear)|wear\s+longer|extend|glide\b/],
+      ['pore-smoothing', /\bpore|smooths?\s+pores?\b/],
+    ]);
   } else if (role.step === 'complexion') {
     productAnchors = findTokens(text, [
       ['longwear coverage', /\b(?:longwear|long-wear)\b/],
@@ -615,7 +624,10 @@ function inferAnchors(facts, role) {
   const normalizeAnchorLabel = (value) =>
     asString(value).replace(/^(?:size|shade|format|scent|jar):\s*/i, '').trim();
   const anchors = [...scentAnchors, ...productAnchors].map(normalizeAnchorLabel);
-  const meaningfulSizeLabels = facts.variants.sizeLike.filter((label) => !/^format:\s*one piece$|^one piece$/i.test(label));
+  const meaningfulSizeLabels = facts.variants.sizeLike.filter((label) => (
+    !/^format:\s*one piece$|^one piece$/i.test(label) &&
+    !(role.step === 'primer' && isWeakStandaloneVariantValue(label))
+  ));
   if (meaningfulSizeLabels.length) anchors.push(...meaningfulSizeLabels.map(normalizeAnchorLabel));
   if (role.step === 'lip color' && facts.variants.shadeLike.length) anchors.push('shade clarity');
   if (facts.rawIngredients.length) anchors.push('full INCI available');
@@ -642,7 +654,14 @@ function inferBestFor(facts, role, anchors) {
       ['shine finish', /\bshine|gloss|glossy\b/],
       ['matte finish', /\bmatte\b/],
     ]);
-  } else if (role.step === 'complexion' || role.step === 'primer' || role.step === 'face color') {
+  } else if (role.step === 'primer') {
+    labels = findTokens(text, [
+      ['base makeup prep', /\bprimer|prep|base\b/],
+      ['hydrating primer feel', /\bhydrat|hyaluronic|moistur|sodium hyaluronate|normal to dry\b/],
+      ['smooth makeup laydown', /\bsmooth|smoother|silky|soft silk|glide|soft[-\s]?focus|blur|pore\b/],
+      ['makeup-wear support', /\bfoundation\s+(?:wear|last|application)|makeup\s+(?:last|wear)|wear\s+longer|extend\b/],
+    ]);
+  } else if (role.step === 'complexion' || role.step === 'face color') {
     labels = findTokens(text, [
       ['base makeup prep', /\bprimer|prep|base\b/],
       ['complexion coverage', /\bfoundation|coverage|concealer|skin tint\b/],
@@ -895,6 +914,20 @@ function firstVariantValue(facts, axisRe) {
   return match ? asString(match).replace(/^[^:]+:\s*/, '').trim() : '';
 }
 
+function isWeakStandaloneVariantValue(value) {
+  const text = asString(value)
+    .replace(/^(?:size|shade|format|scent|jar|set):\s*/i, '')
+    .trim();
+  return /^(?:standard|mini|full\s*size|single item|one piece)$/i.test(text);
+}
+
+function isMeaningfulVariantLabelForInsight(label, role) {
+  const text = asString(label);
+  if (/^format:\s*one piece$|^one piece$|^format:\s*single item$|^single item$/i.test(text)) return false;
+  if (role?.step === 'primer' && isWeakStandaloneVariantValue(text)) return false;
+  return true;
+}
+
 function joinClaims(claims) {
   const items = uniq(claims.filter(Boolean));
   if (!items.length) return '';
@@ -907,6 +940,17 @@ function buildEvidenceAnchoredWhatItIs(facts, role) {
   const lowerTitle = facts.title.toLowerCase();
   const shade = firstVariantValue(facts, /^(?:shade|color|colour):/i);
   const size = firstVariantValue(facts, /^(?:size|format|set):/i);
+
+  if (role.step === 'primer') {
+    const claims = joinClaims([
+      /\bhydrat|hyaluronic|moistur|sodium hyaluronate|normal to dry\b/i.test(text) ? 'hydrating prep' : '',
+      /\bsoft[-\s]?focus|blur|smooth|smoother|silky|soft silk\b/i.test(text) ? 'a smoother makeup canvas' : '',
+      /\bfoundation\s+(?:wear|last|application)|makeup\s+(?:last|wear)|wear\s+longer|extend|glide\b/i.test(text) ? 'makeup-wear support' : '',
+      /\bpore|smooths?\s+pores?\b/i.test(text) ? 'pore-smoothing cues' : '',
+    ]);
+    const sizeClause = size && !isWeakStandaloneVariantValue(size) ? ` in ${size}` : '';
+    return sentence(`${facts.title} is a makeup primer from ${facts.brand}${sizeClause}${claims ? `, with source-backed cues around ${claims}` : ''}`);
+  }
 
   if (role.step === 'complexion') {
     const format = /\bconcealer\b/.test(lowerTitle)
@@ -1083,7 +1127,7 @@ function buildWhyItStandsOut(facts, role, anchors) {
 
   if (isSampleProduct(facts)) {
     const why = [];
-    const meaningfulVariantLabels = facts.variants.labels.filter((label) => !/^format:\s*one piece$|^one piece$|^format:\s*single item$|^single item$/i.test(label));
+    const meaningfulVariantLabels = facts.variants.labels.filter((label) => isMeaningfulVariantLabelForInsight(label, role));
     if (meaningfulVariantLabels.length) {
       why.push({
         headline: 'Sample format is explicit',
@@ -1134,7 +1178,7 @@ function buildWhyItStandsOut(facts, role, anchors) {
         evidence_strength: 'official_pdp_reviewed',
       });
     }
-    const meaningfulVariantLabels = facts.variants.labels.filter((label) => !/^format:\s*one piece$|^one piece$/i.test(label));
+    const meaningfulVariantLabels = facts.variants.labels.filter((label) => isMeaningfulVariantLabelForInsight(label, role));
     if (meaningfulVariantLabels.length) {
       why.push({
         headline: 'Shade selection is unambiguous',
@@ -1162,6 +1206,9 @@ function buildWhyItStandsOut(facts, role, anchors) {
     } else if (role.step === 'complexion') {
       anchorHeadline = 'Coverage and finish cues are clear';
       anchorBody = `Reviewed complexion cues such as ${anchorText} support a more precise read on coverage, finish, or shade fit`;
+    } else if (role.step === 'primer') {
+      anchorHeadline = 'Primer prep cues are specific';
+      anchorBody = `Reviewed primer cues such as ${anchorText} clarify how it preps skin for smoother makeup laydown without making unsupported coverage claims`;
     } else if (role.step === 'skincare' || role.step === 'serum' || role.step === 'body care') {
       anchorHeadline = 'Routine step cues are specific';
       anchorBody = `Reviewed skincare cues such as ${anchorText} identify the routine role or key ingredient context without inventing unsupported benefits`;
@@ -1190,7 +1237,7 @@ function buildWhyItStandsOut(facts, role, anchors) {
       evidence_strength: 'official_pdp_reviewed',
     });
   }
-  const meaningfulVariantLabels = facts.variants.labels.filter((label) => !/^format:\s*one piece$|^one piece$/i.test(label));
+  const meaningfulVariantLabels = facts.variants.labels.filter((label) => isMeaningfulVariantLabelForInsight(label, role));
   const shouldExplainVariants =
     meaningfulVariantLabels.length > 0 &&
     (role.step !== 'application tool' || meaningfulVariantLabels.some((label) => /\b(size|shade|color|colour|scent|jar|ml|oz|g)\b/i.test(label)));
@@ -1546,7 +1593,11 @@ function isWeakExistingInsight(entry) {
 function shouldSkipExisting(entry, args) {
   if (!entry) return null;
   const state = readQualityState(entry);
+  const evidenceProfile = readEvidenceProfile(entry);
   const weak = isWeakExistingInsight(entry);
+  if (PROTECTED_EVIDENCE_PROFILES.has(evidenceProfile) && !args.includeStrong) {
+    return `protected_evidence_profile_existing:${evidenceProfile}`;
+  }
   if (!weak && PROTECTED_QUALITY_STATES.has(state) && !args.includeStrong) {
     return `protected_high_quality_existing:${state || 'unknown'}`;
   }

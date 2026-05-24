@@ -336,6 +336,114 @@ describe('pdpProductIntel KB hydration', () => {
     expect(hydrated.provenance.kb_key).toBe('product:ext_skin1004_case');
   });
 
+  test('prefers sig-key reviewed intel over ext-key legacy intel when a signature is present', async () => {
+    const capturedKeys = [];
+    const bundle = ({ headline, body, qualityState = 'reviewed', evidenceProfile = 'official_pdp_reviewed_formula_and_usage' }) => ({
+      contract_version: 'pivota.product_intel.v1',
+      display_name: 'Pivota Insights',
+      provenance: {
+        source: 'pivota_insights_official_pdp_manual_review_v1',
+        generator: 'strict_human_manual_rewrite',
+        review_status: 'completed',
+        review_decision: 'rewrite',
+        review_tier: 'assistant_reviewed',
+        reviewer_kind: 'assistant',
+      },
+      product_intel_core: {
+        what_it_is: { headline, body },
+        best_for: [{ tag: 'base_makeup_prep', label: 'base makeup prep', confidence: 'moderate' }],
+        why_it_stands_out: [
+          {
+            headline: 'Primer prep cues are specific',
+            body: 'Reviewed primer cues clarify smoother makeup laydown from source-backed product fields.',
+            evidence_strength: 'official_pdp_reviewed',
+          },
+        ],
+        routine_fit: {
+          step: 'primer',
+          am_pm: ['as_needed'],
+          pairing_notes: ['Apply before complexion makeup.'],
+        },
+        watchouts: [],
+        quality_state: qualityState,
+        evidence_profile: evidenceProfile,
+      },
+      community_signals: {
+        status: 'unavailable',
+        unavailable_reason: 'no_reviewed_external_consensus_for_this_publish',
+        confidence: 'low',
+      },
+      quality_state: qualityState,
+      evidence_profile: evidenceProfile,
+    });
+
+    jest.doMock('../src/auroraBff/productIntelKbStore', () => ({
+      getProductIntelKbEntry: jest.fn(async () => null),
+      getProductIntelKbEntries: jest.fn(async (kbKeys) => {
+        capturedKeys.push(...kbKeys);
+        return new Map([
+          [
+            'product:ext_fenty_primer',
+            {
+              kb_key: 'product:ext_fenty_primer',
+              source: 'legacy_restore',
+              source_meta: { quality_state: 'eligible', evidence_profile: 'community_supported' },
+              analysis: {
+                product_intel_v1: bundle({
+                  headline: 'Primer',
+                  body: 'A short legacy primer line.',
+                  qualityState: 'eligible',
+                  evidenceProfile: 'community_supported',
+                }),
+              },
+            },
+          ],
+          [
+            'product:sig_fenty_primer',
+            {
+              kb_key: 'product:sig_fenty_primer',
+              source: 'pivota_insights_official_pdp_manual_review_v1',
+              source_meta: { quality_state: 'reviewed', evidence_profile: 'official_pdp_reviewed_formula_and_usage' },
+              analysis: {
+                product_intel_v1: bundle({
+                  headline: 'Makeup primer',
+                  body: 'A source-backed hydrating primer with smoother makeup-canvas and makeup-wear support.',
+                }),
+              },
+            },
+          ],
+        ]);
+      }),
+    }));
+
+    jest.doMock('../src/auroraBff/normalize', () => ({
+      normalizeProductAnalysis: jest.fn((raw) => ({ payload: raw })),
+    }));
+
+    const { hydrateProductWithPublishedIntel } = require('../src/pdpProductIntel');
+
+    const hydrated = await hydrateProductWithPublishedIntel({
+      product: {
+        product_id: 'ext_fenty_primer',
+        source_product_id: 'ext_fenty_primer',
+        pivota_signature_id: 'sig_fenty_primer',
+        title: "Pro Filt'r Hydrating Primer - Soft Silk",
+      },
+      canonicalProductRef: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_fenty_primer',
+        pivota_signature_id: 'sig_fenty_primer',
+      },
+      requireReviewedBundle: true,
+    });
+
+    expect(capturedKeys[0]).toBe('product:sig_fenty_primer');
+    expect(capturedKeys).toEqual(expect.arrayContaining(['product:ext_fenty_primer']));
+    expect(hydrated.provenance.kb_key).toBe('product:sig_fenty_primer');
+    expect(hydrated.product_intel.product_intel_core.what_it_is.headline).toBe('Makeup primer');
+    expect(hydrated.product_intel.quality_state).toBe('reviewed');
+  });
+
   test('preserves manually reviewed seller-only standout points during KB hydration', async () => {
     jest.doMock('../src/auroraBff/productIntelKbStore', () => ({
       getProductIntelKbEntry: jest.fn(async (kbKey) => {
