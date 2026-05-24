@@ -1986,6 +1986,91 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     expect(JSON.stringify(stylingEssentialsBundle)).not.toMatch(/Formula context captured|signature fragrance drips/i);
   });
 
+  test('classifies Fenty styling, setting, corrector, and body-care formats without generic fallback', () => {
+    expect(inferKind("You Mist Makeup-Extending Setting Spray", '', '', 'A makeup-extending setting spray.')).toBe(
+      'setting_spray',
+    );
+    expect(inferKind('Match Stix Correcting Skinstick - Banana', '', '', 'A correcting skinstick.')).toBe(
+      'corrector',
+    );
+    expect(inferKind('Set it Down Superfine Blurring Setting Powder - Honey', '', '', 'A setting powder.')).toBe(
+      'face_powder',
+    );
+    expect(inferKind('The Gelly Type Strong Hold Gel', '', '', 'A strong hold styling gel.')).toBe(
+      'hair_styling',
+    );
+    expect(
+      inferKind(
+        'The Protective Type Frizz-Smoothing Heat Protectant Styling Cream',
+        '',
+        '',
+        'A heat protectant styling cream.',
+      ),
+    ).toBe('hair_styling');
+    expect(inferKind('The Homecurl Curl-Defining Cream', '', '', 'A curl-defining cream.')).toBe(
+      'hair_styling',
+    );
+    expect(
+      inferKind(
+        'Lil Butta Dropz Mini Shimmering Whipped Oil Body Cream Trio',
+        '',
+        '',
+        'A whipped oil body cream trio.',
+      ),
+    ).toBe('body_care_set');
+    expect(inferKind('Hella Extra Mascara-Boosting Lash Primer', '', '', 'A lash primer.')).toBe(
+      'eye_makeup',
+    );
+    expect(inferKind('Grip Trip Hydrating + Plumping Primer', '', '', 'A hydrating primer.')).toBe(
+      'primer',
+    );
+
+    const settingSprayBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_fenty_setting_spray',
+        title: 'You Mist Makeup-Extending Setting Spray',
+        canonical_url: 'https://fentybeauty.com/products/you-mist-makeup-extending-setting-spray',
+        seed_data: {
+          brand: 'Fenty Beauty',
+          description: 'A makeup-extending setting spray for complexion routines.',
+          ingredient_tokens: ['Water', 'Glycerin', 'Film Former'],
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_fenty_setting_spray',
+        sellable_item_group_id: 'sig_fenty_setting_spray',
+      },
+      generatedAt: '2026-05-24T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+    const hairGelBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_fenty_hair_gel',
+        title: 'The Gelly Type Strong Hold Gel',
+        canonical_url: 'https://fentybeauty.com/products/the-gelly-type-strong-hold-gel',
+        seed_data: {
+          brand: 'Fenty Beauty',
+          description: 'A strong hold gel for hair styling routines.',
+          ingredient_tokens: ['Water', 'PVP', 'Glycerin'],
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_fenty_hair_gel',
+        sellable_item_group_id: 'sig_fenty_hair_gel',
+      },
+      generatedAt: '2026-05-24T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+
+    expect(settingSprayBundle.shopping_card.subtitle).toBe('Setting Spray');
+    expect(settingSprayBundle.shopping_card.highlight).toBe('Makeup setting spray');
+    expect(hairGelBundle.shopping_card.subtitle).toBe('Hair Styling');
+    expect(hairGelBundle.shopping_card.highlight).toBe('Hair gel format detail');
+    expect(JSON.stringify([settingSprayBundle, hairGelBundle])).not.toMatch(/beauty product|skincare product/i);
+  });
+
   test('does not fall back to a Tom Ford brand when seed brand metadata is missing', () => {
     const bundle = buildBundle({
       seed: {
