@@ -5481,27 +5481,60 @@ function normalizePdpServingEligibilityRow(row) {
   const sourceSystem = firstNonEmptyString(row.source_system) || null;
   const blockerCode = firstNonEmptyString(row.blocker_code) || null;
   const hasActiveExternalSeedSourceMatch = row.active_external_seed_source_match === true;
-  const staleNoSeedBlocker =
+  const syncStatus = firstNonEmptyString(row.sync_status) || null;
+  const productFamily = firstNonEmptyString(row.external_seed_product_family, row.product_family) || null;
+  const normalizedProductFamily = String(productFamily || '').trim().toLowerCase();
+  const hasCatalogImage =
+    Boolean(firstNonEmptyString(row.catalog_image_url)) ||
+    Number(row.catalog_image_urls_count || 0) > 0;
+  const hasCatalogDescription = Boolean(firstNonEmptyString(row.catalog_description));
+  const contentQualityScore = Number.isFinite(Number(row.content_quality_score))
+    ? Number(row.content_quality_score)
+    : null;
+  const isNonMerchDirectPdp =
+    normalizedProductFamily === 'non_merch' ||
+    normalizedProductFamily === 'donation' ||
+    /\b(?:donate|donation|foundation)\b/i.test(firstNonEmptyString(row.catalog_title));
+  const canUseActiveExternalSeedDirectPdp =
     sourceSystem === 'external_product_seeds_mirror_v1' &&
-    blockerCode === 'no_seed' &&
-    hasActiveExternalSeedSourceMatch;
-  const missingPriceDirectPdpOverride =
-    sourceSystem === 'external_product_seeds_mirror_v1' &&
-    blockerCode === 'missing_price' &&
     hasActiveExternalSeedSourceMatch &&
+    !isNonMerchDirectPdp &&
+    blockerCode !== 'non_core_product';
+  const staleNoSeedBlocker =
+    canUseActiveExternalSeedDirectPdp &&
+    blockerCode === 'no_seed' &&
+    (contentQualityScore == null || contentQualityScore >= 50);
+  const missingPriceDirectPdpOverride =
+    canUseActiveExternalSeedDirectPdp &&
+    blockerCode === 'missing_price' &&
     Number(row.content_quality_score || 0) >= 50 &&
-    Boolean(
-      firstNonEmptyString(row.catalog_image_url) ||
-        Number(row.catalog_image_urls_count || 0) > 0 ||
-        firstNonEmptyString(row.catalog_description),
-    );
-  const pdpGateOverride = staleNoSeedBlocker || missingPriceDirectPdpOverride;
+    Boolean(hasCatalogImage || hasCatalogDescription);
+  const activeSeedNoIndexDirectPdpOverride =
+    canUseActiveExternalSeedDirectPdp &&
+    !blockerCode &&
+    row.serving_eligible !== true &&
+    row.serving_eligible !== false &&
+    (syncStatus === 'stale' || syncStatus === 'live') &&
+    hasCatalogImage &&
+    hasCatalogDescription;
+  const staleNotLiveDirectPdpOverride =
+    canUseActiveExternalSeedDirectPdp &&
+    blockerCode === 'not_live' &&
+    syncStatus === 'stale' &&
+    hasCatalogImage &&
+    hasCatalogDescription &&
+    Number(row.content_quality_score || 0) >= 50;
+  const pdpGateOverride =
+    staleNoSeedBlocker ||
+    missingPriceDirectPdpOverride ||
+    activeSeedNoIndexDirectPdpOverride ||
+    staleNotLiveDirectPdpOverride;
   return {
     catalog_row_found: true,
     content_key: firstNonEmptyString(row.content_key) || null,
     product_key: firstNonEmptyString(row.product_key) || null,
     pivota_signature_id: firstNonEmptyString(row.pivota_signature_id) || null,
-    sync_status: firstNonEmptyString(row.sync_status) || null,
+    sync_status: syncStatus,
     pdp_lifecycle_stage: firstNonEmptyString(row.pdp_lifecycle_stage) || null,
     serving_eligible: row.serving_eligible === true || pdpGateOverride,
     index_row_found: row.serving_eligible !== null && row.serving_eligible !== undefined,
@@ -5510,15 +5543,17 @@ function normalizePdpServingEligibilityRow(row) {
       : firstNonEmptyString(row.pipeline_stage) || null,
     blocker_code: pdpGateOverride ? null : blockerCode,
     blocker_detail: pdpGateOverride ? null : firstNonEmptyString(row.blocker_detail) || null,
-    content_quality_score: Number.isFinite(Number(row.content_quality_score))
-      ? Number(row.content_quality_score)
-      : null,
+    content_quality_score: contentQualityScore,
     active_external_seed_source_match: hasActiveExternalSeedSourceMatch,
     eligibility_override_reason: staleNoSeedBlocker
       ? 'active_external_seed_source_match'
       : missingPriceDirectPdpOverride
         ? 'active_external_seed_missing_price_direct_pdp'
-        : null,
+        : activeSeedNoIndexDirectPdpOverride
+          ? 'active_external_seed_no_index_direct_pdp'
+          : staleNotLiveDirectPdpOverride
+            ? 'active_external_seed_stale_not_live_direct_pdp'
+            : null,
   };
 }
 
@@ -5538,8 +5573,16 @@ async function fetchPdpServingEligibilityFromDb(args = {}) {
           cp.source_system,
           cp.source_product_id,
           cp.pivota_signature_id,
+          cp.title AS catalog_title,
           cp.image_url AS catalog_image_url,
           cp.description AS catalog_description,
+          COALESCE(
+            cp.product_payload->>'external_seed_product_family',
+            cp.product_payload->>'product_family',
+            cp.product_payload->'external_seed_product_kind'->>'family',
+            eps_active_seed.seed_data->>'product_kind',
+            eps_active_seed.seed_data->'snapshot'->>'product_kind'
+          ) AS external_seed_product_family,
           CASE
             WHEN jsonb_typeof(cp.product_payload->'image_urls') = 'array'
               THEN jsonb_array_length(cp.product_payload->'image_urls')
@@ -5554,17 +5597,14 @@ async function fetchPdpServingEligibilityFromDb(args = {}) {
           ips.blocker_code,
           ips.blocker_detail,
           ips.content_quality_score,
-          EXISTS (
-            SELECT 1
-            FROM external_product_seeds eps_active_seed
-            WHERE cp.source_system = 'external_product_seeds_mirror_v1'
-              AND eps_active_seed.status = 'active'
-              AND eps_active_seed.external_product_id = cp.source_product_id
-            LIMIT 1
-          ) AS active_external_seed_source_match
+          eps_active_seed.external_product_id IS NOT NULL AS active_external_seed_source_match
         FROM catalog_products cp
         LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id
         LEFT JOIN index_pipeline_state ips ON ips.content_key = cp.content_key
+        LEFT JOIN external_product_seeds eps_active_seed
+          ON cp.source_system = 'external_product_seeds_mirror_v1'
+         AND eps_active_seed.status = 'active'
+         AND eps_active_seed.external_product_id = cp.source_product_id
         WHERE (
           ($1::text <> '' AND cp.content_key = $1)
           OR (

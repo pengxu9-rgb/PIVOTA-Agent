@@ -1260,6 +1260,227 @@ describe('external seed product detail hydration', () => {
     expect(res.body.error).toBeUndefined();
   });
 
+  test('get_pdp_v2 serving_eligible_only allows stale active external seed mirror PDPs with catalog surface assets', async () => {
+    const { app, db } = loadServerWithDb({
+      PIVOTA_API_BASE: 'https://backend.test',
+      PIVOTA_API_KEY: 'test-token',
+    });
+
+    const signatureRow = {
+      content_key: 'ck_tirtir_stale_mask',
+      merchant_id: 'external_seed',
+      platform: 'external_seed',
+      source_system: 'external_product_seeds_mirror_v1',
+      source_product_id: 'ext_tirtir_stale_mask',
+      product_key: 'prod::external_seed::external_seed::ext_tirtir_stale_mask',
+      pivota_signature_id: 'sig_tirtir_stale_mask',
+      external_seed_id: 'eps_tirtir_stale_mask',
+      external_seed_external_product_id: 'ext_tirtir_stale_mask',
+      external_seed_status: 'active',
+    };
+    const statusRow = {
+      id: 'eps_tirtir_stale_mask',
+      external_product_id: 'ext_tirtir_stale_mask',
+      status: 'active',
+    };
+    const detailRow = {
+      ...statusRow,
+      canonical_url: 'https://tirtir.global/products/ceramide-moisture-gel-mask',
+      destination_url: 'https://tirtir.global/products/ceramide-moisture-gel-mask',
+      title: 'Ceramide Moisture Gel Mask',
+      image_url: 'https://cdn.example.com/tirtir-mask.jpg',
+      price_amount: '7.00',
+      price_currency: 'USD',
+      availability: 'out_of_stock',
+      seed_data: {
+        brand: 'TIRTIR',
+        pdp_description_raw: 'A cooling moisture gel mask designed to replenish and comfort skin.',
+        pdp_ingredients_raw: 'Ceramide NP, Panthenol',
+        pdp_how_to_use_raw: 'Apply after cleansing and remove after the package wear time.',
+        seed_description_origin: 'reviewed_exact_product_source_details_patch',
+        image_urls: ['https://cdn.example.com/tirtir-mask.jpg'],
+        snapshot: {
+          image_urls: ['https://cdn.example.com/tirtir-mask.jpg'],
+          variants: [
+            {
+              variant_id: 'ext_tirtir_stale_mask',
+              title: '1 mask',
+              price: '7.00',
+              currency: 'USD',
+            },
+          ],
+        },
+      },
+    };
+    const servingEligibilityRow = {
+      content_key: 'ck_tirtir_stale_mask',
+      product_key: signatureRow.product_key,
+      source_system: 'external_product_seeds_mirror_v1',
+      source_product_id: 'ext_tirtir_stale_mask',
+      pivota_signature_id: 'sig_tirtir_stale_mask',
+      catalog_title: 'Ceramide Moisture Gel Mask',
+      catalog_image_url: 'https://cdn.example.com/tirtir-mask.jpg',
+      catalog_description: 'A cooling moisture gel mask designed to replenish and comfort skin.',
+      catalog_image_urls_count: 1,
+      sync_status: 'stale',
+      pdp_lifecycle_stage: 'candidate',
+      serving_eligible: null,
+      pipeline_stage: null,
+      blocker_code: null,
+      blocker_detail: null,
+      content_quality_score: null,
+      active_external_seed_source_match: true,
+      external_seed_product_family: 'single_formula',
+    };
+
+    db.query.mockImplementation((sql) => {
+      const text = String(sql || '');
+      if (text.includes('FROM catalog_products cp') && text.includes('LEFT JOIN index_pipeline_state ips')) {
+        return Promise.resolve({ rows: [servingEligibilityRow] });
+      }
+      if (text.includes('FROM catalog_products') && text.includes('pivota_signature_id = $1')) {
+        return Promise.resolve({ rows: [signatureRow] });
+      }
+      if (text.includes('FROM pdp_identity_listing pil') && text.includes('source_listing_ref = $1')) {
+        return Promise.resolve({ rows: [] });
+      }
+      if (text.includes('FROM external_product_seeds') && text.includes('destination_url')) {
+        return Promise.resolve({ rows: [detailRow] });
+      }
+      if (text.includes('FROM external_product_seeds') && text.includes('status')) {
+        return Promise.resolve({ rows: [statusRow] });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'get_pdp_v2',
+        payload: {
+          product_ref: {
+            merchant_id: 'external_seed',
+            product_id: 'sig_tirtir_stale_mask',
+          },
+          include: ['canonical', 'product_overview', 'offers'],
+          options: {
+            serving_eligible_only: true,
+          },
+        },
+      })
+      .expect(200);
+
+    const canonicalProduct = res.body.modules?.find((module) => module?.type === 'canonical')
+      ?.data?.pdp_payload?.product;
+    expect(canonicalProduct).toMatchObject({
+      title: 'Ceramide Moisture Gel Mask',
+      image_url: 'https://cdn.example.com/tirtir-mask.jpg',
+    });
+    expect(res.body.error).toBeUndefined();
+  });
+
+  test('get_pdp_v2 serving_eligible_only still blocks active external seed rows marked non-core', async () => {
+    const { app, db } = loadServerWithDb({
+      PIVOTA_API_BASE: 'https://backend.test',
+      PIVOTA_API_KEY: 'test-token',
+    });
+
+    const signatureRow = {
+      content_key: 'ck_tirtir_stickers',
+      merchant_id: 'external_seed',
+      platform: 'external_seed',
+      source_system: 'external_product_seeds_mirror_v1',
+      source_product_id: 'ext_tirtir_stickers',
+      product_key: 'prod::external_seed::external_seed::ext_tirtir_stickers',
+      pivota_signature_id: 'sig_tirtir_stickers',
+    };
+    const statusRow = {
+      id: 'eps_tirtir_stickers',
+      external_product_id: 'ext_tirtir_stickers',
+      status: 'active',
+    };
+    const sparseDetailRow = {
+      ...statusRow,
+      canonical_url: 'https://tirtir.global/products/tirtir-stickers',
+      destination_url: 'https://tirtir.global/products/tirtir-stickers',
+      title: 'TIRTIR Stickers',
+      image_url: 'https://cdn.example.com/tirtir-stickers.jpg',
+      price_amount: '100.00',
+      price_currency: 'USD',
+      availability: 'In Stock',
+      seed_data: {
+        brand: 'TIRTIR',
+        pdp_description_raw: 'Gift with Purchase Only',
+        image_urls: ['https://cdn.example.com/tirtir-stickers.jpg'],
+      },
+    };
+    const servingEligibilityRow = {
+      content_key: 'ck_tirtir_stickers',
+      product_key: signatureRow.product_key,
+      source_system: 'external_product_seeds_mirror_v1',
+      source_product_id: 'ext_tirtir_stickers',
+      pivota_signature_id: 'sig_tirtir_stickers',
+      catalog_title: 'TIRTIR Stickers',
+      catalog_image_url: 'https://cdn.example.com/tirtir-stickers.jpg',
+      catalog_description: 'Gift with Purchase Only',
+      catalog_image_urls_count: 1,
+      sync_status: 'live',
+      pdp_lifecycle_stage: 'candidate',
+      serving_eligible: false,
+      pipeline_stage: 'extracted',
+      blocker_code: 'non_core_product',
+      blocker_detail: 'sample/gift/protection/GWP row is not eligible for commerce index serving',
+      content_quality_score: 65.4,
+      active_external_seed_source_match: true,
+      external_seed_product_family: 'general_merchandise',
+    };
+
+    db.query.mockImplementation((sql) => {
+      const text = String(sql || '');
+      if (text.includes('FROM catalog_products cp') && text.includes('LEFT JOIN index_pipeline_state ips')) {
+        return Promise.resolve({ rows: [servingEligibilityRow] });
+      }
+      if (text.includes('FROM catalog_products') && text.includes('pivota_signature_id = $1')) {
+        return Promise.resolve({ rows: [signatureRow] });
+      }
+      if (text.includes('FROM pdp_identity_listing pil') && text.includes('source_listing_ref = $1')) {
+        return Promise.resolve({ rows: [] });
+      }
+      if (text.includes('FROM external_product_seeds') && text.includes('destination_url')) {
+        return Promise.resolve({ rows: [sparseDetailRow] });
+      }
+      if (text.includes('FROM external_product_seeds') && text.includes('status')) {
+        return Promise.resolve({ rows: [statusRow] });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'get_pdp_v2',
+        payload: {
+          product_ref: {
+            merchant_id: 'external_seed',
+            product_id: 'sig_tirtir_stickers',
+          },
+          options: {
+            serving_eligible_only: true,
+          },
+        },
+      })
+      .expect(404);
+
+    expect(res.body).toMatchObject({
+      error: 'PRODUCT_NOT_SERVABLE',
+      details: {
+        blocker_code: 'non_core_product',
+        serving_eligible: false,
+      },
+    });
+    expect(res.body.modules).toBeUndefined();
+  });
+
   test('get_pdp_v2 reuses canonical catalog signature resolution for sig_* external_seed PDPs', async () => {
     const { app, db } = loadServerWithDb({
       PIVOTA_API_BASE: 'https://backend.test',
