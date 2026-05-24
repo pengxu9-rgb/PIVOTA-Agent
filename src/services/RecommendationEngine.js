@@ -1,7 +1,11 @@
 const crypto = require('node:crypto');
 
 const logger = require('../logger');
-const { query } = require('../db');
+const db = require('../db');
+const query = db.query;
+const queryWithStatementTimeout =
+  typeof db.queryWithStatementTimeout === 'function' ? db.queryWithStatementTimeout : db.query;
+const { recordPdpRecsTimeout } = require('../observability/pdpMetrics');
 const {
   inferVerticalFromProduct,
   computeSemanticSignalStrength,
@@ -112,6 +116,44 @@ const PDP_RECS_CACHE_METRICS = {
   bypasses: 0,
   evictions: 0,
 };
+
+function normalizeRecsDbTimeoutMs(timeoutMs, fallbackMs = PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS) {
+  const parsed = Number(timeoutMs);
+  const fallback = Number(fallbackMs);
+  const value = Number.isFinite(parsed) && parsed > 0
+    ? parsed
+    : Number.isFinite(fallback) && fallback > 0
+      ? fallback
+      : 1000;
+  return Math.max(50, Math.min(60_000, Math.trunc(value)));
+}
+
+function buildRecsDbTimeoutOptions(timeoutMs) {
+  const statementTimeoutMs = normalizeRecsDbTimeoutMs(timeoutMs);
+  return {
+    statementTimeoutMs,
+    lockTimeoutMs: Math.min(statementTimeoutMs, 500),
+  };
+}
+
+function isDbTimeoutError(err) {
+  const code = String(err?.code || '').trim();
+  const message = String(err?.message || err || '').toLowerCase();
+  return (
+    code === '57014' ||
+    message.includes('statement timeout') ||
+    message.includes('canceling statement due to statement timeout') ||
+    message.includes('lock timeout')
+  );
+}
+
+function recordRecsTimeout(stage) {
+  try {
+    recordPdpRecsTimeout({ stage: stage || 'unknown' });
+  } catch {
+    // Metrics should never affect recommendation rendering.
+  }
+}
 
 function visibleFallbacksEnabled() {
   return String(process.env.PDP_RECS_VISIBLE_FALLBACKS_ENABLED || '').trim().toLowerCase() === 'true';
@@ -1384,7 +1426,13 @@ function normalizeIdentityRows(rows = []) {
 }
 
 async function loadLiveIdentityRowsForRecommendationProducts(products, options = {}) {
-  const queryFn = typeof options.queryFn === 'function' ? options.queryFn : query;
+  const timeoutMs = normalizeRecsDbTimeoutMs(
+    options.timeoutMs,
+    PDP_RECS_IDENTITY_DEDUPE_TIMEOUT_MS,
+  );
+  const dbTimeoutMs = Math.min(timeoutMs, PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS);
+  const queryFn =
+    typeof options.queryFn === 'function' ? options.queryFn : queryWithStatementTimeout;
   const refs = uniqueByKey(
     (Array.isArray(products) ? products : []).map((product) => buildSourceListingRef(product)).filter(Boolean),
     (value) => value,
@@ -1406,11 +1454,15 @@ async function loadLiveIdentityRowsForRecommendationProducts(products, options =
           AND live_read_enabled = true
       `,
       [refs],
+      buildRecsDbTimeoutOptions(dbTimeoutMs),
     );
     return normalizeIdentityRows(result?.rows);
   } catch (err) {
     const msg = String(err?.message || err || '');
     if (msg.includes('pdp_identity_listing') && msg.includes('does not exist')) return [];
+    if (isDbTimeoutError(err)) {
+      recordRecsTimeout('identity_dedupe');
+    }
     logger.warn(
       { err: err?.message || String(err), refs: refs.length },
       'recommendations identity dedupe lookup failed',
@@ -1467,6 +1519,7 @@ async function dedupeRecommendationCandidatesByIdentity({
           PDP_RECS_IDENTITY_DEDUPE_TIMEOUT_MS,
           [],
           () => {
+            recordRecsTimeout('identity_dedupe');
             logger.warn(
               { timeout_ms: PDP_RECS_IDENTITY_DEDUPE_TIMEOUT_MS },
               'recommendations identity dedupe lookup timed out',
@@ -3589,9 +3642,28 @@ async function fetchExternalCandidates({
     return fetchStats.stages.filter((stage) => allowed.has(stage.name) && stage.timed_out).length;
   }
 
-  async function runQuery(whereSql, params, cap, queryName) {
+  async function runExternalDbQuery(sql, params, queryName, timeoutMs) {
     try {
-      const res = await query(
+      const dbTimeoutMs = Math.min(
+        normalizeRecsDbTimeoutMs(timeoutMs),
+        PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS,
+      );
+      return await queryWithStatementTimeout(
+        sql,
+        params,
+        buildRecsDbTimeoutOptions(dbTimeoutMs),
+      );
+    } catch (err) {
+      if (isDbTimeoutError(err)) {
+        recordRecsTimeout(queryName || 'external_recall');
+      }
+      throw err;
+    }
+  }
+
+  async function runQuery(whereSql, params, cap, queryName, timeoutMs) {
+    try {
+      const res = await runExternalDbQuery(
         `
           WITH recall_ids AS (
             SELECT id
@@ -3612,6 +3684,8 @@ ${EXTERNAL_SEED_LIGHT_RECOMMENDATION_SELECT}
           ORDER BY updated_at DESC, created_at DESC
         `,
         [market, tool, cap, ...params],
+        queryName || 'external_recent',
+        timeoutMs,
       );
       const products = [];
       for (const row of res.rows || []) {
@@ -3628,10 +3702,10 @@ ${EXTERNAL_SEED_LIGHT_RECOMMENDATION_SELECT}
     }
   }
 
-  async function runDomainQuery(cap) {
+  async function runDomainQuery(cap, timeoutMs) {
     if (!normalizedDomainHints.length) return [];
     try {
-      const res = await query(
+      const res = await runExternalDbQuery(
         `
           WITH recall_ids AS (
             SELECT id
@@ -3652,6 +3726,8 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
           ORDER BY updated_at DESC, created_at DESC
         `,
         [market, tool, cap, normalizedDomainHints],
+        'external_domain',
+        timeoutMs,
       );
       const products = [];
       for (const row of res.rows || []) {
@@ -3670,10 +3746,10 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
     }
   }
 
-  async function runDomainCategoryQuery(cap) {
+  async function runDomainCategoryQuery(cap, timeoutMs) {
     if (!normalizedDomainHints.length || !categoryAliases.length) return [];
     try {
-      const res = await query(
+      const res = await runExternalDbQuery(
         `
           SELECT
 ${EXTERNAL_SEED_LIGHT_RECOMMENDATION_SELECT}
@@ -3689,6 +3765,8 @@ ${EXTERNAL_SEED_LIGHT_RECOMMENDATION_SELECT}
           LIMIT $3
         `,
         [market, tool, cap, normalizedDomainHints, categoryAliases],
+        'external_domain_category',
+        timeoutMs,
       );
       const products = [];
       for (const row of res.rows || []) {
@@ -3708,10 +3786,10 @@ ${EXTERNAL_SEED_LIGHT_RECOMMENDATION_SELECT}
     }
   }
 
-  async function runDomainTitleCategoryQuery(cap) {
+  async function runDomainTitleCategoryQuery(cap, timeoutMs) {
     if (!normalizedDomainHints.length || !categoryTitleLikePatterns.length) return [];
     try {
-      const res = await query(
+      const res = await runExternalDbQuery(
         `
           SELECT
 ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
@@ -3727,6 +3805,8 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
           LIMIT $3
         `,
         [market, tool, cap, normalizedDomainHints, categoryTitleLikePatterns],
+        'external_domain_title_category',
+        timeoutMs,
       );
       const products = [];
       for (const row of res.rows || []) {
@@ -3746,10 +3826,10 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
     }
   }
 
-  async function runTitleCategoryQuery(cap) {
+  async function runTitleCategoryQuery(cap, timeoutMs) {
     if (!categoryTitleLikePatterns.length) return [];
     try {
-      const res = await query(
+      const res = await runExternalDbQuery(
         `
           SELECT
 ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
@@ -3764,6 +3844,8 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
           LIMIT $3
         `,
         [market, tool, cap, categoryTitleLikePatterns],
+        'external_title_category',
+        timeoutMs,
       );
       const products = [];
       for (const row of res.rows || []) {
@@ -3782,10 +3864,10 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
     }
   }
 
-  async function runCatalogCategoryPathQuery(cap) {
+  async function runCatalogCategoryPathQuery(cap, timeoutMs) {
     if (!catalogCategoryPath) return [];
     try {
-      const res = await query(
+      const res = await runExternalDbQuery(
         `
           SELECT
             cp.product_key,
@@ -3815,6 +3897,8 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
           LIMIT $3
         `,
         [catalogCategoryPath, brandAliases.length ? brandAliases : [''], cap],
+        'catalog_category_path',
+        timeoutMs,
       );
       const rows = Array.isArray(res.rows) ? res.rows : [];
       const products = [];
@@ -3839,11 +3923,12 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
     const startedAt = Date.now();
     let timedOut = false;
     const products = await withSoftTimeout(
-      Promise.resolve().then(task),
+      Promise.resolve().then(() => task(timeoutMs)),
       timeoutMs,
       [],
       (timeoutMs) => {
         timedOut = true;
+        recordRecsTimeout(queryName);
         logger.warn(
           { timeout_ms: timeoutMs, query: queryName, brand, category },
           'recommendations external query timed out',
@@ -3863,13 +3948,14 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
   const loadCategoryMatches = () =>
     runTimedExternalQuery(
       'external_category',
-      () => runQuery(
+      (timeoutMs) => runQuery(
         `AND ${externalSeedCategoryAliasPredicate(4)}`,
         [categoryAliases],
         deepDomainRecall
           ? boundedRecallCap(6, 96)
           : Math.min(120, safeLimit),
         'external_category',
+        timeoutMs,
       ),
       deepDomainRecall ? PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS : PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS,
     );
@@ -3878,7 +3964,7 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
     vertical && verticalTitleCategoryPattern
       ? runTimedExternalQuery(
           'external_vertical',
-          () => runQuery(
+          (timeoutMs) => runQuery(
             `AND (
               lower(coalesce(seed_data->'derived'->'recall'->>'vertical', seed_data->>'semantic_vertical', seed_data->>'recall_vertical', '')) = $4
               OR lower(coalesce(
@@ -3897,6 +3983,7 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
               ? boundedRecallCap(6, 96)
               : Math.min(120, safeLimit),
             'external_vertical',
+            timeoutMs,
           ),
           deepDomainRecall ? PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS : PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS,
         )
@@ -3906,7 +3993,7 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
     intentFamilyPattern
       ? runTimedExternalQuery(
           'external_intent_family',
-          () => runQuery(
+          (timeoutMs) => runQuery(
             intentFamilyLikePatterns.length
               ? `AND (
                   lower(coalesce(seed_data->'derived'->'recall'->>'retrieval_title', '')) LIKE ANY($4::text[])
@@ -3921,6 +4008,7 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
               ? Math.min(96, boundedRecallCap(2, 72))
               : Math.min(120, safeLimit),
             'external_intent_family',
+            timeoutMs,
           ),
           deepDomainRecall ? PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS : PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS,
         )
@@ -3930,7 +4018,7 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
     categoryTitleLikePatterns.length
       ? runTimedExternalQuery(
           'external_title_category',
-          () => runTitleCategoryQuery(boundedRecallCap(3, 48)),
+          (timeoutMs) => runTitleCategoryQuery(boundedRecallCap(3, 48), timeoutMs),
           Math.min(PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS, 2000),
         )
       : Promise.resolve([]);
@@ -3939,7 +4027,7 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
     catalogCategoryPath
       ? runTimedExternalQuery(
           'catalog_category_path',
-          () => runCatalogCategoryPathQuery(boundedRecallCap(3, 48)),
+          (timeoutMs) => runCatalogCategoryPathQuery(boundedRecallCap(3, 48), timeoutMs),
           Math.min(PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS, 1200),
         )
       : Promise.resolve([]);
@@ -3968,7 +4056,7 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
       }
       const preloadedDomainTitleCategoryMatches = await runTimedExternalQuery(
         'external_domain_title_category',
-        () => runDomainTitleCategoryQuery(deepRecallDomainCategoryCap),
+        (timeoutMs) => runDomainTitleCategoryQuery(deepRecallDomainCategoryCap, timeoutMs),
         PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS,
       );
       out.push(...preloadedDomainTitleCategoryMatches);
@@ -3992,12 +4080,12 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
       ] = await Promise.all([
         runTimedExternalQuery(
           'external_domain_title_category',
-          () => runDomainTitleCategoryQuery(deepRecallDomainCategoryCap),
+          (timeoutMs) => runDomainTitleCategoryQuery(deepRecallDomainCategoryCap, timeoutMs),
           PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS,
         ),
         runTimedExternalQuery(
           'external_domain_category',
-          () => runDomainCategoryQuery(deepRecallDomainCategoryCap),
+          (timeoutMs) => runDomainCategoryQuery(deepRecallDomainCategoryCap, timeoutMs),
           PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS,
         ),
       ]);
@@ -4042,7 +4130,7 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
     const deepRecallDomainCap = boundedRecallCap(2, 48);
     preloadedDomainMatches = await runTimedExternalQuery(
       'external_domain',
-      () => runDomainQuery(deepRecallDomainCap),
+      (timeoutMs) => runDomainQuery(deepRecallDomainCap, timeoutMs),
       PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS,
     );
     out.push(...preloadedDomainMatches);
@@ -4057,7 +4145,7 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
       const domainBeforeCategoryCap = boundedRecallCap(2, 48);
       preloadedDomainMatches = await runTimedExternalQuery(
         'external_domain_pre_category',
-        () => runDomainQuery(domainBeforeCategoryCap),
+        (timeoutMs) => runDomainQuery(domainBeforeCategoryCap, timeoutMs),
         PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS,
       );
       out.push(...preloadedDomainMatches);
@@ -4081,7 +4169,7 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
         exactDomainCategoryCandidateCount < focusedRecallTarget;
       const domainMatchesTask = runTimedExternalQuery(
         'external_domain',
-        () => runDomainQuery(foundationDomainCap),
+        (timeoutMs) => runDomainQuery(foundationDomainCap, timeoutMs),
         PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS,
       );
       const intentMatchesTask = shouldPreloadIntentWithDomain
@@ -4151,7 +4239,7 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
     preloadedDomainMatches ||
     (await runTimedExternalQuery(
       'external_domain',
-      () => runDomainQuery(domainCap),
+      (timeoutMs) => runDomainQuery(domainCap, timeoutMs),
       deepDomainRecall ? PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS : PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS,
     ));
   out.push(...domainMatches);
@@ -4163,7 +4251,7 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
   if (brand && deepDomainRecall && !hasDisplayCoverage(domainFocusedCandidates, focusedRecallTarget)) {
     const brandFieldMatches = await runTimedExternalQuery(
       'external_brand_fields_deep',
-      () => runQuery(
+      (timeoutMs) => runQuery(
         `AND (
               lower(coalesce(seed_data->>'brand','')) = ANY($4)
               OR lower(coalesce(seed_data->>'brand_name','')) = ANY($4)
@@ -4177,6 +4265,7 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
         [brandAliases],
         boundedRecallCap(3, 48),
         'external_brand_fields_deep',
+        timeoutMs,
       ),
       PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS,
     );
@@ -4190,7 +4279,7 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
   if (brand && !deepDomainRecall) {
     const brandFieldMatches = await runTimedExternalQuery(
       'external_brand_fields',
-      () => runQuery(
+      (timeoutMs) => runQuery(
         `AND (
               lower(coalesce(seed_data->>'brand','')) = ANY($4)
               OR lower(coalesce(seed_data->>'brand_name','')) = ANY($4)
@@ -4204,6 +4293,7 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
         [brandAliases],
         Math.min(120, safeLimit),
         'external_brand_fields',
+        timeoutMs,
       ),
     );
     out.push(...brandFieldMatches);
@@ -4215,11 +4305,12 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
     const brandTitleMatches = compactBrand
       ? await runTimedExternalQuery(
           'external_brand_title',
-          () => runQuery(
+          (timeoutMs) => runQuery(
             `AND regexp_replace(lower(coalesce(seed_data->'snapshot'->>'title','')), '[^a-z0-9]+', '', 'g') LIKE '%' || $4 || '%'`,
             [compactBrand],
             Math.min(80, safeLimit),
             'external_brand_title',
+            timeoutMs,
           ),
         )
       : [];
@@ -4249,7 +4340,7 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
     const categoryTitleMatches = categoryLikePatterns.length
       ? await runTimedExternalQuery(
           'external_category_title',
-          () => runQuery(
+          (timeoutMs) => runQuery(
             `AND attached_product_key IS NULL
               AND (
                 lower(coalesce(seed_data->'derived'->'recall'->>'retrieval_title','')) LIKE ANY($4::text[])
@@ -4257,6 +4348,7 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
             [categoryLikePatterns],
             Math.min(180, safeLimit),
             'external_category_title',
+            timeoutMs,
           ),
           PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS,
         )
@@ -4268,7 +4360,7 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
   if (allowVisibleFallbacks && !hasFocusedCandidates) {
     const recent = await runTimedExternalQuery(
       'external_recent',
-      () => runQuery('', [], Math.min(240, safeLimit), 'external_recent'),
+      (timeoutMs) => runQuery('', [], Math.min(240, safeLimit), 'external_recent', timeoutMs),
     );
     out.push(...recent);
   }
@@ -5041,6 +5133,7 @@ module.exports = {
     hydrateRecommendationItemsWithReviewedProductIntel,
     fetchExternalCandidates,
     fetchInternalCandidates,
+    loadLiveIdentityRowsForRecommendationProducts,
     enrichExternalBaseProduct,
     extractProductDomains,
     normalizeHostname,

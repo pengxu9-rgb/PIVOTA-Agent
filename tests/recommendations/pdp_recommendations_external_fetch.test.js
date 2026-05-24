@@ -44,6 +44,80 @@ describe('RecommendationEngine external candidate fetch', () => {
     delete process.env.PDP_RECS_VISIBLE_FALLBACKS_ENABLED;
   });
 
+  test('external recall queries use database statement and lock timeouts', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+    process.env.PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS = '777';
+
+    const queryMock = jest.fn(async () => {
+      throw new Error('fallback query should not be used for external recall');
+    });
+    const queryWithStatementTimeoutMock = jest.fn(async () => ({ rows: [] }));
+
+    jest.doMock('../../src/db', () => ({
+      query: queryMock,
+      queryWithStatementTimeout: queryWithStatementTimeoutMock,
+    }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    await _internals.fetchExternalCandidates({
+      brandHint: 'Krave Beauty',
+      categoryHint: 'Serum',
+      limit: 12,
+    });
+
+    expect(queryMock).not.toHaveBeenCalled();
+    expect(queryWithStatementTimeoutMock).toHaveBeenCalled();
+    for (const call of queryWithStatementTimeoutMock.mock.calls) {
+      expect(call[2]).toEqual(
+        expect.objectContaining({
+          statementTimeoutMs: expect.any(Number),
+          lockTimeoutMs: expect.any(Number),
+        }),
+      );
+      expect(call[2].statementTimeoutMs).toBeGreaterThan(0);
+      expect(call[2].lockTimeoutMs).toBeGreaterThan(0);
+      expect(call[2].lockTimeoutMs).toBeLessThanOrEqual(call[2].statementTimeoutMs);
+    }
+  });
+
+  test('identity dedupe lookup uses database statement and lock timeouts', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const queryWithStatementTimeoutMock = jest.fn(async () => ({
+      rows: [
+        {
+          source_listing_ref: 'external_seed:ext_1',
+          sellable_item_group_id: 'sig_1',
+          product_line_id: null,
+          review_family_id: null,
+          identity_confidence: 0.98,
+        },
+      ],
+    }));
+
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async () => ({ rows: [] })),
+      queryWithStatementTimeout: queryWithStatementTimeoutMock,
+    }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const rows = await _internals.loadLiveIdentityRowsForRecommendationProducts([
+      { merchant_id: 'external_seed', product_id: 'ext_1' },
+    ]);
+
+    expect(rows).toHaveLength(1);
+    expect(queryWithStatementTimeoutMock).toHaveBeenCalledWith(
+      expect.stringContaining('FROM pdp_identity_listing'),
+      expect.any(Array),
+      expect.objectContaining({
+        statementTimeoutMs: expect.any(Number),
+        lockTimeoutMs: expect.any(Number),
+      }),
+    );
+  });
+
   test('matches normalized brand fastpath and dedupes overlapping brand/category rows', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
     process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET = 'US';

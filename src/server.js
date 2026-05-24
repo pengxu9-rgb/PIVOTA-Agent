@@ -253,6 +253,10 @@ const {
   shouldLogDebugBundle,
 } = require('./observability/debugBundle');
 const {
+  recordPdpV2ModuleLatency,
+  recordSimilarDeferred,
+} = require('./observability/pdpMetrics');
+const {
   normalizeRecommendationDecisionMode,
 } = require('./shared/recommendationDecisionCapability');
 const { maybeRerankFindProductsMultiResponse } = require('./findProductsMulti/rerankLlm');
@@ -2782,9 +2786,15 @@ const PDP_OFFER_GROUP_MEMBER_FETCH_TIMEOUT_MS = Math.max(
   100,
   parseTimeoutMs(process.env.PDP_OFFER_GROUP_MEMBER_FETCH_TIMEOUT_MS, 750),
 );
-const PDP_SIMILAR_SYNC_BUDGET_MS = Math.max(
-  250,
-  parseTimeoutMs(process.env.PDP_SIMILAR_SYNC_BUDGET_MS, 8000),
+const PDP_SIMILAR_SYNC_BUDGET_MS = Math.min(
+  1200,
+  Math.max(
+    250,
+    parseTimeoutMs(
+      process.env.PDP_SIMILAR_LIVE_SYNC_BUDGET_MS || process.env.PDP_SIMILAR_SYNC_BUDGET_MS,
+      1200,
+    ),
+  ),
 );
 const PDP_SIMILAR_DEFAULT_DISPLAY_LIMIT = Math.max(
   6,
@@ -12549,10 +12559,12 @@ async function resolvePdpSimilarWithBudget(
       return {
         status: 'deferred',
         strategy: 'related_products',
+        reason_code: 'SIMILAR_DEFERRED_FIRST_PAINT',
         items: [],
         metadata: {
           similar_status: 'deferred',
-          reason_code: 'SIMILAR_STAGE_BUDGET_EXCEEDED',
+          reason_code: 'SIMILAR_DEFERRED_FIRST_PAINT',
+          timeout_reason_code: 'SIMILAR_STAGE_BUDGET_EXCEEDED',
           sync_budget_ms: Math.max(1, Number(budgetMs || 0) || 0),
         },
       };
@@ -30263,6 +30275,7 @@ function mergeRecommendationModuleWithEnvelope(moduleData, envelope) {
   return {
     ...moduleData,
     ...(envelope?.status ? { status: envelope.status } : {}),
+    ...(envelope?.reason_code ? { reason_code: envelope.reason_code } : {}),
     ...(publicItems ? { items: publicItems } : {}),
     metadata: {
       ...envelopeMetadata,
@@ -33413,8 +33426,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	    const markPdpV2Phase = (name, startedAt) => {
 	      pdpV2PhaseTimings[name] = Date.now() - startedAt;
 	    };
-	    const markPdpV2Module = (name, startedAt) => {
-	      pdpV2ModuleTimings[name] = Date.now() - startedAt;
+	    const markPdpV2Module = (name, startedAt, status = 'complete') => {
+	      const latencyMs = Date.now() - startedAt;
+	      pdpV2ModuleTimings[name] = latencyMs;
+        recordPdpV2ModuleLatency({
+          module: name,
+          status,
+          latencyMs,
+        });
 	    };
       const buildPdpV2IdentityResolution = ({
         requestedProductId = null,
@@ -35221,6 +35240,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const similarDeferred =
         relatedProductsEnvelope?.metadata?.similar_status === 'deferred' ||
         relatedProductsEnvelope?.status === 'deferred';
+      if (wantsSimilar && similarDeferred) {
+        recordSimilarDeferred({ source: 'first_paint_budget' });
+      }
       const similarUnavailable =
         relatedProductsEnvelope?.metadata?.similar_status === 'unavailable' ||
         relatedProductsEnvelope?.status === 'unavailable';
@@ -35701,6 +35723,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             ? {
                 status: relatedProductsEnvelope?.status === 'deferred' ? 'deferred' : 'empty',
                 strategy: relatedProductsEnvelope?.strategy || 'related_products',
+                ...(relatedProductsEnvelope?.reason_code
+                  ? { reason_code: relatedProductsEnvelope.reason_code }
+                  : {}),
                 items: [],
                 metadata:
                   relatedProductsEnvelope?.metadata && typeof relatedProductsEnvelope.metadata === 'object'
