@@ -409,7 +409,16 @@ function hasSuspiciousVariantPriceDrift(rawVariantPrice, reviewedRegionalPrice) 
   return high / low >= 3;
 }
 
-function scoreMirrorServingQuality(mirror) {
+function isReviewedBrandIdentityForLiveBootstrap(identity) {
+  return (
+    asString(identity.identity_status).toLowerCase() === 'approved' &&
+    identity.review_required !== true &&
+    asString(identity.source_tier).toLowerCase() === 'brand' &&
+    Boolean(asString(identity.sellable_item_group_id))
+  );
+}
+
+function scoreMirrorServingQuality(mirror, options = {}) {
   const product = mirror?.product || {};
   const skus = Array.isArray(mirror?.skus) ? mirror.skus : [];
   const title = asString(product.title);
@@ -419,10 +428,15 @@ function scoreMirrorServingQuality(mirror) {
   const description = asString(product.description);
   const hasPrice = skus.some((item) => Number(item?.offer?.list_price) > 0 && asString(item?.offer?.currency));
   const identity = asObject(mirror?.row?.identity_listing);
-  const identityResolved =
+  const identityLiveReadResolved =
     asString(identity.identity_status).toLowerCase() === 'approved' &&
     identity.live_read_enabled === true &&
     identity.review_required !== true;
+  const identityBootstrapEligible =
+    options.allowIdentityBootstrap === true &&
+    identity.live_read_enabled !== true &&
+    isReviewedBrandIdentityForLiveBootstrap(identity);
+  const identityResolved = identityLiveReadResolved || identityBootstrapEligible;
 
   const missing = [];
   if (!title) missing.push('missing_title');
@@ -446,6 +460,8 @@ function scoreMirrorServingQuality(mirror) {
     blockerCode: servingEligible ? 'none' : (missing[0] || 'low_quality'),
     blockerDetail: servingEligible ? null : missing.join(',') || 'content_quality_score below serving threshold',
     identityResolved,
+    identityLiveReadResolved,
+    identityBootstrapEligible,
     hasImage: Boolean(imageUrl),
     hasPrice,
     descriptionLength: description.length,
@@ -852,7 +868,11 @@ async function existingCounts(mirrors) {
   };
 }
 
-async function applyMirrors(mirrors, dryRun, { upsertServingState = false, batchSize = 0 } = {}) {
+async function applyMirrors(
+  mirrors,
+  dryRun,
+  { upsertServingState = false, batchSize = 0, bootstrapReviewedIdentityLiveRead = false } = {},
+) {
   const existingBefore = await existingCounts(mirrors);
   const normalizedBatchSize = normalizeBatchSize(batchSize);
   const batches = chunkArray(mirrors, normalizedBatchSize);
@@ -1002,7 +1022,9 @@ async function applyMirrors(mirrors, dryRun, { upsertServingState = false, batch
         totals.seed_attachment_updates += Number(seedAttachmentRes.rowCount || 0);
 
         if (upsertServingState) {
-          const readiness = scoreMirrorServingQuality(mirror);
+          const readiness = scoreMirrorServingQuality(mirror, {
+            allowIdentityBootstrap: bootstrapReviewedIdentityLiveRead,
+          });
           const indexRes = await client.query(
             `
               INSERT INTO index_pipeline_state (
@@ -1290,6 +1312,8 @@ async function run() {
   const allowRandom = hasFlag('allow-random');
   const allowDuplicateCanonical = hasFlag('allow-duplicate-canonical');
   const upsertServingState = hasFlag('upsert-serving-state') || hasFlag('upsertServingState');
+  const bootstrapReviewedIdentityLiveRead =
+    hasFlag('bootstrap-reviewed-identity-live-read') || hasFlag('bootstrapReviewedIdentityLiveRead');
   const batchSize = normalizeBatchSize(argValue('batch-size') || argValue('batchSize'));
   if (!ids.length) throw new Error('missing_external_product_ids');
   const rows = await fetchRows(ids, market);
@@ -1338,11 +1362,16 @@ async function run() {
     }
     mirrors.push(mirror);
   }
-  const applied = await applyMirrors(mirrors, dryRun, { upsertServingState, batchSize });
+  const applied = await applyMirrors(mirrors, dryRun, {
+    upsertServingState,
+    batchSize,
+    bootstrapReviewedIdentityLiveRead,
+  });
   const report = {
     generated_at: new Date().toISOString(),
     mode: dryRun ? 'dry_run' : 'apply',
     batch_size: batchSize || null,
+    bootstrap_reviewed_identity_live_read: bootstrapReviewedIdentityLiveRead,
     requested_ids: ids.length,
     fetched_rows: rows.length,
     mirror_rows: mirrors.length,
@@ -1366,7 +1395,9 @@ async function run() {
       sku_rows: mirror.skus.length,
       first_sku: mirror.skus[0]?.sku,
       first_offer: mirror.skus[0]?.offer,
-      serving_readiness: scoreMirrorServingQuality(mirror),
+      serving_readiness: scoreMirrorServingQuality(mirror, {
+        allowIdentityBootstrap: bootstrapReviewedIdentityLiveRead,
+      }),
     })),
   };
   const serialized = `${JSON.stringify(report, null, 2)}\n`;
@@ -1392,5 +1423,6 @@ module.exports = {
     normalizeCategoryToken,
     titleCategoryText,
     buildMirror,
+    scoreMirrorServingQuality,
   },
 };

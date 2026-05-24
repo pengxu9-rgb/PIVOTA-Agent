@@ -1,5 +1,5 @@
 const {
-  _internals: { buildMirror, inferCatalogMirrorCategory },
+  _internals: { buildMirror, inferCatalogMirrorCategory, scoreMirrorServingQuality },
 } = require('../../scripts/sync-external-seeds-to-catalog.cjs');
 
 describe('sync-external-seeds-to-catalog category inference', () => {
@@ -86,5 +86,80 @@ describe('sync-external-seeds-to-catalog signature preservation', () => {
     );
     expect(mirror.product.content_key).toBe('ck_existing_content_key');
     expect(mirror.productGroupId).toBe('sig_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb');
+  });
+});
+
+describe('sync-external-seeds-to-catalog serving bootstrap', () => {
+  function buildReadyMirror(identityListing) {
+    return buildMirror({
+      id: 'eps_bootstrap',
+      external_product_id: 'ext_bootstrap_serum',
+      market: 'US',
+      domain: 'seresilk.com',
+      title: 'Barrier Repair Serum',
+      image_url: 'https://cdn.example.com/serum.jpg',
+      price_amount: 48,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      canonical_url: 'https://seresilk.com/products/barrier-repair-serum',
+      status: 'active',
+      identity_listing: identityListing,
+      seed_data: {
+        brand: 'Seresilk',
+        description:
+          'A lightweight daily serum with a reviewed official product page and complete commerce details.',
+        variants: [
+          {
+            variant_id: 'default',
+            sku: 'SERUM-01',
+            title: 'Default Title',
+            price: '48.00',
+            currency: 'USD',
+            image_url: 'https://cdn.example.com/serum.jpg',
+          },
+        ],
+      },
+    });
+  }
+
+  test('keeps approved non-live identity blocked unless bootstrap is explicitly enabled', () => {
+    const mirror = buildReadyMirror({
+      identity_status: 'approved',
+      live_read_enabled: false,
+      review_required: false,
+      sellable_item_group_id: 'sig_cccccccccccccccccccccccccccccccc',
+      source_tier: 'brand',
+    });
+
+    expect(scoreMirrorServingQuality(mirror)).toMatchObject({
+      servingEligible: false,
+      blockerCode: 'identity_not_live_approved',
+      identityResolved: false,
+      identityBootstrapEligible: false,
+    });
+
+    expect(scoreMirrorServingQuality(mirror, { allowIdentityBootstrap: true })).toMatchObject({
+      servingEligible: true,
+      blockerCode: 'none',
+      identityResolved: true,
+      identityBootstrapEligible: true,
+    });
+  });
+
+  test('does not bootstrap merchant-tier identity rows', () => {
+    const mirror = buildReadyMirror({
+      identity_status: 'approved',
+      live_read_enabled: false,
+      review_required: false,
+      sellable_item_group_id: 'sig_dddddddddddddddddddddddddddddddd',
+      source_tier: 'merchant',
+    });
+
+    expect(scoreMirrorServingQuality(mirror, { allowIdentityBootstrap: true })).toMatchObject({
+      servingEligible: false,
+      blockerCode: 'identity_not_live_approved',
+      identityResolved: false,
+      identityBootstrapEligible: false,
+    });
   });
 });
