@@ -179,6 +179,7 @@ async function main() {
   const timeoutMs = readNumberArg('timeout-ms', 20000, 1000);
   const concurrency = readNumberArg('concurrency', 8, 1);
   const limit = readNumberArg('limit', Number.MAX_SAFE_INTEGER, 1);
+  const offset = readNumberArg('offset', 0, 0);
   const outPath = readArg('out', null);
   const jsonlOutPath = readArg('jsonl-out', null);
   const summaryOutPath = readArg('summary-out', null);
@@ -195,7 +196,8 @@ async function main() {
   }
 
   const xml = await fetchText(sitemapUrl, timeoutMs);
-  const ids = Array.from(new Set(extractProductIdsFromSitemap(xml))).slice(0, limit);
+  const allIds = Array.from(new Set(extractProductIdsFromSitemap(xml)));
+  const ids = allIds.slice(offset, offset + limit);
   let completed = 0;
   let appendChain = Promise.resolve();
   const rows = await mapWithConcurrency(
@@ -230,6 +232,8 @@ async function main() {
     sitemap_url: sitemapUrl,
     gateway_url: gatewayUrl,
     include_mode: includeMode,
+    source_total_urls: allIds.length,
+    offset,
     total_urls: ids.length,
     ok_count: rows.filter((row) => row.ok).length,
     product_not_servable_count: rows.filter((row) => row.error === 'PRODUCT_NOT_SERVABLE').length,
