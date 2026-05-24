@@ -209,6 +209,12 @@ async function fetchRows(options) {
 
 async function probeRuntime({ baseUrl, sig, debug = false }) {
   const url = baseUrl.replace(/\/$/, '');
+  const authToken = asString(
+    process.env.SHOP_GATEWAY_AGENT_API_KEY ||
+      process.env.PIVOTA_AGENT_API_KEY ||
+      process.env.AGENT_API_KEY ||
+      process.env.PIVOTA_API_KEY,
+  );
   const body = {
     operation: 'get_pdp_v2',
     payload: {
@@ -220,7 +226,10 @@ async function probeRuntime({ baseUrl, sig, debug = false }) {
   };
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      ...(authToken ? { 'x-agent-api-key': authToken } : {}),
+    },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
@@ -290,6 +299,8 @@ function classifyRow(row, runtime) {
     catalog_offer_merchants_count: Number(row.catalog_offer_merchants_count || 0) || 0,
     runtime_offers_count: runtimeOffersCount,
     runtime_offer_source: runtimeOfferSource || null,
+    runtime_status: runtime ? asString(runtime.runtime_status) || null : null,
+    runtime_error: runtime ? asString(runtime.runtime_error) || null : null,
     runtime_sellable_item_group_id: runtime ? asString(runtime.runtime_sellable_item_group_id) || null : null,
     content_quality_bucket: contentQualityBucket,
     merge_offer_bucket: bucket,
