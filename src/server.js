@@ -23041,7 +23041,40 @@ function readSimilarCardEvidenceProfile(product = {}) {
   ).toLowerCase();
 }
 
+const TRUSTED_SIMILAR_CARD_HIGHLIGHT_SOURCES = new Set([
+  'source_backed_title_or_intro',
+  'official_pdp_seed',
+  'official_pdp_seed_title',
+]);
+
+function hasTrustedSourceBackedSimilarCardHighlight(product = {}) {
+  if (!product || typeof product !== 'object' || Array.isArray(product)) return false;
+  const source = readSimilarCardText(
+    product.card_highlight_source,
+    product.cardHighlightSource,
+    product.shopping_card?.highlight_source,
+    product.shoppingCard?.highlight_source,
+    product.shoppingCard?.highlightSource,
+    product.search_card?.highlight_source,
+    product.searchCard?.highlight_source,
+    product.searchCard?.highlightSource,
+  ).toLowerCase();
+  if (!TRUSTED_SIMILAR_CARD_HIGHLIGHT_SOURCES.has(source)) return false;
+  return Boolean(
+    readSimilarCardText(
+      product.card_highlight,
+      product.cardHighlight,
+      product.shopping_card?.highlight,
+      product.shoppingCard?.highlight,
+      product.search_card?.highlight_candidate,
+      product.searchCard?.highlight_candidate,
+      product.searchCard?.highlightCandidate,
+    ),
+  );
+}
+
 function isSellerOnlySimilarCardEvidence(product = {}) {
+  if (hasTrustedSourceBackedSimilarCardHighlight(product)) return false;
   const profiles = [
     product.evidence_profile,
     product.evidenceProfile,
@@ -23088,7 +23121,7 @@ function hasSimilarCardImage(product = {}) {
 }
 
 const SIMILAR_CARD_TITLE_FALLBACK_PRODUCT_RE =
-  /\b(?:ampoule|balm|bar|beard|blush|body\s*wash|bronzer|brow|cleanser|cleansing|conditioner|concealer|cream|deodorant|essence|exfoliant|eyeshadow|foundation|fragrance|gel|gloss|liner|lipstick|lotion|mascara|mask|mist|moisturizer|oil|pad|palette|patch|peel|powder|primer|serum|shampoo|shav(?:e|ing)|spf|sunscreen|tint|toner|treatment)\b/i;
+  /\b(?:ampoule|balm|bar|beard|blush|body\s*wash|bronzer|brow|cleanser|cleansing|conditioner|concealer|cream|deodorant|essence|exfoliant|eyeshadow|foundation|fragrance|gel|glaze|gloss|liner|lip(?:\s*(?:balm|color|glaze|gloss|liner|matt(?:e)?|oil|serum|stain|stick|tint|treatment))?|lipstick|lotion|mascara|mask|mist|moisturizer|oil|pad|palette|patch|peel|powder|primer|serum|shampoo|shav(?:e|ing)|spf|sunscreen|tint|toner|treatment)\b/i;
 
 const SIMILAR_CARD_TITLE_FALLBACK_GENERIC_RE =
   /\b(?:category\s+only|missing\s+highlight|similar\s+product|related\s+product|product\s+\d*|item\s+\d*)\b/i;
@@ -23336,6 +23369,7 @@ function applySourceBackedSimilarCardHighlightFallback(item = {}) {
   if (!item || typeof item !== 'object') return item;
   if (hasSimilarCardPresentation(item)) return item;
 
+  const replaceSellerOnlyCardText = isSellerOnlySimilarCardEvidence(item);
   const cardHighlight = deriveSourceBackedSimilarCardHighlight(item);
   if (!cardHighlight) return item;
 
@@ -23347,14 +23381,22 @@ function applySourceBackedSimilarCardHighlightFallback(item = {}) {
   if (!next.shopping_card || typeof next.shopping_card !== 'object' || Array.isArray(next.shopping_card)) {
     next.shopping_card = {};
   }
-  if (!readSimilarCardText(next.shopping_card.highlight)) {
-    next.shopping_card = { ...next.shopping_card, highlight: cardHighlight };
+  if (replaceSellerOnlyCardText || !readSimilarCardText(next.shopping_card.highlight)) {
+    next.shopping_card = {
+      ...next.shopping_card,
+      highlight: cardHighlight,
+      highlight_source: next.shopping_card.highlight_source || next.card_highlight_source,
+    };
   }
   if (!next.search_card || typeof next.search_card !== 'object' || Array.isArray(next.search_card)) {
     next.search_card = {};
   }
-  if (!readSimilarCardText(next.search_card.highlight_candidate)) {
-    next.search_card = { ...next.search_card, highlight_candidate: cardHighlight };
+  if (replaceSellerOnlyCardText || !readSimilarCardText(next.search_card.highlight_candidate)) {
+    next.search_card = {
+      ...next.search_card,
+      highlight_candidate: cardHighlight,
+      highlight_source: next.search_card.highlight_source || next.card_highlight_source,
+    };
   }
   return next;
 }

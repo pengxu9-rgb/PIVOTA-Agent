@@ -290,6 +290,49 @@ describe('find_similar_products mainline wrapper', () => {
     );
   });
 
+  it('lets source-backed lip title fallbacks override stale seller-only card intel', async () => {
+    const app = require('../src/server');
+
+    const items = await app._debug.enrichSimilarProductsForPdpCards({
+      items: [
+        {
+          product_id: 'ext_into_you_w725',
+          external_product_id: 'ext_into_you_w725',
+          pivota_signature_id: 'sig_1a310126e75795655997ed9e',
+          merchant_id: 'external_seed',
+          title: 'INTO YOU Watery Lip Matt - Custom Shade W725',
+          category: 'Lip Matte',
+          image_url: 'https://cdn.example.test/w725.jpg',
+          product_intel: {
+            evidence_profile: 'seller_only',
+          },
+          shopping_card: {
+            evidence_profile: 'seller_only',
+            highlight: 'Generic seller copy',
+          },
+        },
+      ],
+      maxItems: 1,
+      budgetMs: 100,
+      detailBudgetMs: 50,
+    });
+
+    expect(items[0]).toEqual(
+      expect.objectContaining({
+        card_highlight_status: 'ready',
+        card_image_status: 'ready',
+        card_highlight: 'INTO YOU Watery Lip Matt - Custom Shade W725',
+        card_highlight_source: 'source_backed_title_or_intro',
+        shopping_card: expect.objectContaining({
+          highlight: 'INTO YOU Watery Lip Matt - Custom Shade W725',
+          highlight_source: 'source_backed_title_or_intro',
+        }),
+      }),
+    );
+    expect(app._debug.filterSimilarProductsWithCardHighlights(items)).toHaveLength(1);
+    expect(app._debug.filterPublicVisibleSimilarProducts(items)).toHaveLength(1);
+  });
+
   it('does not treat category-only similar cards as source-backed highlights', async () => {
     const app = require('../src/server');
 
