@@ -581,6 +581,66 @@ describe('official PDP manual insight review', () => {
     expect(plan.preview.shopping_highlight).toContain('frizz control');
   });
 
+  test('keeps Fenty Brow MVP styler in brow definition instead of hair care', () => {
+    const plan = buildPlan(
+      row({
+        external_product_id: 'ext_fenty_brow_mvp',
+        title: 'Brow MVP Ultra Fine Brow Pencil & Styler — Ash Brown',
+        brand: 'FENTY BEAUTY',
+        canonical_url: 'https://fentybeauty.com/products/brow-mvp-ultra-fine-brow-pencil-styler-ash-brown',
+        seed_data: {
+          brand: 'FENTY BEAUTY',
+          pdp_description_raw:
+            'A waterproof ultra-fine brow pencil and built-in paddle brush styler for shaping, defining, and filling brows with precision.',
+          pdp_ingredients_raw:
+            'Synthetic Wax, Ceresin, Hydrogenated Coco-Glycerides, Mica, Hydrogenated Castor Oil, Polybutene, Cera Microcristallina, Tocopherol, Iron Oxides.',
+          pdp_how_to_use_raw:
+            'Use the ultra-fine pencil tip to draw hair-like strokes, then blend and shape brows with the attached paddle brush.',
+          variants: [{ title: 'Ash Brown', options: [{ name: 'Shade', value: 'Ash Brown' }] }],
+        },
+      }),
+      { brand: 'Fenty Beauty', includeStrong: false },
+    );
+
+    expect(plan.blocked).toBe(false);
+    expect(plan.preview.headline).toBe('Brow product');
+    expect(plan.preview.what_it_is).toContain('brow product');
+    expect(plan.preview.shopping_highlight).toContain('brow definition');
+    expect(plan.preview.what_it_is).not.toContain('hair treatment');
+    expect(plan.preview.shopping_highlight).not.toContain('scalp');
+    expect(plan.preview.shopping_highlight).not.toContain('style refresh');
+  });
+
+  test('lets explicit Fenty eyeliner title override stale toner category metadata', () => {
+    const plan = buildPlan(
+      row({
+        external_product_id: 'ext_fenty_flypencil_bachelor_pad',
+        title: 'Flypencil Longwear Pencil Eyeliner — Bachelor Pad',
+        brand: 'FENTY BEAUTY',
+        product_type: 'Toner',
+        category_path: 'beauty/skincare/toner',
+        canonical_url: 'https://fentybeauty.com/products/flypencil-longwear-pencil-eyeliner-bachelor-pad',
+        seed_data: {
+          brand: 'FENTY BEAUTY',
+          pdp_description_raw:
+            'A creamy, water-resistant pencil eyeliner made for longwear color that glides on and sets in place.',
+          pdp_ingredients_raw:
+            'Synthetic Wax, Mica, Trimethylsiloxysilicate, Polybutene, Hydrogenated Cottonseed Oil, Silica, Tocopherol, Iron Oxides.',
+          pdp_how_to_use_raw:
+            'Glide along the lash line, then blend quickly before the liner sets.',
+          variants: [{ title: 'Bachelor Pad', options: [{ name: 'Shade', value: 'Bachelor Pad' }] }],
+        },
+      }),
+      { brand: 'Fenty Beauty', includeStrong: false },
+    );
+
+    expect(plan.blocked).toBe(false);
+    expect(plan.preview.headline).toBe('Eye makeup');
+    expect(plan.preview.what_it_is).toContain('eye makeup');
+    expect(plan.preview.what_it_is).not.toContain('face toner');
+    expect(plan.preview.shopping_highlight).not.toContain('toning step');
+  });
+
   test('keeps Fenty BHA toner out of fragrance classification when INCI contains fragrance', () => {
     const plan = buildPlan(
       row({
