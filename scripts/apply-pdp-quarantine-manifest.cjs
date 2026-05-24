@@ -8,7 +8,7 @@ const { Client } = require('pg');
 const CONFIRM_TOKEN = 'apply-pdp-quarantine-manifest';
 const DEFAULT_MANIFEST = 'reports/pdp_serving_baseline_20260524/db/quarantine.json';
 const DEFAULT_OUT = 'reports/pdp_serving_baseline_20260524/db/quarantine_apply_report.json';
-const ALLOWED_BLOCKERS = new Set(['non_core_product', 'not_live']);
+const ALLOWED_BLOCKERS = new Set(['non_core_product', 'not_live', 'pdp_detail_unavailable']);
 
 function readArg(name, fallback = null) {
   const flag = `--${name}`;
@@ -35,6 +35,9 @@ Options:
   --write                       Apply the quarantine metadata updates
   --confirm ${CONFIRM_TOKEN}
                                 Required with --write
+  --allow-serving-eligible      Allow exact rows that are currently serving_eligible=true
+                                to be quarantined. Intended only after live PDP
+                                strict probe proves the public PDP cannot render.
   --reason <text>               Audit detail prefix
   --help                        Show this help
 `);
@@ -160,7 +163,7 @@ async function installManifest(client, rows) {
   );
 }
 
-async function summarize(client) {
+async function summarize(client, args = {}) {
   const summary = await client.query(`
     WITH matched AS (
       SELECT
@@ -199,6 +202,11 @@ async function summarize(client) {
         WHERE ips_content_key IS NOT NULL
           AND current_blocker_code IS DISTINCT FROM manifest_blocker_code
       )::int AS blocker_mismatch_rows,
+      count(*) FILTER (
+        WHERE ips_content_key IS NOT NULL
+          AND serving_eligible IS DISTINCT FROM TRUE
+          AND current_blocker_code IS DISTINCT FROM manifest_blocker_code
+      )::int AS blocked_blocker_mismatch_rows,
       count(*) FILTER (
         WHERE ips_content_key IS NOT NULL
           AND serving_eligible IS FALSE
@@ -249,8 +257,10 @@ async function summarize(client) {
   const safeToApply =
     Number(s.catalog_missing_rows || 0) === 0 &&
     Number(s.index_missing_rows || 0) === 0 &&
-    Number(s.currently_serving_eligible_rows || 0) === 0 &&
-    Number(s.blocker_mismatch_rows || 0) === 0;
+    (args.allowServingEligible
+      ? Number(s.blocked_blocker_mismatch_rows || 0) === 0
+      : Number(s.currently_serving_eligible_rows || 0) === 0 &&
+        Number(s.blocker_mismatch_rows || 0) === 0);
 
   return {
     ...s,
@@ -283,8 +293,17 @@ async function applyQuarantine(client, args) {
         ) cp ON TRUE
         JOIN index_pipeline_state ips_check
           ON ips_check.content_key = m.content_key
-         AND ips_check.serving_eligible IS FALSE
-         AND ips_check.blocker_code = m.blocker_code
+         AND (
+           (
+             $3::boolean IS TRUE
+             AND ips_check.serving_eligible IS TRUE
+           )
+           OR (
+             $3::boolean IS NOT TRUE
+             AND ips_check.serving_eligible IS FALSE
+             AND ips_check.blocker_code = m.blocker_code
+           )
+         )
       )
       UPDATE index_pipeline_state ips
       SET
@@ -306,7 +325,7 @@ async function applyQuarantine(client, args) {
         ips.blocker_code,
         ips.consolidation_version
     `,
-    [args.reason, args.version],
+    [args.reason, args.version, args.allowServingEligible === true],
   );
   return {
     updated_rows: result.rowCount,
@@ -325,12 +344,16 @@ async function main() {
     out: readArg('out', DEFAULT_OUT),
     write: hasFlag('write'),
     confirm: readArg('confirm', ''),
+    allowServingEligible: hasFlag('allow-serving-eligible'),
     reason: readArg('reason', 'pdp_serving_quarantine_20260524'),
     version: readArg('version', 'pdp_quarantine_20260524'),
   };
 
   if (args.write && args.confirm !== CONFIRM_TOKEN) {
     throw new Error(`Refusing write without --confirm ${CONFIRM_TOKEN}`);
+  }
+  if (args.version.length > 32) {
+    throw new Error('--version must be 32 characters or fewer');
   }
   if (!process.env.DATABASE_URL) {
     throw new Error('DATABASE_URL is required');
@@ -347,6 +370,7 @@ async function main() {
     manifest: args.manifest,
     dry_run: !args.write,
     write_requested: args.write,
+    allow_serving_eligible: args.allowServingEligible,
     manifest_source_rows: manifest.source_row_count,
     manifest_unique_content_keys: manifest.unique_content_keys,
     duplicate_groups: manifest.duplicate_groups,
@@ -364,7 +388,7 @@ async function main() {
     await client.query(`SET LOCAL lock_timeout = '5s'`);
     await client.query(`SET LOCAL statement_timeout = '120s'`);
     await installManifest(client, manifest.rows);
-    report.before = await summarize(client);
+    report.before = await summarize(client, args);
 
     if (args.write && !report.before.safe_to_apply) {
       throw new Error('Unsafe quarantine manifest: current DB no longer matches the dry-run manifest');
@@ -372,7 +396,7 @@ async function main() {
 
     if (args.write) {
       report.writes = await applyQuarantine(client, args);
-      report.after = await summarize(client);
+      report.after = await summarize(client, args);
       await client.query('COMMIT');
     } else {
       await client.query('ROLLBACK');
