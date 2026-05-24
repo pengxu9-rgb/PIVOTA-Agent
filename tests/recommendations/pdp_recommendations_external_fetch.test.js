@@ -81,7 +81,7 @@ describe('RecommendationEngine external candidate fetch', () => {
     }
   });
 
-  test('external recall returns sparse same-domain lip intent candidates before slow broad stages', async () => {
+  test('external recall filters a small same-domain lip pool before slow broad stages', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 
     const rows = [
@@ -112,7 +112,7 @@ describe('RecommendationEngine external candidate fetch', () => {
     ];
     const queryWithStatementTimeoutMock = jest.fn(async (sql) => {
       expect(String(sql)).toContain('domain = ANY($4)');
-      expect(String(sql)).toContain('LIKE ANY($5::text[])');
+      expect(String(sql)).not.toContain('LIKE ANY($5::text[])');
       return { rows };
     });
 

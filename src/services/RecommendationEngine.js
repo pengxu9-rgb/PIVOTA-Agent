@@ -3880,62 +3880,6 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
     }
   }
 
-  async function runDomainIntentFamilyQuery(cap, timeoutMs) {
-    if (!normalizedDomainHints.length || (!intentFamilyPattern && !intentFamilyLikePatterns.length)) return [];
-    const intentPredicate = intentFamilyLikePatterns.length
-      ? `(
-            lower(coalesce(title, '')) LIKE ANY($5::text[])
-            OR lower(coalesce(seed_data->'snapshot'->>'title', '')) LIKE ANY($5::text[])
-            OR lower(coalesce(seed_data->'derived'->'recall'->>'retrieval_title', '')) LIKE ANY($5::text[])
-            OR lower(coalesce(seed_data#>>'{derived,recall,alias_tokens}', '')) LIKE ANY($5::text[])
-          )`
-      : `(
-            lower(coalesce(title, '')) ~ $5
-            OR lower(coalesce(seed_data->'snapshot'->>'title', '')) ~ $5
-          )`;
-    try {
-      const res = await runExternalDbQuery(
-        `
-          SELECT
-${EXTERNAL_SEED_LIGHT_RECOMMENDATION_SELECT}
-          FROM external_product_seeds
-          WHERE status = 'active'
-            AND market = $1
-            AND (tool = '*' OR tool = $2)
-            ${attachedSeedRecallFilterSql}
-            AND domain = ANY($4)
-            ${sellableExternalSeedSql}
-            AND ${intentPredicate}
-          ORDER BY updated_at DESC, created_at DESC
-          LIMIT $3
-        `,
-        [
-          market,
-          tool,
-          cap,
-          normalizedDomainHints,
-          intentFamilyLikePatterns.length ? intentFamilyLikePatterns : intentFamilyPattern,
-        ],
-        'external_domain_intent_family',
-        timeoutMs,
-      );
-      const products = [];
-      for (const row of res.rows || []) {
-        const p = buildExternalSeedRecommendationCandidate(row, {
-          fallbackBrand: brandHint,
-        });
-        if (p) products.push(p);
-      }
-      return products;
-    } catch (err) {
-      logger.warn(
-        { err: err?.message || String(err), query: 'external_domain_intent_family' },
-        'recommendations external query failed',
-      );
-      return [];
-    }
-  }
-
   async function runTitleCategoryQuery(cap, timeoutMs) {
     if (!categoryTitleLikePatterns.length) return [];
     try {
@@ -4156,7 +4100,7 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
   ) {
     const domainIntentMatches = await runTimedExternalQuery(
       'external_domain_intent_family',
-      (timeoutMs) => runDomainIntentFamilyQuery(boundedRecallCap(2, 48), timeoutMs),
+      (timeoutMs) => runDomainQuery(boundedRecallCap(2, 48), timeoutMs),
       Math.min(PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS, 1500),
     );
     out.push(...domainIntentMatches);
