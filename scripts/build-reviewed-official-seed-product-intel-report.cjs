@@ -124,6 +124,9 @@ function sanitizePublicSourceText(value) {
     .replace(/\bultra[-\s]?luxe\b/gi, 'refillable')
     .replace(/\ball[-\s]?new,\s*/gi, '')
     .replace(/\bgame[-\s]?day ready\b/gi, '')
+    .replace(/\bGet ready for your close up with this LED compact mirror\s*-\s*the magnification and bomb af lighting is here to get you photo-ready anytime,\s*anywhere\b/gi, 'An LED compact mirror with magnification and built-in lighting for makeup checks')
+    .replace(/\bbomb af lighting\b/gi, 'built-in lighting')
+    .replace(/\bphoto[-\s]?ready\b/gi, 'makeup-check')
     .replace(/\bon\s+lock\b/gi, '')
     .replace(/\bfavo[u]?rites?\b/gi, 'selected')
     .replace(/\bjust\s+add\s+your\b/gi, "designed to pair with the brand's")
@@ -507,7 +510,7 @@ function inferKind(title, category, categoryPath, description = '') {
     /\b(?:palmat|brush cleanser|brush cleaning|brush cleaner|brushampoo|sigmagic|travel\s+switch|switch\s+set|dry['’]?n\s+shape|brush\s+cleaning\s+mat|brush\s+cleaning\s+tool|deep cleans? your brushes)\b|sigma\W*switch\b/;
   if (/\b(?:grwm routine|look)\b/.test(titleCategoryText)) return 'makeup_set';
   if (/\bfenty\s+icon\s+the\s+case\b|\brefillable\s+lipstick\s+case\b/.test(titleCategoryText)) return 'beauty_accessory';
-  if (/\b(?:handheld\s+beauty\s+mirror|beauty\s+mirror|gloss\s+bomb\s+(?:holder|key\s*chain)|makeup\s+bag|flat-lay\s+makeup\s+bag)\b/.test(titleCategoryText)) return 'beauty_accessory';
+  if (/\b(?:handheld\s+beauty\s+mirror|beauty\s+mirror|led\s+compact\s+mirror|compact\s+mirror|gloss\s+bomb\s+(?:holder|key\s*chain)|makeup\s+bag|flat-lay\s+makeup\s+bag)\b/.test(titleCategoryText)) return 'beauty_accessory';
   if (/\b(?:cosmetic|makeup|fragrance)?\s*pouch\b|\b(?:cosmetic|makeup)\s+bag\b/.test(titleCategoryText)) return 'beauty_accessory';
   if (/\b(?:brush\s+cup|brush\s+holder|brush\s+case|brush\s+bag|brush\s+storage|makeup\s+brush\s+cup)\b/.test(titleCategoryText)) return 'brush_storage';
   if (brushCareTitlePattern.test(titleCategoryText)) return 'brush_care';

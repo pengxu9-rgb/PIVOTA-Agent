@@ -2172,6 +2172,25 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
       batchName: 'test_batch',
       reviewer: 'codex_test',
     });
+    const ledMirrorBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_fenty_led_mirror',
+        title: 'LED Compact Mirror',
+        canonical_url: 'https://fentybeauty.com/products/led-compact-mirror',
+        seed_data: {
+          brand: 'Fenty Beauty',
+          description:
+            'Get ready for your close up with this LED compact mirror - the magnification and bomb af lighting is here to get you photo-ready anytime, anywhere.',
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_fenty_led_mirror',
+        sellable_item_group_id: 'sig_fenty_led_mirror',
+      },
+      generatedAt: '2026-05-24T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
     const blottingBundle = buildBundle({
       seed: {
         external_product_id: 'ext_fenty_blotting_paper',
@@ -2306,6 +2325,8 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     expect(spongeBundle.shopping_card.highlight).toBe('Makeup sponge format detail');
     expect(mirrorBundle.shopping_card.subtitle).toBe('Beauty Accessory');
     expect(mirrorBundle.shopping_card.highlight).toBe('Accessory format detail');
+    expect(ledMirrorBundle.shopping_card.subtitle).toBe('Beauty Accessory');
+    expect(ledMirrorBundle.shopping_card.intro).toContain('built-in lighting');
     expect(blottingBundle.shopping_card.subtitle).toBe('Blotting Paper');
     expect(blottingBundle.shopping_card.highlight).toBe('Oil-blotting paper refill');
     expect(hairSetBundle.shopping_card.subtitle).toBe('Hair Care Set');
@@ -2321,6 +2342,7 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     expect(JSON.stringify([
       spongeBundle,
       mirrorBundle,
+      ledMirrorBundle,
       blottingBundle,
       hairSetBundle,
       powderBrushBundle,
@@ -2329,7 +2351,7 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
       lipLinerBundle,
       lipstickCaseBundle,
     ])).not.toMatch(
-      /beauty product|perfeeccttt|perfect amount|\bfree\b|\borders?\b|eyeliner for defining lash|lip product listed on the official source page as Invisimatte/i,
+      /beauty product|perfeeccttt|perfect amount|photo-ready|bomb af|\bfree\b|\borders?\b|eyeliner for defining lash|lip product listed on the official source page as Invisimatte/i,
     );
   });
 
