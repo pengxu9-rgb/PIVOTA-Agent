@@ -21,6 +21,23 @@ function loadServerWithDb(envOverrides = {}) {
   return { app, db, debug: app._debug };
 }
 
+function eligibleServingRow(overrides = {}) {
+  return {
+    content_key: overrides.content_key || 'ck_test_serving',
+    product_key: overrides.product_key || 'prod::external_seed::external_seed::ext_test_serving',
+    pivota_signature_id: overrides.pivota_signature_id || null,
+    sync_status: 'live',
+    pdp_lifecycle_stage: 'live',
+    serving_eligible: true,
+    pipeline_stage: 'serving',
+    blocker_code: null,
+    blocker_detail: null,
+    content_quality_score: 95.2,
+    active_external_seed_source_match: true,
+    ...overrides,
+  };
+}
+
 describe('external seed product detail hydration', () => {
   afterEach(() => {
     nock.cleanAll();
@@ -73,6 +90,239 @@ describe('external seed product detail hydration', () => {
       ]),
     );
     expect(refs).not.toEqual(expect.arrayContaining(['sig_abc123', 'sig_def456']));
+  });
+
+  test('module health keeps optional coverage gaps out of global degrade', () => {
+    const { debug } = loadServerWithDb();
+
+    const optionalHealth = debug.classifyPdpV2ModuleHealth(
+      [
+        { type: 'active_ingredients', reason: 'unavailable' },
+        { type: 'ingredients_inci', reason: 'unavailable' },
+        { type: 'how_to_use', reason: 'unavailable' },
+        { type: 'supplemental_details', reason: 'unavailable' },
+        { type: 'product_intel', reason: 'identity_or_published_intel_missing' },
+      ],
+      [
+        { type: 'active_ingredients', required: false },
+        { type: 'ingredients_inci', required: false },
+        { type: 'how_to_use', required: false },
+        { type: 'supplemental_details', required: false },
+        { type: 'product_intel', required: false },
+      ],
+    );
+
+    expect(optionalHealth.applied).toBe(false);
+    expect(optionalHealth.severity).toBe('warning');
+    expect(optionalHealth.degraded).toHaveLength(0);
+    expect(optionalHealth.warnings.map((item) => item.type)).toEqual([
+      'active_ingredients',
+      'ingredients_inci',
+      'how_to_use',
+      'supplemental_details',
+      'product_intel',
+    ]);
+
+    const requiredHealth = debug.classifyPdpV2ModuleHealth(
+      [{ type: 'product_intel', reason: 'published_intel_missing' }],
+      [{ type: 'product_intel', required: true }],
+    );
+    expect(requiredHealth.applied).toBe(true);
+    expect(requiredHealth.severity).toBe('degraded');
+
+    const informationalHealth = debug.classifyPdpV2ModuleHealth(
+      [{ type: 'similar', reason: 'deferred' }],
+      [{ type: 'similar', required: false }],
+    );
+    expect(informationalHealth.applied).toBe(false);
+    expect(informationalHealth.severity).toBe('info');
+  });
+
+  test('get_pdp_v2 response keeps optional product_intel gap out of global degrade', async () => {
+    const { app, db } = loadServerWithDb({
+      PIVOTA_API_BASE: 'https://backend.test',
+      PIVOTA_API_KEY: 'test-token',
+    });
+    const statusRow = {
+      id: 'eps_optional_intel_gap',
+      external_product_id: 'ext_optional_intel_gap',
+      status: 'active',
+    };
+    const detailRow = {
+      ...statusRow,
+      canonical_url: 'https://example.com/products/optional-intel-gap',
+      destination_url: 'https://example.com/products/optional-intel-gap',
+      title: 'Optional Intel Gap Serum',
+      image_url: 'https://cdn.example.com/optional-intel-gap.jpg',
+      price_amount: '24.00',
+      price_currency: 'USD',
+      availability: 'In Stock',
+      seed_data: {
+        brand: 'Pivota Test',
+        pdp_description_raw: 'A lightweight serum used for module-health testing.',
+        snapshot: {
+          variants: [
+            {
+              variant_id: 'ext_optional_intel_gap',
+              price: '24.00',
+              currency: 'USD',
+            },
+          ],
+        },
+      },
+    };
+    db.query.mockImplementation((sql) => {
+      const text = String(sql || '');
+      if (text.includes('FROM catalog_products cp') && text.includes('LEFT JOIN index_pipeline_state ips')) {
+        return Promise.resolve({
+          rows: [
+            eligibleServingRow({
+              content_key: 'ck_optional_intel_gap',
+              product_key: 'prod::external_seed::external_seed::ext_optional_intel_gap',
+            }),
+          ],
+        });
+      }
+      if (text.includes('FROM external_product_seeds') && text.includes('destination_url')) {
+        return Promise.resolve({ rows: [detailRow] });
+      }
+      if (text.includes('FROM external_product_seeds') && text.includes('status')) {
+        return Promise.resolve({ rows: [statusRow] });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+
+    nock('https://backend.test')
+      .get('/agent/v1/product-groups/resolve-by-product-id')
+      .query((query) => query && query.product_id === 'ext_optional_intel_gap')
+      .reply(404, { error: 'PRODUCT_NOT_FOUND', message: 'No product group' });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'get_pdp_v2',
+        payload: {
+          product_ref: {
+            merchant_id: 'external_seed',
+            product_id: 'ext_optional_intel_gap',
+          },
+          include: ['product_intel'],
+          options: { no_cache: true },
+        },
+      })
+      .expect(200);
+
+    expect(res.body.missing).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'product_intel' }),
+      ]),
+    );
+    expect(res.body.metadata.module_health).toEqual(
+      expect.objectContaining({
+        severity: 'warning',
+        applied: false,
+        warnings: expect.arrayContaining([
+          expect.objectContaining({ type: 'product_intel' }),
+        ]),
+      }),
+    );
+    expect(res.body.metadata.module_degrade).toEqual(
+      expect.objectContaining({
+        severity: 'warning',
+        applied: false,
+      }),
+    );
+  });
+
+  test('get_pdp_v2 response marks core offers failure as degraded', async () => {
+    const { app, db } = loadServerWithDb({
+      PIVOTA_API_BASE: 'https://backend.test',
+      PIVOTA_API_KEY: 'test-token',
+      PDP_SELF_OFFER_FALLBACK_ENABLED: 'false',
+    });
+    const statusRow = {
+      id: 'eps_core_offers_gap',
+      external_product_id: 'ext_core_offers_gap',
+      status: 'active',
+    };
+    const detailRow = {
+      ...statusRow,
+      canonical_url: 'https://example.com/products/core-offers-gap',
+      destination_url: 'https://example.com/products/core-offers-gap',
+      title: 'Core Offers Gap Serum',
+      image_url: 'https://cdn.example.com/core-offers-gap.jpg',
+      price_amount: null,
+      price_currency: 'USD',
+      availability: 'In Stock',
+      seed_data: {
+        brand: 'Pivota Test',
+        pdp_description_raw: 'A serum used for module-health testing.',
+        snapshot: {
+          variants: [],
+        },
+      },
+    };
+    db.query.mockImplementation((sql) => {
+      const text = String(sql || '');
+      if (text.includes('FROM catalog_products cp') && text.includes('LEFT JOIN index_pipeline_state ips')) {
+        return Promise.resolve({
+          rows: [
+            eligibleServingRow({
+              content_key: 'ck_core_offers_gap',
+              product_key: 'prod::external_seed::external_seed::ext_core_offers_gap',
+            }),
+          ],
+        });
+      }
+      if (text.includes('FROM external_product_seeds') && text.includes('destination_url')) {
+        return Promise.resolve({ rows: [detailRow] });
+      }
+      if (text.includes('FROM external_product_seeds') && text.includes('status')) {
+        return Promise.resolve({ rows: [statusRow] });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+
+    nock('https://backend.test')
+      .get('/agent/v1/product-groups/resolve-by-product-id')
+      .query((query) => query && query.product_id === 'ext_core_offers_gap')
+      .reply(404, { error: 'PRODUCT_NOT_FOUND', message: 'No product group' });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'get_pdp_v2',
+        payload: {
+          product_ref: {
+            merchant_id: 'external_seed',
+            product_id: 'ext_core_offers_gap',
+          },
+          include: ['offers'],
+          options: { no_cache: true },
+        },
+      })
+      .expect(200);
+
+    expect(res.body.missing).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'offers' }),
+      ]),
+    );
+    expect(res.body.metadata.module_health).toEqual(
+      expect.objectContaining({
+        severity: 'degraded',
+        applied: true,
+        degraded: expect.arrayContaining([
+          expect.objectContaining({ type: 'offers' }),
+        ]),
+      }),
+    );
+    expect(res.body.metadata.module_degrade).toEqual(
+      expect.objectContaining({
+        severity: 'degraded',
+        applied: true,
+      }),
+    );
   });
 
   test('fetchProductDetailForOffers returns enriched external seed detail for external_seed merchant', async () => {
@@ -517,6 +767,16 @@ describe('external seed product detail hydration', () => {
     };
     db.query.mockImplementation((sql) => {
       const text = String(sql || '');
+      if (text.includes('FROM catalog_products cp') && text.includes('LEFT JOIN index_pipeline_state ips')) {
+        return Promise.resolve({
+          rows: [
+            eligibleServingRow({
+              content_key: 'ck_ext_seed_db_1',
+              product_key: 'prod::external_seed::external_seed::ext_seed_db_1',
+            }),
+          ],
+        });
+      }
       if (text.includes('FROM external_product_seeds') && text.includes('destination_url')) {
         return Promise.resolve({ rows: [detailRow] });
       }
@@ -623,6 +883,17 @@ describe('external seed product detail hydration', () => {
     };
     db.query.mockImplementation((sql) => {
       const text = String(sql || '');
+      if (text.includes('FROM catalog_products cp') && text.includes('LEFT JOIN index_pipeline_state ips')) {
+        return Promise.resolve({
+          rows: [
+            eligibleServingRow({
+              content_key: 'ck_ext_seed_db_sig_1',
+              product_key: signatureRow.product_key,
+              pivota_signature_id: 'sig_fentygloss1',
+            }),
+          ],
+        });
+      }
       if (text.includes('FROM catalog_products') && text.includes('pivota_signature_id = $1')) {
         return Promise.resolve({ rows: [signatureRow] });
       }
@@ -689,7 +960,7 @@ describe('external seed product detail hydration', () => {
     expect(res.body.subject).toEqual(
       expect.objectContaining({
         type: 'product_group',
-        id: 'sig_fentygloss1',
+        id: 'sig_fentygloss_line',
       }),
     );
     expect(res.body.metadata.identity_resolution).toEqual(
@@ -776,6 +1047,16 @@ describe('external seed product detail hydration', () => {
     };
     db.query.mockImplementation((sql) => {
       const text = String(sql || '');
+      if (text.includes('FROM catalog_products cp') && text.includes('LEFT JOIN index_pipeline_state ips')) {
+        return Promise.resolve({
+          rows: [
+            eligibleServingRow({
+              content_key: 'ck_ext_boj_bojagi',
+              product_key: 'prod::external_seed::external_seed::ext_boj_bojagi',
+            }),
+          ],
+        });
+      }
       if (text.includes('FROM external_product_seeds') && text.includes('destination_url')) {
         return Promise.resolve({ rows: [detailRow] });
       }
@@ -877,6 +1158,16 @@ describe('external seed product detail hydration', () => {
     };
     db.query.mockImplementation((sql) => {
       const text = String(sql || '');
+      if (text.includes('FROM catalog_products cp') && text.includes('LEFT JOIN index_pipeline_state ips')) {
+        return Promise.resolve({
+          rows: [
+            eligibleServingRow({
+              content_key: 'ck_ext_boj_hanbang_set',
+              product_key: 'prod::external_seed::external_seed::ext_boj_hanbang_set',
+            }),
+          ],
+        });
+      }
       if (text.includes('FROM external_product_seeds') && text.includes('destination_url')) {
         return Promise.resolve({ rows: [detailRow] });
       }
@@ -1037,7 +1328,7 @@ describe('external seed product detail hydration', () => {
     expect(res.body.modules).toBeUndefined();
   });
 
-  test('get_pdp_v2 serving_eligible_only ignores stale no_seed when external seed source row exists', async () => {
+  test('get_pdp_v2 serving_eligible_only blocks stale no_seed until index state is recomputed eligible', async () => {
     const { app, db } = loadServerWithDb({
       PIVOTA_API_BASE: 'https://backend.test',
       PIVOTA_API_KEY: 'test-token',
@@ -1135,17 +1426,20 @@ describe('external seed product detail hydration', () => {
           },
         },
       })
-      .expect(200);
+      .expect(404);
 
-    const canonicalProduct = res.body.modules?.find((module) => module?.type === 'canonical')
-      ?.data?.pdp_payload?.product;
-    expect(canonicalProduct).toMatchObject({
-      title: 'Fenty Eau De Parfum Travel Set + Refills',
+    expect(res.body).toMatchObject({
+      error: 'PRODUCT_NOT_SERVABLE',
+      details: {
+        blocker_code: 'no_seed',
+        serving_eligible: false,
+        content_key: 'ck_fenty_seed_source_match',
+      },
     });
-    expect(res.body.error).toBeUndefined();
+    expect(res.body.modules).toBeUndefined();
   });
 
-  test('get_pdp_v2 serving_eligible_only allows active external seed direct PDPs blocked only by missing price', async () => {
+  test('get_pdp_v2 serving_eligible_only blocks missing_price until source evidence is repaired', async () => {
     const { app, db } = loadServerWithDb({
       PIVOTA_API_BASE: 'https://backend.test',
       PIVOTA_API_KEY: 'test-token',
@@ -1249,18 +1543,20 @@ describe('external seed product detail hydration', () => {
           },
         },
       })
-      .expect(200);
+      .expect(404);
 
-    const canonicalProduct = res.body.modules?.find((module) => module?.type === 'canonical')
-      ?.data?.pdp_payload?.product;
-    expect(canonicalProduct).toMatchObject({
-      title: 'Fenty Eau de Parfum Sample Vial on Card',
-      image_url: 'https://cdn.example.com/fenty-sample.jpg',
+    expect(res.body).toMatchObject({
+      error: 'PRODUCT_NOT_SERVABLE',
+      details: {
+        blocker_code: 'missing_price',
+        serving_eligible: false,
+        content_key: 'ck_fenty_missing_price_sample',
+      },
     });
-    expect(res.body.error).toBeUndefined();
+    expect(res.body.modules).toBeUndefined();
   });
 
-  test('get_pdp_v2 serving_eligible_only allows stale active external seed mirror PDPs with catalog surface assets', async () => {
+  test('get_pdp_v2 serving_eligible_only blocks active mirror PDPs that have no index row', async () => {
     const { app, db } = loadServerWithDb({
       PIVOTA_API_BASE: 'https://backend.test',
       PIVOTA_API_KEY: 'test-token',
@@ -1368,15 +1664,18 @@ describe('external seed product detail hydration', () => {
           },
         },
       })
-      .expect(200);
+      .expect(404);
 
-    const canonicalProduct = res.body.modules?.find((module) => module?.type === 'canonical')
-      ?.data?.pdp_payload?.product;
-    expect(canonicalProduct).toMatchObject({
-      title: 'Ceramide Moisture Gel Mask',
-      image_url: 'https://cdn.example.com/tirtir-mask.jpg',
+    expect(res.body).toMatchObject({
+      error: 'PRODUCT_NOT_SERVABLE',
+      details: {
+        reason: 'serving_eligibility_missing',
+        serving_eligible: false,
+        index_row_found: false,
+        content_key: 'ck_tirtir_stale_mask',
+      },
     });
-    expect(res.body.error).toBeUndefined();
+    expect(res.body.modules).toBeUndefined();
   });
 
   test('get_pdp_v2 serving_eligible_only still blocks active external seed rows marked non-core', async () => {
@@ -1559,6 +1858,17 @@ describe('external seed product detail hydration', () => {
 
     db.query.mockImplementation((sql) => {
       const text = String(sql || '');
+      if (text.includes('FROM catalog_products cp') && text.includes('LEFT JOIN index_pipeline_state ips')) {
+        return Promise.resolve({
+          rows: [
+            eligibleServingRow({
+              content_key: 'ck_fentyheat1',
+              product_key: productKey,
+              pivota_signature_id: 'sig_fentyheat1',
+            }),
+          ],
+        });
+      }
       if (text.includes('WITH offer_stats AS')) {
         return Promise.resolve({ rows: [competingPrimaryRow, signatureGroupRow] });
       }

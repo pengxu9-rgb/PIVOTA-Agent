@@ -17,6 +17,8 @@ function parseArgs(argv) {
     qualityThreshold: 60,
     sampleLimit: 15,
     out: '',
+    manifest: '',
+    manifestRows: [],
   };
   for (let i = 2; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -48,6 +50,9 @@ function parseArgs(argv) {
     } else if (arg === '--out') {
       args.out = String(next || '').trim();
       i += 1;
+    } else if (arg === '--manifest') {
+      args.manifest = String(next || '').trim();
+      i += 1;
     } else if (arg === '--help' || arg === '-h') {
       args.help = true;
     }
@@ -74,6 +79,8 @@ Options:
   --quality-threshold <n>       Score threshold for serving eligibility, default 60
   --sample-limit <n>            Sample rows to include in output, default 15
   --out <path>                  Write JSON report
+  --manifest <path>             JSON action manifest; only no_seed repair rows
+                                from the manifest are eligible for update
 `);
 }
 
@@ -92,8 +99,81 @@ async function many(client, sql, params = []) {
   return result.rows || [];
 }
 
+function text(value) {
+  return String(value == null ? '' : value).trim();
+}
+
+function loadManifestRows(filePath) {
+  if (!filePath) return [];
+  const raw = fs.readFileSync(filePath, 'utf8');
+  const parsed = JSON.parse(raw);
+  if (!Array.isArray(parsed)) {
+    throw new Error(`Manifest must be a JSON array: ${filePath}`);
+  }
+  const seen = new Set();
+  const rows = [];
+  for (const [index, row] of parsed.entries()) {
+    if (text(row.lane) !== 'repair' || text(row.blocker_code) !== 'no_seed') continue;
+    const contentKey = text(row.content_key);
+    const externalProductId = text(row.external_product_id) || text(row.source_product_id);
+    if (!/^ck_[a-f0-9]+$/i.test(contentKey)) {
+      throw new Error(`Manifest row ${index} has invalid content_key: ${contentKey || '(empty)'}`);
+    }
+    if (!externalProductId) {
+      throw new Error(`Manifest row ${index} has no external/source product id`);
+    }
+    const key = `${contentKey}::${externalProductId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rows.push({
+      content_key: contentKey,
+      external_product_id: externalProductId,
+      sig_id: text(row.sig_id),
+      title: text(row.title),
+    });
+  }
+  if (!rows.length) {
+    throw new Error(`Manifest has no repair/no_seed rows: ${filePath}`);
+  }
+  return rows;
+}
+
 async function buildCandidateTable(client, args) {
   await client.query('DROP TABLE IF EXISTS tmp_external_seed_mirror_attachment_repair');
+  await client.query('DROP TABLE IF EXISTS tmp_external_seed_mirror_attachment_manifest');
+  await client.query(`
+    CREATE TEMP TABLE tmp_external_seed_mirror_attachment_manifest (
+      content_key text NOT NULL,
+      external_product_id text NOT NULL,
+      sig_id text,
+      title text,
+      PRIMARY KEY (content_key, external_product_id)
+    ) ON COMMIT DROP
+  `);
+  if (args.manifestRows.length) {
+    await client.query(
+      `
+        INSERT INTO tmp_external_seed_mirror_attachment_manifest (
+          content_key,
+          external_product_id,
+          sig_id,
+          title
+        )
+        SELECT
+          content_key,
+          external_product_id,
+          sig_id,
+          title
+        FROM jsonb_to_recordset($1::jsonb) AS x(
+          content_key text,
+          external_product_id text,
+          sig_id text,
+          title text
+        )
+      `,
+      [JSON.stringify(args.manifestRows)],
+    );
+  }
   await client.query(
     `
       CREATE TEMP TABLE tmp_external_seed_mirror_attachment_repair ON COMMIT DROP AS
@@ -150,6 +230,9 @@ async function buildCandidateTable(client, args) {
          AND cp.sync_status = 'live'
         LEFT JOIN index_pipeline_state ips
           ON ips.content_key = cp.content_key
+        LEFT JOIN tmp_external_seed_mirror_attachment_manifest mf
+          ON mf.content_key = cp.content_key
+         AND mf.external_product_id = eps.external_product_id
         LEFT JOIN active_seed_counts ascn
           ON ascn.market_norm = upper(coalesce(eps.market, ''))
          AND ascn.external_product_id = eps.external_product_id
@@ -160,6 +243,7 @@ async function buildCandidateTable(client, args) {
           AND coalesce(eps.attached_product_key, '') = ''
           AND ($1::text = '' OR upper(coalesce(eps.market, '')) = $1::text)
           AND ($2::text = '' OR lower(coalesce(eps.domain, '')) = $2::text)
+          AND ($4::boolean IS FALSE OR mf.content_key IS NOT NULL)
       )
       SELECT
         *,
@@ -181,7 +265,7 @@ async function buildCandidateTable(client, args) {
         seed_id
       ${candidateLimitSql(args.limit)}
     `,
-    [args.market, args.domain, args.qualityThreshold],
+    [args.market, args.domain, args.qualityThreshold, args.manifestRows.length > 0],
   );
   await client.query('CREATE INDEX ON tmp_external_seed_mirror_attachment_repair(seed_id)');
   await client.query('CREATE INDEX ON tmp_external_seed_mirror_attachment_repair(content_key)');
@@ -269,6 +353,8 @@ async function summarize(client, args) {
       write: args.write === true,
       update_index: args.updateIndex === true,
       quality_threshold: args.qualityThreshold,
+      manifest: args.manifest || null,
+      manifest_rows: args.manifestRows.length,
     },
     totals,
     by_repair_status: byRepairStatus,
@@ -350,6 +436,7 @@ async function run(args) {
   if (args.write && args.confirm !== CONFIRM_TOKEN) {
     throw new Error(`Refusing write without --confirm ${CONFIRM_TOKEN}`);
   }
+  args.manifestRows = loadManifestRows(args.manifest);
 
   return withClient(async (client) => {
     await client.query('BEGIN');
