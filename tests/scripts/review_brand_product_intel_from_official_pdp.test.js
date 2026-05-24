@@ -124,6 +124,15 @@ describe('official PDP manual insight review', () => {
     ).toBe('Face color makeup');
     expect(
       inferRole(facts({
+        title: 'Cherry Dub BHA Toner with Salicylic Acid + Aloe Juice',
+        productType: 'Toner',
+        categoryPath: 'beauty/skincare/toner',
+        description: 'A pore-purifying BHA toner with salicylic acid and aloe juice.',
+        rawIngredients: ['Water', 'Salicylic Acid', 'Aloe Barbadensis Leaf Juice', 'Fragrance'],
+      })).label,
+    ).toBe('Exfoliating toner');
+    expect(
+      inferRole(facts({
         title: 'Positive Light Luminizing Lip Gloss',
         productType: 'Lip Gloss',
         categoryPath: 'beauty/makeup/lip/lip_gloss',
@@ -570,6 +579,38 @@ describe('official PDP manual insight review', () => {
     expect(plan.preview.headline).toBe('Hair treatment');
     expect(plan.preview.what_it_is).not.toContain('Fine fragrance');
     expect(plan.preview.shopping_highlight).toContain('frizz control');
+  });
+
+  test('keeps Fenty BHA toner out of fragrance classification when INCI contains fragrance', () => {
+    const plan = buildPlan(
+      row({
+        external_product_id: 'ext_fenty_cherry_dub_toner',
+        title: 'Cherry Dub BHA Toner with Salicylic Acid + Aloe Juice',
+        brand: 'FENTY BEAUTY',
+        canonical_url: 'https://fentybeauty.com/products/cherry-dub-bha-toner-with-salicylic-acid-aloe-juice',
+        category_path: 'beauty/skincare/toner',
+        product_type: 'Toner',
+        seed_data: {
+          brand: 'FENTY BEAUTY',
+          pdp_description_raw:
+            'A pore-purifying BHA toner with salicylic acid and aloe juice for a clearer-looking, smoother-feeling skin routine.',
+          pdp_active_ingredients_raw: 'Salicylic acid and aloe juice.',
+          pdp_ingredients_raw:
+            'Water, Salicylic Acid, Aloe Barbadensis Leaf Juice, Glycerin, Fragrance, Sodium Hydroxide.',
+          pdp_how_to_use_raw:
+            'After cleansing, apply with a cotton pad or hands. Start two to three times weekly and increase as skin tolerates.',
+          variants: [{ title: '150 mL', options: [{ name: 'Size', value: '150 mL' }] }],
+        },
+      }),
+      { brand: 'Fenty Beauty', includeStrong: false },
+    );
+
+    expect(plan.blocked).toBe(false);
+    expect(plan.preview.headline).toBe('Exfoliating toner');
+    expect(plan.preview.what_it_is).toContain('exfoliating toner');
+    expect(plan.preview.what_it_is).not.toContain('Fine fragrance');
+    expect(plan.preview.shopping_highlight).toContain('BHA');
+    expect(plan.preview.best_for.map((item) => item.tag)).toContain('exfoliating_toner_step');
   });
 
   test('writes specific copy for Fenty dry shampoo powder', () => {
