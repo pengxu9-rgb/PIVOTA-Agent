@@ -174,12 +174,23 @@ function fieldExistingText(seedData, field) {
   return text(seedData[field] || snapshot[field]);
 }
 
+function hasCanonicalFieldValue(seedData, field) {
+  const snapshot = asObject(seedData.snapshot);
+  if (field === 'pdp_ingredients_raw') {
+    return Boolean(text(seedData.pdp_ingredients_raw || snapshot.pdp_ingredients_raw));
+  }
+  return Boolean(text(seedData[field] || snapshot[field]));
+}
+
 function shouldPatchField(seedData, field, nextValue, entry) {
   const normalizedNext = text(nextValue);
   if (!normalizedNext) return { patch: false, reason: 'empty_patch_value' };
   const existing = fieldExistingText(seedData, field);
   if (!existing) return { patch: true };
   if (text(existing).toLowerCase() === normalizedNext.toLowerCase()) {
+    if (field === 'pdp_ingredients_raw' && !hasCanonicalFieldValue(seedData, field)) {
+      return { patch: true, reason: 'materialize_canonical_pdp_ingredients_raw' };
+    }
     return { patch: false, reason: 'no_change_same_value' };
   }
   const existingQuality = qualityForField(seedData, field);
