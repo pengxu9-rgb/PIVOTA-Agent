@@ -115,6 +115,8 @@ const PDP_RECS_CACHE_METRICS = {
   sets: 0,
   bypasses: 0,
   evictions: 0,
+  rejected_unavailable_hits: 0,
+  skipped_unavailable_sets: 0,
 };
 
 function normalizeRecsDbTimeoutMs(timeoutMs, fallbackMs = PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS) {
@@ -224,7 +226,30 @@ function getCacheEntry(cacheKey) {
   return entry;
 }
 
+function isUnavailableRecommendationResult(value = {}) {
+  const items = Array.isArray(value?.items) ? value.items : [];
+  if (items.length > 0) return false;
+  const status = String(value?.metadata?.similar_status || value?.status || '').trim().toLowerCase();
+  const fetchStrategy = value?.debug?.fetch_strategy && typeof value.debug.fetch_strategy === 'object'
+    ? value.debug.fetch_strategy
+    : {};
+  return (
+    status === 'unavailable' ||
+    fetchStrategy.external_timed_out === true ||
+    fetchStrategy.internal_timed_out === true
+  );
+}
+
+function isCacheableRecommendationResult(value = {}) {
+  return !isUnavailableRecommendationResult(value);
+}
+
 function setCacheEntry(cacheKey, value, ttlMs = PDP_RECS_CACHE_TTL_MS) {
+  if (!isCacheableRecommendationResult(value)) {
+    PDP_RECS_CACHE.delete(cacheKey);
+    PDP_RECS_CACHE_METRICS.skipped_unavailable_sets += 1;
+    return;
+  }
   const ttl = Number(ttlMs) || PDP_RECS_CACHE_TTL_MS;
   const storedAtMs = Date.now();
   PDP_RECS_CACHE.set(cacheKey, { value, storedAtMs, expiresAtMs: storedAtMs + ttl });
@@ -3547,6 +3572,7 @@ async function fetchExternalCandidates({
   limit,
   minFocusedCandidates = 6,
   deepDomainRecall = false,
+  queryTimeoutCapMs = null,
 }) {
   if (!process.env.DATABASE_URL) {
     throw buildDatabaseNotConfiguredError('pdp_recommendations_external_candidates');
@@ -3976,9 +4002,13 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
   async function runTimedExternalQuery(queryName, task, timeoutMs = PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS) {
     const startedAt = Date.now();
     let timedOut = false;
+    const effectiveTimeoutMs =
+      queryTimeoutCapMs != null
+        ? Math.min(normalizeRecsDbTimeoutMs(timeoutMs), normalizeRecsDbTimeoutMs(queryTimeoutCapMs))
+        : timeoutMs;
     const products = await withSoftTimeout(
-      Promise.resolve().then(() => task(timeoutMs)),
-      timeoutMs,
+      Promise.resolve().then(() => task(effectiveTimeoutMs)),
+      effectiveTimeoutMs,
       [],
       (timeoutMs) => {
         timedOut = true;
@@ -3994,7 +4024,7 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
       elapsed_ms: Math.max(0, Date.now() - startedAt),
       returned_count: Array.isArray(products) ? products.length : 0,
       timed_out: timedOut,
-      timeout_ms: timeoutMs,
+      timeout_ms: effectiveTimeoutMs,
     });
     return products;
   }
@@ -4859,10 +4889,15 @@ async function recommend({
   } else {
     const cached = getCacheEntry(cacheKey);
     if (cached?.value) {
-      const ageMs = typeof cached.storedAtMs === 'number' ? Math.max(0, Date.now() - cached.storedAtMs) : 0;
-      return debugEnabled
-        ? { ...cached.value, cache: { hit: true, age_ms: ageMs, ttl_ms: PDP_RECS_CACHE_TTL_MS } }
-        : cached.value;
+      if (!isCacheableRecommendationResult(cached.value)) {
+        PDP_RECS_CACHE.delete(cacheKey);
+        PDP_RECS_CACHE_METRICS.rejected_unavailable_hits += 1;
+      } else {
+        const ageMs = typeof cached.storedAtMs === 'number' ? Math.max(0, Date.now() - cached.storedAtMs) : 0;
+        return debugEnabled
+          ? { ...cached.value, cache: { hit: true, age_ms: ageMs, ttl_ms: PDP_RECS_CACHE_TTL_MS } }
+          : cached.value;
+      }
     }
   }
 
@@ -4879,9 +4914,16 @@ async function recommend({
   const baseIntentFamily = getSimilarIntentFamilyFromProduct(baseProduct);
   const baseSemanticStrong = Number(baseSemantic?.signal_strength || 0) >= 2;
   const baseProductIsExternal = isExternalProduct(baseProduct);
-  const effectiveExternalFetchTimeoutMs = baseProductIsExternal
+  const requestedExternalFetchTimeoutMs = parseTimeoutMs(
+    options?.external_fetch_timeout_ms ?? options?.externalFetchTimeoutMs,
+    0,
+  );
+  const defaultExternalFetchTimeoutMs = baseProductIsExternal
     ? PDP_RECS_EXTERNAL_BASE_FETCH_TIMEOUT_MS
     : PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS;
+  const effectiveExternalFetchTimeoutMs = requestedExternalFetchTimeoutMs > 0
+    ? Math.max(300, requestedExternalFetchTimeoutMs)
+    : defaultExternalFetchTimeoutMs;
 
   const shouldFetchInternalCandidates = Boolean(providedInternal) || !baseProductIsExternal;
   const externalFetchLimit = Math.max(
@@ -4929,6 +4971,7 @@ async function recommend({
           limit: externalFetchLimit,
           minFocusedCandidates: externalFocusedRecallTarget,
           deepDomainRecall: baseProductIsExternal,
+          queryTimeoutCapMs: effectiveExternalFetchTimeoutMs,
         }),
     effectiveExternalFetchTimeoutMs,
     [],
@@ -5137,6 +5180,7 @@ async function recommend({
         base_semantic_strong: baseSemanticStrong,
         base_product_is_external: baseProductIsExternal,
         base_intent_family: baseIntentFamily || null,
+        external_fetch_timeout_ms: effectiveExternalFetchTimeoutMs,
         external_fetch_limit: externalFetchLimit,
         external_focused_recall_target: externalFocusedRecallTarget,
         external_recall_debug: externalFetchStats,
@@ -5194,6 +5238,8 @@ module.exports = {
       PDP_RECS_CACHE_METRICS.sets = 0;
       PDP_RECS_CACHE_METRICS.bypasses = 0;
       PDP_RECS_CACHE_METRICS.evictions = 0;
+      PDP_RECS_CACHE_METRICS.rejected_unavailable_hits = 0;
+      PDP_RECS_CACHE_METRICS.skipped_unavailable_sets = 0;
     },
     normalizeText,
     tokenize,
@@ -5216,5 +5262,7 @@ module.exports = {
     getSimilarIntentFamilyFromFeatures,
     getSimilarIntentFamilyFromProductTitle,
     productMatchesFocusedIntentFamily,
+    isCacheableRecommendationResult,
+    isUnavailableRecommendationResult,
   },
 };

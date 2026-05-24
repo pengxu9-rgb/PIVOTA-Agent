@@ -2844,6 +2844,13 @@ const PDP_SIMILAR_BASE_DETAIL_BUDGET_MS = Math.max(
   50,
   parseTimeoutMs(process.env.PDP_SIMILAR_BASE_DETAIL_BUDGET_MS, 450),
 );
+const PDP_SIMILAR_EXTERNAL_FETCH_BUDGET_MS = Math.min(
+  1800,
+  Math.max(
+    300,
+    parseTimeoutMs(process.env.PDP_SIMILAR_EXTERNAL_FETCH_BUDGET_MS, 1500),
+  ),
+);
 const PDP_PRODUCT_INTEL_SYNC_BUDGET_MS = Math.max(
   250,
   parseTimeoutMs(process.env.PDP_PRODUCT_INTEL_SYNC_BUDGET_MS, 1500),
@@ -3956,6 +3963,7 @@ function buildPdpSimilarFetchArgs({
         no_cache: bypassCache,
         cache_bypass: bypassCache,
         bypass_cache: bypassCache,
+        external_fetch_timeout_ms: PDP_SIMILAR_EXTERNAL_FETCH_BUDGET_MS,
         hydrate_product_intel_cards: false,
       },
     },
@@ -39745,21 +39753,29 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   }
                 : { merchant_id: effectiveMerchantId || null, product_id: effectiveProductId });
 
-            const rec = await fetchSimilarProductsDeduped({
-              pdp_product: baseProduct,
-              k: directCandidateLimit,
-              locale: payload?.context?.locale || payload?.context?.language || payload?.locale || 'en-US',
-              currency: baseProduct.currency || baseProduct.price?.currency || 'USD',
-              options: {
-                debug: debugEnabled,
-                candidate_limit: directCandidateLimit,
-                no_cache: bypassCache,
-                cache_bypass: bypassCache,
-                bypass_cache: bypassCache,
-                exclude_items: excludeItems,
-                recent_views: recentViews,
+            const rec = await resolvePdpSimilarWithBudget(
+              fetchSimilarProductsDeduped({
+                pdp_product: baseProduct,
+                k: directCandidateLimit,
+                locale: payload?.context?.locale || payload?.context?.language || payload?.locale || 'en-US',
+                currency: baseProduct.currency || baseProduct.price?.currency || 'USD',
+                options: {
+                  debug: debugEnabled,
+                  candidate_limit: directCandidateLimit,
+                  no_cache: bypassCache,
+                  cache_bypass: bypassCache,
+                  bypass_cache: bypassCache,
+                  external_fetch_timeout_ms: PDP_SIMILAR_EXTERNAL_FETCH_BUDGET_MS,
+                  exclude_items: excludeItems,
+                  recent_views: recentViews,
+                },
+              }),
+              PDP_SIMILAR_BACKGROUND_SYNC_BUDGET_MS,
+              {
+                requestMode: 'post_core',
+                reasonCode: 'SIMILAR_DEFERRED_POST_CORE',
               },
-            });
+            );
 
             const rawProducts = Array.isArray(rec?.items) ? rec.items : [];
             const enrichedProducts = await enrichSimilarProductsForPdpCards({

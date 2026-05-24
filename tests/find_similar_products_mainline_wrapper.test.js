@@ -72,6 +72,7 @@ describe('find_similar_products mainline wrapper', () => {
         k: 16,
         options: expect.objectContaining({
           candidate_limit: 16,
+          external_fetch_timeout_ms: expect.any(Number),
         }),
       }),
     );

@@ -1295,6 +1295,28 @@ describe('RecommendationEngine (PDP)', () => {
     expect(stats.sets).toBeGreaterThanOrEqual(1);
   });
 
+  test('g2) unavailable timeout results are not recommendation-cacheable', () => {
+    const unavailable = {
+      items: [],
+      metadata: { similar_status: 'unavailable' },
+      debug: {
+        fetch_strategy: {
+          external_timed_out: true,
+        },
+      },
+    };
+
+    expect(_internals.isUnavailableRecommendationResult(unavailable)).toBe(true);
+    expect(_internals.isCacheableRecommendationResult(unavailable)).toBe(false);
+    expect(
+      _internals.isCacheableRecommendationResult({
+        items: [],
+        metadata: { similar_status: 'empty' },
+        debug: { fetch_strategy: { external_timed_out: false } },
+      }),
+    ).toBe(true);
+  });
+
   test('h) cache key includes requested limit k', async () => {
     const base = makeProduct({
       merchant_id: 'merch_store',
