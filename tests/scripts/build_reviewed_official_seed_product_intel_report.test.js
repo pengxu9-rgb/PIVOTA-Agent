@@ -13,6 +13,7 @@ const {
   _internals: {
     brandFromUrl,
     buildBundle,
+    firstSentence,
     inferKind,
     isConservativeRewriteCandidate,
     sanitizeFormulaSummary,
@@ -1461,6 +1462,127 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     expect(moisturizerBundle.shopping_card.highlight).toBe('Moisturizer formula detail');
     expect(lipButterBundle.shopping_card.highlight).toBe('Creamy lip formula detail');
     expect(lipButterBundle.shopping_card.intro).not.toMatch(/best-selling/i);
+  });
+
+  test('classifies noisy Kylie sets and accessories without stale skincare or makeup leakage', () => {
+    expect(
+      inferKind(
+        'Cosmic Kylie Jenner Pouch',
+        '',
+        '',
+        "Shop Kylie Cosmetics featuring makeup, fragrance, and skincare that's clean.",
+      ),
+    ).toBe('beauty_accessory');
+    expect(inferKind('Rosy Radiance Lip Combo', '', '', 'A lip combo with gloss and liner.')).toBe(
+      'lip_set',
+    );
+    expect(
+      inferKind(
+        'Cosmic Kylie Jenner & Intense 100ml Duo',
+        '',
+        '',
+        "Shop Kylie Cosmetics featuring makeup, fragrance, and skincare that's clean.",
+      ),
+    ).toBe('fragrance_set');
+    expect(
+      inferKind(
+        '12 Days of Kylie Advent Calendar',
+        '',
+        '',
+        'A multi-item advent calendar with makeup and lip items.',
+      ),
+    ).toBe('beauty_set');
+    expect(inferKind('Loofah', '', '', 'A body exfoliating shower sponge.')).toBe('body_tool');
+    expect(
+      inferKind('Pressed Blush Powder & Brush Duo', '', '', 'A pressed blush powder and brush duo.'),
+    ).toBe('makeup_set');
+    expect(inferKind('Hybrid Blush & Foundation Brush Duo', '', '', 'A blush and brush duo.')).toBe(
+      'makeup_set',
+    );
+    expect(inferKind('Glossy Lip Kit & Hybrid Blush Duo', '', '', 'A lip kit and blush duo.')).toBe(
+      'makeup_set',
+    );
+    expect(
+      inferKind('Glossy Lip Kit & Skin Tint Blurring Elixir Duo', '', '', 'A lip kit and skin tint duo.'),
+    ).toBe('makeup_set');
+    expect(
+      inferKind('Hybrid Blush & Tinted Butter Balm Duo', '', '', 'A blush and tinted butter balm duo.'),
+    ).toBe('makeup_set');
+    expect(
+      firstSentence(
+        sanitizePublicSourceText(
+          "Shop Kylie Cosmetics by Kylie Jenner, Kylie Jenner Fragrances and Kylie Skin featuring makeup, fragrance, and skincare that's clean, vegan, cruelty-free, and dermatologist-tested.",
+        ),
+      ),
+    ).toBe('');
+    expect(firstSentence('The mesh pouf is designed to help gently exfoliate along with the scrub, so')).toBe(
+      'The mesh pouf is designed to help gently exfoliate along with the scrub.',
+    );
+
+    const pouchBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_kylie_pouch',
+        title: 'Cosmic Kylie Jenner Pouch',
+        canonical_url: 'https://kyliecosmetics.com/products/cosmic-by-kylie-jenner-eau-de-parfum-pouch',
+        seed_data: {
+          brand: 'Kylie Cosmetics',
+          description:
+            "Shop Kylie Cosmetics by Kylie Jenner, Kylie Jenner Fragrances and Kylie Skin featuring makeup, fragrance, and skincare that's clean.",
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_kylie_pouch',
+        sellable_item_group_id: 'sig_kylie_pouch',
+      },
+      generatedAt: '2026-05-24T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+    const fragranceBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_kylie_cosmic_duo',
+        title: 'Cosmic Kylie Jenner 100ml Trio',
+        canonical_url: 'https://kyliecosmetics.com/products/cosmic-kylie-jenner-100ml-trio',
+        seed_data: {
+          brand: 'Kylie Cosmetics',
+          description: 'A Cosmic Kylie Jenner fragrance trio.',
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_kylie_cosmic_duo',
+        sellable_item_group_id: 'sig_kylie_cosmic_duo',
+      },
+      generatedAt: '2026-05-24T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+    const adventBundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_kylie_advent',
+        title: '12 Days of Kylie Advent Calendar',
+        canonical_url: 'https://kyliecosmetics.com/products/12-days-of-kylie-advent-calendar',
+        seed_data: {
+          brand: 'Kylie Cosmetics',
+          description: 'A multi-item advent calendar with makeup, lip, and fragrance formats.',
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_kylie_advent',
+        sellable_item_group_id: 'sig_kylie_advent',
+      },
+      generatedAt: '2026-05-24T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+
+    expect(pouchBundle.shopping_card.subtitle).toBe('Beauty Accessory');
+    expect(pouchBundle.shopping_card.highlight).toBe('Accessory format detail');
+    expect(pouchBundle.product_intel_core.what_it_is.body).not.toMatch(/skincare product/i);
+    expect(pouchBundle.shopping_card.intro).not.toMatch(/Shop Kylie Cosmetics/i);
+    expect(fragranceBundle.shopping_card.subtitle).toBe('Fragrance Set');
+    expect(fragranceBundle.shopping_card.highlight).toBe('Fragrance gift set');
+    expect(adventBundle.shopping_card.subtitle).toBe('Beauty Set');
+    expect(adventBundle.shopping_card.highlight).toBe('Multi-item advent calendar');
   });
 
   test('classifies Naturium treatment sprays, cleansing balms, and Vitamin C serums conservatively', () => {
