@@ -3844,6 +3844,8 @@ function resolvePdpSimilarCacheBypass(payload = {}) {
 
   return (
     isTruthyCacheBypassFlag(options.no_cache) ||
+    isTruthyCacheBypassFlag(options.cache_bypass) ||
+    isTruthyCacheBypassFlag(options.bypass_cache) ||
     isTruthyCacheBypassFlag(options.similar_cache_bypass) ||
     isTruthyCacheBypassFlag(options.similar_no_cache) ||
     hasExplicitCacheBypassFlag(

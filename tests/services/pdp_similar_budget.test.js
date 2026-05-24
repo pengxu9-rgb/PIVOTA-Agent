@@ -89,4 +89,25 @@ describeIfRuntimeDeps('PDP similar first-paint budget', () => {
       }),
     ).toBe('first_paint');
   });
+
+  test('passes generic PDP cache-bypass flags through to similar recall', () => {
+    jest.resetModules();
+    const app = require('../../src/server');
+
+    expect(
+      app._debug.resolvePdpSimilarCacheBypass({
+        options: { cache_bypass: true },
+      }),
+    ).toBe(true);
+    expect(
+      app._debug.resolvePdpSimilarCacheBypass({
+        options: { bypass_cache: 'true' },
+      }),
+    ).toBe(true);
+    expect(
+      app._debug.resolvePdpSimilarCacheBypass({
+        options: { similar_cache_bypass: true },
+      }),
+    ).toBe(true);
+  });
 });
