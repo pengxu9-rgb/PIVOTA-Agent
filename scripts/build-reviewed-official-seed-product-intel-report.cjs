@@ -106,13 +106,24 @@ function sanitizePublicSourceText(value) {
     .replace(/\b(?:ulta beauty|sephora|target|walmart|amazon)\s+exclusive\b/gi, '')
     .replace(/\b(?:an?|the)?\s*exclusive bundle available only at\s+[a-z0-9 .&'-]+\.?/gi, 'bundle')
     .replace(/\bavailable only at\s+[a-z0-9 .&'-]+\.?/gi, '')
+    .replace(/\bNEW!\s*Free\s+Fuzzy\s+Gloss\s+Bomb\s+Holder\s+on\s+\+\s+orders\.?/gi, 'A Gloss Bomb keychain accessory.')
+    .replace(/\bfree\b[^.?!]*(?:orders?|purchase)[^.?!]*\.?/gi, '')
     .replace(/\byour new favorite for ([^,.;:!?]+),\s*use this\b/gi, 'Use this')
     .replace(/\byour new favorite(?:\s+for)?\b/gi, '')
     .replace(/\bfan[-\s]?favo[u]?rite\b/gi, 'source-listed')
+    .replace(/\bfaves?\b/gi, 'selected')
+    .replace(/\bperfe{2,}c{2,}t+\b/gi, 'blend')
     .replace(/\bis the perfect addition to your\b/gi, 'is positioned for your')
     .replace(/\bperfect\s+for\b/gi, 'positioned for')
+    .replace(/\bthe\s+perfect\s+amount\s+of\s+nourishing\s+colo[u]?r\s+and\s+shine\b/gi, 'sheer nourishing color and shine')
+    .replace(/\bperfect\s+amount\s+of\b/gi, 'measured amount of')
+    .replace(/\bperfect\s+pop\s+of\s+colo[u]?r\b/gi, 'sheer pop of color')
+    .replace(/\bperfect\s+wash\s+of\s+colo[u]?r\b/gi, 'sheer wash of color')
     .replace(/\bto\s+perfect\s+and\s+extend\s+makeup\s+wear\b/gi, 'to set and extend makeup wear')
     .replace(/\bperfectly[-\s]?packaged,\s*/gi, 'packaged ')
+    .replace(/\bultra[-\s]?luxe\b/gi, 'refillable')
+    .replace(/\ball[-\s]?new,\s*/gi, '')
+    .replace(/\bgame[-\s]?day ready\b/gi, '')
     .replace(/\bon\s+lock\b/gi, '')
     .replace(/\bfavo[u]?rites?\b/gi, 'selected')
     .replace(/\bjust\s+add\s+your\b/gi, "designed to pair with the brand's")
@@ -120,6 +131,33 @@ function sanitizePublicSourceText(value) {
     .replace(/\bis your go-to for\b/gi, 'is designed for')
     .replace(/\bthis genius tool\b/gi, 'this tool')
     .replace(/\b(?:must-have|pro-favorite|ultimate|powerful)\b/gi, '')
+    .replace(/\bultra\s+comfortable\b/gi, 'comfortable')
+    .replace(/\bAn\s+comfortable\b/gi, 'A comfortable')
+    .replace(/\bultra\s+portable\b/gi, 'portable')
+    .replace(/\bsuper-chic,\s*/gi, '')
+    .replace(/\bultra\s+controlled\b/gi, 'controlled')
+    .replace(/\beffortless\s+smudging\b/gi, 'controlled smudging')
+    .replace(/\beffortlessly\s+blend\b/gi, 'blend')
+    .replace(/\bflawless\s+blending\s+and\s+sculpting\b/gi, 'blending and sculpting')
+    .replace(/\bBring chapped lips back to life with triple the hydration\b/gi, 'A lip-care essentials set positioned for dry-lip hydration')
+    .replace(/\bShop Fenty Hair to repair all hair types\s*\+\s*textures\b/gi, 'A hair-care set listed by the official source for hair-care routines')
+    .replace(/\bSnatch shimmer and shine based on your vibe\s*\+\s*blend with a compatible brush of your choice\b/gi, 'A highlighter and brush bundle for shimmer placement and blending')
+    .replace(/\bToo much shine\?\s*Ain['’]?t no such thing\.\s*Seal in moisture with lip-loving ingredients for a happy,\s*hydrated moisture barrier\b/gi, 'A lip gloss duo positioned around shine and moisture')
+    .replace(/\bShop lip gloss from Fenty Beauty by Rihanna\b/gi, 'A lip gloss set listed by the official source')
+    .replace(/\bShop\s+the\s+Fenty\s+Icon\s+reusable\s+case[^.?!]*Fenty\s+Icon\s+lipstick\b/gi, 'A reusable Fenty Icon case accessory')
+    .replace(/\bLook sun-kissed in seconds with a cream or powder bronzer\s*\+\s*compatible brush of your choice\b/gi, 'A bronzer and brush bundle for bronzing placement and blending')
+    .replace(/\bReady,\s*set\s*-\s*serve\.\s*Keep your look fresh\s*\+\s*photo-ready with a setting powder\s*\+\s*compatible brush of your choice\b/gi, 'A setting powder and brush bundle for powder application')
+    .replace(/\bBleenndd,\s*blend,\s*HIKE!\s*Get that Fenty Face\s+with this\s+seasonal sponge\s*-\s*all decked out in a football-shape design\b/gi, 'A seasonal football-shape makeup sponge for blending complexion products')
+    .replace(/\bBleenndd,\s*blend,\s*HIKE![^.?!]*football-shape design\b/gi, 'A seasonal football-shape makeup sponge for blending complexion products')
+    .replace(/\bSuper-soft blending brush meant to be used with liquid,\s*cream,\s*or powder formulas to blend and set your way to a flawless Fenty face\b/gi, 'A blending brush for liquid, cream, or powder formulas')
+    .replace(/\bWeightless,\s*longwear cream-powder hybrid highlighters that range from subtle dayglow to insanely supercharged in solos and expertly paired duos\b/gi, 'Weightless, longwear cream-powder hybrid highlighters available as solos or paired duos')
+    .replace(/\bGet Rihanna['’]s starter routine for your best skin in three simple steps,\s*with this set of travel-size minis\b/gi, 'A travel-size skincare starter set with three routine steps')
+    .replace(/\bYour best moisturized skin day\s*\+\s*night\.\s*Instantly hydrate,\s*smooth\s*\+\s*reduce the look of pores and dark spots\b/gi, 'A moisturizer bundle positioned for day and night routines')
+    .replace(/\bDrip your body in hydration then top off with a spicy,\s*floral fragrance\b/gi, 'A body-care and fragrance bundle for body hydration and scent layering')
+    .replace(/\bA hydrating multi-use stick that plays by your rules\b/gi, 'A hydrating multi-use cheek and lip stick')
+    .replace(/\bGET CAUGHT LOOKING BLUE[’']?TIFUL STRAIGHT UP:?\s*Catch yourself in all your glory with a handheld mirror to keep your Fenty looks on point and the essence of Smurfette reflected\b/gi, 'A handheld beauty mirror for checking makeup')
+    .replace(/\bMagnetic and multifaceted\.\s*Refined and raw\b/gi, 'A solid fragrance format listed by the official source')
+    .replace(/\bA paddle-shaped eyeshadow brush custom cut for versatile precision:\s*Pack it on for targeted eyeshadow application then buff it out for controlled crease blending\b/gi, 'A paddle-shaped eyeshadow brush for targeted eyeshadow application and crease blending')
     .replace(/\bFeaturing\s+yet\s+gentle\s+formulas\b/gi, 'Featuring gentle formulas')
     .replace(/\bpowerful\s+yet\s+gentle\s+formulas\b/gi, 'gentle formulas')
     .replace(/\byet\s+gentle\s+formulas\b/gi, 'gentle formulas')
@@ -413,11 +451,19 @@ function inferSetKind(titleCategoryText, descriptionText) {
   const joined = `${titleCategoryText} ${descriptionText}`;
   const fragranceSignalText = joined.replace(/\bfragrance[-\s]?free\b/g, ' ');
   const makeupSignal =
-    /\b(?:look|makeup|lash|mascara|brow|blush|blush tint|lip\s*(?:&|and)\s*cheek|glow balm|bronze|bronzer|bronzing|complexion|colour|color|base|liquidglow|superglow|blur\s*(?:,|&|and)?\s*(?:colour|color)?\s*&?\s*set|foundation|conceal|correct|concealer|palette|eye pen|eye duo|eye trio|eye look|eye looks|eyeliner|eye liner|eye shadow|eyeshadow)\b/;
+    /\b(?:look|makeup|lash|mascara|brow|blush|blush tint|lip\s*(?:&|and)\s*cheek|glow balm|bronze|bronzer|bronzing|complexion|colour|color|base|liquidglow|superglow|blur\s*(?:,|&|and)?\s*(?:colour|color)?\s*&?\s*set|foundation|conceal|correct|concealer|palette|eye pen|eye duo|eye trio|eye look|eye looks|eyeliner|eye liner|eye shadow|eyeshadow|primer|prime\s*\+\s*set|setting\s+powder|setting\s+spray|highlighter)\b/;
   const skincareSignal = /\b(?:skin|skincare|cleanse|cleanser|cleansing|tonic|toner|serum|mask|peel|clarity|rose|milky|mud)\b/;
   const strongSkincareSignal = /\b(?:cleanse|cleanser|cleansing|tonic|toner|serum|mask|peel|clarity|rose|milky|mud)\b/;
   if (/\badvent\s+calendar\b/.test(titleCategoryText)) return 'beauty_set';
   if (/\bcosmic\s+kylie\s+jenner\b/.test(titleCategoryText) && /\b(?:ml|pen\s+spray|duo|trio|gift\s+set)\b/.test(titleCategoryText)) return 'fragrance_set';
+  if (
+    /\b(?:slick[-\s]?back\s+styling|maintenance\s+crew|hair\s+care|hair\s+styling|fenty\s+hair|hair\s+types?\s*\+\s*textures?)\b/.test(joined) &&
+    /\b(?:set|kit|bundle|essentials|routine)\b/.test(titleCategoryText) &&
+    !/\b(?:fragrance|parfum|perfume|body\s+mist|hair\s*&\s*body\s+mist|hair\s+and\s+body\s+mist)\b/.test(joined)
+  ) {
+    return 'hair_care_set';
+  }
+  if (/\bbody\s+care\s*\+\s*fragrance\s+bundle\b/.test(titleCategoryText)) return 'body_care_set';
   if (/\b(?:body\s+start|body\s+cream|body\s+butter|butta\s+dropz|whipped\s+oil\s+body\s+cream)\b/.test(titleCategoryText)) return 'body_care_set';
   if (/\bvitamin[-\s]?c\b/.test(titleCategoryText) && /\bskincare\s+set\b/.test(joined)) return 'skincare_set';
   if (/\bmisting\s+must[-\s]?haves?\b/.test(titleCategoryText)) return 'skincare_set';
@@ -427,12 +473,12 @@ function inferSetKind(titleCategoryText, descriptionText) {
   }
   if (/\b(?:eau de parfum|parfum|perfume|pen spray|body mist|hair\s*&\s*body mist|hair and body mist)\b/.test(fragranceSignalText)) return 'fragrance_set';
   if (/\b(?:lip\s*(?:&|and)\s*cheek|lip\b[^.!?]{0,50}\b(?:blush|skin\s+tint)|blush\b[^.!?]{0,50}\b(?:lip|butter\s+balm|tinted\s+butter\s+balm)|blush\s*(?:&|and)\s*brush|pressed\s+blush\s+powder\s*(?:&|and)\s*brush|hybrid\s+blush\s*(?:&|and)\s*(?:foundation\s+)?brush)\b/.test(titleCategoryText)) return 'makeup_set';
-  if (/\b(?:lip patch|lippatch|lip care|lip sav|lip treat|liptreat|liptone|lip butter|butter balm|lip combo|lip oil|lip glaze|lip tint|lip liner|precision pout|powder matte lip|high gloss|lip kit|lip set|lip bundle|lip duo|lip trio|lip favourites|lip favorites)\b/.test(titleCategoryText)) return 'lip_set';
+  if (/\b(?:lip patch|lippatch|lip care|lip sav|lip treat|liptreat|liptone|lip butter|butter balm|lip combo|lip oil|lip glaze|lip gloss|lip luminizer|lip tint|lip liner|precision pout|powder matte lip|high gloss|double gloss|glossy posse|gloss bomb|lux balm|lip kit|lip set|lip bundle|lip duo|lip trio|lip vault|lip gloss vault|lip favourites|lip favorites)\b/.test(titleCategoryText)) return 'lip_set';
   if (/\b(?:eye patch|eye patches|eye care kit|eye care set|detoxifeye|fortifeye|dream-yeye|antioxifeye|beautifeye)\b/.test(titleCategoryText)) return 'eye_care_set';
   if (makeupSignal.test(titleCategoryText)) {
     return 'makeup_set';
   }
-  if (/\b(?:lip care|lip sav|lip treat|liptreat|liptone|lip butter|butter balm|lip combo|lip oil|lip glaze|lip tint|lip liner|precision pout|powder matte lip|high gloss|lip kit|lip set|lip bundle|lip duo|lip trio|lip favourites|lip favorites)\b/.test(joined) && !makeupSignal.test(joined)) return 'lip_set';
+  if (/\b(?:lip care|lip sav|lip treat|liptreat|liptone|lip butter|butter balm|lip combo|lip oil|lip glaze|lip gloss|lip luminizer|lip tint|lip liner|precision pout|powder matte lip|high gloss|double gloss|glossy posse|gloss bomb|lux balm|lip kit|lip set|lip bundle|lip duo|lip trio|lip vault|lip gloss vault|lip favourites|lip favorites)\b/.test(joined) && !makeupSignal.test(joined)) return 'lip_set';
   if (/\b(?:lip\s*(?:&|and)\s*cheek|blush|blush tint|powder blush|bronze|bronzer|glow balm|eye pen|eyeliner|eye liner)\b/.test(joined) && !strongSkincareSignal.test(joined)) return 'makeup_set';
   if (skincareSignal.test(titleCategoryText)) {
     return 'skincare_set';
@@ -460,12 +506,23 @@ function inferKind(title, category, categoryPath, description = '') {
   const brushCareDescriptionPattern =
     /\b(?:palmat|brush cleanser|brush cleaning|brush cleaner|brushampoo|sigmagic|travel\s+switch|switch\s+set|dry['’]?n\s+shape|brush\s+cleaning\s+mat|brush\s+cleaning\s+tool|deep cleans? your brushes)\b|sigma\W*switch\b/;
   if (/\b(?:grwm routine|look)\b/.test(titleCategoryText)) return 'makeup_set';
+  if (/\bfenty\s+icon\s+the\s+case\b|\brefillable\s+lipstick\s+case\b/.test(titleCategoryText)) return 'beauty_accessory';
+  if (/\b(?:handheld\s+beauty\s+mirror|beauty\s+mirror|gloss\s+bomb\s+(?:holder|key\s*chain)|makeup\s+bag|flat-lay\s+makeup\s+bag)\b/.test(titleCategoryText)) return 'beauty_accessory';
   if (/\b(?:cosmetic|makeup|fragrance)?\s*pouch\b|\b(?:cosmetic|makeup)\s+bag\b/.test(titleCategoryText)) return 'beauty_accessory';
   if (/\b(?:brush\s+cup|brush\s+holder|brush\s+case|brush\s+bag|brush\s+storage|makeup\s+brush\s+cup)\b/.test(titleCategoryText)) return 'brush_storage';
   if (brushCareTitlePattern.test(titleCategoryText)) return 'brush_care';
   if (/\b(?:face cloth|cleansing cloth|wash cloth|muslin cloth)\b/.test(titleText)) return 'skincare_tool';
+  if (/\b(?:football\s+sponge|makeup\s+sponge|blending\s+sponge)\b/.test(titleCategoryText)) return 'makeup_applicator';
+  if (/\b(?:under\s+eye\s+masks?|reusable\s+under\s+eye\s+masks?|patch\s+ya\s+bags)\b/.test(titleCategoryText)) return 'eye_treatment';
+  if (/\b(?:blotting\s+paper|invisimatte\s+blotting\s+paper)\b/.test(titleCategoryText)) return 'blotting_paper';
+  if (/\bbody\s+care\s*\+\s*fragrance\s+bundle\b/.test(titleCategoryText)) return 'body_care_set';
+  if (/\b(?:body\s+care\s+bundle|butta\s+drop\s+body\s+care\s+bundle)\b/.test(titleCategoryText)) return 'body_care_set';
+  if (/\b(?:am\s*\+\s*pm\s+moisturizer\s+bundle|moisturizer\s+bundle)\b/.test(titleCategoryText)) return 'skincare_set';
+  if (/\b(?:travel[-\s]?size\s+start'?r\s+set|mineral\s+spf)\b/.test(titleCategoryText) && /\b(?:skin|spf|moisturizer|cleanser|toner)\b/.test(haystack)) return 'skincare_set';
+  if (/\b(?:blush|highlighter|concealer|bronzer|setting\s+powder)\s*\+\s*brush\s+bundle\b/.test(titleCategoryText)) return 'makeup_set';
   if (/\b(?:setting\s+powder|blurring\s+setting\s+powder|instant\s+retouch\s+setting\s+powder|set\s+it\s+down)\b/.test(titleCategoryText)) return 'face_powder';
   if (/\b(?:setting\s+spray|makeup[-\s]?extending\s+setting\s+spray)\b/.test(titleCategoryText)) return 'setting_spray';
+  if (/\b(?:shimmer\s+skinstick|glow\s+skinstick)\b/.test(titleCategoryText)) return 'highlighter';
   if (/\b(?:correcting\s+skinstick|skin\s*stick|color\s+correct|colour\s+correct|corrector)\b/.test(titleCategoryText)) return 'corrector';
   if (/\b(?:edge\s+control\s+gel|strong\s+hold\s+gel|curl[-\s]?defining\s+cream|heat\s+protectant\s+styling\s+cream|styling\s+cream)\b/.test(titleCategoryText)) return 'hair_styling';
   if (/\b(?:lash\s+primer|mascara[-\s]?boosting\s+lash\s+primer)\b/.test(titleCategoryText)) return 'eye_makeup';
@@ -550,6 +607,7 @@ function inferKind(title, category, categoryPath, description = '') {
   if (/\b(?:eyeliner|mascara|false lashes|falsies|eyelashes|lashes|lash|eye color|eyeshadow|eye primer|palette)\b/.test(haystack)) return 'eye_makeup';
   if (/\b(?:blush)\b/.test(haystack)) return 'blush';
   if (/\b(?:bronzer|bronze|bronzing)\b/.test(haystack)) return 'bronzer';
+  if (/\b(?:shimmer\s+skinstick|glow\s+skinstick)\b/.test(titleCategoryText)) return 'highlighter';
   if (/\b(?:highlighting|highlighter|highlighte\s*r|luminizer|luminiser|illuminate)\b/.test(haystack)) return 'highlighter';
   if (/\bskinveil\b/.test(titleCategoryText) || /\b(?:loose water[-\s]?powder|setting makeup|velvet finish)\b/.test(haystack)) return 'face_powder';
   if (/\b(?:body oil|movement oil|universal oil)\b/.test(haystack)) return 'body_oil';
@@ -597,6 +655,7 @@ function kindLabel(kind, category) {
     bronzer: 'bronzer',
     highlighter: 'highlighter',
     face_powder: 'face powder',
+    blotting_paper: 'blotting paper',
     body_oil: 'body oil',
     dry_shampoo: 'dry shampoo',
     shampoo: 'shampoo',
@@ -607,6 +666,7 @@ function kindLabel(kind, category) {
     hair_rinse: 'hair rinse',
     scalp_serum: 'scalp serum',
     hair_styling: 'hair styling product',
+    hair_care_set: 'hair care set',
     deodorant: 'deodorant',
     body_wash: 'body wash',
     hand_wash: 'hand wash',
@@ -669,6 +729,7 @@ function displayCategoryForKind(kind, category) {
     bronzer: 'Bronzer',
     highlighter: 'Highlighter',
     face_powder: 'Face Powder',
+    blotting_paper: 'Blotting Paper',
     body_oil: 'Body Oil',
     dry_shampoo: 'Dry Shampoo',
     shampoo: 'Shampoo',
@@ -679,6 +740,7 @@ function displayCategoryForKind(kind, category) {
     hair_rinse: 'Hair Rinse',
     scalp_serum: 'Scalp Serum',
     hair_styling: 'Hair Styling',
+    hair_care_set: 'Hair Care Set',
     deodorant: 'Deodorant',
     body_wash: 'Body Wash',
     hand_wash: 'Hand Wash',
@@ -749,6 +811,7 @@ function displayCategoryForKind(kind, category) {
     'hair_rinse',
     'scalp_serum',
     'hair_styling',
+    'hair_care_set',
     'deodorant',
     'body_wash',
     'hand_wash',
@@ -760,6 +823,7 @@ function displayCategoryForKind(kind, category) {
     'body_gel',
     'body_spray_treatment',
     'body_oil',
+    'blotting_paper',
     'face_oil',
     'toner',
     'moisturizer',
@@ -794,6 +858,7 @@ function routineStep(kind) {
     bronzer: 'cheek_color',
     highlighter: 'complexion',
     face_powder: 'complexion',
+    blotting_paper: 'complexion',
     body_oil: 'body_care',
     dry_shampoo: 'hair_refresh',
     shampoo: 'hair_cleanse',
@@ -804,6 +869,7 @@ function routineStep(kind) {
     hair_rinse: 'hair_care',
     scalp_serum: 'scalp_care',
     hair_styling: 'hair_styling',
+    hair_care_set: 'set',
     deodorant: 'body_care',
     body_wash: 'body_cleanse',
     hand_wash: 'hand_cleanse',
@@ -953,6 +1019,21 @@ function sourceDescription(seedData) {
   );
 }
 
+function reviewedSourceDescriptionForKind({ title, kind, description }) {
+  const titleText = `${title}`.toLowerCase();
+  const descriptionText = `${description}`.toLowerCase();
+  if (/\blip\s+liner\b/.test(titleText) && /\b(?:eyeliner|lash\s+lines?|eye\s+looks?)\b/.test(descriptionText)) {
+    return 'A lip liner for defining lip shape and lip color placement.';
+  }
+  if (/\bgloss\s+bomb\s+key\s*chain\b/.test(titleText) && /\bfree\b[^.?!]*(?:orders?|purchase)/.test(descriptionText)) {
+    return 'A Gloss Bomb keychain accessory.';
+  }
+  if (kind === 'beauty_accessory' && /\bfenty\s+icon\s+the\s+case\b/.test(titleText)) {
+    return description || 'A refillable lipstick case accessory.';
+  }
+  return description;
+}
+
 function buildBestFor(kind, category) {
   const label = kindLabel(kind, category);
   return [
@@ -1034,6 +1115,7 @@ function buildHighlightPhrase(kind, category, description, title = '') {
     return 'Highlighter formula detail';
   }
   if (kind === 'face_powder') return 'Complexion powder detail';
+  if (kind === 'blotting_paper') return 'Oil-blotting paper refill';
   if (kind === 'body_oil') return 'Body oil formula detail';
   if (kind === 'dry_shampoo') return 'Post-workout dry shampoo';
   if (kind === 'shampoo') return /scalp|scrub/.test(titleText) ? 'Scalp shampoo format detail' : 'Shampoo format detail';
@@ -1049,6 +1131,10 @@ function buildHighlightPhrase(kind, category, description, title = '') {
     if (/curl[-\s]?defin/.test(signalText)) return 'Curl-defining cream detail';
     if (/gel/.test(signalText)) return 'Hair gel format detail';
     return 'Hair styling format detail';
+  }
+  if (kind === 'hair_care_set') {
+    if (/slick[-\s]?back|gel|styling/.test(signalText)) return 'Hair styling set';
+    return 'Hair-care routine set';
   }
   if (kind === 'deodorant') {
     if (/after\s+workout/.test(signalText)) return 'Post-workout deodorant';
@@ -1126,8 +1212,13 @@ function buildHighlightPhrase(kind, category, description, title = '') {
     if (/mascara|palette|makeup|look/.test(signalText)) return 'Makeup routine set';
     return 'Multi-item routine set';
   }
-  if (kind === 'body_care_set') return /body\s+cream|butta\s+dropz|whipped/.test(signalText) ? 'Body cream routine set' : 'Body-care routine set';
+  if (kind === 'body_care_set') {
+    if (/fragrance|parfum|body\s+mist/.test(signalText)) return 'Body care and scent set';
+    return /body\s+cream|butta\s+dropz|whipped/.test(signalText) ? 'Body cream routine set' : 'Body-care routine set';
+  }
   if (kind === 'skincare_set') {
+    if (/spf|mineral\s+spf/.test(signalText)) return 'SPF skincare set';
+    if (/moisturizer|moisturiser/.test(signalText)) return 'Moisturizer routine set';
     if (/cleanse|cleanser|cleansing/.test(signalText)) return 'Cleansing routine set';
     if (/mist/.test(titleText)) return 'Mist routine set';
     if (/glow|bright|radiance/.test(signalText)) return 'Glow routine set';
@@ -1138,13 +1229,36 @@ function buildHighlightPhrase(kind, category, description, title = '') {
   if (kind === 'makeup_set') {
     if (/lip\s*(?:&|and)\s*cheek|glow balm/.test(signalText)) return 'Lip-and-cheek color set';
     if (/blush|cheek/.test(signalText)) return 'Cheek color set';
-    if (/\b(?:favorites|favourites|routine|bundle|set)\b/.test(titleText) && /\b(?:eye|eyeshadow|palette|lip|brush)\b/.test(signalText)) return 'Makeup routine set';
+    if (/setting\s+powder/.test(signalText) && /brush/.test(signalText)) return 'Setting powder and brush set';
+    if (/highlighter/.test(signalText) && /brush/.test(signalText)) return 'Highlighter and brush set';
+    if (/concealer/.test(signalText) && /brush/.test(signalText)) return 'Concealer and brush set';
+    if (/bronzer|bronze/.test(signalText) && /brush/.test(signalText)) return 'Bronzer and brush set';
+    if (/prime\s*\+\s*set|primer\s*\+\s*setting|primer.*setting\s+(?:powder|spray)/.test(signalText)) {
+      return 'Complexion prep and set kit';
+    }
+    if (
+      /lip/.test(signalText) &&
+      /\b(?:eye|eyeshadow|eyeliner|mascara)\b/.test(signalText) &&
+      /\b(?:duo|2-piece|two-piece)\b/.test(titleText)
+    ) {
+      return 'Lip-and-eye makeup set';
+    }
+    if (
+      /eye|eyeshadow|palette|lash|mascara|eyeliner|eye liner/.test(signalText) &&
+      !/\b(?:lip|highlighter|brush|foundation|conceal|bronze|complexion)\b/.test(signalText)
+    ) {
+      return 'Eye-makeup routine set';
+    }
     if (/complexion|base|foundation|conceal|blur|bronze/.test(signalText)) return 'Complexion routine set';
-    if (/eye|eyeshadow|palette|lash|mascara/.test(signalText)) return 'Eye-makeup routine set';
+    if (/\b(?:favorites|favourites|routine|bundle|set)\b/.test(titleText) && /\b(?:eye|eyeshadow|palette|lip|brush)\b/.test(signalText)) return 'Makeup routine set';
     return 'Makeup routine set';
   }
   if (kind === 'eye_care_set') return 'Eye-care routine set';
-  if (kind === 'lip_set') return 'Lip-care routine set';
+  if (kind === 'lip_set') {
+    if (/gloss|luminizer/.test(signalText)) return 'Lip gloss routine set';
+    if (/balm|butter/.test(signalText)) return 'Lip balm routine set';
+    return 'Lip-care routine set';
+  }
   return `${text(category) || 'Product'} format detail`.slice(0, 40).trim();
 }
 
@@ -1159,9 +1273,10 @@ function buildBundle({ seed, inventoryRow, generatedAt, batchName, reviewer }) {
   const brandPrefix = brand ? `${brand} ` : '';
   const rawCategory = inferCategory(seed, inventoryRow);
   const categoryPath = inferCategoryPath(seed, inventoryRow);
-  const description = sourceDescription(seedData);
+  const rawDescription = sourceDescription(seedData);
+  const kind = inferKind(title, rawCategory, categoryPath, rawDescription);
+  const description = reviewedSourceDescriptionForKind({ title, kind, description: rawDescription });
   const descriptionSentence = firstSentence(sanitizePublicSourceText(description));
-  const kind = inferKind(title, rawCategory, categoryPath, description);
   const category = displayCategoryForKind(kind, rawCategory);
   const label = kindLabel(kind, category);
   const ingredient = ingredientSignals(seedData);
