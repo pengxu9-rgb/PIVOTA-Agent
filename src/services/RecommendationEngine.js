@@ -1798,9 +1798,18 @@ function buildExternalSeedRecommendationCandidate(row, options = {}) {
   );
   const description = firstNonEmptyText(
     row.seed_description,
+    row.seed_summary,
+    row.seed_pdp_description_raw,
     row.description,
     seedData.description,
+    seedData.summary,
+    seedData.pdp_description_raw,
     snapshot.description,
+    snapshot.summary,
+    snapshot.pdp_description_raw,
+    row.snapshot_description,
+    row.snapshot_summary,
+    row.snapshot_pdp_description_raw,
   );
   const brand = firstNonEmptyText(
     row.seed_brand,
@@ -2154,6 +2163,9 @@ const EXTERNAL_SEED_RECOMMENDATION_SELECT = `
             updated_at,
             created_at,
             seed_data->>'title' AS seed_title,
+            seed_data->>'description' AS seed_description,
+            seed_data->>'summary' AS seed_summary,
+            seed_data->>'pdp_description_raw' AS seed_pdp_description_raw,
             coalesce(seed_data->>'brand', seed_data->'derived'->'recall'->>'brand') AS seed_brand,
             seed_data->>'brand_name' AS seed_brand_name,
             seed_data->>'vendor' AS seed_vendor,
@@ -2176,6 +2188,9 @@ const EXTERNAL_SEED_RECOMMENDATION_SELECT = `
             seed_data->>'source_listing_scope' AS seed_source_listing_scope,
             seed_data->>'variant_title' AS seed_variant_title,
             seed_data->'snapshot'->>'title' AS snapshot_title,
+            seed_data->'snapshot'->>'description' AS snapshot_description,
+            seed_data->'snapshot'->>'summary' AS snapshot_summary,
+            seed_data->'snapshot'->>'pdp_description_raw' AS snapshot_pdp_description_raw,
             seed_data->'snapshot'->>'brand' AS snapshot_brand,
             seed_data->'snapshot'->>'brand_name' AS snapshot_brand_name,
             seed_data->'snapshot'->>'vendor' AS snapshot_vendor,
@@ -2248,6 +2263,9 @@ const EXTERNAL_SEED_LIGHT_RECOMMENDATION_SELECT = `
             availability,
             updated_at,
             created_at,
+            seed_data->>'description' AS seed_description,
+            seed_data->>'summary' AS seed_summary,
+            seed_data->>'pdp_description_raw' AS seed_pdp_description_raw,
             coalesce(seed_data->>'brand', seed_data->'derived'->'recall'->>'brand') AS seed_brand,
             seed_data->>'brand_name' AS seed_brand_name,
             seed_data->>'vendor' AS seed_vendor,
@@ -2262,7 +2280,10 @@ const EXTERNAL_SEED_LIGHT_RECOMMENDATION_SELECT = `
             seed_data->>'price_currency' AS seed_price_currency,
             seed_data->>'availability' AS seed_availability,
             seed_data->>'canonical_url' AS seed_canonical_url,
-            seed_data->>'destination_url' AS seed_destination_url
+            seed_data->>'destination_url' AS seed_destination_url,
+            seed_data->'snapshot'->>'description' AS snapshot_description,
+            seed_data->'snapshot'->>'summary' AS snapshot_summary,
+            seed_data->'snapshot'->>'pdp_description_raw' AS snapshot_pdp_description_raw
 `;
 
 const EXTERNAL_SEED_SEMANTIC_SELECT = `
