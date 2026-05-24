@@ -33,7 +33,7 @@ describe('serving eligibility default-strict behavior', () => {
     process.env = ORIGINAL_ENV;
   });
 
-  test('PDP serving eligibility is required by default with explicit opt-outs only', () => {
+  test('PDP serving eligibility is required by default and ineligible bypass is test-only', () => {
     const app = require('../../src/server');
     const { shouldRequirePdpServingEligible } = app._debug;
 
@@ -43,6 +43,12 @@ describe('serving eligibility default-strict behavior', () => {
     expect(shouldRequirePdpServingEligible({ serving_mode: 'db_serving' }, {})).toBe(false);
     expect(shouldRequirePdpServingEligible({ allow_ineligible: true }, {})).toBe(false);
     expect(shouldRequirePdpServingEligible({}, { allowIneligible: 'yes' })).toBe(false);
+
+    process.env.NODE_ENV = 'production';
+    expect(shouldRequirePdpServingEligible({ serving_mode: 'permissive' }, {})).toBe(true);
+    expect(shouldRequirePdpServingEligible({ serving_mode: 'db_serving' }, {})).toBe(true);
+    expect(shouldRequirePdpServingEligible({ allow_ineligible: true }, {})).toBe(true);
+    expect(shouldRequirePdpServingEligible({}, { allowIneligible: 'yes' })).toBe(true);
   });
 
   test('catalog serving gateway auto mode resolves to serving_eligible_only', async () => {

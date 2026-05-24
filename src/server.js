@@ -5497,6 +5497,68 @@ function collectCatalogPdpContentSourceProductIds(product = {}, productRef = {},
   ).slice(0, 20);
 }
 
+const PDP_MODULE_HEALTH_RANK = {
+  ok: 0,
+  info: 1,
+  warning: 2,
+  degraded: 3,
+};
+
+const PDP_CORE_DEGRADED_MODULE_TYPES = new Set([
+  'canonical',
+  'offers',
+]);
+
+const PDP_INFO_MISSING_REASONS = new Set([
+  'deferred',
+  'no_results',
+]);
+
+function classifyPdpV2ModuleHealth(missing = [], modules = []) {
+  const moduleByType = new Map();
+  for (const module of Array.isArray(modules) ? modules : []) {
+    const type = String(module?.type || '').trim();
+    if (type) moduleByType.set(type, module);
+  }
+
+  const items = (Array.isArray(missing) ? missing : []).map((item) => {
+    const type = String(item?.type || 'unknown').trim() || 'unknown';
+    const reason = String(item?.reason || 'unavailable').trim() || 'unavailable';
+    const normalizedReason = reason.toLowerCase();
+    const module = moduleByType.get(type);
+    const required = module?.required === true || item?.required === true;
+    const severity =
+      required || PDP_CORE_DEGRADED_MODULE_TYPES.has(type)
+        ? 'degraded'
+        : PDP_INFO_MISSING_REASONS.has(normalizedReason) ||
+            normalizedReason.startsWith('not_applicable') ||
+            normalizedReason.startsWith('product_family_')
+          ? 'info'
+          : 'warning';
+    return {
+      type,
+      reason,
+      required,
+      severity,
+    };
+  });
+
+  const severity = items.reduce((current, item) => {
+    return PDP_MODULE_HEALTH_RANK[item.severity] > PDP_MODULE_HEALTH_RANK[current]
+      ? item.severity
+      : current;
+  }, 'ok');
+
+  return {
+    severity,
+    applied: severity === 'degraded',
+    items,
+    degraded: items.filter((item) => item.severity === 'degraded'),
+    warnings: items.filter((item) => item.severity === 'warning'),
+    info: items.filter((item) => item.severity === 'info'),
+  };
+}
+
 function hasExternalSeedRichPdpContent(product) {
   if (!isPlainObject(product)) return false;
   const seedData = isPlainObject(product.seed_data) ? product.seed_data : {};
@@ -5732,6 +5794,10 @@ function isTruthyPdpOption(value) {
   return normalized === 'true' || normalized === '1' || normalized === 'yes';
 }
 
+function isPdpIneligibleBypassAllowed() {
+  return process.env.NODE_ENV === 'test';
+}
+
 function shouldRequirePdpServingEligible(payload, options) {
   const servingMode = normalizePdpServingMode(
     options?.serving_mode ||
@@ -5741,7 +5807,7 @@ function shouldRequirePdpServingEligible(payload, options) {
       payload?.metadata?.serving_mode ||
       payload?.metadata?.servingMode,
   );
-  const allowIneligible =
+  const requestedAllowIneligible =
     servingMode === 'permissive' ||
     servingMode === 'db_serving' ||
     isTruthyPdpOption(options?.allow_ineligible) ||
@@ -5750,6 +5816,7 @@ function shouldRequirePdpServingEligible(payload, options) {
     isTruthyPdpOption(payload?.allowIneligible) ||
     isTruthyPdpOption(payload?.metadata?.allow_ineligible) ||
     isTruthyPdpOption(payload?.metadata?.allowIneligible);
+  const allowIneligible = requestedAllowIneligible && isPdpIneligibleBypassAllowed();
   if (allowIneligible) return false;
   if (
     servingMode === 'serving_eligible_only' ||
@@ -5765,57 +5832,12 @@ function shouldRequirePdpServingEligible(payload, options) {
 
 function normalizePdpServingEligibilityRow(row) {
   if (!row || typeof row !== 'object') return null;
-  const sourceSystem = firstNonEmptyString(row.source_system) || null;
   const blockerCode = firstNonEmptyString(row.blocker_code) || null;
   const hasActiveExternalSeedSourceMatch = row.active_external_seed_source_match === true;
   const syncStatus = firstNonEmptyString(row.sync_status) || null;
-  const productFamily = firstNonEmptyString(row.external_seed_product_family, row.product_family) || null;
-  const normalizedProductFamily = String(productFamily || '').trim().toLowerCase();
-  const hasCatalogImage =
-    Boolean(firstNonEmptyString(row.catalog_image_url)) ||
-    Number(row.catalog_image_urls_count || 0) > 0;
-  const hasCatalogDescription = Boolean(firstNonEmptyString(row.catalog_description));
   const contentQualityScore = Number.isFinite(Number(row.content_quality_score))
     ? Number(row.content_quality_score)
     : null;
-  const isNonMerchDirectPdp =
-    normalizedProductFamily === 'non_merch' ||
-    normalizedProductFamily === 'donation' ||
-    /\b(?:donate|donation|foundation)\b/i.test(firstNonEmptyString(row.catalog_title));
-  const canUseActiveExternalSeedDirectPdp =
-    sourceSystem === 'external_product_seeds_mirror_v1' &&
-    hasActiveExternalSeedSourceMatch &&
-    !isNonMerchDirectPdp &&
-    blockerCode !== 'non_core_product';
-  const staleNoSeedBlocker =
-    canUseActiveExternalSeedDirectPdp &&
-    blockerCode === 'no_seed' &&
-    (contentQualityScore == null || contentQualityScore >= 50);
-  const missingPriceDirectPdpOverride =
-    canUseActiveExternalSeedDirectPdp &&
-    blockerCode === 'missing_price' &&
-    Number(row.content_quality_score || 0) >= 50 &&
-    Boolean(hasCatalogImage || hasCatalogDescription);
-  const activeSeedNoIndexDirectPdpOverride =
-    canUseActiveExternalSeedDirectPdp &&
-    !blockerCode &&
-    row.serving_eligible !== true &&
-    row.serving_eligible !== false &&
-    (syncStatus === 'stale' || syncStatus === 'live') &&
-    hasCatalogImage &&
-    hasCatalogDescription;
-  const staleNotLiveDirectPdpOverride =
-    canUseActiveExternalSeedDirectPdp &&
-    blockerCode === 'not_live' &&
-    syncStatus === 'stale' &&
-    hasCatalogImage &&
-    hasCatalogDescription &&
-    Number(row.content_quality_score || 0) >= 50;
-  const pdpGateOverride =
-    staleNoSeedBlocker ||
-    missingPriceDirectPdpOverride ||
-    activeSeedNoIndexDirectPdpOverride ||
-    staleNotLiveDirectPdpOverride;
   return {
     catalog_row_found: true,
     content_key: firstNonEmptyString(row.content_key) || null,
@@ -5823,24 +5845,14 @@ function normalizePdpServingEligibilityRow(row) {
     pivota_signature_id: firstNonEmptyString(row.pivota_signature_id) || null,
     sync_status: syncStatus,
     pdp_lifecycle_stage: firstNonEmptyString(row.pdp_lifecycle_stage) || null,
-    serving_eligible: row.serving_eligible === true || pdpGateOverride,
+    serving_eligible: row.serving_eligible === true,
     index_row_found: row.serving_eligible !== null && row.serving_eligible !== undefined,
-    pipeline_stage: pdpGateOverride
-      ? 'ready'
-      : firstNonEmptyString(row.pipeline_stage) || null,
-    blocker_code: pdpGateOverride ? null : blockerCode,
-    blocker_detail: pdpGateOverride ? null : firstNonEmptyString(row.blocker_detail) || null,
+    pipeline_stage: firstNonEmptyString(row.pipeline_stage) || null,
+    blocker_code: blockerCode,
+    blocker_detail: firstNonEmptyString(row.blocker_detail) || null,
     content_quality_score: contentQualityScore,
     active_external_seed_source_match: hasActiveExternalSeedSourceMatch,
-    eligibility_override_reason: staleNoSeedBlocker
-      ? 'active_external_seed_source_match'
-      : missingPriceDirectPdpOverride
-        ? 'active_external_seed_missing_price_direct_pdp'
-        : activeSeedNoIndexDirectPdpOverride
-          ? 'active_external_seed_no_index_direct_pdp'
-          : staleNotLiveDirectPdpOverride
-            ? 'active_external_seed_stale_not_live_direct_pdp'
-            : null,
+    eligibility_override_reason: null,
   };
 }
 
@@ -5944,6 +5956,8 @@ function shouldFailClosedForMissingPdpServingEligibility({
   const merchantId = String(canonicalProductRef?.merchant_id || '').trim();
   const productId = String(canonicalProductRef?.product_id || '').trim();
   return Boolean(
+    process.env.DATABASE_URL ||
+      process.env.PGHOST ||
     requestedPivotaSignatureId ||
       merchantId === EXTERNAL_SEED_MERCHANT_ID ||
       isExternalSeedProductId(productId) ||
@@ -36368,7 +36382,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         }
       }
 
-	      const buildId = SERVICE_GIT_SHA ? SERVICE_GIT_SHA.slice(0, 12) : null;
+      const buildId = SERVICE_GIT_SHA ? SERVICE_GIT_SHA.slice(0, 12) : null;
       const capabilities = {
         client:
           payload?.capabilities?.client ||
@@ -36381,161 +36395,161 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           null,
       };
       const responseModules = sanitizePdpSimilarResponseModules(modules);
+      const moduleHealth = classifyPdpV2ModuleHealth(missing, modules);
 
-	      const responsePayload = {
-	        status: 'success',
-	        pdp_version: '2.0',
-	        request_id: gatewayRequestId,
+      const responsePayload = {
+        status: 'success',
+        pdp_version: '2.0',
+        request_id: gatewayRequestId,
         build_id: buildId,
         generated_at: new Date().toISOString(),
-	        subject: productGroupId
+        subject: productGroupId
           ? { type: 'product_group', id: productGroupId, canonical_product_ref: canonicalProductRef }
           : {
               type: 'product',
               id: requestedPivotaSignatureId || canonicalProductRef.product_id,
               canonical_product_ref: canonicalProductRef,
             },
-	        capabilities,
-	        modules: responseModules,
-	        warnings: debug ? [] : [],
-	        missing,
-	          metadata: {
-            similar_status:
-              wantsSimilar
-                ? relatedProductsEnvelope?.metadata?.similar_status ||
-                  (relatedProductsEnvelope?.status === 'unavailable'
-                    ? 'unavailable'
-                    : relatedProducts.length > 0
-                      ? 'ready'
-                      : 'empty')
-                : undefined,
-	            detail_source: getProductDetailSource(canonicalProductForPdp) || null,
-            pdp_schema_profile: pdpSchemaProfile,
-            normalized_pdp:
-              productIntel?.normalized_pdp ||
-              buildNormalizedPdpMetadata({ productIntel, offersData }),
-            product_intel_status: productIntelStatus,
-            ...(productIntelMissingReason ? { product_intel_missing_reason: productIntelMissingReason } : {}),
-            identity_resolution: buildPdpV2IdentityResolution({
-              requestedProductId: requestedProductIdForDiagnostics || entryProductId || productId || null,
-              requestedMerchantId: requestedMerchantIdForDiagnostics,
-              resolvedProductId: canonicalProductRef?.product_id || null,
-              resolvedMerchantId: canonicalProductRef?.merchant_id || null,
-              entryPrecheckMissing: precheckEntryProductMissing,
-              canonicalizationApplied,
-              canonicalizationReasonCode,
-              resolutionSource: identityResolutionSource,
-            }),
-            identity_graph:
-              (identityGraphLive && typeof identityGraphLive === 'object') || catalogIdentity?.product_line_id
-                ? {
-                    sellable_item_group_id: effectiveSellableItemGroupId || null,
-                    product_line_id: effectiveProductLineId || null,
-                    review_family_id: effectiveReviewFamilyId || null,
-                    identity_confidence: effectiveIdentityConfidence,
-                    match_basis: effectiveMatchBasis,
-                    canonical_scope: effectiveCanonicalScope || null,
-                    pdp_content_source: pdpContentSource,
-                    offer_source: offerSource,
-                    commerce_source: commerceSource,
-                    content_review_state: contentReviewState,
-                  }
-                : null,
-            pdp_provenance: {
-              pdp_content_source: pdpContentSource,
-              offer_source: offerSource,
-              commerce_source: commerceSource,
-              content_review_state: contentReviewState,
-              content_base_ref: contentBaseRef,
-              selected_commerce_ref: selectedCommerceRef,
-              canonical_payload_product_ref: canonicalPayloadProductRef,
-              identity_confidence: effectiveIdentityConfidence,
-              match_basis: effectiveMatchBasis,
-            },
-            route_health: buildPdpV2RouteHealth({
-              requestedProductId: requestedProductIdForDiagnostics || entryProductId || productId || null,
-              requestedMerchantId: requestedMerchantIdForDiagnostics,
-              resolvedProductId: canonicalProductRef?.product_id || null,
-              resolvedMerchantId: canonicalProductRef?.merchant_id || null,
-              entryPrecheckMissing: precheckEntryProductMissing,
-              canonicalizationApplied,
-              canonicalizationReasonCode,
-            }),
-            module_degrade: {
-              applied: missing.length > 0,
-              modules: missing.map((item) => ({
-                type: item?.type || 'unknown',
-                reason: item?.reason || 'unavailable',
-              })),
-            },
-          },
-	      };
-	      logger.info(
-	        {
-	          gateway_request_id: gatewayRequestId,
-	          operation: 'get_pdp_v2',
-	          requested_product_id: entryProductId || null,
-	          resolved_product_id: canonicalProductRef?.product_id || null,
-	          requested_merchant_id: requestedMerchantId || null,
-	          resolved_merchant_id: canonicalProductRef?.merchant_id || null,
-            canonicalization_applied: canonicalizationApplied,
-            canonicalization_reason_code: canonicalizationReasonCode || null,
-            identity_resolution_source: identityResolutionSource,
-	          include: includeList,
-	          modules_returned: modules.map((module) => module.type),
-	          missing_modules: missing.map((module) => module.type),
-	          timing_ms: {
-	            total: Date.now() - pdpV2StartedAt,
-	            phases: pdpV2PhaseTimings,
-	            modules: pdpV2ModuleTimings,
-	          },
-	        },
-	        'get_pdp_v2 completed',
-	      );
-	      return res.json(responsePayload);
-	    } catch (err) {
-	      const { code, message, data } = extractUpstreamErrorCode(err);
-        const upstreamRequestId =
-          err?.response?.headers?.['x-request-id'] ||
-          err?.response?.headers?.['x-requestid'] ||
-          err?.response?.headers?.['x-railway-request-id'] ||
-          null;
-	      const statusCode =
-          err?.response?.status ||
-          err?.status ||
-          (err?.code === 'ECONNABORTED' ? 504 : 502);
-        const errorCode =
-          code || (err?.code === 'ECONNABORTED' ? 'UPSTREAM_TIMEOUT' : 'GET_PDP_V2_FAILED');
-	      logger.error(
-	        {
-	          gateway_request_id: gatewayRequestId,
-	          operation: 'get_pdp_v2',
-	          status_code: statusCode,
-	          err: err?.message || String(err),
-	          timing_ms: {
-	            total: Date.now() - pdpV2StartedAt,
-	            phases: pdpV2PhaseTimings,
-	            modules: pdpV2ModuleTimings,
-	          },
-	        },
-	        'get_pdp_v2 failed',
-	      );
-	      return res.status(statusCode).json({
-          ...buildPdpV2ErrorBody({
-            error: errorCode,
-            message: message || 'Failed to build pdp payload',
-            reasonCode: errorCode,
-            details: data || null,
-            upstreamRequestId,
-            requestedProductId: requestedProductIdCtx,
-            requestedMerchantId: requestedMerchantIdCtx,
-            resolvedProductId: resolvedProductIdCtx,
-            resolvedMerchantId: resolvedMerchantIdCtx,
-            entryPrecheckMissing: entryPrecheckMissingCtx,
-            canonicalizationApplied: canonicalizationAppliedCtx,
-            canonicalizationReasonCode: canonicalizationReasonCodeCtx,
-            resolutionSource: identityResolutionSourceCtx,
+        capabilities,
+        modules: responseModules,
+        warnings: debug ? [] : [],
+        missing,
+        metadata: {
+          similar_status:
+            wantsSimilar
+              ? relatedProductsEnvelope?.metadata?.similar_status ||
+                (relatedProductsEnvelope?.status === 'unavailable'
+                  ? 'unavailable'
+                  : relatedProducts.length > 0
+                    ? 'ready'
+                    : 'empty')
+              : undefined,
+          detail_source: getProductDetailSource(canonicalProductForPdp) || null,
+          pdp_schema_profile: pdpSchemaProfile,
+          normalized_pdp:
+            productIntel?.normalized_pdp ||
+            buildNormalizedPdpMetadata({ productIntel, offersData }),
+          product_intel_status: productIntelStatus,
+          ...(productIntelMissingReason ? { product_intel_missing_reason: productIntelMissingReason } : {}),
+          identity_resolution: buildPdpV2IdentityResolution({
+            requestedProductId: requestedProductIdForDiagnostics || entryProductId || productId || null,
+            requestedMerchantId: requestedMerchantIdForDiagnostics,
+            resolvedProductId: canonicalProductRef?.product_id || null,
+            resolvedMerchantId: canonicalProductRef?.merchant_id || null,
+            entryPrecheckMissing: precheckEntryProductMissing,
+            canonicalizationApplied,
+            canonicalizationReasonCode,
+            resolutionSource: identityResolutionSource,
           }),
+          identity_graph:
+            (identityGraphLive && typeof identityGraphLive === 'object') || catalogIdentity?.product_line_id
+              ? {
+                  sellable_item_group_id: effectiveSellableItemGroupId || null,
+                  product_line_id: effectiveProductLineId || null,
+                  review_family_id: effectiveReviewFamilyId || null,
+                  identity_confidence: effectiveIdentityConfidence,
+                  match_basis: effectiveMatchBasis,
+                  canonical_scope: effectiveCanonicalScope || null,
+                  pdp_content_source: pdpContentSource,
+                  offer_source: offerSource,
+                  commerce_source: commerceSource,
+                  content_review_state: contentReviewState,
+                }
+              : null,
+          pdp_provenance: {
+            pdp_content_source: pdpContentSource,
+            offer_source: offerSource,
+            commerce_source: commerceSource,
+            content_review_state: contentReviewState,
+            content_base_ref: contentBaseRef,
+            selected_commerce_ref: selectedCommerceRef,
+            canonical_payload_product_ref: canonicalPayloadProductRef,
+            identity_confidence: effectiveIdentityConfidence,
+            match_basis: effectiveMatchBasis,
+          },
+          route_health: buildPdpV2RouteHealth({
+            requestedProductId: requestedProductIdForDiagnostics || entryProductId || productId || null,
+            requestedMerchantId: requestedMerchantIdForDiagnostics,
+            resolvedProductId: canonicalProductRef?.product_id || null,
+            resolvedMerchantId: canonicalProductRef?.merchant_id || null,
+            entryPrecheckMissing: precheckEntryProductMissing,
+            canonicalizationApplied,
+            canonicalizationReasonCode,
+          }),
+          module_health: moduleHealth,
+          module_degrade: {
+            applied: moduleHealth.applied,
+            severity: moduleHealth.severity,
+            modules: moduleHealth.items,
+          },
+        },
+      };
+      logger.info(
+        {
+          gateway_request_id: gatewayRequestId,
+          operation: 'get_pdp_v2',
+          requested_product_id: entryProductId || null,
+          resolved_product_id: canonicalProductRef?.product_id || null,
+          requested_merchant_id: requestedMerchantId || null,
+          resolved_merchant_id: canonicalProductRef?.merchant_id || null,
+          canonicalization_applied: canonicalizationApplied,
+          canonicalization_reason_code: canonicalizationReasonCode || null,
+          identity_resolution_source: identityResolutionSource,
+          include: includeList,
+          modules_returned: modules.map((module) => module.type),
+          missing_modules: missing.map((module) => module.type),
+          timing_ms: {
+            total: Date.now() - pdpV2StartedAt,
+            phases: pdpV2PhaseTimings,
+            modules: pdpV2ModuleTimings,
+          },
+        },
+        'get_pdp_v2 completed',
+      );
+      return res.json(responsePayload);
+    } catch (err) {
+      const { code, message, data } = extractUpstreamErrorCode(err);
+      const upstreamRequestId =
+        err?.response?.headers?.['x-request-id'] ||
+        err?.response?.headers?.['x-requestid'] ||
+        err?.response?.headers?.['x-railway-request-id'] ||
+        null;
+      const statusCode =
+        err?.response?.status ||
+        err?.status ||
+        (err?.code === 'ECONNABORTED' ? 504 : 502);
+      const errorCode =
+        code || (err?.code === 'ECONNABORTED' ? 'UPSTREAM_TIMEOUT' : 'GET_PDP_V2_FAILED');
+      logger.error(
+        {
+          gateway_request_id: gatewayRequestId,
+          operation: 'get_pdp_v2',
+          status_code: statusCode,
+          err: err?.message || String(err),
+          timing_ms: {
+            total: Date.now() - pdpV2StartedAt,
+            phases: pdpV2PhaseTimings,
+            modules: pdpV2ModuleTimings,
+          },
+        },
+        'get_pdp_v2 failed',
+      );
+      return res.status(statusCode).json({
+        ...buildPdpV2ErrorBody({
+          error: errorCode,
+          message: message || 'Failed to build pdp payload',
+          reasonCode: errorCode,
+          details: data || null,
+          upstreamRequestId,
+          requestedProductId: requestedProductIdCtx,
+          requestedMerchantId: requestedMerchantIdCtx,
+          resolvedProductId: resolvedProductIdCtx,
+          resolvedMerchantId: resolvedMerchantIdCtx,
+          entryPrecheckMissing: entryPrecheckMissingCtx,
+          canonicalizationApplied: canonicalizationAppliedCtx,
+          canonicalizationReasonCode: canonicalizationReasonCodeCtx,
+          resolutionSource: identityResolutionSourceCtx,
+        }),
       });
     }
   }
@@ -43735,6 +43749,7 @@ module.exports._debug = {
   fetchProductDetailForOffers,
   fetchExternalSeedProductDetailFromDb,
   collectCatalogPdpContentSourceProductIds,
+  classifyPdpV2ModuleHealth,
   hasExternalSeedRichPdpContent,
   shouldHydratePdpIdentityLineMemberPayloads,
   isRequestedExternalSeedAliasDifferentFromCanonical,

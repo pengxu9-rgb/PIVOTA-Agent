@@ -91,6 +91,9 @@ describe('get_pdp_v2 stability semantics', () => {
         operation: 'get_pdp_v2',
         payload: {
           include: ['offers'],
+          options: {
+            allow_ineligible: true,
+          },
           product_ref: {
             merchant_id: 'merch_wrong',
             product_id: 'ext_seed_1',
@@ -376,6 +379,9 @@ describe('get_pdp_v2 stability semantics', () => {
         operation: 'get_pdp_v2',
         payload: {
           include: ['product_details'],
+          options: {
+            allow_ineligible: true,
+          },
           product_ref: {
             merchant_id: 'external_seed',
             product_id: 'ext_alias_details_1',
@@ -428,6 +434,9 @@ describe('get_pdp_v2 stability semantics', () => {
       .send({
         operation: 'get_pdp_v2',
         payload: {
+          options: {
+            allow_ineligible: true,
+          },
           product_ref: {
             merchant_id: 'merch_wrong',
             product_id: 'ext_missing_1',
@@ -516,6 +525,9 @@ describe('get_pdp_v2 stability semantics', () => {
       .send({
         operation: 'get_pdp_v2',
         payload: {
+          options: {
+            allow_ineligible: true,
+          },
           product_ref: {
             merchant_id: 'external_seed',
             product_id: 'ext_seed_2',
@@ -556,6 +568,9 @@ describe('get_pdp_v2 stability semantics', () => {
       .send({
         operation: 'get_pdp_v2',
         payload: {
+          options: {
+            allow_ineligible: true,
+          },
           product_ref: {
             merchant_id: 'external_seed',
             product_id: 'ext_seed_slow_group',
@@ -598,6 +613,9 @@ describe('get_pdp_v2 stability semantics', () => {
       .send({
         operation: 'get_pdp_v2',
         payload: {
+          options: {
+            allow_ineligible: true,
+          },
           product_ref: {
             product_id: 'ext_seed_slow_group_unscoped',
           },
