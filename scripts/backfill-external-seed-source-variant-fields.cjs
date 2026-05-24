@@ -209,6 +209,10 @@ function existingVariantNeedsTrustedScalarLabelCorrection(seedData, snapshot, ma
     snapshot.variant_title,
     seedData.variant_detail_label,
     snapshot.variant_detail_label,
+    seedData.size_detail_label,
+    snapshot.size_detail_label,
+    seedData.volume,
+    snapshot.volume,
   ].map(normalizeText).filter(Boolean);
   return staleLabels.some((value) => value !== label);
 }
@@ -339,6 +343,10 @@ function buildPatch(row, mapping) {
     snapshot.variant_detail_label = seedData.variant_detail_label;
     seedData.variant_title = seedData.variant_detail_label;
     snapshot.variant_title = seedData.variant_detail_label;
+    seedData.size_detail_label = seedData.variant_detail_label;
+    snapshot.size_detail_label = seedData.variant_detail_label;
+    seedData.volume = seedData.variant_detail_label;
+    snapshot.volume = seedData.variant_detail_label;
   }
   const quality = mergeQualitySummary(seedData.pdp_field_quality_summary || snapshot.pdp_field_quality_summary, sourceUrl, sourceOrigin);
   seedData.pdp_field_quality_summary = quality;
@@ -381,11 +389,14 @@ function buildServingPayloadPatch(seedData) {
     'variants',
     'variant_detail_label',
     'variant_title',
+    'size_detail_label',
+    'volume',
     'pdp_field_quality_summary',
     'pdp_content_asset_v1',
     'source_variant_fields_v1',
     'external_seed_snapshot_contract',
   ].forEach(copyFirst);
+  patch.seed_data = seedData;
   return Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined));
 }
 
