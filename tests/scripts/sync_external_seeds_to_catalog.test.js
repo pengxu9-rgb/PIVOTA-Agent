@@ -131,6 +131,63 @@ describe('sync-external-seeds-to-catalog signature preservation', () => {
   });
 });
 
+describe('sync-external-seeds-to-catalog barcode capture', () => {
+  function buildSeed(seedData) {
+    return buildMirror({
+      id: 'eps_barcode',
+      external_product_id: 'ext_barcode_serum',
+      market: 'US',
+      domain: 'seresilk.com',
+      title: 'Barrier Repair Serum',
+      image_url: 'https://cdn.example.com/serum.jpg',
+      price_amount: 48,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      canonical_url: 'https://seresilk.com/products/barrier-repair-serum',
+      status: 'active',
+      identity_listing: {
+        identity_status: 'approved',
+        live_read_enabled: true,
+        review_required: false,
+        source_tier: 'brand',
+      },
+      seed_data: {
+        brand: 'Seresilk',
+        description: 'A lightweight daily serum with complete commerce details.',
+        ...seedData,
+      },
+    });
+  }
+
+  test.each([
+    [{ gtin: '1234567890123' }, '1234567890123'],
+    [{ upc: '123456789012' }, '123456789012'],
+    [{ variants: [{ variant_id: 'mini', gtin: '12345678', price: '48.00' }] }, '12345678'],
+    [{ barcode: '0-12345-67890-5' }, '012345678905'],
+  ])('normalizes supported digit identifiers into catalog SKU barcode', (seedData, expected) => {
+    const mirror = buildSeed(seedData);
+    expect(mirror.skus[0].sku.barcode).toBe(expected);
+    expect(mirror.auditReasons.no_strong_identifier).toBeUndefined();
+  });
+
+  test('skips missing and garbage identifiers without rejecting the SKU', () => {
+    const missing = buildSeed({});
+    expect(missing.skus[0].sku.barcode).toBeNull();
+    expect(missing.auditReasons.no_strong_identifier).toBe(1);
+
+    const garbage = buildSeed({ variants: [{ variant_id: 'bad', gtin: 'N/A', barcode: '0', price: '48.00' }] });
+    expect(garbage.skus[0].sku.barcode).toBeNull();
+    expect(garbage.auditReasons.no_strong_identifier).toBe(1);
+  });
+
+  test('captures MPN only as the last fallback and marks it in audit reasons', () => {
+    const mirror = buildSeed({ mpn: ' MPN-ABC-123 ' });
+    expect(mirror.skus[0].sku.barcode).toBe('MPN-ABC-123');
+    expect(mirror.skus[0].sku.sku_payload.strong_identifier_kind).toBe('mpn');
+    expect(mirror.auditReasons.mpn_captured_as_barcode).toBe(1);
+  });
+});
+
 describe('sync-external-seeds-to-catalog serving bootstrap', () => {
   function buildReadyMirror(identityListing) {
     return buildMirror({

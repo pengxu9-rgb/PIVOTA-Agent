@@ -16,6 +16,17 @@ const MERCHANT_ID = 'external_seed';
 const PLATFORM = 'external_seed';
 const SOURCE_SYSTEM = 'external_product_seeds_mirror_v1';
 const CONFIRM_TOKEN = 'SYNC_REVIEWED_EXTERNAL_SEEDS_TO_CATALOG';
+const NO_STRONG_IDENTIFIER = 'no_strong_identifier';
+const MPN_CAPTURED_AS_BARCODE = 'mpn_captured_as_barcode';
+const VALID_DIGIT_IDENTIFIER_LENGTHS = new Set([8, 12, 13, 14]);
+const PLACEHOLDER_IDENTIFIER_VALUES = new Set(['n/a', 'na', 'none', 'null', 'unknown', 'not available', '0', '-']);
+const STRONG_IDENTIFIER_PRIORITY = [
+  ['gtin', ['gtin', 'gtins', 'gtin8', 'gtin12', 'gtin13', 'gtin14', 'gtin_8', 'gtin_12', 'gtin_13', 'gtin_14']],
+  ['upc', ['upc', 'upcs', 'upca', 'upc_a', 'upc12', 'upc_12']],
+  ['ean', ['ean', 'eans', 'ean8', 'ean13', 'ean_8', 'ean_13']],
+  ['barcode', ['barcode', 'bar_code', 'barcodes']],
+  ['mpn', ['mpn', 'manufacturer_part_number', 'manufacturerPartNumber', 'model_number', 'modelNumber']],
+];
 
 function argValue(name, fallback = '') {
   const idx = process.argv.indexOf(`--${name}`);
@@ -117,6 +128,71 @@ function normalizeAvailability(value) {
   if (['available', 'instock', 'true'].includes(normalized)) return 'in_stock';
   if (['outofstock', 'soldout', 'unavailable', 'false'].includes(normalized)) return 'out_of_stock';
   return normalized || 'unknown';
+}
+
+function normalizeDigitIdentifier(value) {
+  const digits = asString(value).replace(/\D+/g, '');
+  if (!VALID_DIGIT_IDENTIFIER_LENGTHS.has(digits.length)) return '';
+  if (/^0+$/.test(digits)) return '';
+  return digits;
+}
+
+function normalizeMpn(value) {
+  const text = asString(value);
+  if (!text || PLACEHOLDER_IDENTIFIER_VALUES.has(text.toLowerCase())) return '';
+  return text;
+}
+
+function normalizeStrongIdentifier(value, kind) {
+  const normalizedKind = asString(kind).toLowerCase();
+  const normalized =
+    normalizedKind === 'mpn' ? normalizeMpn(value) : normalizeDigitIdentifier(value);
+  return normalized ? { value: normalized, kind: normalizedKind } : null;
+}
+
+function* candidateIdentifierValues(source, keys) {
+  if (!source || typeof source !== 'object') return;
+  const lowered = new Map(Object.entries(source).map(([key, value]) => [key.toLowerCase(), value]));
+  for (const key of keys) {
+    if (!lowered.has(key.toLowerCase())) continue;
+    const value = lowered.get(key.toLowerCase());
+    if (Array.isArray(value)) {
+      for (const item of value) yield item;
+    } else {
+      yield value;
+    }
+  }
+  for (const nestedKey of [
+    'raw',
+    'snapshot',
+    'variant',
+    'product',
+    'metadata',
+    'platform_metadata',
+    'catalog_meta',
+    'catalogmeta',
+    'commerce_facts_v1',
+    'strong_identity',
+    'raw_variant',
+    'raw_product',
+  ]) {
+    const nested = lowered.get(nestedKey.toLowerCase());
+    if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
+      yield* candidateIdentifierValues(nested, keys);
+    }
+  }
+}
+
+function pickStrongIdentifier(...sources) {
+  for (const [kind, keys] of STRONG_IDENTIFIER_PRIORITY) {
+    for (const source of sources) {
+      for (const value of candidateIdentifierValues(source, keys)) {
+        const identifier = normalizeStrongIdentifier(value, kind);
+        if (identifier) return identifier;
+      }
+    }
+  }
+  return null;
 }
 
 function normalizeUrl(value) {
@@ -579,11 +655,14 @@ function collectVariants(row) {
     const rawVariantId = pickVariantId(object, `variant_${index + 1}`);
     const key = asString(rawVariantId) || pickVariantTitle(object, `variant_${index + 1}`);
     if (!key || byKey.has(key)) return;
+    const strongIdentifier = pickStrongIdentifier(object, seedData, snapshot, row);
     byKey.set(key, {
       raw: object,
       raw_variant_id: rawVariantId,
       source_variant_id: `${row.external_product_id}:${rawVariantId}`,
       sku: pickVariantSku(object, rawVariantId),
+      barcode: strongIdentifier?.value || null,
+      strong_identifier_kind: strongIdentifier?.kind || null,
       title: pickVariantTitle(object, title),
       price_amount: pickVariantPrice(object, row),
       price_currency: pickVariantCurrency(object, row),
@@ -593,12 +672,15 @@ function collectVariants(row) {
     });
   });
   if (byKey.size > 0) return Array.from(byKey.values());
+  const strongIdentifier = pickStrongIdentifier(seedData, snapshot, row);
   return [
     {
       raw: {},
       raw_variant_id: row.external_product_id,
       source_variant_id: `${row.external_product_id}:canonical`,
       sku: asString(seedData.variant_sku || snapshot.variant_sku || row.external_product_id),
+      barcode: strongIdentifier?.value || null,
+      strong_identifier_kind: strongIdentifier?.kind || null,
       title,
       price_amount: pickVariantPrice({}, row),
       price_currency: pickVariantCurrency({}, row),
@@ -743,6 +825,8 @@ function buildMirror(row) {
       raw_variant_id: variant.raw_variant_id,
       source_variant_id: variant.source_variant_id,
       variant_sku: variant.sku,
+      barcode: variant.barcode,
+      strong_identifier_kind: variant.strong_identifier_kind,
       source_url: canonicalUrl,
       external_redirect_url: canonicalUrl,
       price: variant.price_amount != null ? String(variant.price_amount) : '',
@@ -787,6 +871,7 @@ function buildMirror(row) {
         source_product_id: externalProductId,
         source_variant_id: variant.source_variant_id,
         sku: variant.sku,
+        barcode: variant.barcode,
         title: variant.title,
         currency: variant.price_currency,
         image_url: variant.image_url,
@@ -854,7 +939,56 @@ function buildMirror(row) {
       sync_status: 'live',
     },
     skus,
+    auditReasons: identifierAuditReasons(skus),
   };
+}
+
+function identifierAuditReasons(skus) {
+  const reasons = {};
+  for (const skuMirror of skus || []) {
+    const sku = skuMirror.sku || {};
+    if (!asString(sku.barcode)) {
+      reasons[NO_STRONG_IDENTIFIER] = (reasons[NO_STRONG_IDENTIFIER] || 0) + 1;
+    }
+    if (sku.sku_payload?.strong_identifier_kind === 'mpn') {
+      reasons[MPN_CAPTURED_AS_BARCODE] = (reasons[MPN_CAPTURED_AS_BARCODE] || 0) + 1;
+    }
+  }
+  return reasons;
+}
+
+function mergeAuditReasons(mirrors) {
+  const reasons = {};
+  for (const mirror of mirrors || []) {
+    for (const [reason, count] of Object.entries(mirror.auditReasons || {})) {
+      const numeric = Number(count || 0);
+      if (numeric > 0) reasons[reason] = (reasons[reason] || 0) + numeric;
+    }
+  }
+  return reasons;
+}
+
+async function writeWriterAuditLog({ batchId, appliedRows, reasons }) {
+  await query(
+    `
+      INSERT INTO writer_audit_log (
+        writer_name,
+        batch_id,
+        dry_run_report_hash,
+        applied_rows,
+        skipped_rows,
+        reasons,
+        actor
+      ) VALUES ($1, $2, NULL, $3, 0, $4::jsonb, $5)
+    `,
+    [
+      SOURCE_SYSTEM,
+      batchId,
+      Number(appliedRows || 0),
+      JSON.stringify(reasons || {}),
+      'sync-external-seeds-to-catalog.cjs',
+    ],
+  );
 }
 
 async function fetchRows(ids, market) {
@@ -932,11 +1066,13 @@ async function applyMirrors(
   const existingBefore = await existingCounts(mirrors);
   const normalizedBatchSize = normalizeBatchSize(batchSize);
   const batches = chunkArray(mirrors, normalizedBatchSize);
+  const auditReasons = mergeAuditReasons(mirrors);
   const totals = {
     mode: dryRun ? 'dry_run' : 'apply',
     existing_before: existingBefore,
     batch_size: normalizedBatchSize || null,
     batches: batches.length,
+    audit_reasons: auditReasons,
     product_upserts: 0,
     sku_upserts: 0,
     offer_upserts: 0,
@@ -1181,6 +1317,7 @@ async function applyMirrors(
                 source_product_id,
                 source_variant_id,
                 sku,
+                barcode,
                 title,
                 currency,
                 image_url,
@@ -1190,8 +1327,9 @@ async function applyMirrors(
                 sku_payload,
                 readiness_tier,
                 updated_at
-              ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,$13::jsonb,$14::jsonb,$15,now())
+              ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14::jsonb,$15::jsonb,$16,now())
               ON CONFLICT (sku_key) DO UPDATE SET
+                barcode = EXCLUDED.barcode,
                 title = EXCLUDED.title,
                 currency = EXCLUDED.currency,
                 image_url = EXCLUDED.image_url,
@@ -1210,6 +1348,7 @@ async function applyMirrors(
               s.source_product_id,
               s.source_variant_id,
               s.sku,
+              s.barcode,
               s.title,
               s.currency,
               s.image_url,
@@ -1330,6 +1469,11 @@ async function applyMirrors(
       );
     }
   }
+  await writeWriterAuditLog({
+    batchId: `sync-external-seeds-to-catalog:${new Date().toISOString()}`,
+    appliedRows: totals.sku_upserts,
+    reasons: auditReasons,
+  });
   return totals;
 }
 

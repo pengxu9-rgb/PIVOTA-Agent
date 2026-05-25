@@ -331,6 +331,27 @@ ORDER BY last_consolidated_at DESC NULLS LAST, content_key
 `.trim(),
   },
   {
+    name: 'sku_barcode_coverage',
+    description: 'Catalog SKU barcode coverage by catalog product source system.',
+    paramSchema: LIMIT_PARAM_SCHEMA,
+    query: `
+SELECT
+  COALESCE(NULLIF(BTRIM(cp.source_system), ''), cs.platform, 'unknown') AS source_system,
+  COUNT(*)::int AS total_skus,
+  COUNT(*) FILTER (WHERE NULLIF(BTRIM(cs.barcode), '') IS NOT NULL)::int AS skus_with_barcode,
+  (COUNT(*) - COUNT(*) FILTER (WHERE NULLIF(BTRIM(cs.barcode), '') IS NOT NULL))::int AS skus_without_barcode,
+  ROUND(
+    100.0 * COUNT(*) FILTER (WHERE NULLIF(BTRIM(cs.barcode), '') IS NOT NULL)
+    / NULLIF(COUNT(*), 0),
+    2
+  ) AS barcode_coverage_pct
+FROM catalog_skus cs
+LEFT JOIN catalog_products cp ON cp.product_key = cs.product_key
+GROUP BY 1
+ORDER BY total_skus DESC, source_system
+`.trim(),
+  },
+  {
     name: 'orphan_catalog_product',
     description: 'Catalog products with neither SKUs nor offers.',
     paramSchema: LIMIT_PARAM_SCHEMA,
