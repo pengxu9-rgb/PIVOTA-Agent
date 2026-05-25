@@ -2127,6 +2127,44 @@ describe('externalSeedProducts helper', () => {
     );
   });
 
+  test('preserves count plus volume size labels for single-SKU pad products', () => {
+    const row = {
+      id: 'eps_tirtir_matcha_pads',
+      external_product_id: 'ext_tirtir_matcha_pads',
+      canonical_url: 'https://tirtir.global/products/matcha-tea-pad',
+      destination_url: 'https://tirtir.global/products/matcha-tea-pad',
+      domain: 'tirtir.global',
+      title: 'Matcha Tea Pads',
+      price_amount: '18.40',
+      price_currency: 'USD',
+      seed_data: {
+        snapshot: {
+          variants: [
+            {
+              variant_id: 'tirtir_matcha_tea_pads_70pads_160ml',
+              sku_id: 'tirtir_matcha_tea_pads_70pads_160ml',
+              title: '70 pads / 160 mL',
+              options: [{ name: 'Size', value: '70 pads / 160 mL', axis_kind: 'size' }],
+              display_label: 'Size: 70 pads / 160 mL',
+              source_quality_status: 'high',
+            },
+          ],
+        },
+      },
+    };
+
+    const [variant] = normalizeSeedVariants(row.seed_data, row);
+    expect(variant).toEqual(
+      expect.objectContaining({
+        title: '70 pads / 160 mL',
+        display_label: 'Size: 70 pads / 160 mL',
+        axis_kind: 'size',
+        option_value: '70 pads / 160 mL',
+        options: [{ name: 'Size', value: '70 pads / 160 mL', axis_kind: 'size' }],
+      }),
+    );
+  });
+
   test('narrows polluted variant image galleries back to the active shade family', () => {
     const row = {
       id: 'eps_variant_gallery_pollution_1',

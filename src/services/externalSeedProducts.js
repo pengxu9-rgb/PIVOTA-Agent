@@ -2667,6 +2667,14 @@ function parseVariantStrengthValue(value) {
   return '';
 }
 
+function variantValueHasPackCountAndVolume(value) {
+  const normalized = normalizeOptionText(value);
+  return Boolean(
+    /\b\d+\s*(?:pads?|sheets?|pcs?|pieces?|ct|count|units?)\b/i.test(normalized) &&
+      /\b\d+(?:\.\d+)?\s*(?:ml|m l|g|kg|oz|fl\.?\s*oz\.?|fluid\s*ounces?|l)\b/i.test(normalized),
+  );
+}
+
 function inferVariantAxisKind(option, context = {}) {
   const optionName = normalizeOptionNameKey(option?.name);
   const optionValue = normalizeOptionText(option?.value);
@@ -2709,10 +2717,12 @@ function inferVariantAxisKind(option, context = {}) {
     optionName === 'size' ||
     /\b(?:size|volume|capacity|amount|weight|net weight|net wt|ml|m l)\b/.test(optionName)
   ) {
-    const normalizedSizeValue = volume ? buildSeedSizeDetailLabel(optionValue) || optionValue : optionValue;
+    const mixedPackAndVolume = variantValueHasPackCountAndVolume(optionValue);
+    const normalizedSizeValue =
+      volume && !mixedPackAndVolume ? buildSeedSizeDetailLabel(optionValue) || optionValue : optionValue;
     return {
-      axis_kind: volume ? 'volume' : 'size',
-      display_label: volume ? VARIANT_AXIS_LABELS.volume : VARIANT_AXIS_LABELS.size,
+      axis_kind: volume && !mixedPackAndVolume ? 'volume' : 'size',
+      display_label: volume && !mixedPackAndVolume ? VARIANT_AXIS_LABELS.volume : VARIANT_AXIS_LABELS.size,
       normalized_value: normalizedSizeValue,
     };
   }
