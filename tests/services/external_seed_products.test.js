@@ -2089,6 +2089,59 @@ describe('externalSeedProducts helper', () => {
     expect(product.variant_title).toBeUndefined();
   });
 
+  test('prefers source-backed pack count over net-content volume for sheet-mask variant labels', () => {
+    const product = buildExternalSeedProduct({
+      id: 'eps_roundlab_vita_mask',
+      external_product_id: 'ext_daaf898179ef2c982fec210b',
+      canonical_url: 'https://roundlab.com/products/vita-niacinamide-dark-spot-mask',
+      destination_url: 'https://roundlab.com/products/vita-niacinamide-dark-spot-mask',
+      title: 'Vita Niacinamide Dark Spot Serum Mask',
+      price_amount: '5.30',
+      price_currency: 'USD',
+      seed_data: {
+        brand: 'Round Lab',
+        title: 'Vita Niacinamide Dark Spot Serum Mask',
+        net_content: '20 mL',
+        variants: [
+          {
+            variant_id: '46537314369750',
+            sku: 'RLB108V08',
+            title: '1 PC',
+            option_name: 'Size',
+            option_value: '1 PC',
+            options: [{ name: 'Size', value: '1 PC', axis_kind: 'count' }],
+            price: '5.30',
+            currency: 'USD',
+          },
+          {
+            variant_id: '46537314402518',
+            sku: 'RLB108V09',
+            title: '5 PC',
+            option_name: 'Size',
+            option_value: '5 PC',
+            options: [{ name: 'Size', value: '5 PC' }],
+            price: '26.50',
+            currency: 'USD',
+          },
+        ],
+        snapshot: {
+          net_content: '20 mL',
+        },
+      },
+    });
+
+    expect(product.size_detail_label).toBe('1 PC');
+    expect(product.variants[0]).toEqual(
+      expect.objectContaining({
+        variant_id: '46537314369750',
+        option_value: '1 PC',
+        title: '1 PC',
+        display_label: 'Size: 1 PC',
+        options: [expect.objectContaining({ name: 'Size', value: '1 PC', axis_kind: 'size' })],
+      }),
+    );
+  });
+
   test('splits combined color and size seed options and normalizes stale shopify image urls', () => {
     const row = {
       id: 'eps_combined_color_size_1',

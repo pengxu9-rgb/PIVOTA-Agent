@@ -2453,6 +2453,16 @@ const NON_DISPLAYABLE_VARIANT_VALUES = new Set([
   'variant',
 ]);
 
+function isDisplayablePackCountVariantValue(value) {
+  return collectSeedPackCountDetailValues(value).length > 0;
+}
+
+function isNonDisplayableVariantValue(value) {
+  const normalized = normalizeOptionText(value).toLowerCase();
+  if (!NON_DISPLAYABLE_VARIANT_VALUES.has(normalized)) return false;
+  return !isDisplayablePackCountVariantValue(normalized);
+}
+
 const LOCALE_LIKE_VARIANT_VALUES = new Set([
   'us',
   'usa',
@@ -2493,7 +2503,7 @@ function isNonDisplayableVariantOption(option, rawVariant) {
   const optionName = normalizeOptionNameKey(option?.name);
   const optionValue = normalizeOptionText(option?.value);
   if (!optionName || !optionValue) return true;
-  if (NON_DISPLAYABLE_VARIANT_VALUES.has(optionValue.toLowerCase())) return true;
+  if (isNonDisplayableVariantValue(optionValue)) return true;
   if (NON_DISPLAYABLE_IDENTITY_OPTION_NAMES.has(optionName)) {
     return isSkuLikeVariantText(optionValue, rawVariant) || isVariantIdentityValue(optionValue, rawVariant);
   }
@@ -2633,6 +2643,49 @@ function buildSeedSizeDetailLabel(...values) {
   return unique.slice(0, 2).join(' / ');
 }
 
+function collectSeedPackCountDetailValues(value) {
+  const normalized = normalizeOptionText(value);
+  if (!normalized) return [];
+  const out = [];
+  const seen = new Set();
+  const matches = normalized.matchAll(/\b(\d+)\s*-?\s*(pc|pcs|piece|pieces|sheet|sheets|mask|masks|pad|pads|ct|count|unit|units)\b/gi);
+  for (const match of matches) {
+    const count = Number(match[1]);
+    if (!Number.isFinite(count) || count <= 0) continue;
+    const unit = String(match[2] || '').toLowerCase();
+    const displayUnit =
+      unit === 'pc' || unit === 'pcs' || unit === 'piece' || unit === 'pieces'
+        ? 'PC'
+        : unit === 'ct' || unit === 'count'
+          ? 'ct'
+          : count === 1
+            ? unit.replace(/s$/, '')
+            : unit.endsWith('s')
+              ? unit
+              : `${unit}s`;
+    const formatted = `${count} ${displayUnit}`;
+    const key = formatted.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(formatted);
+  }
+  return out;
+}
+
+function buildSeedPackCountDetailLabel(...values) {
+  const unique = [];
+  const seen = new Set();
+  for (const value of values) {
+    for (const formatted of collectSeedPackCountDetailValues(value)) {
+      const key = formatted.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      unique.push(formatted);
+    }
+  }
+  return unique[0] || '';
+}
+
 function parseVariantPackValue(value) {
   const normalized = normalizeOptionText(value);
   if (!normalized) return '';
@@ -2702,7 +2755,7 @@ function variantValueLooksLikeDimensions(value) {
 function inferVariantAxisKind(option, context = {}) {
   const optionName = normalizeOptionNameKey(option?.name);
   const optionValue = normalizeOptionText(option?.value);
-  if (!optionValue || NON_DISPLAYABLE_VARIANT_VALUES.has(optionValue.toLowerCase())) {
+  if (!optionValue || isNonDisplayableVariantValue(optionValue)) {
     return { axis_kind: 'non_displayable', display_label: '', normalized_value: '' };
   }
 
@@ -2892,7 +2945,7 @@ function getTrustedExplicitVariantDisplayContract(option, rawVariant) {
   if (!axisKind) return null;
 
   const normalizedValue = normalizeOptionText(option?.value);
-  if (!normalizedValue || NON_DISPLAYABLE_VARIANT_VALUES.has(normalizedValue.toLowerCase())) return null;
+  if (!normalizedValue || isNonDisplayableVariantValue(normalizedValue)) return null;
 
   return {
     axis_kind: axisKind,
@@ -3564,7 +3617,7 @@ function normalizeSeedVariants(seedData, row) {
         contractedDisplay.options.map((option) => option.value).filter(Boolean).join(' / ') ||
         (contractedDisplay.source_quality_status !== 'blocked' &&
         displayFields.title &&
-        !NON_DISPLAYABLE_VARIANT_VALUES.has(displayFields.title.toLowerCase())
+        !isNonDisplayableVariantValue(displayFields.title)
           ? displayFields.title
           : 'Default');
 
@@ -4135,8 +4188,15 @@ function buildExternalSeedProduct(row, options = {}) {
   if (selectedVariant?.variant_id) {
     variants = moveVariantToFront(variants, selectedVariant.variant_id);
   }
+  const selectedVariantPackCountLabel = buildSeedPackCountDetailLabel(
+    selectedVariant?.option_value,
+    selectedVariant?.title,
+    variants[0]?.option_value,
+    variants[0]?.title,
+  );
   const sizeDetailLabel =
     explicitSizeDetailLabel ||
+    selectedVariantPackCountLabel ||
     buildSeedSizeDetailLabel(
       productVolume,
       volume,
