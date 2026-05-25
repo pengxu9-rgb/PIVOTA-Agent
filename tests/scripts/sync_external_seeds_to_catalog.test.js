@@ -131,6 +131,77 @@ describe('sync-external-seeds-to-catalog signature preservation', () => {
   });
 });
 
+describe('sync-external-seeds-to-catalog source domain capture', () => {
+  test('mirrors external seed domain into catalog row values', () => {
+    const mirror = buildMirror({
+      id: 'eps_source_domain',
+      external_product_id: 'ext_source_domain_serum',
+      market: 'US',
+      domain: 'seresilk.com',
+      title: 'Barrier Repair Serum',
+      image_url: 'https://cdn.example.com/serum.jpg',
+      price_amount: 48,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      canonical_url: 'https://seresilk.com/products/barrier-repair-serum',
+      status: 'active',
+      identity_listing: {
+        identity_status: 'approved',
+        live_read_enabled: true,
+        review_required: false,
+        source_tier: 'brand',
+      },
+      seed_data: {
+        brand: 'Seresilk',
+        description: 'A lightweight daily serum with complete commerce details.',
+        variants: [
+          {
+            variant_id: 'default',
+            sku: 'SERUM-01',
+            title: 'Default Title',
+            price: '48.00',
+            currency: 'USD',
+          },
+        ],
+      },
+    });
+
+    expect(mirror.product.source_domain).toBe('seresilk.com');
+    expect(mirror.skus[0].sku.source_domain).toBe('seresilk.com');
+    expect(mirror.skus[0].offer.source_domain).toBe('seresilk.com');
+  });
+
+  test('leaves source_domain null when seed domain is empty', () => {
+    const mirror = buildMirror({
+      id: 'eps_source_domain_null',
+      external_product_id: 'ext_source_domain_null_serum',
+      market: 'US',
+      domain: '',
+      title: 'Barrier Repair Serum',
+      image_url: 'https://cdn.example.com/serum.jpg',
+      price_amount: 48,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      canonical_url: 'https://seresilk.com/products/barrier-repair-serum',
+      status: 'active',
+      identity_listing: {
+        identity_status: 'approved',
+        live_read_enabled: true,
+        review_required: false,
+        source_tier: 'brand',
+      },
+      seed_data: {
+        brand: 'Seresilk',
+        description: 'A lightweight daily serum with complete commerce details.',
+      },
+    });
+
+    expect(mirror.product.source_domain).toBeNull();
+    expect(mirror.skus[0].sku.source_domain).toBeNull();
+    expect(mirror.skus[0].offer.source_domain).toBeNull();
+  });
+});
+
 describe('sync-external-seeds-to-catalog barcode capture', () => {
   function buildSeed(seedData) {
     return buildMirror({
