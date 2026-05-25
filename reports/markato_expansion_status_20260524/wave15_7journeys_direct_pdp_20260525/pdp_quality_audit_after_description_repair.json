@@ -1,0 +1,672 @@
+{
+  "scanned": 5,
+  "failed": 5,
+  "failed_by_domain": [
+    {
+      "key": "7journeys.com",
+      "count": 5
+    }
+  ],
+  "failure_reason_counts": {
+    "similar_underfill": 5
+  },
+  "failure_reason_domain_counts": [
+    {
+      "key": "7journeys.com::similar_underfill",
+      "count": 5
+    }
+  ],
+  "root_cause_domain_counts": [
+    {
+      "key": "7journeys.com::similar_issue",
+      "count": 5
+    }
+  ],
+  "results": [
+    {
+      "status": "failed",
+      "seed_id": "eps_b36b9b1d2fb28c5e39090157",
+      "external_product_id": "ext_2da51d2f8d19211c89fb2a30",
+      "market": "US",
+      "domain": "7journeys.com",
+      "canonical_url": "https://7journeys.com/en-inteuusuk/products/7journeys-miracle-glow-serum-mask-10-sheets",
+      "seed_gate": {
+        "status": "passed",
+        "findings_count": 0,
+        "blockers_count": 0
+      },
+      "extractor_gate": {
+        "status": "passed",
+        "failure_category": null,
+        "description_present": true,
+        "price_amount": 480,
+        "failure_reasons": []
+      },
+      "identity_gate": {
+        "status": "passed",
+        "product_group_id": "sig_a7ccb1334eb133e537242dde2157f01e",
+        "product_line_id": "pl_4b3d2ed47d6748edfbe7dcc3",
+        "sellable_item_group_id": "sig_a7ccb1334eb133e537242dde2157f01e",
+        "failure_reasons": []
+      },
+      "product_intel_gate": {
+        "status": "passed",
+        "has_product_intel": true,
+        "product_intel_status": "ready",
+        "failure_reasons": []
+      },
+      "live_pdp_gate": {
+        "status": "passed",
+        "price_amount": 55,
+        "has_overview": true,
+        "live_modules": [
+          "canonical",
+          "variant_selector",
+          "offers",
+          "product_intel",
+          "reviews_preview",
+          "similar",
+          "active_ingredients",
+          "ingredients_inci",
+          "how_to_use",
+          "product_overview",
+          "product_facts",
+          "supplemental_details",
+          "product_details",
+          "media_gallery",
+          "price_promo"
+        ],
+        "details_status": {
+          "section_count": 4,
+          "section_soup_count": 0,
+          "has_product_facts": false,
+          "seed_section_count": 3,
+          "compressed_structured_sections": false
+        },
+        "questions_status": {
+          "seed_faq_count": 0,
+          "live_question_count": 0
+        },
+        "active_ingredients_status": {
+          "expected": false,
+          "live_item_count": 0,
+          "suppressed_for_product_family": null
+        },
+        "image_health": {
+          "scanned_count": 12,
+          "total_url_count": 12,
+          "broken_count": 0,
+          "broken_urls": [],
+          "transient_error_count": 0,
+          "transient_error_urls": [],
+          "skipped": false,
+          "truncated": false
+        },
+        "gallery_status": {
+          "image_count": 12,
+          "duplicate_count": 0,
+          "content_leak_count": 0,
+          "seed_content_image_count": 0
+        },
+        "snapshot_contract": {
+          "authoritative": true,
+          "legacy_fields_quarantined": true,
+          "replace_strategy": "replace_not_merge"
+        },
+        "image_url_identity_stripped_count": 0,
+        "image_url_identity_stripped_examples": [],
+        "failure_reasons": []
+      },
+      "similar_gate": {
+        "status": "failed",
+        "similar_count": 0,
+        "card_highlight_missing_count": 0,
+        "card_seller_only_fallback_count": 0,
+        "exempt": false,
+        "failure_reasons": [
+          "similar_underfill"
+        ]
+      },
+      "variant_gate": {
+        "status": "passed",
+        "visible_variant_row_count": 1,
+        "identity_option_visible_count": 0,
+        "wrong_axis_for_category_count": 0,
+        "makeup_shade_missing_visual_count": 0,
+        "size_value_generic_axis_count": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "missing_variant_selector_from_size_evidence": [],
+          "identity_default_title_axis": [],
+          "size_siblings_split_product_line": []
+        },
+        "failure_reasons": []
+      },
+      "root_cause_classification": [
+        "similar_issue"
+      ],
+      "failure_reasons": [
+        "similar_underfill"
+      ]
+    },
+    {
+      "status": "failed",
+      "seed_id": "eps_89843fb919f2738541f26848",
+      "external_product_id": "ext_718736656c3aa82e74546c28",
+      "market": "US",
+      "domain": "7journeys.com",
+      "canonical_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-glow-renewal-serum-45ml",
+      "seed_gate": {
+        "status": "passed",
+        "findings_count": 0,
+        "blockers_count": 0
+      },
+      "extractor_gate": {
+        "status": "passed",
+        "failure_category": null,
+        "description_present": true,
+        "price_amount": 480,
+        "failure_reasons": []
+      },
+      "identity_gate": {
+        "status": "passed",
+        "product_group_id": "sig_f4691b7294254687ef551a1498dc224f",
+        "product_line_id": "pl_6e50c148ba0d31dc0dc9a56b",
+        "sellable_item_group_id": "sig_f4691b7294254687ef551a1498dc224f",
+        "failure_reasons": []
+      },
+      "product_intel_gate": {
+        "status": "passed",
+        "has_product_intel": true,
+        "product_intel_status": "ready",
+        "failure_reasons": []
+      },
+      "live_pdp_gate": {
+        "status": "passed",
+        "price_amount": 50,
+        "has_overview": true,
+        "live_modules": [
+          "canonical",
+          "variant_selector",
+          "offers",
+          "product_intel",
+          "reviews_preview",
+          "similar",
+          "active_ingredients",
+          "ingredients_inci",
+          "how_to_use",
+          "product_overview",
+          "product_facts",
+          "supplemental_details",
+          "product_details",
+          "media_gallery",
+          "price_promo"
+        ],
+        "details_status": {
+          "section_count": 4,
+          "section_soup_count": 0,
+          "has_product_facts": false,
+          "seed_section_count": 3,
+          "compressed_structured_sections": false
+        },
+        "questions_status": {
+          "seed_faq_count": 0,
+          "live_question_count": 0
+        },
+        "active_ingredients_status": {
+          "expected": false,
+          "live_item_count": 0,
+          "suppressed_for_product_family": null
+        },
+        "image_health": {
+          "scanned_count": 10,
+          "total_url_count": 10,
+          "broken_count": 0,
+          "broken_urls": [],
+          "transient_error_count": 0,
+          "transient_error_urls": [],
+          "skipped": false,
+          "truncated": false
+        },
+        "gallery_status": {
+          "image_count": 10,
+          "duplicate_count": 0,
+          "content_leak_count": 0,
+          "seed_content_image_count": 0
+        },
+        "snapshot_contract": {
+          "authoritative": true,
+          "legacy_fields_quarantined": true,
+          "replace_strategy": "replace_not_merge"
+        },
+        "image_url_identity_stripped_count": 0,
+        "image_url_identity_stripped_examples": [],
+        "failure_reasons": []
+      },
+      "similar_gate": {
+        "status": "failed",
+        "similar_count": 0,
+        "card_highlight_missing_count": 0,
+        "card_seller_only_fallback_count": 0,
+        "exempt": false,
+        "failure_reasons": [
+          "similar_underfill"
+        ]
+      },
+      "variant_gate": {
+        "status": "passed",
+        "visible_variant_row_count": 1,
+        "identity_option_visible_count": 0,
+        "wrong_axis_for_category_count": 0,
+        "makeup_shade_missing_visual_count": 0,
+        "size_value_generic_axis_count": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "missing_variant_selector_from_size_evidence": [],
+          "identity_default_title_axis": [],
+          "size_siblings_split_product_line": []
+        },
+        "failure_reasons": []
+      },
+      "root_cause_classification": [
+        "similar_issue"
+      ],
+      "failure_reasons": [
+        "similar_underfill"
+      ]
+    },
+    {
+      "status": "failed",
+      "seed_id": "eps_83b371c333c20799ce91f673",
+      "external_product_id": "ext_d55c93a9feb384ac9e0bde40",
+      "market": "US",
+      "domain": "7journeys.com",
+      "canonical_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-anatctic-timeless-serum-45ml",
+      "seed_gate": {
+        "status": "passed",
+        "findings_count": 0,
+        "blockers_count": 0
+      },
+      "extractor_gate": {
+        "status": "passed",
+        "failure_category": null,
+        "description_present": true,
+        "price_amount": 480,
+        "failure_reasons": []
+      },
+      "identity_gate": {
+        "status": "passed",
+        "product_group_id": "sig_6f258acef923637ae7567600408ce2cf",
+        "product_line_id": "pl_e7fcf7b9753484ab96df6bd5",
+        "sellable_item_group_id": "sig_6f258acef923637ae7567600408ce2cf",
+        "failure_reasons": []
+      },
+      "product_intel_gate": {
+        "status": "passed",
+        "has_product_intel": true,
+        "product_intel_status": "ready",
+        "failure_reasons": []
+      },
+      "live_pdp_gate": {
+        "status": "passed",
+        "price_amount": 50,
+        "has_overview": true,
+        "live_modules": [
+          "canonical",
+          "variant_selector",
+          "offers",
+          "product_intel",
+          "reviews_preview",
+          "similar",
+          "active_ingredients",
+          "ingredients_inci",
+          "how_to_use",
+          "product_overview",
+          "product_facts",
+          "supplemental_details",
+          "product_details",
+          "media_gallery",
+          "price_promo"
+        ],
+        "details_status": {
+          "section_count": 4,
+          "section_soup_count": 0,
+          "has_product_facts": false,
+          "seed_section_count": 3,
+          "compressed_structured_sections": false
+        },
+        "questions_status": {
+          "seed_faq_count": 0,
+          "live_question_count": 0
+        },
+        "active_ingredients_status": {
+          "expected": false,
+          "live_item_count": 0,
+          "suppressed_for_product_family": null
+        },
+        "image_health": {
+          "scanned_count": 9,
+          "total_url_count": 9,
+          "broken_count": 0,
+          "broken_urls": [],
+          "transient_error_count": 0,
+          "transient_error_urls": [],
+          "skipped": false,
+          "truncated": false
+        },
+        "gallery_status": {
+          "image_count": 9,
+          "duplicate_count": 0,
+          "content_leak_count": 0,
+          "seed_content_image_count": 0
+        },
+        "snapshot_contract": {
+          "authoritative": true,
+          "legacy_fields_quarantined": true,
+          "replace_strategy": "replace_not_merge"
+        },
+        "image_url_identity_stripped_count": 0,
+        "image_url_identity_stripped_examples": [],
+        "failure_reasons": []
+      },
+      "similar_gate": {
+        "status": "failed",
+        "similar_count": 0,
+        "card_highlight_missing_count": 0,
+        "card_seller_only_fallback_count": 0,
+        "exempt": false,
+        "failure_reasons": [
+          "similar_underfill"
+        ]
+      },
+      "variant_gate": {
+        "status": "passed",
+        "visible_variant_row_count": 1,
+        "identity_option_visible_count": 0,
+        "wrong_axis_for_category_count": 0,
+        "makeup_shade_missing_visual_count": 0,
+        "size_value_generic_axis_count": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "missing_variant_selector_from_size_evidence": [],
+          "identity_default_title_axis": [],
+          "size_siblings_split_product_line": []
+        },
+        "failure_reasons": []
+      },
+      "root_cause_classification": [
+        "similar_issue"
+      ],
+      "failure_reasons": [
+        "similar_underfill"
+      ]
+    },
+    {
+      "status": "failed",
+      "seed_id": "eps_8d72d961893897d8fbd67cb5",
+      "external_product_id": "ext_1e7b8274600d0395757a3b60",
+      "market": "US",
+      "domain": "7journeys.com",
+      "canonical_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-miracle-timeless-eye-cream-30g",
+      "seed_gate": {
+        "status": "passed",
+        "findings_count": 0,
+        "blockers_count": 0
+      },
+      "extractor_gate": {
+        "status": "passed",
+        "failure_category": null,
+        "description_present": true,
+        "price_amount": 480,
+        "failure_reasons": []
+      },
+      "identity_gate": {
+        "status": "passed",
+        "product_group_id": "sig_59ab25c132c5bae86ddf7f5a42d62975",
+        "product_line_id": "pl_2ac85f3d17bd6d1559d0a32b",
+        "sellable_item_group_id": "sig_59ab25c132c5bae86ddf7f5a42d62975",
+        "failure_reasons": []
+      },
+      "product_intel_gate": {
+        "status": "passed",
+        "has_product_intel": true,
+        "product_intel_status": "ready",
+        "failure_reasons": []
+      },
+      "live_pdp_gate": {
+        "status": "passed",
+        "price_amount": 55,
+        "has_overview": true,
+        "live_modules": [
+          "canonical",
+          "variant_selector",
+          "offers",
+          "product_intel",
+          "reviews_preview",
+          "similar",
+          "active_ingredients",
+          "ingredients_inci",
+          "how_to_use",
+          "product_overview",
+          "product_facts",
+          "supplemental_details",
+          "product_details",
+          "media_gallery",
+          "price_promo"
+        ],
+        "details_status": {
+          "section_count": 4,
+          "section_soup_count": 0,
+          "has_product_facts": false,
+          "seed_section_count": 3,
+          "compressed_structured_sections": false
+        },
+        "questions_status": {
+          "seed_faq_count": 0,
+          "live_question_count": 0
+        },
+        "active_ingredients_status": {
+          "expected": false,
+          "live_item_count": 0,
+          "suppressed_for_product_family": null
+        },
+        "image_health": {
+          "scanned_count": 11,
+          "total_url_count": 11,
+          "broken_count": 0,
+          "broken_urls": [],
+          "transient_error_count": 0,
+          "transient_error_urls": [],
+          "skipped": false,
+          "truncated": false
+        },
+        "gallery_status": {
+          "image_count": 11,
+          "duplicate_count": 0,
+          "content_leak_count": 0,
+          "seed_content_image_count": 0
+        },
+        "snapshot_contract": {
+          "authoritative": true,
+          "legacy_fields_quarantined": true,
+          "replace_strategy": "replace_not_merge"
+        },
+        "image_url_identity_stripped_count": 0,
+        "image_url_identity_stripped_examples": [],
+        "failure_reasons": []
+      },
+      "similar_gate": {
+        "status": "failed",
+        "similar_count": 0,
+        "card_highlight_missing_count": 0,
+        "card_seller_only_fallback_count": 0,
+        "exempt": false,
+        "failure_reasons": [
+          "similar_underfill"
+        ]
+      },
+      "variant_gate": {
+        "status": "passed",
+        "visible_variant_row_count": 1,
+        "identity_option_visible_count": 0,
+        "wrong_axis_for_category_count": 0,
+        "makeup_shade_missing_visual_count": 0,
+        "size_value_generic_axis_count": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "missing_variant_selector_from_size_evidence": [],
+          "identity_default_title_axis": [],
+          "size_siblings_split_product_line": []
+        },
+        "failure_reasons": []
+      },
+      "root_cause_classification": [
+        "similar_issue"
+      ],
+      "failure_reasons": [
+        "similar_underfill"
+      ]
+    },
+    {
+      "status": "failed",
+      "seed_id": "eps_e7510a7aa0b66fced38cbc06",
+      "external_product_id": "ext_299e2dc017565ab3081f8c26",
+      "market": "US",
+      "domain": "7journeys.com",
+      "canonical_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-extra-soft-glow-renewal-moisturizer-50g",
+      "seed_gate": {
+        "status": "passed",
+        "findings_count": 0,
+        "blockers_count": 0
+      },
+      "extractor_gate": {
+        "status": "passed",
+        "failure_category": null,
+        "description_present": true,
+        "price_amount": 480,
+        "failure_reasons": []
+      },
+      "identity_gate": {
+        "status": "passed",
+        "product_group_id": "sig_38d4b7f594967e94089acfd726cce621",
+        "product_line_id": "pl_65661de0655c509f7f9b955a",
+        "sellable_item_group_id": "sig_38d4b7f594967e94089acfd726cce621",
+        "failure_reasons": []
+      },
+      "product_intel_gate": {
+        "status": "passed",
+        "has_product_intel": true,
+        "product_intel_status": "ready",
+        "failure_reasons": []
+      },
+      "live_pdp_gate": {
+        "status": "passed",
+        "price_amount": 45,
+        "has_overview": true,
+        "live_modules": [
+          "canonical",
+          "variant_selector",
+          "offers",
+          "product_intel",
+          "reviews_preview",
+          "similar",
+          "active_ingredients",
+          "ingredients_inci",
+          "how_to_use",
+          "product_overview",
+          "product_facts",
+          "supplemental_details",
+          "product_details",
+          "media_gallery",
+          "price_promo"
+        ],
+        "details_status": {
+          "section_count": 4,
+          "section_soup_count": 0,
+          "has_product_facts": false,
+          "seed_section_count": 3,
+          "compressed_structured_sections": false
+        },
+        "questions_status": {
+          "seed_faq_count": 0,
+          "live_question_count": 0
+        },
+        "active_ingredients_status": {
+          "expected": false,
+          "live_item_count": 0,
+          "suppressed_for_product_family": null
+        },
+        "image_health": {
+          "scanned_count": 11,
+          "total_url_count": 11,
+          "broken_count": 0,
+          "broken_urls": [],
+          "transient_error_count": 0,
+          "transient_error_urls": [],
+          "skipped": false,
+          "truncated": false
+        },
+        "gallery_status": {
+          "image_count": 11,
+          "duplicate_count": 0,
+          "content_leak_count": 0,
+          "seed_content_image_count": 0
+        },
+        "snapshot_contract": {
+          "authoritative": true,
+          "legacy_fields_quarantined": true,
+          "replace_strategy": "replace_not_merge"
+        },
+        "image_url_identity_stripped_count": 0,
+        "image_url_identity_stripped_examples": [],
+        "failure_reasons": []
+      },
+      "similar_gate": {
+        "status": "failed",
+        "similar_count": 0,
+        "card_highlight_missing_count": 0,
+        "card_seller_only_fallback_count": 0,
+        "exempt": false,
+        "failure_reasons": [
+          "similar_underfill"
+        ]
+      },
+      "variant_gate": {
+        "status": "passed",
+        "visible_variant_row_count": 1,
+        "identity_option_visible_count": 0,
+        "wrong_axis_for_category_count": 0,
+        "makeup_shade_missing_visual_count": 0,
+        "size_value_generic_axis_count": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "missing_variant_selector_from_size_evidence": [],
+          "identity_default_title_axis": [],
+          "size_siblings_split_product_line": []
+        },
+        "failure_reasons": []
+      },
+      "root_cause_classification": [
+        "similar_issue"
+      ],
+      "failure_reasons": [
+        "similar_underfill"
+      ]
+    }
+  ]
+}

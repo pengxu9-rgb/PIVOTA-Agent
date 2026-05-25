@@ -1,0 +1,1175 @@
+{
+  "generated_at": "2026-05-25T08:13:04.397Z",
+  "mode": "dry_run",
+  "batch_size": null,
+  "requested_ids": 5,
+  "fetched_rows": 5,
+  "mirror_rows": 5,
+  "planned_sku_rows": 5,
+  "planned_offer_rows": 5,
+  "planned_index_state_rows": 5,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "dry_run",
+    "existing_before": {
+      "catalog_products": 5,
+      "catalog_skus": 5,
+      "catalog_offers": 5,
+      "product_group_members": 5
+    },
+    "batch_size": null,
+    "batches": 1,
+    "product_upserts": 0,
+    "sku_upserts": 0,
+    "offer_upserts": 0,
+    "group_member_upserts": 0,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 0,
+    "identity_live_read_updates": 0
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_1e7b8274600d0395757a3b60",
+      "product_key": "prod::external_seed::external_seed::ext_1e7b8274600d0395757a3b60",
+      "product_group_id": "sig_59ab25c132c5bae86ddf7f5a42d62975",
+      "title": "7 Journeys Miracle Timeless Eye Cream 30g (Hydrating & Glowing)",
+      "brand": "7Journeys",
+      "product_type": "Eye Treatment",
+      "category": "Eye Treatment",
+      "category_path": "beauty/skincare/eye-care",
+      "canonical_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-miracle-timeless-eye-cream-30g",
+      "pivota_signature_id": "sig_59ab25c132c5bae86ddf7f5a42d62975",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_1e7b8274600d0395757a3b60::sku_97cbc8858f6a3a0cf20d",
+        "product_key": "prod::external_seed::external_seed::ext_1e7b8274600d0395757a3b60",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_1e7b8274600d0395757a3b60",
+        "source_variant_id": "ext_1e7b8274600d0395757a3b60:46761610379421",
+        "sku": "7J004-USUKEU",
+        "title": "7 Journeys Miracle Timeless Eye Cream 30g (Hydrating & Glowing)",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-timeless-eye-cream-30g-hydrating-glowing-7j004-usukeu-8809789634893-1909832.png?v=1759493174",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_1e7b8274600d0395757a3b60",
+          "raw_variant_id": "46761610379421",
+          "source_variant_id": "ext_1e7b8274600d0395757a3b60:46761610379421",
+          "variant_sku": "7J004-USUKEU",
+          "source_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-miracle-timeless-eye-cream-30g",
+          "external_redirect_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-miracle-timeless-eye-cream-30g",
+          "price": "55",
+          "price_amount": 55,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-timeless-eye-cream-30g-hydrating-glowing-7j004-usukeu-8809789634893-1909832.png?v=1759493174",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "7J004-USUKEU",
+            "url": "https://7journeys.com/en-inteuusuk/products/7-journeys-miracle-timeless-eye-cream-30g",
+            "price": "55.00",
+            "stock": "In Stock",
+            "images": [
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-timeless-eye-cream-30g-hydrating-glowing-7j004-usukeu-8809789634893-1909832.png?v=1759493174",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-timeless-eye-cream-30g-hydrating-glowing-7j004-usukeu-8809789634893-2669928.png?v=1764736567",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-timeless-eye-cream-30g-hydrating-glowing-7j004-usukeu-8809789634893-9547051.jpg?v=1764736566",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-timeless-eye-cream-30g-hydrating-glowing-7j004-usukeu-8809789634893-5547929.png?v=1764736567",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-timeless-eye-cream-30g-hydrating-glowing-7j004-usukeu-8809789634893-4719614.jpg?v=1764661020",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-timeless-eye-cream-30g-hydrating-glowing-7j004-usukeu-8809789634893-1790653.jpg?v=1764661020",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-timeless-eye-cream-30g-hydrating-glowing-7j004-usukeu-8809789634893-4759348.jpg?v=1764661020",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-timeless-eye-cream-30g-hydrating-glowing-7j004-usukeu-8809789634893-8940625.jpg?v=1764661020",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-timeless-eye-cream-30g-hydrating-glowing-7j004-usukeu-8809789634893-8717462.jpg?v=1764661020",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-timeless-eye-cream-30g-hydrating-glowing-7j004-usukeu-8809789634893-1250128.jpg?v=1764661020",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-timeless-eye-cream-30g-hydrating-glowing-7j004-usukeu-8809789634893-9418515.jpg?v=1764661020"
+            ],
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-timeless-eye-cream-30g-hydrating-glowing-7j004-usukeu-8809789634893-1909832.png?v=1759493174",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-timeless-eye-cream-30g-hydrating-glowing-7j004-usukeu-8809789634893-1909832.png?v=1759493174",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-timeless-eye-cream-30g-hydrating-glowing-7j004-usukeu-8809789634893-2669928.png?v=1764736567",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-timeless-eye-cream-30g-hydrating-glowing-7j004-usukeu-8809789634893-9547051.jpg?v=1764736566",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-timeless-eye-cream-30g-hydrating-glowing-7j004-usukeu-8809789634893-5547929.png?v=1764736567",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-timeless-eye-cream-30g-hydrating-glowing-7j004-usukeu-8809789634893-4719614.jpg?v=1764661020",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-timeless-eye-cream-30g-hydrating-glowing-7j004-usukeu-8809789634893-1790653.jpg?v=1764661020",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-timeless-eye-cream-30g-hydrating-glowing-7j004-usukeu-8809789634893-4759348.jpg?v=1764661020",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-timeless-eye-cream-30g-hydrating-glowing-7j004-usukeu-8809789634893-8940625.jpg?v=1764661020",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-timeless-eye-cream-30g-hydrating-glowing-7j004-usukeu-8809789634893-8717462.jpg?v=1764661020",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-timeless-eye-cream-30g-hydrating-glowing-7j004-usukeu-8809789634893-1250128.jpg?v=1764661020",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-timeless-eye-cream-30g-hydrating-glowing-7j004-usukeu-8809789634893-9418515.jpg?v=1764661020"
+            ],
+            "variant_id": "46761610379421",
+            "description": "7Journeys 7 Journeys Miracle Timeless Eye Cream 30g (Hydrating & Glowing) is a source-backed eye cream from the brand-owned US-localized product page. The source ingredient list includes Water, Cetyl Ethylhexanoate, Dipropylene Glycol, Glycerin, Isopropyl Myristate. Price, availability, images, use instructions, details, and formula fields were captured from the same source page.",
+            "option_name": "Size",
+            "option_value": "Default"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:8c981ed56baeea3548c7ac298e6e0eee",
+        "sku_key": "prod::external_seed::external_seed::ext_1e7b8274600d0395757a3b60::sku_97cbc8858f6a3a0cf20d",
+        "product_key": "prod::external_seed::external_seed::ext_1e7b8274600d0395757a3b60",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 55,
+        "merchant_effective_price": 55,
+        "estimated_best_price": 55,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_8d72d961893897d8fbd67cb5",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_8d72d961893897d8fbd67cb5",
+          "external_product_id": "ext_1e7b8274600d0395757a3b60",
+          "domain": "7journeys.com",
+          "market": "US",
+          "product_title": "7 Journeys Miracle Timeless Eye Cream 30g (Hydrating & Glowing)",
+          "variant_title": "7 Journeys Miracle Timeless Eye Cream 30g (Hydrating & Glowing)",
+          "variant_sku": "7J004-USUKEU",
+          "raw_variant_id": "46761610379421",
+          "url": "https://7journeys.com/en-inteuusuk/products/7-journeys-miracle-timeless-eye-cream-30g",
+          "offer_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-miracle-timeless-eye-cream-30g",
+          "canonical_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-miracle-timeless-eye-cream-30g",
+          "destination_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-miracle-timeless-eye-cream-30g",
+          "external_redirect_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-miracle-timeless-eye-cream-30g",
+          "merchant_display_name": "7Journeys",
+          "price": "55",
+          "price_amount": 55,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "official_shopify_us_localized_pdp",
+            "captured_at": "2026-05-25T07:46:04.722Z",
+            "evidence_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-miracle-timeless-eye-cream-30g",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [
+                "US"
+              ],
+              "evidence_source": "shopify_localized_storefront_us_market",
+              "confidence": "medium",
+              "checked_at": "2026-05-25T07:46:04.722Z",
+              "reason_codes": [
+                "localized_us_storefront_url",
+                "usd_price_observed",
+                "apple_pay_currency_usd"
+              ],
+              "evidence_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-miracle-timeless-eye-cream-30g"
+            },
+            "regional_price": {
+              "amount": 55,
+              "currency": "USD",
+              "display_raw": "$55.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "high",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-miracle-timeless-eye-cream-30g",
+              "captured_at": "2026-05-25T07:46:04.722Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_shopify_us_localized_pdp",
+              "confidence": "high",
+              "captured_at": "2026-05-25T07:46:04.722Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "official_shopify_us_localized_pdp",
+              "confidence": "medium",
+              "reason_codes": [
+                "checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T07:46:04.722Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "official_shopify_us_localized_pdp",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T07:46:04.722Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 55,
+              "currency": "USD",
+              "display_raw": "$55.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "high",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-miracle-timeless-eye-cream-30g",
+              "captured_at": "2026-05-25T07:46:04.722Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_shopify_us_localized_pdp",
+              "confidence": "high",
+              "captured_at": "2026-05-25T07:46:04.722Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 382
+      }
+    },
+    {
+      "external_product_id": "ext_299e2dc017565ab3081f8c26",
+      "product_key": "prod::external_seed::external_seed::ext_299e2dc017565ab3081f8c26",
+      "product_group_id": "sig_38d4b7f594967e94089acfd726cce621",
+      "title": "7 Journeys Extra Soft Glow Renewal Moisturizer 50g - Hydrating & Firming",
+      "brand": "7Journeys",
+      "product_type": "Moisturizer",
+      "category": "Moisturizer",
+      "category_path": "beauty/skincare/moisturizer",
+      "canonical_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-extra-soft-glow-renewal-moisturizer-50g",
+      "pivota_signature_id": "sig_38d4b7f594967e94089acfd726cce621",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_299e2dc017565ab3081f8c26::sku_51d87e6becf2c3dba18b",
+        "product_key": "prod::external_seed::external_seed::ext_299e2dc017565ab3081f8c26",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_299e2dc017565ab3081f8c26",
+        "source_variant_id": "ext_299e2dc017565ab3081f8c26:46761613328541",
+        "sku": "7J005-USUKEU",
+        "title": "7 Journeys Extra Soft Glow Renewal Moisturizer 50g - Hydrating & Firming",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-extra-soft-glow-renewal-moisturizer-50g-hydrating-firming-7j005-usukeu-8809789634909-5170199.png?v=1759493174",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_299e2dc017565ab3081f8c26",
+          "raw_variant_id": "46761613328541",
+          "source_variant_id": "ext_299e2dc017565ab3081f8c26:46761613328541",
+          "variant_sku": "7J005-USUKEU",
+          "source_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-extra-soft-glow-renewal-moisturizer-50g",
+          "external_redirect_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-extra-soft-glow-renewal-moisturizer-50g",
+          "price": "45",
+          "price_amount": 45,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-extra-soft-glow-renewal-moisturizer-50g-hydrating-firming-7j005-usukeu-8809789634909-5170199.png?v=1759493174",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "7J005-USUKEU",
+            "url": "https://7journeys.com/en-inteuusuk/products/7-journeys-extra-soft-glow-renewal-moisturizer-50g",
+            "price": "45.00",
+            "stock": "In Stock",
+            "images": [
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-extra-soft-glow-renewal-moisturizer-50g-hydrating-firming-7j005-usukeu-8809789634909-5170199.png?v=1759493174",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-extra-soft-glow-renewal-moisturizer-50g-hydrating-firming-7j005-usukeu-8809789634909-1613799.png?v=1764736566",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-extra-soft-glow-renewal-moisturizer-50g-hydrating-firming-7j005-usukeu-8809789634909-5146962.jpg?v=1764736566",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-extra-soft-glow-renewal-moisturizer-50g-hydrating-firming-7j005-usukeu-8809789634909-7190189.jpg?v=1764661136",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-extra-soft-glow-renewal-moisturizer-50g-hydrating-firming-7j005-usukeu-8809789634909-3467439.jpg?v=1764661136",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-extra-soft-glow-renewal-moisturizer-50g-hydrating-firming-7j005-usukeu-8809789634909-9894374.jpg?v=1764661136",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-extra-soft-glow-renewal-moisturizer-50g-hydrating-firming-7j005-usukeu-8809789634909-9759799.jpg?v=1764661136",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-extra-soft-glow-renewal-moisturizer-50g-hydrating-firming-7j005-usukeu-8809789634909-3600765.jpg?v=1764661136",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-extra-soft-glow-renewal-moisturizer-50g-hydrating-firming-7j005-usukeu-8809789634909-4785138.jpg?v=1764661136",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-extra-soft-glow-renewal-moisturizer-50g-hydrating-firming-7j005-usukeu-8809789634909-5125030.jpg?v=1764661136",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-extra-soft-glow-renewal-moisturizer-50g-hydrating-firming-7j005-usukeu-8809789634909-2197580.jpg?v=1764661136"
+            ],
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-extra-soft-glow-renewal-moisturizer-50g-hydrating-firming-7j005-usukeu-8809789634909-5170199.png?v=1759493174",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-extra-soft-glow-renewal-moisturizer-50g-hydrating-firming-7j005-usukeu-8809789634909-5170199.png?v=1759493174",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-extra-soft-glow-renewal-moisturizer-50g-hydrating-firming-7j005-usukeu-8809789634909-1613799.png?v=1764736566",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-extra-soft-glow-renewal-moisturizer-50g-hydrating-firming-7j005-usukeu-8809789634909-5146962.jpg?v=1764736566",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-extra-soft-glow-renewal-moisturizer-50g-hydrating-firming-7j005-usukeu-8809789634909-7190189.jpg?v=1764661136",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-extra-soft-glow-renewal-moisturizer-50g-hydrating-firming-7j005-usukeu-8809789634909-3467439.jpg?v=1764661136",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-extra-soft-glow-renewal-moisturizer-50g-hydrating-firming-7j005-usukeu-8809789634909-9894374.jpg?v=1764661136",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-extra-soft-glow-renewal-moisturizer-50g-hydrating-firming-7j005-usukeu-8809789634909-9759799.jpg?v=1764661136",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-extra-soft-glow-renewal-moisturizer-50g-hydrating-firming-7j005-usukeu-8809789634909-3600765.jpg?v=1764661136",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-extra-soft-glow-renewal-moisturizer-50g-hydrating-firming-7j005-usukeu-8809789634909-4785138.jpg?v=1764661136",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-extra-soft-glow-renewal-moisturizer-50g-hydrating-firming-7j005-usukeu-8809789634909-5125030.jpg?v=1764661136",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-extra-soft-glow-renewal-moisturizer-50g-hydrating-firming-7j005-usukeu-8809789634909-2197580.jpg?v=1764661136"
+            ],
+            "variant_id": "46761613328541",
+            "description": "7Journeys 7 Journeys Extra Soft Glow Renewal Moisturizer 50g - Hydrating & Firming is a source-backed moisturizer from the brand-owned US-localized product page. The source ingredient list includes Water, Butylene Glycol, Glycerin, Isopropyl Myristate, Caprylic/Capric Triglyceride. Price, availability, images, use instructions, details, and formula fields were captured from the same source page.",
+            "option_name": "Size",
+            "option_value": "Default"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:f8033e7b01e4432331ae5fe6d361648e",
+        "sku_key": "prod::external_seed::external_seed::ext_299e2dc017565ab3081f8c26::sku_51d87e6becf2c3dba18b",
+        "product_key": "prod::external_seed::external_seed::ext_299e2dc017565ab3081f8c26",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 45,
+        "merchant_effective_price": 45,
+        "estimated_best_price": 45,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_e7510a7aa0b66fced38cbc06",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_e7510a7aa0b66fced38cbc06",
+          "external_product_id": "ext_299e2dc017565ab3081f8c26",
+          "domain": "7journeys.com",
+          "market": "US",
+          "product_title": "7 Journeys Extra Soft Glow Renewal Moisturizer 50g - Hydrating & Firming",
+          "variant_title": "7 Journeys Extra Soft Glow Renewal Moisturizer 50g - Hydrating & Firming",
+          "variant_sku": "7J005-USUKEU",
+          "raw_variant_id": "46761613328541",
+          "url": "https://7journeys.com/en-inteuusuk/products/7-journeys-extra-soft-glow-renewal-moisturizer-50g",
+          "offer_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-extra-soft-glow-renewal-moisturizer-50g",
+          "canonical_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-extra-soft-glow-renewal-moisturizer-50g",
+          "destination_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-extra-soft-glow-renewal-moisturizer-50g",
+          "external_redirect_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-extra-soft-glow-renewal-moisturizer-50g",
+          "merchant_display_name": "7Journeys",
+          "price": "45",
+          "price_amount": 45,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "official_shopify_us_localized_pdp",
+            "captured_at": "2026-05-25T07:46:04.722Z",
+            "evidence_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-extra-soft-glow-renewal-moisturizer-50g",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [
+                "US"
+              ],
+              "evidence_source": "shopify_localized_storefront_us_market",
+              "confidence": "medium",
+              "checked_at": "2026-05-25T07:46:04.722Z",
+              "reason_codes": [
+                "localized_us_storefront_url",
+                "usd_price_observed",
+                "apple_pay_currency_usd"
+              ],
+              "evidence_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-extra-soft-glow-renewal-moisturizer-50g"
+            },
+            "regional_price": {
+              "amount": 45,
+              "currency": "USD",
+              "display_raw": "$45.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "high",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-extra-soft-glow-renewal-moisturizer-50g",
+              "captured_at": "2026-05-25T07:46:04.722Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_shopify_us_localized_pdp",
+              "confidence": "high",
+              "captured_at": "2026-05-25T07:46:04.722Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "official_shopify_us_localized_pdp",
+              "confidence": "medium",
+              "reason_codes": [
+                "checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T07:46:04.722Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "official_shopify_us_localized_pdp",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T07:46:04.722Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 45,
+              "currency": "USD",
+              "display_raw": "$45.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "high",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-extra-soft-glow-renewal-moisturizer-50g",
+              "captured_at": "2026-05-25T07:46:04.722Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_shopify_us_localized_pdp",
+              "confidence": "high",
+              "captured_at": "2026-05-25T07:46:04.722Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 398
+      }
+    },
+    {
+      "external_product_id": "ext_2da51d2f8d19211c89fb2a30",
+      "product_key": "prod::external_seed::external_seed::ext_2da51d2f8d19211c89fb2a30",
+      "product_group_id": "sig_a7ccb1334eb133e537242dde2157f01e",
+      "title": "7 Journeys Miracle Glow Serum Mask 25ml (10 Sheets)",
+      "brand": "7Journeys",
+      "product_type": "Serum",
+      "category": "Serum",
+      "category_path": "beauty/skincare/serum",
+      "canonical_url": "https://7journeys.com/en-inteuusuk/products/7journeys-miracle-glow-serum-mask-10-sheets",
+      "pivota_signature_id": "sig_a7ccb1334eb133e537242dde2157f01e",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_2da51d2f8d19211c89fb2a30::sku_7b730168b99eeaaf9535",
+        "product_key": "prod::external_seed::external_seed::ext_2da51d2f8d19211c89fb2a30",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_2da51d2f8d19211c89fb2a30",
+        "source_variant_id": "ext_2da51d2f8d19211c89fb2a30:44109378191517",
+        "sku": "7J001",
+        "title": "7 Journeys Miracle Glow Serum Mask 25ml (10 Sheets)",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-9111380.png?v=1759493178",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_2da51d2f8d19211c89fb2a30",
+          "raw_variant_id": "44109378191517",
+          "source_variant_id": "ext_2da51d2f8d19211c89fb2a30:44109378191517",
+          "variant_sku": "7J001",
+          "source_url": "https://7journeys.com/en-inteuusuk/products/7journeys-miracle-glow-serum-mask-10-sheets",
+          "external_redirect_url": "https://7journeys.com/en-inteuusuk/products/7journeys-miracle-glow-serum-mask-10-sheets",
+          "price": "55",
+          "price_amount": 55,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-9111380.png?v=1759493178",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "7J001",
+            "url": "https://7journeys.com/en-inteuusuk/products/7journeys-miracle-glow-serum-mask-10-sheets",
+            "price": "55.00",
+            "stock": "In Stock",
+            "images": [
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-9111380.png?v=1759493178",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-4881882.png?v=1764736567",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-7026113.jpg?v=1764736567",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-5276279.png?v=1764736567",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-1010333.jpg?v=1764659561",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-8057207.jpg?v=1764659561",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-4009473.jpg?v=1764659561",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-9399536.jpg?v=1764659561",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-8462383.jpg?v=1764659561",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-5054606.jpg?v=1764659561",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-8802155.jpg?v=1764659561",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-3416225.jpg?v=1764659561"
+            ],
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-9111380.png?v=1759493178",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-9111380.png?v=1759493178",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-4881882.png?v=1764736567",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-7026113.jpg?v=1764736567",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-5276279.png?v=1764736567",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-1010333.jpg?v=1764659561",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-8057207.jpg?v=1764659561",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-4009473.jpg?v=1764659561",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-9399536.jpg?v=1764659561",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-8462383.jpg?v=1764659561",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-5054606.jpg?v=1764659561",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-8802155.jpg?v=1764659561",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-3416225.jpg?v=1764659561"
+            ],
+            "variant_id": "44109378191517",
+            "description": "7Journeys 7 Journeys Miracle Glow Serum Mask 25ml (10 Sheets) is a source-backed sheet mask from the brand-owned US-localized product page. The source ingredient list includes Water, Dipropylene Glycol, Butylene Glycol, Glycerin, Macadamia Ternifolia Seed Oil. Price, availability, images, use instructions, details, and formula fields were captured from the same source page.",
+            "option_name": "Size",
+            "option_value": "Default"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:ad6622b05073d8ce0bf595c985ebf100",
+        "sku_key": "prod::external_seed::external_seed::ext_2da51d2f8d19211c89fb2a30::sku_7b730168b99eeaaf9535",
+        "product_key": "prod::external_seed::external_seed::ext_2da51d2f8d19211c89fb2a30",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 55,
+        "merchant_effective_price": 55,
+        "estimated_best_price": 55,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_b36b9b1d2fb28c5e39090157",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_b36b9b1d2fb28c5e39090157",
+          "external_product_id": "ext_2da51d2f8d19211c89fb2a30",
+          "domain": "7journeys.com",
+          "market": "US",
+          "product_title": "7 Journeys Miracle Glow Serum Mask 25ml (10 Sheets)",
+          "variant_title": "7 Journeys Miracle Glow Serum Mask 25ml (10 Sheets)",
+          "variant_sku": "7J001",
+          "raw_variant_id": "44109378191517",
+          "url": "https://7journeys.com/en-inteuusuk/products/7journeys-miracle-glow-serum-mask-10-sheets",
+          "offer_url": "https://7journeys.com/en-inteuusuk/products/7journeys-miracle-glow-serum-mask-10-sheets",
+          "canonical_url": "https://7journeys.com/en-inteuusuk/products/7journeys-miracle-glow-serum-mask-10-sheets",
+          "destination_url": "https://7journeys.com/en-inteuusuk/products/7journeys-miracle-glow-serum-mask-10-sheets",
+          "external_redirect_url": "https://7journeys.com/en-inteuusuk/products/7journeys-miracle-glow-serum-mask-10-sheets",
+          "merchant_display_name": "7Journeys",
+          "price": "55",
+          "price_amount": 55,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "official_shopify_us_localized_pdp",
+            "captured_at": "2026-05-25T07:46:04.722Z",
+            "evidence_url": "https://7journeys.com/en-inteuusuk/products/7journeys-miracle-glow-serum-mask-10-sheets",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [
+                "US"
+              ],
+              "evidence_source": "shopify_localized_storefront_us_market",
+              "confidence": "medium",
+              "checked_at": "2026-05-25T07:46:04.722Z",
+              "reason_codes": [
+                "localized_us_storefront_url",
+                "usd_price_observed",
+                "apple_pay_currency_usd"
+              ],
+              "evidence_url": "https://7journeys.com/en-inteuusuk/products/7journeys-miracle-glow-serum-mask-10-sheets"
+            },
+            "regional_price": {
+              "amount": 55,
+              "currency": "USD",
+              "display_raw": "$55.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "high",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://7journeys.com/en-inteuusuk/products/7journeys-miracle-glow-serum-mask-10-sheets",
+              "captured_at": "2026-05-25T07:46:04.722Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_shopify_us_localized_pdp",
+              "confidence": "high",
+              "captured_at": "2026-05-25T07:46:04.722Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "official_shopify_us_localized_pdp",
+              "confidence": "medium",
+              "reason_codes": [
+                "checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T07:46:04.722Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "official_shopify_us_localized_pdp",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T07:46:04.722Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 55,
+              "currency": "USD",
+              "display_raw": "$55.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "high",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://7journeys.com/en-inteuusuk/products/7journeys-miracle-glow-serum-mask-10-sheets",
+              "captured_at": "2026-05-25T07:46:04.722Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_shopify_us_localized_pdp",
+              "confidence": "high",
+              "captured_at": "2026-05-25T07:46:04.722Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 376
+      }
+    },
+    {
+      "external_product_id": "ext_718736656c3aa82e74546c28",
+      "product_key": "prod::external_seed::external_seed::ext_718736656c3aa82e74546c28",
+      "product_group_id": "sig_f4691b7294254687ef551a1498dc224f",
+      "title": "7 Journeys Glow Renewal Serum 45ml (Hydrated & Glowing Skin)",
+      "brand": "7Journeys",
+      "product_type": "Serum",
+      "category": "Serum",
+      "category_path": "beauty/skincare/serum",
+      "canonical_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-glow-renewal-serum-45ml",
+      "pivota_signature_id": "sig_f4691b7294254687ef551a1498dc224f",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_718736656c3aa82e74546c28::sku_3bdfa5a1e03903916ef7",
+        "product_key": "prod::external_seed::external_seed::ext_718736656c3aa82e74546c28",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_718736656c3aa82e74546c28",
+        "source_variant_id": "ext_718736656c3aa82e74546c28:46761550086301",
+        "sku": "7J002-USUKEU",
+        "title": "7 Journeys Glow Renewal Serum 45ml (Hydrated & Glowing Skin)",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-glow-renewal-serum-45ml-hydrated-glowing-skin-7j002-usukeu-8809789634879-1610652.png?v=1759493173",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_718736656c3aa82e74546c28",
+          "raw_variant_id": "46761550086301",
+          "source_variant_id": "ext_718736656c3aa82e74546c28:46761550086301",
+          "variant_sku": "7J002-USUKEU",
+          "source_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-glow-renewal-serum-45ml",
+          "external_redirect_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-glow-renewal-serum-45ml",
+          "price": "50",
+          "price_amount": 50,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-glow-renewal-serum-45ml-hydrated-glowing-skin-7j002-usukeu-8809789634879-1610652.png?v=1759493173",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "7J002-USUKEU",
+            "url": "https://7journeys.com/en-inteuusuk/products/7-journeys-glow-renewal-serum-45ml",
+            "price": "50.00",
+            "stock": "In Stock",
+            "images": [
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-glow-renewal-serum-45ml-hydrated-glowing-skin-7j002-usukeu-8809789634879-1610652.png?v=1759493173",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-glow-renewal-serum-45ml-hydrated-glowing-skin-7j002-usukeu-8809789634879-5266463.png?v=1764405125",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-glow-renewal-serum-45ml-hydrated-glowing-skin-7j002-usukeu-8809789634879-9591440.jpg?v=1764736565",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-glow-renewal-serum-45ml-hydrated-glowing-skin-7j002-usukeu-8809789634879-2998411.jpg?v=1764660226",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-glow-renewal-serum-45ml-hydrated-glowing-skin-7j002-usukeu-8809789634879-6085350.jpg?v=1764660226",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-glow-renewal-serum-45ml-hydrated-glowing-skin-7j002-usukeu-8809789634879-7550091.jpg?v=1764660226",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-glow-renewal-serum-45ml-hydrated-glowing-skin-7j002-usukeu-8809789634879-1492138.jpg?v=1764660226",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-glow-renewal-serum-45ml-hydrated-glowing-skin-7j002-usukeu-8809789634879-7881580.jpg?v=1764660226",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-glow-renewal-serum-45ml-hydrated-glowing-skin-7j002-usukeu-8809789634879-4754266.jpg?v=1764660226",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-glow-renewal-serum-45ml-hydrated-glowing-skin-7j002-usukeu-8809789634879-1416268.jpg?v=1764660226"
+            ],
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-glow-renewal-serum-45ml-hydrated-glowing-skin-7j002-usukeu-8809789634879-1610652.png?v=1759493173",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-glow-renewal-serum-45ml-hydrated-glowing-skin-7j002-usukeu-8809789634879-1610652.png?v=1759493173",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-glow-renewal-serum-45ml-hydrated-glowing-skin-7j002-usukeu-8809789634879-5266463.png?v=1764405125",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-glow-renewal-serum-45ml-hydrated-glowing-skin-7j002-usukeu-8809789634879-9591440.jpg?v=1764736565",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-glow-renewal-serum-45ml-hydrated-glowing-skin-7j002-usukeu-8809789634879-2998411.jpg?v=1764660226",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-glow-renewal-serum-45ml-hydrated-glowing-skin-7j002-usukeu-8809789634879-6085350.jpg?v=1764660226",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-glow-renewal-serum-45ml-hydrated-glowing-skin-7j002-usukeu-8809789634879-7550091.jpg?v=1764660226",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-glow-renewal-serum-45ml-hydrated-glowing-skin-7j002-usukeu-8809789634879-1492138.jpg?v=1764660226",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-glow-renewal-serum-45ml-hydrated-glowing-skin-7j002-usukeu-8809789634879-7881580.jpg?v=1764660226",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-glow-renewal-serum-45ml-hydrated-glowing-skin-7j002-usukeu-8809789634879-4754266.jpg?v=1764660226",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-glow-renewal-serum-45ml-hydrated-glowing-skin-7j002-usukeu-8809789634879-1416268.jpg?v=1764660226"
+            ],
+            "variant_id": "46761550086301",
+            "description": "7Journeys 7 Journeys Glow Renewal Serum 45ml (Hydrated & Glowing Skin) is a source-backed face serum from the brand-owned US-localized product page. The source ingredient list includes Water, Butylene Glycol, Niacinamide, Isopropyl Myristate, Cetyl Ethylhexanoate. Price, availability, images, use instructions, details, and formula fields were captured from the same source page.",
+            "option_name": "Size",
+            "option_value": "Default"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:1486f6db5d21a8a1d271cd9d867b5a49",
+        "sku_key": "prod::external_seed::external_seed::ext_718736656c3aa82e74546c28::sku_3bdfa5a1e03903916ef7",
+        "product_key": "prod::external_seed::external_seed::ext_718736656c3aa82e74546c28",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 50,
+        "merchant_effective_price": 50,
+        "estimated_best_price": 50,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_89843fb919f2738541f26848",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_89843fb919f2738541f26848",
+          "external_product_id": "ext_718736656c3aa82e74546c28",
+          "domain": "7journeys.com",
+          "market": "US",
+          "product_title": "7 Journeys Glow Renewal Serum 45ml (Hydrated & Glowing Skin)",
+          "variant_title": "7 Journeys Glow Renewal Serum 45ml (Hydrated & Glowing Skin)",
+          "variant_sku": "7J002-USUKEU",
+          "raw_variant_id": "46761550086301",
+          "url": "https://7journeys.com/en-inteuusuk/products/7-journeys-glow-renewal-serum-45ml",
+          "offer_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-glow-renewal-serum-45ml",
+          "canonical_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-glow-renewal-serum-45ml",
+          "destination_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-glow-renewal-serum-45ml",
+          "external_redirect_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-glow-renewal-serum-45ml",
+          "merchant_display_name": "7Journeys",
+          "price": "50",
+          "price_amount": 50,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "official_shopify_us_localized_pdp",
+            "captured_at": "2026-05-25T07:46:04.722Z",
+            "evidence_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-glow-renewal-serum-45ml",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [
+                "US"
+              ],
+              "evidence_source": "shopify_localized_storefront_us_market",
+              "confidence": "medium",
+              "checked_at": "2026-05-25T07:46:04.722Z",
+              "reason_codes": [
+                "localized_us_storefront_url",
+                "usd_price_observed",
+                "apple_pay_currency_usd"
+              ],
+              "evidence_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-glow-renewal-serum-45ml"
+            },
+            "regional_price": {
+              "amount": 50,
+              "currency": "USD",
+              "display_raw": "$50.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "high",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-glow-renewal-serum-45ml",
+              "captured_at": "2026-05-25T07:46:04.722Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_shopify_us_localized_pdp",
+              "confidence": "high",
+              "captured_at": "2026-05-25T07:46:04.722Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "official_shopify_us_localized_pdp",
+              "confidence": "medium",
+              "reason_codes": [
+                "checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T07:46:04.722Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "official_shopify_us_localized_pdp",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T07:46:04.722Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 50,
+              "currency": "USD",
+              "display_raw": "$50.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "high",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-glow-renewal-serum-45ml",
+              "captured_at": "2026-05-25T07:46:04.722Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_shopify_us_localized_pdp",
+              "confidence": "high",
+              "captured_at": "2026-05-25T07:46:04.722Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 380
+      }
+    },
+    {
+      "external_product_id": "ext_d55c93a9feb384ac9e0bde40",
+      "product_key": "prod::external_seed::external_seed::ext_d55c93a9feb384ac9e0bde40",
+      "product_group_id": "sig_6f258acef923637ae7567600408ce2cf",
+      "title": "7 Journeys Antarctic Timeless Serum 45ml (Hydration & Anti-aging)",
+      "brand": "7Journeys",
+      "product_type": "Serum",
+      "category": "Serum",
+      "category_path": "beauty/skincare/serum",
+      "canonical_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-anatctic-timeless-serum-45ml",
+      "pivota_signature_id": "sig_6f258acef923637ae7567600408ce2cf",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_d55c93a9feb384ac9e0bde40::sku_790602725187eb1cba79",
+        "product_key": "prod::external_seed::external_seed::ext_d55c93a9feb384ac9e0bde40",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_d55c93a9feb384ac9e0bde40",
+        "source_variant_id": "ext_d55c93a9feb384ac9e0bde40:46761570599069",
+        "sku": "7J003-USUKEU",
+        "title": "7 Journeys Antarctic Timeless Serum 45ml (Hydration & Anti-aging)",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-7j003-usukeu-8809789634886-6307320.png?v=1759493174",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_d55c93a9feb384ac9e0bde40",
+          "raw_variant_id": "46761570599069",
+          "source_variant_id": "ext_d55c93a9feb384ac9e0bde40:46761570599069",
+          "variant_sku": "7J003-USUKEU",
+          "source_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-anatctic-timeless-serum-45ml",
+          "external_redirect_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-anatctic-timeless-serum-45ml",
+          "price": "50",
+          "price_amount": 50,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-7j003-usukeu-8809789634886-6307320.png?v=1759493174",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "7J003-USUKEU",
+            "url": "https://7journeys.com/en-inteuusuk/products/7-journeys-anatctic-timeless-serum-45ml",
+            "price": "50.00",
+            "stock": "In Stock",
+            "images": [
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-7j003-usukeu-8809789634886-6307320.png?v=1759493174",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-hydration-anti-aging-7j003-usukeu-8809789634886-7442768.png?v=1764736566",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-hydration-anti-aging-7j003-usukeu-8809789634886-8702048.jpg?v=1764736566",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-7j003-usukeu-8809789634886-9650353.jpg?v=1764659994",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-7j003-usukeu-8809789634886-5844673.jpg?v=1764659994",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-7j003-usukeu-8809789634886-6428490.jpg?v=1764659994",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-7j003-usukeu-8809789634886-4890502.jpg?v=1764659994",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-7j003-usukeu-8809789634886-7847272.jpg?v=1764659994",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-7j003-usukeu-8809789634886-8171039.jpg?v=1764659994"
+            ],
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-7j003-usukeu-8809789634886-6307320.png?v=1759493174",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-7j003-usukeu-8809789634886-6307320.png?v=1759493174",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-hydration-anti-aging-7j003-usukeu-8809789634886-7442768.png?v=1764736566",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-hydration-anti-aging-7j003-usukeu-8809789634886-8702048.jpg?v=1764736566",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-7j003-usukeu-8809789634886-9650353.jpg?v=1764659994",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-7j003-usukeu-8809789634886-5844673.jpg?v=1764659994",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-7j003-usukeu-8809789634886-6428490.jpg?v=1764659994",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-7j003-usukeu-8809789634886-4890502.jpg?v=1764659994",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-7j003-usukeu-8809789634886-7847272.jpg?v=1764659994",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-7j003-usukeu-8809789634886-8171039.jpg?v=1764659994"
+            ],
+            "variant_id": "46761570599069",
+            "description": "7Journeys 7 Journeys Antarctic Timeless Serum 45ml (Hydration & Anti-aging) is a source-backed face serum from the brand-owned US-localized product page. The source ingredient list includes Water, 1,2-Hexanediol, Pseudoalteromonas Ferment Extract, Euterpe Oleracea Fruit Extract, Sodium Hyaluronate. Price, availability, images, use instructions, details, and formula fields were captured from the same source page.",
+            "option_name": "Size",
+            "option_value": "Default"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:fc4acf4fe7f9b471f02f2fe47356cbb7",
+        "sku_key": "prod::external_seed::external_seed::ext_d55c93a9feb384ac9e0bde40::sku_790602725187eb1cba79",
+        "product_key": "prod::external_seed::external_seed::ext_d55c93a9feb384ac9e0bde40",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 50,
+        "merchant_effective_price": 50,
+        "estimated_best_price": 50,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_83b371c333c20799ce91f673",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_83b371c333c20799ce91f673",
+          "external_product_id": "ext_d55c93a9feb384ac9e0bde40",
+          "domain": "7journeys.com",
+          "market": "US",
+          "product_title": "7 Journeys Antarctic Timeless Serum 45ml (Hydration & Anti-aging)",
+          "variant_title": "7 Journeys Antarctic Timeless Serum 45ml (Hydration & Anti-aging)",
+          "variant_sku": "7J003-USUKEU",
+          "raw_variant_id": "46761570599069",
+          "url": "https://7journeys.com/en-inteuusuk/products/7-journeys-anatctic-timeless-serum-45ml",
+          "offer_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-anatctic-timeless-serum-45ml",
+          "canonical_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-anatctic-timeless-serum-45ml",
+          "destination_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-anatctic-timeless-serum-45ml",
+          "external_redirect_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-anatctic-timeless-serum-45ml",
+          "merchant_display_name": "7Journeys",
+          "price": "50",
+          "price_amount": 50,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "official_shopify_us_localized_pdp",
+            "captured_at": "2026-05-25T07:46:04.722Z",
+            "evidence_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-anatctic-timeless-serum-45ml",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [
+                "US"
+              ],
+              "evidence_source": "shopify_localized_storefront_us_market",
+              "confidence": "medium",
+              "checked_at": "2026-05-25T07:46:04.722Z",
+              "reason_codes": [
+                "localized_us_storefront_url",
+                "usd_price_observed",
+                "apple_pay_currency_usd"
+              ],
+              "evidence_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-anatctic-timeless-serum-45ml"
+            },
+            "regional_price": {
+              "amount": 50,
+              "currency": "USD",
+              "display_raw": "$50.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "high",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-anatctic-timeless-serum-45ml",
+              "captured_at": "2026-05-25T07:46:04.722Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_shopify_us_localized_pdp",
+              "confidence": "high",
+              "captured_at": "2026-05-25T07:46:04.722Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "official_shopify_us_localized_pdp",
+              "confidence": "medium",
+              "reason_codes": [
+                "checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T07:46:04.722Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "official_shopify_us_localized_pdp",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T07:46:04.722Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 50,
+              "currency": "USD",
+              "display_raw": "$50.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "high",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-anatctic-timeless-serum-45ml",
+              "captured_at": "2026-05-25T07:46:04.722Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_shopify_us_localized_pdp",
+              "confidence": "high",
+              "captured_at": "2026-05-25T07:46:04.722Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 415
+      }
+    }
+  ]
+}

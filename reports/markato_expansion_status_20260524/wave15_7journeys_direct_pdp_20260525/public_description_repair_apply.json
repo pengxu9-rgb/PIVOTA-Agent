@@ -1,0 +1,67 @@
+{
+  "ok": true,
+  "generated_at": "2026-05-25T08:10:36.162Z",
+  "mode": "apply",
+  "manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/wave15_7journeys_direct_pdp_20260525/db_ready_candidate_manifest.json",
+  "scanned": 5,
+  "summary": {
+    "updated": 5
+  },
+  "results": [
+    {
+      "external_product_id": "ext_299e2dc017565ab3081f8c26",
+      "title": "7 Journeys Extra Soft Glow Renewal Moisturizer 50g - Hydrating & Firming",
+      "status": "updated",
+      "existing_description_length": 416,
+      "next_description_length": 398,
+      "preserved_official_raw_description_length": 1085,
+      "ingredients_count": 34,
+      "decimal_comma_inci_preserved": true,
+      "validation_problems": []
+    },
+    {
+      "external_product_id": "ext_1e7b8274600d0395757a3b60",
+      "title": "7 Journeys Miracle Timeless Eye Cream 30g (Hydrating & Glowing)",
+      "status": "updated",
+      "existing_description_length": 400,
+      "next_description_length": 382,
+      "preserved_official_raw_description_length": 1182,
+      "ingredients_count": 43,
+      "decimal_comma_inci_preserved": true,
+      "validation_problems": []
+    },
+    {
+      "external_product_id": "ext_d55c93a9feb384ac9e0bde40",
+      "title": "7 Journeys Antarctic Timeless Serum 45ml (Hydration & Anti-aging)",
+      "status": "updated",
+      "existing_description_length": 431,
+      "next_description_length": 415,
+      "preserved_official_raw_description_length": 1349,
+      "ingredients_count": 23,
+      "decimal_comma_inci_preserved": true,
+      "validation_problems": []
+    },
+    {
+      "external_product_id": "ext_718736656c3aa82e74546c28",
+      "title": "7 Journeys Glow Renewal Serum 45ml (Hydrated & Glowing Skin)",
+      "status": "updated",
+      "existing_description_length": 398,
+      "next_description_length": 380,
+      "preserved_official_raw_description_length": 1215,
+      "ingredients_count": 42,
+      "decimal_comma_inci_preserved": true,
+      "validation_problems": []
+    },
+    {
+      "external_product_id": "ext_2da51d2f8d19211c89fb2a30",
+      "title": "7 Journeys Miracle Glow Serum Mask 25ml (10 Sheets)",
+      "status": "updated",
+      "existing_description_length": 394,
+      "next_description_length": 376,
+      "preserved_official_raw_description_length": 1242,
+      "ingredients_count": 39,
+      "decimal_comma_inci_preserved": true,
+      "validation_problems": []
+    }
+  ]
+}

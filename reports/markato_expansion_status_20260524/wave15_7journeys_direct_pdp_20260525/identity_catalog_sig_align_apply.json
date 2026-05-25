@@ -1,0 +1,193 @@
+{
+  "status": "success",
+  "mode": "write",
+  "generated_at": "2026-05-25T07:54:36.923Z",
+  "external_product_ids": [
+    "ext_299e2dc017565ab3081f8c26",
+    "ext_1e7b8274600d0395757a3b60",
+    "ext_d55c93a9feb384ac9e0bde40",
+    "ext_718736656c3aa82e74546c28",
+    "ext_2da51d2f8d19211c89fb2a30"
+  ],
+  "options": {
+    "allow_reviewed_product_line_singletons": false,
+    "allow_official_url_exact_conflict_cleanup": false
+  },
+  "rows_seen": 5,
+  "missing_ids": [],
+  "align_ready_count": 5,
+  "already_aligned_count": 0,
+  "held_count": 0,
+  "applied": {
+    "override_upserts": 5,
+    "identity_rows_updated": 5
+  },
+  "blockers": [],
+  "plans": [
+    {
+      "action": "align_ready",
+      "blockers": [],
+      "product_key": "prod::external_seed::external_seed::ext_299e2dc017565ab3081f8c26",
+      "source_listing_ref": "external_seed:ext_299e2dc017565ab3081f8c26",
+      "external_product_id": "ext_299e2dc017565ab3081f8c26",
+      "title": "7 Journeys Extra Soft Glow Renewal Moisturizer 50g - Hydrating & Firming",
+      "brand": "7Journeys",
+      "canonical_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-extra-soft-glow-renewal-moisturizer-50g",
+      "product_group_id": "",
+      "is_primary": false,
+      "content_key": "ck_a2f8b08dd1bdbaa685c8fa0cedd8bb29",
+      "catalog_sig_id": "sig_38d4b7f594967e94089acfd726cce621",
+      "catalog_sig_url": "https://agent.pivota.cc/products/sig_38d4b7f594967e94089acfd726cce621",
+      "identity_sig_id_before": "sig_0b973b40e44c3267a1d4978a",
+      "product_line_id": "pl_65661de0655c509f7f9b955a",
+      "review_family_id": "rf_65661de0655c509f7f9b955a",
+      "identity_status_before": "approved",
+      "live_read_enabled_before": false,
+      "review_required_before": false,
+      "review_reason_codes_before": [],
+      "reviewed_product_line_singleton": {
+        "eligible": false,
+        "blockers": [],
+        "evidence": null
+      },
+      "reviewed_official_url_exact_conflict_cleanup": {
+        "eligible": false,
+        "blockers": [],
+        "evidence": null
+      },
+      "needs_update": true
+    },
+    {
+      "action": "align_ready",
+      "blockers": [],
+      "product_key": "prod::external_seed::external_seed::ext_1e7b8274600d0395757a3b60",
+      "source_listing_ref": "external_seed:ext_1e7b8274600d0395757a3b60",
+      "external_product_id": "ext_1e7b8274600d0395757a3b60",
+      "title": "7 Journeys Miracle Timeless Eye Cream 30g (Hydrating & Glowing)",
+      "brand": "7Journeys",
+      "canonical_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-miracle-timeless-eye-cream-30g",
+      "product_group_id": "",
+      "is_primary": false,
+      "content_key": "ck_b4a06b679dfade071d736b432b2b167f",
+      "catalog_sig_id": "sig_59ab25c132c5bae86ddf7f5a42d62975",
+      "catalog_sig_url": "https://agent.pivota.cc/products/sig_59ab25c132c5bae86ddf7f5a42d62975",
+      "identity_sig_id_before": "sig_9f237e7a746b7e77c8c434d8",
+      "product_line_id": "pl_2ac85f3d17bd6d1559d0a32b",
+      "review_family_id": "rf_2ac85f3d17bd6d1559d0a32b",
+      "identity_status_before": "approved",
+      "live_read_enabled_before": false,
+      "review_required_before": false,
+      "review_reason_codes_before": [],
+      "reviewed_product_line_singleton": {
+        "eligible": false,
+        "blockers": [],
+        "evidence": null
+      },
+      "reviewed_official_url_exact_conflict_cleanup": {
+        "eligible": false,
+        "blockers": [],
+        "evidence": null
+      },
+      "needs_update": true
+    },
+    {
+      "action": "align_ready",
+      "blockers": [],
+      "product_key": "prod::external_seed::external_seed::ext_d55c93a9feb384ac9e0bde40",
+      "source_listing_ref": "external_seed:ext_d55c93a9feb384ac9e0bde40",
+      "external_product_id": "ext_d55c93a9feb384ac9e0bde40",
+      "title": "7 Journeys Antarctic Timeless Serum 45ml (Hydration & Anti-aging)",
+      "brand": "7Journeys",
+      "canonical_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-anatctic-timeless-serum-45ml",
+      "product_group_id": "",
+      "is_primary": false,
+      "content_key": "ck_59cd53d3ab701b316211d2b31883455a",
+      "catalog_sig_id": "sig_6f258acef923637ae7567600408ce2cf",
+      "catalog_sig_url": "https://agent.pivota.cc/products/sig_6f258acef923637ae7567600408ce2cf",
+      "identity_sig_id_before": "sig_609ebd3996048d9617d9a655",
+      "product_line_id": "pl_e7fcf7b9753484ab96df6bd5",
+      "review_family_id": "rf_e7fcf7b9753484ab96df6bd5",
+      "identity_status_before": "approved",
+      "live_read_enabled_before": false,
+      "review_required_before": false,
+      "review_reason_codes_before": [],
+      "reviewed_product_line_singleton": {
+        "eligible": false,
+        "blockers": [],
+        "evidence": null
+      },
+      "reviewed_official_url_exact_conflict_cleanup": {
+        "eligible": false,
+        "blockers": [],
+        "evidence": null
+      },
+      "needs_update": true
+    },
+    {
+      "action": "align_ready",
+      "blockers": [],
+      "product_key": "prod::external_seed::external_seed::ext_718736656c3aa82e74546c28",
+      "source_listing_ref": "external_seed:ext_718736656c3aa82e74546c28",
+      "external_product_id": "ext_718736656c3aa82e74546c28",
+      "title": "7 Journeys Glow Renewal Serum 45ml (Hydrated & Glowing Skin)",
+      "brand": "7Journeys",
+      "canonical_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-glow-renewal-serum-45ml",
+      "product_group_id": "",
+      "is_primary": false,
+      "content_key": "ck_bbbe9a6e597d5145926b62b353a03cbc",
+      "catalog_sig_id": "sig_f4691b7294254687ef551a1498dc224f",
+      "catalog_sig_url": "https://agent.pivota.cc/products/sig_f4691b7294254687ef551a1498dc224f",
+      "identity_sig_id_before": "sig_5594b96fe0b3acdb9529d799",
+      "product_line_id": "pl_6e50c148ba0d31dc0dc9a56b",
+      "review_family_id": "rf_6e50c148ba0d31dc0dc9a56b",
+      "identity_status_before": "approved",
+      "live_read_enabled_before": false,
+      "review_required_before": false,
+      "review_reason_codes_before": [],
+      "reviewed_product_line_singleton": {
+        "eligible": false,
+        "blockers": [],
+        "evidence": null
+      },
+      "reviewed_official_url_exact_conflict_cleanup": {
+        "eligible": false,
+        "blockers": [],
+        "evidence": null
+      },
+      "needs_update": true
+    },
+    {
+      "action": "align_ready",
+      "blockers": [],
+      "product_key": "prod::external_seed::external_seed::ext_2da51d2f8d19211c89fb2a30",
+      "source_listing_ref": "external_seed:ext_2da51d2f8d19211c89fb2a30",
+      "external_product_id": "ext_2da51d2f8d19211c89fb2a30",
+      "title": "7 Journeys Miracle Glow Serum Mask 25ml (10 Sheets)",
+      "brand": "7Journeys",
+      "canonical_url": "https://7journeys.com/en-inteuusuk/products/7journeys-miracle-glow-serum-mask-10-sheets",
+      "product_group_id": "",
+      "is_primary": false,
+      "content_key": "ck_66c15df76e3141641b5d4635ad06423a",
+      "catalog_sig_id": "sig_a7ccb1334eb133e537242dde2157f01e",
+      "catalog_sig_url": "https://agent.pivota.cc/products/sig_a7ccb1334eb133e537242dde2157f01e",
+      "identity_sig_id_before": "sig_008fbebade462a840f6ee58a",
+      "product_line_id": "pl_4b3d2ed47d6748edfbe7dcc3",
+      "review_family_id": "rf_4b3d2ed47d6748edfbe7dcc3",
+      "identity_status_before": "approved",
+      "live_read_enabled_before": false,
+      "review_required_before": false,
+      "review_reason_codes_before": [],
+      "reviewed_product_line_singleton": {
+        "eligible": false,
+        "blockers": [],
+        "evidence": null
+      },
+      "reviewed_official_url_exact_conflict_cleanup": {
+        "eligible": false,
+        "blockers": [],
+        "evidence": null
+      },
+      "needs_update": true
+    }
+  ]
+}

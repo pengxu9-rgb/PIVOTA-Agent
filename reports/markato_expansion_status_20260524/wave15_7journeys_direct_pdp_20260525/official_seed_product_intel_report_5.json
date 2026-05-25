@@ -1,0 +1,1300 @@
+{
+  "meta": {
+    "generated_at": "2026-05-25T08:01:42.777Z",
+    "source": "reviewed_official_seed_product_intel_report",
+    "batch_name": "wave15_7journeys_official_seed_product_intel",
+    "inventory": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/wave15_7journeys_direct_pdp_20260525/readiness_after_catalog_sync/commerce_index_kb_readiness_inventory.json",
+    "selected_cases": 5,
+    "reviewer": "codex_wave15_7journeys",
+    "reviewer_kind": "assistant",
+    "candidate_quality_summary": {
+      "public_ready": 5,
+      "high_quality_ready": 5,
+      "evidence_profile": {
+        "seller_plus_formula": 5
+      }
+    }
+  },
+  "rows": [
+    {
+      "case_id": "live_ext_1e7b8274600d0395757a3b60",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_wave15_7journeys",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-25T08:01:42.777Z",
+      "notes": "Approved official-PDP-seed rewrite for 7 Journeys Miracle Timeless Eye Cream 30g (Hydrating & Glowing); evidence_profile=seller_plus_formula; source_url=https://7journeys.com/en-inteuusuk/products/7-journeys-miracle-timeless-eye-cream-30g",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_wave15_7journeys",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_1e7b8274600d0395757a3b60",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_1e7b8274600d0395757a3b60",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_59ab25c132c5bae86ddf7f5a42d62975",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Eye treatment identity",
+              "body": "A 7Journeys eye treatment listed on the official source page as 7 Journeys Miracle Timeless Eye Cream 30g (Hydrating & Glowing). The official description identifies: 7Journeys 7 Journeys Miracle Timeless Eye Cream 30g (Hydrating & Glowing) is a source-backed eye cream from the brand-owned US-localized product page."
+            },
+            "best_for": [
+              {
+                "tag": "eye_treatment_shoppers",
+                "label": "Eye treatment shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Official product detail",
+                "body": "The official page describes 7 Journeys Miracle Timeless Eye Cream 30g (Hydrating & Glowing) with product-specific detail: 7Journeys 7 Journeys Miracle Timeless Eye Cream 30g (Hydrating & Glowing) is a source-backed eye cream from the brand-owned US-localized product page.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Water, Cetyl Ethylhexanoate, Dipropylene Glycol, Glycerin, Isopropyl Myristate, Cetearyl Alcohol, Coco-Caprylate/Caprate, Pseudoalteromonas Ferment Extract. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "skin_care",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the eye treatment context; avoid inferring benefits not present in the official source."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-25T08:01:42.777Z",
+              "source_version": "wave15_7journeys_official_seed_product_intel"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-miracle-timeless-eye-cream-30g"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 0,
+                "source_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-miracle-timeless-eye-cream-30g"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "eye treatment",
+            "texture": "eye_treatment",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-miracle-timeless-eye-cream-30g"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 0,
+              "source_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-miracle-timeless-eye-cream-30g"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-25T08:01:42.777Z",
+            "source_version": "wave15_7journeys_official_seed_product_intel"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_wave15_7journeys",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-25T08:01:42.777Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave15_7journeys_official_seed_product_intel",
+            "official_source_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-miracle-timeless-eye-cream-30g",
+            "official_source_ingredient_count": 0,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "7 Journeys Miracle Timeless Eye Cream 30g (Hydrating & Glowing)",
+            "subtitle": "Skincare",
+            "highlight": "Eye treatment detail",
+            "intro": "A 7Journeys eye treatment listed on the official source page as 7 Journeys Miracle Timeless Eye Cream 30g (Hydrating & Glowing). The official description identifies: 7Journeys 7 Journeys Miracle Timeless Eye Cream 30g (Hydrating & Glowing) is a source-backed eye cream from the brand-owned US-localized product page.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "7 Journeys Miracle Timeless Eye Cream 30g (Hydrating & Glowing)",
+            "compact_candidate": "Skincare",
+            "highlight_candidate": "Eye treatment detail",
+            "intro_candidate": "A 7Journeys eye treatment listed on the official source page as 7 Journeys Miracle Timeless Eye Cream 30g (Hydrating & Glowing). The official description identifies: 7Journeys 7 Journeys Miracle Timeless Eye Cream 30g (Hydrating & Glowing) is a source-backed eye cream from the brand-owned US-localized product page.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_299e2dc017565ab3081f8c26",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_wave15_7journeys",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-25T08:01:42.777Z",
+      "notes": "Approved official-PDP-seed rewrite for 7 Journeys Extra Soft Glow Renewal Moisturizer 50g - Hydrating & Firming; evidence_profile=seller_plus_formula; source_url=https://7journeys.com/en-inteuusuk/products/7-journeys-extra-soft-glow-renewal-moisturizer-50g",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_wave15_7journeys",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_299e2dc017565ab3081f8c26",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_299e2dc017565ab3081f8c26",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_38d4b7f594967e94089acfd726cce621",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Moisturizer identity",
+              "body": "A 7Journeys moisturizer listed on the official source page as 7 Journeys Extra Soft Glow Renewal Moisturizer 50g - Hydrating & Firming. The official description identifies: 7Journeys 7 Journeys Extra Soft Glow Renewal Moisturizer 50g - Hydrating & Firming is a source-backed moisturizer from the brand-owned US-localized product page."
+            },
+            "best_for": [
+              {
+                "tag": "moisturizer_shoppers",
+                "label": "Moisturizer shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Official product detail",
+                "body": "The official page describes 7 Journeys Extra Soft Glow Renewal Moisturizer 50g - Hydrating & Firming with product-specific detail: 7Journeys 7 Journeys Extra Soft Glow Renewal Moisturizer 50g - Hydrating & Firming is a source-backed moisturizer from the brand-owned US-localized product page.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Water, Butylene Glycol, Glycerin, Isopropyl Myristate, Caprylic/Capric Triglyceride, Pseudoalteromonas Pseudoalteromonas Ferment Extract, Euterpe Oleracea. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "skin_care",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the moisturizer context; avoid inferring benefits not present in the official source."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-25T08:01:42.777Z",
+              "source_version": "wave15_7journeys_official_seed_product_intel"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-extra-soft-glow-renewal-moisturizer-50g"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 0,
+                "source_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-extra-soft-glow-renewal-moisturizer-50g"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "moisturizer",
+            "texture": "moisturizer",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-extra-soft-glow-renewal-moisturizer-50g"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 0,
+              "source_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-extra-soft-glow-renewal-moisturizer-50g"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-25T08:01:42.777Z",
+            "source_version": "wave15_7journeys_official_seed_product_intel"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_wave15_7journeys",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-25T08:01:42.777Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave15_7journeys_official_seed_product_intel",
+            "official_source_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-extra-soft-glow-renewal-moisturizer-50g",
+            "official_source_ingredient_count": 0,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "7 Journeys Extra Soft Glow Renewal Moisturizer 50g - Hydrating & Firming",
+            "subtitle": "Moisturizer",
+            "highlight": "Moisturizer formula detail",
+            "intro": "A 7Journeys moisturizer listed on the official source page as 7 Journeys Extra Soft Glow Renewal Moisturizer 50g - Hydrating & Firming. The official description identifies: 7Journeys 7 Journeys Extra Soft Glow Renewal Moisturizer 50g - Hydrating & Firming is a source-backed moisturizer from the brand-owned US-localized product page.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "7 Journeys Extra Soft Glow Renewal Moisturizer 50g - Hydrating & Firming",
+            "compact_candidate": "Moisturizer",
+            "highlight_candidate": "Moisturizer formula detail",
+            "intro_candidate": "A 7Journeys moisturizer listed on the official source page as 7 Journeys Extra Soft Glow Renewal Moisturizer 50g - Hydrating & Firming. The official description identifies: 7Journeys 7 Journeys Extra Soft Glow Renewal Moisturizer 50g - Hydrating & Firming is a source-backed moisturizer from the brand-owned US-localized product page.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_2da51d2f8d19211c89fb2a30",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_wave15_7journeys",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-25T08:01:42.777Z",
+      "notes": "Approved official-PDP-seed rewrite for 7 Journeys Miracle Glow Serum Mask 25ml (10 Sheets); evidence_profile=seller_plus_formula; source_url=https://7journeys.com/en-inteuusuk/products/7journeys-miracle-glow-serum-mask-10-sheets",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_wave15_7journeys",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_2da51d2f8d19211c89fb2a30",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_2da51d2f8d19211c89fb2a30",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_a7ccb1334eb133e537242dde2157f01e",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Skincare product identity",
+              "body": "A 7Journeys skincare product listed on the official source page as 7 Journeys Miracle Glow Serum Mask 25ml (10 Sheets). The official description identifies: 7Journeys 7 Journeys Miracle Glow Serum Mask (10 Sheets) is a source-backed sheet mask from the brand-owned US-localized product page."
+            },
+            "best_for": [
+              {
+                "tag": "skincare_shoppers",
+                "label": "Skincare product shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Official product detail",
+                "body": "The official page describes 7 Journeys Miracle Glow Serum Mask 25ml (10 Sheets) with product-specific detail: 7Journeys 7 Journeys Miracle Glow Serum Mask (10 Sheets) is a source-backed sheet mask from the brand-owned US-localized product page.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Water, Dipropylene Glycol, Butylene Glycol, Glycerin, Macadamia Ternifolia Seed Oil, Propanediol, Niacinamide, Lycium Chinense Fruit Extract, Rubus Idaeus. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "skin_care",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the skincare product context; avoid inferring benefits not present in the official source."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-25T08:01:42.777Z",
+              "source_version": "wave15_7journeys_official_seed_product_intel"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://7journeys.com/en-inteuusuk/products/7journeys-miracle-glow-serum-mask-10-sheets"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 0,
+                "source_url": "https://7journeys.com/en-inteuusuk/products/7journeys-miracle-glow-serum-mask-10-sheets"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "skincare product",
+            "texture": "skincare",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://7journeys.com/en-inteuusuk/products/7journeys-miracle-glow-serum-mask-10-sheets"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 0,
+              "source_url": "https://7journeys.com/en-inteuusuk/products/7journeys-miracle-glow-serum-mask-10-sheets"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-25T08:01:42.777Z",
+            "source_version": "wave15_7journeys_official_seed_product_intel"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_wave15_7journeys",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-25T08:01:42.777Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave15_7journeys_official_seed_product_intel",
+            "official_source_url": "https://7journeys.com/en-inteuusuk/products/7journeys-miracle-glow-serum-mask-10-sheets",
+            "official_source_ingredient_count": 0,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "7 Journeys Miracle Glow Serum Mask 25ml (10 Sheets)",
+            "subtitle": "Skincare",
+            "highlight": "Mask format detail",
+            "intro": "A 7Journeys skincare product listed on the official source page as 7 Journeys Miracle Glow Serum Mask 25ml (10 Sheets). The official description identifies: 7Journeys 7 Journeys Miracle Glow Serum Mask (10 Sheets) is a source-backed sheet mask from the brand-owned US-localized product page.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "7 Journeys Miracle Glow Serum Mask 25ml (10 Sheets)",
+            "compact_candidate": "Skincare",
+            "highlight_candidate": "Mask format detail",
+            "intro_candidate": "A 7Journeys skincare product listed on the official source page as 7 Journeys Miracle Glow Serum Mask 25ml (10 Sheets). The official description identifies: 7Journeys 7 Journeys Miracle Glow Serum Mask (10 Sheets) is a source-backed sheet mask from the brand-owned US-localized product page.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_718736656c3aa82e74546c28",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_wave15_7journeys",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-25T08:01:42.777Z",
+      "notes": "Approved official-PDP-seed rewrite for 7 Journeys Glow Renewal Serum 45ml (Hydrated & Glowing Skin); evidence_profile=seller_plus_formula; source_url=https://7journeys.com/en-inteuusuk/products/7-journeys-glow-renewal-serum-45ml",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_wave15_7journeys",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_718736656c3aa82e74546c28",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_718736656c3aa82e74546c28",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_f4691b7294254687ef551a1498dc224f",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Skincare treatment identity",
+              "body": "A 7Journeys skincare treatment listed on the official source page as 7 Journeys Glow Renewal Serum 45ml (Hydrated & Glowing Skin). The official description identifies: 7Journeys 7 Journeys Glow Renewal Serum (Hydrated & Glowing Skin) is a source-backed face serum from the brand-owned US-localized product page."
+            },
+            "best_for": [
+              {
+                "tag": "serum_shoppers",
+                "label": "Skincare treatment shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Official product detail",
+                "body": "The official page describes 7 Journeys Glow Renewal Serum 45ml (Hydrated & Glowing Skin) with product-specific detail: 7Journeys 7 Journeys Glow Renewal Serum (Hydrated & Glowing Skin) is a source-backed face serum from the brand-owned US-localized product page.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Water, Butylene Glycol, Niacinamide, Isopropyl Myristate, Cetyl Ethylhexanoate, Euterpe Oleracea Fruit Extract, Pseudoalteromonas Ferment Extract, Isopropyl. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "skin_care",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the skincare treatment context; avoid inferring benefits not present in the official source."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-25T08:01:42.777Z",
+              "source_version": "wave15_7journeys_official_seed_product_intel"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-glow-renewal-serum-45ml"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 0,
+                "source_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-glow-renewal-serum-45ml"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "skincare treatment",
+            "texture": "serum",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-glow-renewal-serum-45ml"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 0,
+              "source_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-glow-renewal-serum-45ml"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-25T08:01:42.777Z",
+            "source_version": "wave15_7journeys_official_seed_product_intel"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_wave15_7journeys",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-25T08:01:42.777Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave15_7journeys_official_seed_product_intel",
+            "official_source_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-glow-renewal-serum-45ml",
+            "official_source_ingredient_count": 0,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "7 Journeys Glow Renewal Serum 45ml (Hydrated & Glowing Skin)",
+            "subtitle": "Skincare Treatment",
+            "highlight": "Niacinamide serum detail",
+            "intro": "A 7Journeys skincare treatment listed on the official source page as 7 Journeys Glow Renewal Serum 45ml (Hydrated & Glowing Skin). The official description identifies: 7Journeys 7 Journeys Glow Renewal Serum (Hydrated & Glowing Skin) is a source-backed face serum from the brand-owned US-localized product page.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "7 Journeys Glow Renewal Serum 45ml (Hydrated & Glowing Skin)",
+            "compact_candidate": "Skincare Treatment",
+            "highlight_candidate": "Niacinamide serum detail",
+            "intro_candidate": "A 7Journeys skincare treatment listed on the official source page as 7 Journeys Glow Renewal Serum 45ml (Hydrated & Glowing Skin). The official description identifies: 7Journeys 7 Journeys Glow Renewal Serum (Hydrated & Glowing Skin) is a source-backed face serum from the brand-owned US-localized product page.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_d55c93a9feb384ac9e0bde40",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_wave15_7journeys",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-25T08:01:42.777Z",
+      "notes": "Approved official-PDP-seed rewrite for 7 Journeys Antarctic Timeless Serum 45ml (Hydration & Anti-aging); evidence_profile=seller_plus_formula; source_url=https://7journeys.com/en-inteuusuk/products/7-journeys-anatctic-timeless-serum-45ml",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_wave15_7journeys",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_d55c93a9feb384ac9e0bde40",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_d55c93a9feb384ac9e0bde40",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_6f258acef923637ae7567600408ce2cf",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Skincare treatment identity",
+              "body": "A 7Journeys skincare treatment listed on the official source page as 7 Journeys Antarctic Timeless Serum 45ml (Hydration & Anti-aging). The official description identifies: 7Journeys 7 Journeys Antarctic Timeless Serum (Hydration & Anti-aging) is a source-backed face serum from the brand-owned US-localized product page."
+            },
+            "best_for": [
+              {
+                "tag": "serum_shoppers",
+                "label": "Skincare treatment shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Official product detail",
+                "body": "The official page describes 7 Journeys Antarctic Timeless Serum 45ml (Hydration & Anti-aging) with product-specific detail: 7Journeys 7 Journeys Antarctic Timeless Serum (Hydration & Anti-aging) is a source-backed face serum from the brand-owned US-localized product page.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Water, 1,2-Hexanediol, Pseudoalteromonas Ferment Extract, Euterpe Oleracea Fruit Extract, Sodium Hyaluronate, Butylene Glycol, Disodium EDTA, Allantoin. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "skin_care",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the skincare treatment context; avoid inferring benefits not present in the official source."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-25T08:01:42.777Z",
+              "source_version": "wave15_7journeys_official_seed_product_intel"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-anatctic-timeless-serum-45ml"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 0,
+                "source_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-anatctic-timeless-serum-45ml"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "skincare treatment",
+            "texture": "serum",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-anatctic-timeless-serum-45ml"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 0,
+              "source_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-anatctic-timeless-serum-45ml"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-25T08:01:42.777Z",
+            "source_version": "wave15_7journeys_official_seed_product_intel"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_wave15_7journeys",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-25T08:01:42.777Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave15_7journeys_official_seed_product_intel",
+            "official_source_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-anatctic-timeless-serum-45ml",
+            "official_source_ingredient_count": 0,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "7 Journeys Antarctic Timeless Serum 45ml (Hydration & Anti-aging)",
+            "subtitle": "Skincare Treatment",
+            "highlight": "Treatment formula detail",
+            "intro": "A 7Journeys skincare treatment listed on the official source page as 7 Journeys Antarctic Timeless Serum 45ml (Hydration & Anti-aging). The official description identifies: 7Journeys 7 Journeys Antarctic Timeless Serum (Hydration & Anti-aging) is a source-backed face serum from the brand-owned US-localized product page.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "7 Journeys Antarctic Timeless Serum 45ml (Hydration & Anti-aging)",
+            "compact_candidate": "Skincare Treatment",
+            "highlight_candidate": "Treatment formula detail",
+            "intro_candidate": "A 7Journeys skincare treatment listed on the official source page as 7 Journeys Antarctic Timeless Serum 45ml (Hydration & Anti-aging). The official description identifies: 7Journeys 7 Journeys Antarctic Timeless Serum (Hydration & Anti-aging) is a source-backed face serum from the brand-owned US-localized product page.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    }
+  ]
+}
