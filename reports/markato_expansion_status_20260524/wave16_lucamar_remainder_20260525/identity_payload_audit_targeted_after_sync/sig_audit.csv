@@ -1,0 +1,4 @@
+sellable_item_group_id,product_line_id,row_count,live_read_count,stale_payload_count,seed_active_count,seed_active_expectation_count,identity_active_count,sig_mixed_active_expectation,canonical_selection_gap,canonical_content_ref,fresh_best_content_ref,sync_candidate_count,sample_titles
+sig_83e5dd4c102d5115bfd303c9,pl_65f3a6f4242abbaf57068915,1,0,0,0,1,0,false,false,external_seed:ext_edcf7e510314384ac432b385,external_seed:ext_edcf7e510314384ac432b385,0,Baa Ram Ewe Lanolin Skin Balm 50g
+sig_a6130a657e5ea0e91dcb4d10,pl_65f3a6f4242abbaf57068915,1,0,0,0,1,0,false,false,external_seed:ext_0836525e72365da8ecbcc3b5,external_seed:ext_0836525e72365da8ecbcc3b5,0,Baa Ram Ewe  Lanolin Skin Balm  120g
+sig_bb93738e3170cb9abebe3632,pl_ad5df8a001e24218344dcaa6,1,0,0,0,1,0,false,false,external_seed:ext_c26547ca63d530592ed62d63,external_seed:ext_c26547ca63d530592ed62d63,0,Baa Ram Ewe  Lanolin Skin Balm  120g UNSCENTED

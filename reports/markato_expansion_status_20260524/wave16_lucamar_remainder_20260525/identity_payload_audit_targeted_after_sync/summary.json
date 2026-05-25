@@ -1,0 +1,31 @@
+{
+  "generated_at": "2026-05-25T09:12:59.645Z",
+  "filters": {
+    "market": "US",
+    "domain": null,
+    "brand": null,
+    "updated_since": null,
+    "cursor": null,
+    "limit": 3
+  },
+  "scanned_seed_rows": 3,
+  "payloads_built": 3,
+  "identity_rows_found": 3,
+  "sig_groups": 3,
+  "seed_active_expected_rows": 3,
+  "seed_active_evidence_rows": 0,
+  "identity_payload_active_rows": 0,
+  "identity_payload_stale_rows": 0,
+  "live_read_stale_rows": 0,
+  "sig_mixed_active_expectation_groups": 0,
+  "canonical_selection_gap_groups": 0,
+  "sync_candidate_rows": 0,
+  "next_cursor": "2026-05-25T09:09:06.481Z|eps_4345b0af311a4e604dc9eb17",
+  "report_files": {
+    "summary": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/wave16_lucamar_remainder_20260525/identity_payload_audit_targeted_after_sync/summary.json",
+    "row_audit": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/wave16_lucamar_remainder_20260525/identity_payload_audit_targeted_after_sync/row_audit.csv",
+    "sig_audit": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/wave16_lucamar_remainder_20260525/identity_payload_audit_targeted_after_sync/sig_audit.csv",
+    "sync_dry_run_candidates": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/wave16_lucamar_remainder_20260525/identity_payload_audit_targeted_after_sync/sync_dry_run_candidates.csv",
+    "no_cache_pdp_probe_samples": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/wave16_lucamar_remainder_20260525/identity_payload_audit_targeted_after_sync/no_cache_pdp_probe_samples.json"
+  }
+}

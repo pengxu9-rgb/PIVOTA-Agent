@@ -1,0 +1,118 @@
+{
+  "generated_at": "2026-05-25T09:05:37.246Z",
+  "market": "US",
+  "source": "wave16_lucamar_official_shopify_us_catalog_recovery",
+  "scanned": 5,
+  "ready_count": 3,
+  "held_count": 2,
+  "audit_rows": [
+    {
+      "external_product_id": "ext_c26547ca63d530592ed62d63",
+      "title": "Baa Ram Ewe  Lanolin Skin Balm  120g UNSCENTED",
+      "target_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+      "price": 17,
+      "currency": "USD",
+      "availability": "in_stock",
+      "image_count": 4,
+      "source_description_length": 922,
+      "public_description_length": 391,
+      "ingredients_raw_length": 147,
+      "ingredients_count": 10,
+      "how_to_use_length": 42,
+      "commerce_gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "ok",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "promotions_status": "unknown",
+        "availability_status": "in_stock",
+        "problems": []
+      },
+      "category_path": "beauty/bodycare/body-balm",
+      "status": "ready",
+      "reasons": [],
+      "warnings": []
+    },
+    {
+      "external_product_id": "ext_0836525e72365da8ecbcc3b5",
+      "title": "Baa Ram Ewe  Lanolin Skin Balm  120g",
+      "target_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+      "price": 17,
+      "currency": "USD",
+      "availability": "in_stock",
+      "image_count": 4,
+      "source_description_length": 958,
+      "public_description_length": 381,
+      "ingredients_raw_length": 183,
+      "ingredients_count": 11,
+      "how_to_use_length": 42,
+      "commerce_gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "ok",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "promotions_status": "unknown",
+        "availability_status": "in_stock",
+        "problems": []
+      },
+      "category_path": "beauty/bodycare/body-balm",
+      "status": "ready",
+      "reasons": [],
+      "warnings": []
+    },
+    {
+      "external_product_id": "ext_edcf7e510314384ac432b385",
+      "title": "Baa Ram Ewe Lanolin Skin Balm 50g",
+      "target_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+      "price": 12,
+      "currency": "USD",
+      "availability": "in_stock",
+      "image_count": 4,
+      "source_description_length": 960,
+      "public_description_length": 380,
+      "ingredients_raw_length": 183,
+      "ingredients_count": 11,
+      "how_to_use_length": 42,
+      "commerce_gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "ok",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "promotions_status": "unknown",
+        "availability_status": "in_stock",
+        "problems": []
+      },
+      "category_path": "beauty/bodycare/body-balm",
+      "status": "ready",
+      "reasons": [],
+      "warnings": []
+    },
+    {
+      "external_product_id": "ext_74a7dddbe9cfad5b36ea4bc1",
+      "title": "Musk: My Lips Are Sealed Lip Balm 10gms",
+      "target_url": "https://lucamarskincare.com/products/limited-edition-musk-flavoured-my-lips-are-sealed-lip-balm-10gms",
+      "status": "hold",
+      "reasons": [
+        "missing_explicit_official_how_to"
+      ]
+    },
+    {
+      "external_product_id": "ext_cfdd4c8d3521fe733d0fc75d",
+      "title": "Vanilla:   My Lips Are Sealed Natural Lip Balm 10gms",
+      "target_url": "https://lucamarskincare.com/products/my-lips-are-sealed-natural-lip-balm-vanilla",
+      "status": "hold",
+      "reasons": [
+        "missing_explicit_official_how_to"
+      ]
+    }
+  ]
+}

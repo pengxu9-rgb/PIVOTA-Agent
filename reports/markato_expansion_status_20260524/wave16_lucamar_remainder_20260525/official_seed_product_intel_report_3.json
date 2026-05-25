@@ -1,0 +1,788 @@
+{
+  "meta": {
+    "generated_at": "2026-05-25T09:21:25.269Z",
+    "source": "reviewed_official_seed_product_intel_report",
+    "batch_name": "wave16_lucamar_remainder_20260525",
+    "inventory": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/wave16_lucamar_remainder_20260525/target_inventory_3.json",
+    "selected_cases": 3,
+    "reviewer": "codex_quality_reviewer_owner_delegated",
+    "reviewer_kind": "assistant",
+    "candidate_quality_summary": {
+      "public_ready": 3,
+      "high_quality_ready": 3,
+      "evidence_profile": {
+        "seller_plus_formula": 3
+      }
+    }
+  },
+  "rows": [
+    {
+      "case_id": "live_ext_0836525e72365da8ecbcc3b5",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-25T09:21:25.269Z",
+      "notes": "Approved official-PDP-seed rewrite for Baa Ram Ewe Lanolin Skin Balm 120g; evidence_profile=seller_plus_formula; source_url=https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_0836525e72365da8ecbcc3b5",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_0836525e72365da8ecbcc3b5",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_a6130a657e5ea0e91dcb4d10",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Body balm identity",
+              "body": "A Lucamar Skin Care body balm listed on the brand source page as Baa Ram Ewe Lanolin Skin Balm 120g. The source description identifies: Baa Ram Ewe Lanolin Skin Balm 120g is a source-backed Lucamar body balm from the brand-owned US-localized Shopify product feed."
+            },
+            "best_for": [
+              {
+                "tag": "body_balm_shoppers",
+                "label": "Body balm shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "Baa Ram Ewe Lanolin Skin Balm 120g is a source-backed Lucamar body balm from the brand-owned US-localized Shopify product feed.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Lanolin Anhydrous, Pure Australian Lanolin, Vitellaria Paradora, Organic Shea Butter, Cera Alba. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "body_care",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the body balm context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-25T09:21:25.269Z",
+              "source_version": "wave16_lucamar_remainder_20260525"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 11,
+                "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "body balm",
+            "texture": "body_balm",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 11,
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-25T09:21:25.269Z",
+            "source_version": "wave16_lucamar_remainder_20260525"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-25T09:21:25.269Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave16_lucamar_remainder_20260525",
+            "official_source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+            "official_source_ingredient_count": 11,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Baa Ram Ewe Lanolin Skin Balm 120g",
+            "subtitle": "Body Balm",
+            "highlight": "Body balm format detail",
+            "intro": "A Lucamar Skin Care body balm listed on the brand source page as Baa Ram Ewe Lanolin Skin Balm 120g. The source description identifies: Baa Ram Ewe Lanolin Skin Balm 120g is a source-backed Lucamar body balm from the brand-owned US-localized Shopify product feed.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Baa Ram Ewe Lanolin Skin Balm 120g",
+            "compact_candidate": "Body Balm",
+            "highlight_candidate": "Body balm format detail",
+            "intro_candidate": "A Lucamar Skin Care body balm listed on the brand source page as Baa Ram Ewe Lanolin Skin Balm 120g. The source description identifies: Baa Ram Ewe Lanolin Skin Balm 120g is a source-backed Lucamar body balm from the brand-owned US-localized Shopify product feed.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_c26547ca63d530592ed62d63",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-25T09:21:25.269Z",
+      "notes": "Approved official-PDP-seed rewrite for Baa Ram Ewe Lanolin Skin Balm 120g UNSCENTED; evidence_profile=seller_plus_formula; source_url=https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_c26547ca63d530592ed62d63",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_c26547ca63d530592ed62d63",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_bb93738e3170cb9abebe3632",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Body balm identity",
+              "body": "A Lucamar Skin Care body balm listed on the brand source page as Baa Ram Ewe Lanolin Skin Balm 120g UNSCENTED. The source description identifies: Baa Ram Ewe Lanolin Skin Balm 120g UNSCENTED is a source-backed Lucamar body balm from the brand-owned US-localized Shopify product feed."
+            },
+            "best_for": [
+              {
+                "tag": "body_balm_shoppers",
+                "label": "Body balm shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "Baa Ram Ewe Lanolin Skin Balm 120g UNSCENTED is a source-backed Lucamar body balm from the brand-owned US-localized Shopify product feed.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Lanolin Anhydrous, Pure Australian Lanolin, Vitellaria Paradora, Organic Shea Butter, Cera Alba. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "body_care",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the body balm context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-25T09:21:25.269Z",
+              "source_version": "wave16_lucamar_remainder_20260525"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 10,
+                "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "body balm",
+            "texture": "body_balm",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 10,
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-25T09:21:25.269Z",
+            "source_version": "wave16_lucamar_remainder_20260525"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-25T09:21:25.269Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave16_lucamar_remainder_20260525",
+            "official_source_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+            "official_source_ingredient_count": 10,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Baa Ram Ewe Lanolin Skin Balm 120g UNSCENTED",
+            "subtitle": "Body Balm",
+            "highlight": "Body balm format detail",
+            "intro": "A Lucamar Skin Care body balm listed on the brand source page as Baa Ram Ewe Lanolin Skin Balm 120g UNSCENTED. The source description identifies: Baa Ram Ewe Lanolin Skin Balm 120g UNSCENTED is a source-backed Lucamar body balm from the brand-owned US-localized Shopify product feed.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Baa Ram Ewe Lanolin Skin Balm 120g UNSCENTED",
+            "compact_candidate": "Body Balm",
+            "highlight_candidate": "Body balm format detail",
+            "intro_candidate": "A Lucamar Skin Care body balm listed on the brand source page as Baa Ram Ewe Lanolin Skin Balm 120g UNSCENTED. The source description identifies: Baa Ram Ewe Lanolin Skin Balm 120g UNSCENTED is a source-backed Lucamar body balm from the brand-owned US-localized Shopify product feed.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_edcf7e510314384ac432b385",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-25T09:21:25.269Z",
+      "notes": "Approved official-PDP-seed rewrite for Baa Ram Ewe Lanolin Skin Balm 50g; evidence_profile=seller_plus_formula; source_url=https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_edcf7e510314384ac432b385",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_edcf7e510314384ac432b385",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_83e5dd4c102d5115bfd303c9",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Body balm identity",
+              "body": "A Lucamar Skin Care body balm listed on the brand source page as Baa Ram Ewe Lanolin Skin Balm 50g. The source description identifies: Baa Ram Ewe Lanolin Skin Balm 50g is a source-backed Lucamar body balm from the brand-owned US-localized Shopify product feed."
+            },
+            "best_for": [
+              {
+                "tag": "body_balm_shoppers",
+                "label": "Body balm shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "Baa Ram Ewe Lanolin Skin Balm 50g is a source-backed Lucamar body balm from the brand-owned US-localized Shopify product feed.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Lanolin Anhydrous, Pure Australian Lanolin, Vitellaria Paradora, Organic Shea Butter, Cera Alba. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "body_care",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the body balm context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-25T09:21:25.269Z",
+              "source_version": "wave16_lucamar_remainder_20260525"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 11,
+                "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "body balm",
+            "texture": "body_balm",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 11,
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-25T09:21:25.269Z",
+            "source_version": "wave16_lucamar_remainder_20260525"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-25T09:21:25.269Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave16_lucamar_remainder_20260525",
+            "official_source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+            "official_source_ingredient_count": 11,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Baa Ram Ewe Lanolin Skin Balm 50g",
+            "subtitle": "Body Balm",
+            "highlight": "Body balm format detail",
+            "intro": "A Lucamar Skin Care body balm listed on the brand source page as Baa Ram Ewe Lanolin Skin Balm 50g. The source description identifies: Baa Ram Ewe Lanolin Skin Balm 50g is a source-backed Lucamar body balm from the brand-owned US-localized Shopify product feed.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Baa Ram Ewe Lanolin Skin Balm 50g",
+            "compact_candidate": "Body Balm",
+            "highlight_candidate": "Body balm format detail",
+            "intro_candidate": "A Lucamar Skin Care body balm listed on the brand source page as Baa Ram Ewe Lanolin Skin Balm 50g. The source description identifies: Baa Ram Ewe Lanolin Skin Balm 50g is a source-backed Lucamar body balm from the brand-owned US-localized Shopify product feed.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,65 @@
+{
+  "generated_at": "2026-05-25T09:18:34.437Z",
+  "dry_run": true,
+  "missing": [],
+  "summary": {
+    "scanned": 3,
+    "missing": 0,
+    "would_insert_quality_snapshots": 3,
+    "inserted_quality_snapshots": 0,
+    "would_update_index_state": 3,
+    "updated_index_state": 0,
+    "serving_eligible_plans": 3
+  },
+  "plans": [
+    {
+      "external_product_id": "ext_c26547ca63d530592ed62d63",
+      "title": "Baa Ram Ewe Lanolin Skin Balm 120g UNSCENTED",
+      "content_key": "ck_643a8a8abda458df440d6d27719bf4e7",
+      "pivota_signature_id": "sig_bb93738e3170cb9abebe3632",
+      "has_in_stock_offer": true,
+      "image_count": 4,
+      "price_amount": 17,
+      "description_length": 391,
+      "ingredients_length": 147,
+      "how_to_use_length": 42,
+      "content_quality_score": 95.7,
+      "rules_version": "v1-lite-direct-pdp-source-backed",
+      "problems": [],
+      "would_be_serving_eligible": true
+    },
+    {
+      "external_product_id": "ext_0836525e72365da8ecbcc3b5",
+      "title": "Baa Ram Ewe Lanolin Skin Balm 120g",
+      "content_key": "ck_0a68c3bb3a9ee1524ce2374feb49acb6",
+      "pivota_signature_id": "sig_a6130a657e5ea0e91dcb4d10",
+      "has_in_stock_offer": true,
+      "image_count": 4,
+      "price_amount": 17,
+      "description_length": 381,
+      "ingredients_length": 183,
+      "how_to_use_length": 42,
+      "content_quality_score": 95.7,
+      "rules_version": "v1-lite-direct-pdp-source-backed",
+      "problems": [],
+      "would_be_serving_eligible": true
+    },
+    {
+      "external_product_id": "ext_edcf7e510314384ac432b385",
+      "title": "Baa Ram Ewe Lanolin Skin Balm 50g",
+      "content_key": "ck_153b1543bbfab3f1342c4ddd10bc21f3",
+      "pivota_signature_id": "sig_83e5dd4c102d5115bfd303c9",
+      "has_in_stock_offer": true,
+      "image_count": 4,
+      "price_amount": 12,
+      "description_length": 380,
+      "ingredients_length": 183,
+      "how_to_use_length": 42,
+      "content_quality_score": 95.7,
+      "rules_version": "v1-lite-direct-pdp-source-backed",
+      "problems": [],
+      "would_be_serving_eligible": true
+    }
+  ],
+  "apply_results": []
+}

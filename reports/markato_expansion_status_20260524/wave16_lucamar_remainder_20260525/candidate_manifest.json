@@ -1,0 +1,2030 @@
+{
+  "generated_at": "2026-05-25T09:05:37.246Z",
+  "market": "US",
+  "source": "wave16_lucamar_official_shopify_us_catalog_recovery",
+  "source_manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/wave16_lucamar_remainder_20260525/current_extractor_manifest_brand_owned.json",
+  "curation_policy": "Lucamar official Shopify US-market catalog extract; promote only Baa Ram Ewe body balm PDPs with USD, in-stock commerce facts, official Ingredients, and explicit Daily Ritual how-to. Hold lip balm rows without explicit how-to and avoid new copy/therapeutic-risk rows.",
+  "item_count": 3,
+  "held_item_count": 2,
+  "held_items": [
+    {
+      "external_product_id": "ext_74a7dddbe9cfad5b36ea4bc1",
+      "title": "Musk: My Lips Are Sealed Lip Balm 10gms",
+      "target_url": "https://lucamarskincare.com/products/limited-edition-musk-flavoured-my-lips-are-sealed-lip-balm-10gms",
+      "status": "hold",
+      "reasons": [
+        "missing_explicit_official_how_to"
+      ]
+    },
+    {
+      "external_product_id": "ext_cfdd4c8d3521fe733d0fc75d",
+      "title": "Vanilla:   My Lips Are Sealed Natural Lip Balm 10gms",
+      "target_url": "https://lucamarskincare.com/products/my-lips-are-sealed-natural-lip-balm-vanilla",
+      "status": "hold",
+      "reasons": [
+        "missing_explicit_official_how_to"
+      ]
+    }
+  ],
+  "items": [
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "target_brand": "Lucamar Skin Care",
+      "target_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+      "extract_status": "official_shopify_us_catalog_recovered_ready",
+      "market": "US",
+      "source_domain": "https://lucamarskincare.com",
+      "source_role": "direct_official_pdp_catalog_extract",
+      "matched_preferred_titles": [
+        "Baa Ram Ewe  Lanolin Skin Balm  120g UNSCENTED"
+      ],
+      "seed_row": {
+        "ingredient_id": null,
+        "ingredient_name": null,
+        "seed_id": "eps_4345b0af311a4e604dc9eb17",
+        "brand": "Lucamar Skin Care",
+        "market": "US",
+        "tool": "creator_agents",
+        "status": "active",
+        "domain": "lucamarskincare.com",
+        "external_product_id": "ext_c26547ca63d530592ed62d63",
+        "canonical_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+        "destination_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+        "title": "Baa Ram Ewe  Lanolin Skin Balm  120g UNSCENTED",
+        "image_url": "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_14.png?v=1701869178",
+        "price_amount": 17,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "attached_product_key": null,
+        "requires_seed_correction": false,
+        "seed_data": {
+          "brand": "Lucamar Skin Care",
+          "title": "Baa Ram Ewe  Lanolin Skin Balm  120g UNSCENTED",
+          "description": "Baa Ram Ewe  Lanolin Skin Balm  120g UNSCENTED is a source-backed Lucamar body balm from the brand-owned US-localized Shopify product feed. The official ingredient section includes Lanolin Anhydrous, Pure Australian Lanolin, Vitellaria Paradora, Organic Shea Butter, Cera Alba. Price, availability, imagery, ingredient text, and Daily Ritual instructions are captured from the official source.",
+          "external_product_id": "ext_c26547ca63d530592ed62d63",
+          "canonical_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+          "destination_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+          "price_amount": 17,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_14.png?v=1701869178",
+          "image_urls": [
+            "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_14.png?v=1701869178",
+            "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_20.png?v=1701869399",
+            "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_2722_3_b4230ea2-39cf-4f96-918c-1abf18a74681.jpg?v=1701869399",
+            "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_5128.jpg?v=1701869399"
+          ],
+          "images": [
+            "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_14.png?v=1701869178",
+            "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_20.png?v=1701869399",
+            "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_2722_3_b4230ea2-39cf-4f96-918c-1abf18a74681.jpg?v=1701869399",
+            "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_5128.jpg?v=1701869399"
+          ],
+          "variants": [
+            {
+              "sku": "SHOPIFY-62056733573279",
+              "variant_id": "62056733573279",
+              "url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+              "option_name": "Size",
+              "option_value": "120g",
+              "price": "17",
+              "currency": "USD",
+              "stock": "In Stock",
+              "description": "Baa Ram Ewe  Lanolin Skin Balm  120g UNSCENTED is a source-backed Lucamar body balm from the brand-owned US-localized Shopify product feed. The official ingredient section includes Lanolin Anhydrous, Pure Australian Lanolin, Vitellaria Paradora, Organic Shea Butter, Cera Alba. Price, availability, imagery, ingredient text, and Daily Ritual instructions are captured from the official source.",
+              "image_url": "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_14.png?v=1701869178",
+              "image_urls": [
+                "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_14.png?v=1701869178",
+                "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_20.png?v=1701869399",
+                "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_2722_3_b4230ea2-39cf-4f96-918c-1abf18a74681.jpg?v=1701869399",
+                "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_5128.jpg?v=1701869399"
+              ],
+              "images": [
+                "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_14.png?v=1701869178",
+                "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_20.png?v=1701869399",
+                "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_2722_3_b4230ea2-39cf-4f96-918c-1abf18a74681.jpg?v=1701869399",
+                "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_5128.jpg?v=1701869399"
+              ]
+            }
+          ],
+          "snapshot": {
+            "source": "wave16_lucamar_official_shopify_us_catalog_seed_creation_manifest",
+            "extracted_at": "2026-05-25T09:05:37.246Z",
+            "canonical_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+            "destination_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+            "title": "Baa Ram Ewe  Lanolin Skin Balm  120g UNSCENTED",
+            "description": "Baa Ram Ewe  Lanolin Skin Balm  120g UNSCENTED is a source-backed Lucamar body balm from the brand-owned US-localized Shopify product feed. The official ingredient section includes Lanolin Anhydrous, Pure Australian Lanolin, Vitellaria Paradora, Organic Shea Butter, Cera Alba. Price, availability, imagery, ingredient text, and Daily Ritual instructions are captured from the official source.",
+            "image_url": "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_14.png?v=1701869178",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_14.png?v=1701869178",
+              "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_20.png?v=1701869399",
+              "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_2722_3_b4230ea2-39cf-4f96-918c-1abf18a74681.jpg?v=1701869399",
+              "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_5128.jpg?v=1701869399"
+            ],
+            "images": [
+              "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_14.png?v=1701869178",
+              "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_20.png?v=1701869399",
+              "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_2722_3_b4230ea2-39cf-4f96-918c-1abf18a74681.jpg?v=1701869399",
+              "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_5128.jpg?v=1701869399"
+            ],
+            "variants": [
+              {
+                "sku": "SHOPIFY-62056733573279",
+                "variant_id": "62056733573279",
+                "url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+                "option_name": "Size",
+                "option_value": "120g",
+                "price": "17",
+                "currency": "USD",
+                "stock": "In Stock",
+                "description": "Baa Ram Ewe  Lanolin Skin Balm  120g UNSCENTED is a source-backed Lucamar body balm from the brand-owned US-localized Shopify product feed. The official ingredient section includes Lanolin Anhydrous, Pure Australian Lanolin, Vitellaria Paradora, Organic Shea Butter, Cera Alba. Price, availability, imagery, ingredient text, and Daily Ritual instructions are captured from the official source.",
+                "image_url": "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_14.png?v=1701869178",
+                "image_urls": [
+                  "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_14.png?v=1701869178",
+                  "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_20.png?v=1701869399",
+                  "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_2722_3_b4230ea2-39cf-4f96-918c-1abf18a74681.jpg?v=1701869399",
+                  "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_5128.jpg?v=1701869399"
+                ],
+                "images": [
+                  "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_14.png?v=1701869178",
+                  "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_20.png?v=1701869399",
+                  "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_2722_3_b4230ea2-39cf-4f96-918c-1abf18a74681.jpg?v=1701869399",
+                  "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_5128.jpg?v=1701869399"
+                ]
+              }
+            ],
+            "diagnostics": {
+              "requested_domain": "lucamarskincare.com",
+              "resolved_base_url": "https://lucamarskincare.com",
+              "discovery_strategy": "shopify_json",
+              "failure_category": null,
+              "block_provider": null,
+              "http_trace": [
+                {
+                  "url": "https://lucamarskincare.com/",
+                  "status": 200
+                },
+                {
+                  "url": "https://lucamarskincare.com/products.json?limit=1",
+                  "status": 200
+                },
+                {
+                  "url": "https://lucamarskincare.com/pages/usa",
+                  "status": 200
+                },
+                {
+                  "url": "https://lucamarskincare.com/products.json?limit=250&page=1",
+                  "status": 200
+                }
+              ]
+            },
+            "search_aliases": [
+              "Baa Ram Ewe  Lanolin Skin Balm  120g UNSCENTED",
+              "Lucamar Baa Ram Ewe  Lanolin Skin Balm  120g UNSCENTED",
+              "Lucamar Skin Care Baa Ram Ewe  Lanolin Skin Balm  120g UNSCENTED"
+            ],
+            "authority_source": {
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+              "source_role": "direct_official_pdp_catalog_extract",
+              "matched_preferred_titles": [
+                "Baa Ram Ewe  Lanolin Skin Balm  120g UNSCENTED"
+              ],
+              "official_description_raw": "Baa Ram Ewe Lanolin Skin Balm 120g Discover the timeless wonder of our Lanolin balm. Formulated with Pure lanolin, this rich, protective balm soothes and hydrates even the driest , most delicate skin. Its luxurious texture melts effortlessly providing a soothing layer of moisture that lasts all day. Perfect for hands, elbows, knees, lips, or any area in need of extra care, it forms a protective barrier that locks in moisture leaving skin feeling smooth & rejuvenated. Treat your skin to the nourishing luxury it deserves, with the enduring benefits of this multi-purpose balm. INGREDIENTS: Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinolds, Vitamin A , Tocoherol, Viamin E DAILY RITUAL: Soften balm between hands and apply daily. Proudly Made In South Australia Cruelty Free No Artificial flavouring, parabéns, petrolatum, Peg's, Mineral oil, sulphates."
+            },
+            "source_validation": {
+              "source_type": "brand_owned",
+              "source_host": "lucamarskincare.com",
+              "requires_multi_offer_merge_validation": false
+            },
+            "commerce_facts_v1": {
+              "contract_version": "commerce_facts.v1",
+              "market_id": "US",
+              "country": "US",
+              "currency_target": "USD",
+              "source_authority": "catalog_extract_v2",
+              "captured_at": "2026-05-25T08:57:36.646Z",
+              "evidence_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+              "sellable_region": {
+                "status": "unknown",
+                "countries": [],
+                "evidence_source": "catalog_extract_v2",
+                "confidence": "medium",
+                "checked_at": "2026-05-25T08:57:36.646Z",
+                "reason_codes": [
+                  "market_currency_observed",
+                  "shipping_destination_not_verified",
+                  "external_checkout_not_queried"
+                ],
+                "evidence_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented"
+              },
+              "regional_price": {
+                "amount": 17,
+                "currency": "USD",
+                "display_raw": "17.00",
+                "price_type": "list",
+                "compare_at_amount": null,
+                "compare_at_currency": null,
+                "compare_at_display_raw": null,
+                "tax_included": "unknown",
+                "confidence": "medium",
+                "market_switch_status": "ok",
+                "observed_currency": "USD",
+                "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+                "captured_at": "2026-05-25T08:57:36.646Z"
+              },
+              "availability": {
+                "status": "in_stock",
+                "source": "catalog_extract_v2",
+                "confidence": "medium",
+                "captured_at": "2026-05-25T08:57:36.646Z"
+              },
+              "shipping": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_checkout_not_queried"
+                ],
+                "checked_at": "2026-05-25T08:57:36.646Z"
+              },
+              "promotions": [],
+              "returns": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_returns_not_extracted"
+                ],
+                "checked_at": "2026-05-25T08:57:36.646Z"
+              }
+            },
+            "commerce_facts_gate": {
+              "status": "pass",
+              "market_id": "US",
+              "expected_currency": "USD",
+              "observed_currency": "USD",
+              "market_switch_status": "ok",
+              "sellable_region_status": "unknown",
+              "shipping_status": "unknown",
+              "promotions_status": "unknown",
+              "availability_status": "in_stock",
+              "problems": []
+            },
+            "brand": "Lucamar Skin Care",
+            "external_product_id": "ext_c26547ca63d530592ed62d63",
+            "price_amount": 17,
+            "price_currency": "USD",
+            "availability": "in_stock",
+            "category": "Body Care",
+            "category_path": [
+              "beauty",
+              "bodycare",
+              "body-balm"
+            ],
+            "catalog_category_path": "beauty/bodycare/body-balm",
+            "product_kind": "single_formula",
+            "product_type": "Body Balm",
+            "pdp_description_raw": "Baa Ram Ewe  Lanolin Skin Balm  120g UNSCENTED is a source-backed Lucamar body balm from the brand-owned US-localized Shopify product feed. The official ingredient section includes Lanolin Anhydrous, Pure Australian Lanolin, Vitellaria Paradora, Organic Shea Butter, Cera Alba. Price, availability, imagery, ingredient text, and Daily Ritual instructions are captured from the official source.",
+            "pdp_official_description_raw": "Baa Ram Ewe Lanolin Skin Balm 120g Discover the timeless wonder of our Lanolin balm. Formulated with Pure lanolin, this rich, protective balm soothes and hydrates even the driest , most delicate skin. Its luxurious texture melts effortlessly providing a soothing layer of moisture that lasts all day. Perfect for hands, elbows, knees, lips, or any area in need of extra care, it forms a protective barrier that locks in moisture leaving skin feeling smooth & rejuvenated. Treat your skin to the nourishing luxury it deserves, with the enduring benefits of this multi-purpose balm. INGREDIENTS: Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinolds, Vitamin A , Tocoherol, Viamin E DAILY RITUAL: Soften balm between hands and apply daily. Proudly Made In South Australia Cruelty Free No Artificial flavouring, parabéns, petrolatum, Peg's, Mineral oil, sulphates.",
+            "pdp_source_description_raw": "Baa Ram Ewe Lanolin Skin Balm 120g Discover the timeless wonder of our Lanolin balm. Formulated with Pure lanolin, this rich, protective balm soothes and hydrates even the driest , most delicate skin. Its luxurious texture melts effortlessly providing a soothing layer of moisture that lasts all day. Perfect for hands, elbows, knees, lips, or any area in need of extra care, it forms a protective barrier that locks in moisture leaving skin feeling smooth & rejuvenated. Treat your skin to the nourishing luxury it deserves, with the enduring benefits of this multi-purpose balm. INGREDIENTS: Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinolds, Vitamin A , Tocoherol, Viamin E DAILY RITUAL: Soften balm between hands and apply daily. Proudly Made In South Australia Cruelty Free No Artificial flavouring, parabéns, petrolatum, Peg's, Mineral oil, sulphates.",
+            "pdp_ingredients_raw": "Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinolds, Vitamin A , Tocoherol, Viamin E",
+            "raw_ingredient_text_clean": "Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinolds, Vitamin A , Tocoherol, Viamin E",
+            "ingredients_inci": [
+              "Lanolin Anhydrous",
+              "Pure Australian Lanolin",
+              "Vitellaria Paradora",
+              "Organic Shea Butter",
+              "Cera Alba",
+              "Bees Wax",
+              "Retinolds",
+              "Vitamin A",
+              "Tocoherol",
+              "Viamin E"
+            ],
+            "inci_list": [
+              "Lanolin Anhydrous",
+              "Pure Australian Lanolin",
+              "Vitellaria Paradora",
+              "Organic Shea Butter",
+              "Cera Alba",
+              "Bees Wax",
+              "Retinolds",
+              "Vitamin A",
+              "Tocoherol",
+              "Viamin E"
+            ],
+            "pdp_how_to_use_raw": "Soften balm between hands and apply daily.",
+            "pdp_details_sections": [
+              {
+                "heading": "How to Use",
+                "body": "Soften balm between hands and apply daily.",
+                "source_kind": "official_shopify_product_description_daily_ritual"
+              },
+              {
+                "heading": "Ingredients",
+                "body": "Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinolds, Vitamin A , Tocoherol, Viamin E",
+                "source_kind": "official_shopify_product_description_ingredients"
+              }
+            ],
+            "ingredient_intel": {
+              "raw_ingredient_text_clean": "Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinolds, Vitamin A , Tocoherol, Viamin E",
+              "inci_raw": "Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinolds, Vitamin A , Tocoherol, Viamin E",
+              "inci_list": [
+                "Lanolin Anhydrous",
+                "Pure Australian Lanolin",
+                "Vitellaria Paradora",
+                "Organic Shea Butter",
+                "Cera Alba",
+                "Bees Wax",
+                "Retinolds",
+                "Vitamin A",
+                "Tocoherol",
+                "Viamin E"
+              ],
+              "inci_normalized": [
+                "Lanolin Anhydrous",
+                "Pure Australian Lanolin",
+                "Vitellaria Paradora",
+                "Organic Shea Butter",
+                "Cera Alba",
+                "Bees Wax",
+                "Retinolds",
+                "Vitamin A",
+                "Tocoherol",
+                "Viamin E"
+              ],
+              "source_kind": "official_shopify_product_description_ingredients",
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented"
+            },
+            "external_seed_snapshot_contract": {
+              "contract_version": "external_seed.snapshot_contract.v1",
+              "source": "wave16_lucamar_official_shopify_us_catalog_recovery",
+              "authoritative": true,
+              "structured_fields_authoritative": true,
+              "legacy_fields_quarantined": true,
+              "replace_strategy": "replace_not_merge",
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+              "updated_at": "2026-05-25T09:05:37.246Z"
+            },
+            "pdp_field_quality_summary": {
+              "description_raw": {
+                "source_origin": "official_shopify_us_catalog_pdp",
+                "source_quality_status": "high",
+                "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+                "reviewed_by": "codex_wave16_lucamar",
+                "reviewed_at": "2026-05-25T09:05:37.246Z"
+              },
+              "ingredients_raw": {
+                "source_origin": "official_shopify_us_catalog_pdp",
+                "source_quality_status": "high",
+                "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+                "reviewed_by": "codex_wave16_lucamar",
+                "reviewed_at": "2026-05-25T09:05:37.246Z"
+              },
+              "ingredients_inci": {
+                "source_origin": "official_shopify_us_catalog_pdp",
+                "source_quality_status": "high",
+                "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+                "reviewed_by": "codex_wave16_lucamar",
+                "reviewed_at": "2026-05-25T09:05:37.246Z"
+              },
+              "how_to_use_raw": {
+                "source_origin": "official_shopify_us_catalog_pdp",
+                "source_quality_status": "high",
+                "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+                "reviewed_by": "codex_wave16_lucamar",
+                "reviewed_at": "2026-05-25T09:05:37.246Z"
+              },
+              "details_sections": {
+                "source_origin": "official_shopify_us_catalog_pdp",
+                "source_quality_status": "high",
+                "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+                "reviewed_by": "codex_wave16_lucamar",
+                "reviewed_at": "2026-05-25T09:05:37.246Z"
+              },
+              "category": {
+                "source_origin": "official_shopify_us_catalog_pdp",
+                "source_quality_status": "high",
+                "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+                "reviewed_by": "codex_wave16_lucamar",
+                "reviewed_at": "2026-05-25T09:05:37.246Z"
+              },
+              "product_type": {
+                "source_origin": "official_shopify_us_catalog_pdp",
+                "source_quality_status": "high",
+                "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+                "reviewed_by": "codex_wave16_lucamar",
+                "reviewed_at": "2026-05-25T09:05:37.246Z"
+              },
+              "image_assets": {
+                "source_origin": "official_shopify_us_catalog_pdp",
+                "source_quality_status": "high",
+                "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+                "reviewed_by": "codex_wave16_lucamar",
+                "reviewed_at": "2026-05-25T09:05:37.246Z"
+              }
+            },
+            "pdp_field_capture_status": {
+              "description_raw": "captured",
+              "ingredients_raw": "captured",
+              "how_to_use_raw": "captured",
+              "details_sections": "captured"
+            }
+          },
+          "search_aliases": [
+            "Baa Ram Ewe  Lanolin Skin Balm  120g UNSCENTED",
+            "Lucamar Baa Ram Ewe  Lanolin Skin Balm  120g UNSCENTED",
+            "Lucamar Skin Care Baa Ram Ewe  Lanolin Skin Balm  120g UNSCENTED"
+          ],
+          "authority_source": {
+            "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+            "source_role": "direct_official_pdp_catalog_extract",
+            "matched_preferred_titles": [
+              "Baa Ram Ewe  Lanolin Skin Balm  120g UNSCENTED"
+            ],
+            "official_description_raw": "Baa Ram Ewe Lanolin Skin Balm 120g Discover the timeless wonder of our Lanolin balm. Formulated with Pure lanolin, this rich, protective balm soothes and hydrates even the driest , most delicate skin. Its luxurious texture melts effortlessly providing a soothing layer of moisture that lasts all day. Perfect for hands, elbows, knees, lips, or any area in need of extra care, it forms a protective barrier that locks in moisture leaving skin feeling smooth & rejuvenated. Treat your skin to the nourishing luxury it deserves, with the enduring benefits of this multi-purpose balm. INGREDIENTS: Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinolds, Vitamin A , Tocoherol, Viamin E DAILY RITUAL: Soften balm between hands and apply daily. Proudly Made In South Australia Cruelty Free No Artificial flavouring, parabéns, petrolatum, Peg's, Mineral oil, sulphates."
+          },
+          "source_validation": {
+            "source_type": "brand_owned",
+            "source_host": "lucamarskincare.com",
+            "requires_multi_offer_merge_validation": false
+          },
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-25T08:57:36.646Z",
+            "evidence_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-25T08:57:36.646Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented"
+            },
+            "regional_price": {
+              "amount": 17,
+              "currency": "USD",
+              "display_raw": "17.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+              "captured_at": "2026-05-25T08:57:36.646Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T08:57:36.646Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T08:57:36.646Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T08:57:36.646Z"
+            }
+          },
+          "commerce_facts_gate": {
+            "status": "pass",
+            "market_id": "US",
+            "expected_currency": "USD",
+            "observed_currency": "USD",
+            "market_switch_status": "ok",
+            "sellable_region_status": "unknown",
+            "shipping_status": "unknown",
+            "promotions_status": "unknown",
+            "availability_status": "in_stock",
+            "problems": []
+          },
+          "pdp_description_raw": "Baa Ram Ewe  Lanolin Skin Balm  120g UNSCENTED is a source-backed Lucamar body balm from the brand-owned US-localized Shopify product feed. The official ingredient section includes Lanolin Anhydrous, Pure Australian Lanolin, Vitellaria Paradora, Organic Shea Butter, Cera Alba. Price, availability, imagery, ingredient text, and Daily Ritual instructions are captured from the official source.",
+          "pdp_official_description_raw": "Baa Ram Ewe Lanolin Skin Balm 120g Discover the timeless wonder of our Lanolin balm. Formulated with Pure lanolin, this rich, protective balm soothes and hydrates even the driest , most delicate skin. Its luxurious texture melts effortlessly providing a soothing layer of moisture that lasts all day. Perfect for hands, elbows, knees, lips, or any area in need of extra care, it forms a protective barrier that locks in moisture leaving skin feeling smooth & rejuvenated. Treat your skin to the nourishing luxury it deserves, with the enduring benefits of this multi-purpose balm. INGREDIENTS: Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinolds, Vitamin A , Tocoherol, Viamin E DAILY RITUAL: Soften balm between hands and apply daily. Proudly Made In South Australia Cruelty Free No Artificial flavouring, parabéns, petrolatum, Peg's, Mineral oil, sulphates.",
+          "pdp_source_description_raw": "Baa Ram Ewe Lanolin Skin Balm 120g Discover the timeless wonder of our Lanolin balm. Formulated with Pure lanolin, this rich, protective balm soothes and hydrates even the driest , most delicate skin. Its luxurious texture melts effortlessly providing a soothing layer of moisture that lasts all day. Perfect for hands, elbows, knees, lips, or any area in need of extra care, it forms a protective barrier that locks in moisture leaving skin feeling smooth & rejuvenated. Treat your skin to the nourishing luxury it deserves, with the enduring benefits of this multi-purpose balm. INGREDIENTS: Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinolds, Vitamin A , Tocoherol, Viamin E DAILY RITUAL: Soften balm between hands and apply daily. Proudly Made In South Australia Cruelty Free No Artificial flavouring, parabéns, petrolatum, Peg's, Mineral oil, sulphates.",
+          "pdp_ingredients_raw": "Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinolds, Vitamin A , Tocoherol, Viamin E",
+          "raw_ingredient_text_clean": "Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinolds, Vitamin A , Tocoherol, Viamin E",
+          "ingredients_inci": [
+            "Lanolin Anhydrous",
+            "Pure Australian Lanolin",
+            "Vitellaria Paradora",
+            "Organic Shea Butter",
+            "Cera Alba",
+            "Bees Wax",
+            "Retinolds",
+            "Vitamin A",
+            "Tocoherol",
+            "Viamin E"
+          ],
+          "inci_list": [
+            "Lanolin Anhydrous",
+            "Pure Australian Lanolin",
+            "Vitellaria Paradora",
+            "Organic Shea Butter",
+            "Cera Alba",
+            "Bees Wax",
+            "Retinolds",
+            "Vitamin A",
+            "Tocoherol",
+            "Viamin E"
+          ],
+          "pdp_how_to_use_raw": "Soften balm between hands and apply daily.",
+          "pdp_details_sections": [
+            {
+              "heading": "How to Use",
+              "body": "Soften balm between hands and apply daily.",
+              "source_kind": "official_shopify_product_description_daily_ritual"
+            },
+            {
+              "heading": "Ingredients",
+              "body": "Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinolds, Vitamin A , Tocoherol, Viamin E",
+              "source_kind": "official_shopify_product_description_ingredients"
+            }
+          ],
+          "ingredient_intel": {
+            "raw_ingredient_text_clean": "Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinolds, Vitamin A , Tocoherol, Viamin E",
+            "inci_raw": "Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinolds, Vitamin A , Tocoherol, Viamin E",
+            "inci_list": [
+              "Lanolin Anhydrous",
+              "Pure Australian Lanolin",
+              "Vitellaria Paradora",
+              "Organic Shea Butter",
+              "Cera Alba",
+              "Bees Wax",
+              "Retinolds",
+              "Vitamin A",
+              "Tocoherol",
+              "Viamin E"
+            ],
+            "inci_normalized": [
+              "Lanolin Anhydrous",
+              "Pure Australian Lanolin",
+              "Vitellaria Paradora",
+              "Organic Shea Butter",
+              "Cera Alba",
+              "Bees Wax",
+              "Retinolds",
+              "Vitamin A",
+              "Tocoherol",
+              "Viamin E"
+            ],
+            "source_kind": "official_shopify_product_description_ingredients",
+            "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented"
+          },
+          "category": "Body Care",
+          "category_path": [
+            "beauty",
+            "bodycare",
+            "body-balm"
+          ],
+          "catalog_category_path": "beauty/bodycare/body-balm",
+          "product_kind": "single_formula",
+          "product_type": "Body Balm",
+          "external_seed_snapshot_contract": {
+            "contract_version": "external_seed.snapshot_contract.v1",
+            "source": "wave16_lucamar_official_shopify_us_catalog_recovery",
+            "authoritative": true,
+            "structured_fields_authoritative": true,
+            "legacy_fields_quarantined": true,
+            "replace_strategy": "replace_not_merge",
+            "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+            "updated_at": "2026-05-25T09:05:37.246Z"
+          },
+          "pdp_field_quality_summary": {
+            "description_raw": {
+              "source_origin": "official_shopify_us_catalog_pdp",
+              "source_quality_status": "high",
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+              "reviewed_by": "codex_wave16_lucamar",
+              "reviewed_at": "2026-05-25T09:05:37.246Z"
+            },
+            "ingredients_raw": {
+              "source_origin": "official_shopify_us_catalog_pdp",
+              "source_quality_status": "high",
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+              "reviewed_by": "codex_wave16_lucamar",
+              "reviewed_at": "2026-05-25T09:05:37.246Z"
+            },
+            "ingredients_inci": {
+              "source_origin": "official_shopify_us_catalog_pdp",
+              "source_quality_status": "high",
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+              "reviewed_by": "codex_wave16_lucamar",
+              "reviewed_at": "2026-05-25T09:05:37.246Z"
+            },
+            "how_to_use_raw": {
+              "source_origin": "official_shopify_us_catalog_pdp",
+              "source_quality_status": "high",
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+              "reviewed_by": "codex_wave16_lucamar",
+              "reviewed_at": "2026-05-25T09:05:37.246Z"
+            },
+            "details_sections": {
+              "source_origin": "official_shopify_us_catalog_pdp",
+              "source_quality_status": "high",
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+              "reviewed_by": "codex_wave16_lucamar",
+              "reviewed_at": "2026-05-25T09:05:37.246Z"
+            },
+            "category": {
+              "source_origin": "official_shopify_us_catalog_pdp",
+              "source_quality_status": "high",
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+              "reviewed_by": "codex_wave16_lucamar",
+              "reviewed_at": "2026-05-25T09:05:37.246Z"
+            },
+            "product_type": {
+              "source_origin": "official_shopify_us_catalog_pdp",
+              "source_quality_status": "high",
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+              "reviewed_by": "codex_wave16_lucamar",
+              "reviewed_at": "2026-05-25T09:05:37.246Z"
+            },
+            "image_assets": {
+              "source_origin": "official_shopify_us_catalog_pdp",
+              "source_quality_status": "high",
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+              "reviewed_by": "codex_wave16_lucamar",
+              "reviewed_at": "2026-05-25T09:05:37.246Z"
+            }
+          },
+          "pdp_field_capture_status": {
+            "description_raw": "captured",
+            "ingredients_raw": "captured",
+            "how_to_use_raw": "captured",
+            "details_sections": "captured"
+          }
+        }
+      },
+      "curation_decision": {
+        "decision": "db_ready_candidate",
+        "reason_codes": [
+          "official_dtc_in_stock_usd_commerce_gate_pass",
+          "source_backed_ingredients_and_how_to"
+        ]
+      }
+    },
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "target_brand": "Lucamar Skin Care",
+      "target_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+      "extract_status": "official_shopify_us_catalog_recovered_ready",
+      "market": "US",
+      "source_domain": "https://lucamarskincare.com",
+      "source_role": "direct_official_pdp_catalog_extract",
+      "matched_preferred_titles": [
+        "Baa Ram Ewe  Lanolin Skin Balm  120g"
+      ],
+      "seed_row": {
+        "ingredient_id": null,
+        "ingredient_name": null,
+        "seed_id": "eps_e2fa8f2dda7a3a9609d84dfa",
+        "brand": "Lucamar Skin Care",
+        "market": "US",
+        "tool": "creator_agents",
+        "status": "active",
+        "domain": "lucamarskincare.com",
+        "external_product_id": "ext_0836525e72365da8ecbcc3b5",
+        "canonical_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+        "destination_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+        "title": "Baa Ram Ewe  Lanolin Skin Balm  120g",
+        "image_url": "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_14.png?v=1701869178",
+        "price_amount": 17,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "attached_product_key": null,
+        "requires_seed_correction": false,
+        "seed_data": {
+          "brand": "Lucamar Skin Care",
+          "title": "Baa Ram Ewe  Lanolin Skin Balm  120g",
+          "description": "Baa Ram Ewe  Lanolin Skin Balm  120g is a source-backed Lucamar body balm from the brand-owned US-localized Shopify product feed. The official ingredient section includes Lanolin Anhydrous, Pure Australian Lanolin, Vitellaria Paradora, Organic Shea Butter, Cera Alba. Price, availability, imagery, ingredient text, and Daily Ritual instructions are captured from the official source.",
+          "external_product_id": "ext_0836525e72365da8ecbcc3b5",
+          "canonical_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+          "destination_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+          "price_amount": 17,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_14.png?v=1701869178",
+          "image_urls": [
+            "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_14.png?v=1701869178",
+            "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_20.png?v=1701869399",
+            "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_2722_3_b4230ea2-39cf-4f96-918c-1abf18a74681.jpg?v=1701869399",
+            "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_5128.jpg?v=1701869399"
+          ],
+          "images": [
+            "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_14.png?v=1701869178",
+            "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_20.png?v=1701869399",
+            "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_2722_3_b4230ea2-39cf-4f96-918c-1abf18a74681.jpg?v=1701869399",
+            "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_5128.jpg?v=1701869399"
+          ],
+          "variants": [
+            {
+              "sku": "SHOPIFY-12224896204842",
+              "variant_id": "12224896204842",
+              "url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+              "option_name": "Size",
+              "option_value": "120g",
+              "price": "17",
+              "currency": "USD",
+              "stock": "In Stock",
+              "description": "Baa Ram Ewe  Lanolin Skin Balm  120g is a source-backed Lucamar body balm from the brand-owned US-localized Shopify product feed. The official ingredient section includes Lanolin Anhydrous, Pure Australian Lanolin, Vitellaria Paradora, Organic Shea Butter, Cera Alba. Price, availability, imagery, ingredient text, and Daily Ritual instructions are captured from the official source.",
+              "image_url": "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_14.png?v=1701869178",
+              "image_urls": [
+                "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_14.png?v=1701869178",
+                "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_20.png?v=1701869399",
+                "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_2722_3_b4230ea2-39cf-4f96-918c-1abf18a74681.jpg?v=1701869399",
+                "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_5128.jpg?v=1701869399"
+              ],
+              "images": [
+                "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_14.png?v=1701869178",
+                "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_20.png?v=1701869399",
+                "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_2722_3_b4230ea2-39cf-4f96-918c-1abf18a74681.jpg?v=1701869399",
+                "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_5128.jpg?v=1701869399"
+              ]
+            }
+          ],
+          "snapshot": {
+            "source": "wave16_lucamar_official_shopify_us_catalog_seed_creation_manifest",
+            "extracted_at": "2026-05-25T09:05:37.246Z",
+            "canonical_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+            "destination_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+            "title": "Baa Ram Ewe  Lanolin Skin Balm  120g",
+            "description": "Baa Ram Ewe  Lanolin Skin Balm  120g is a source-backed Lucamar body balm from the brand-owned US-localized Shopify product feed. The official ingredient section includes Lanolin Anhydrous, Pure Australian Lanolin, Vitellaria Paradora, Organic Shea Butter, Cera Alba. Price, availability, imagery, ingredient text, and Daily Ritual instructions are captured from the official source.",
+            "image_url": "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_14.png?v=1701869178",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_14.png?v=1701869178",
+              "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_20.png?v=1701869399",
+              "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_2722_3_b4230ea2-39cf-4f96-918c-1abf18a74681.jpg?v=1701869399",
+              "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_5128.jpg?v=1701869399"
+            ],
+            "images": [
+              "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_14.png?v=1701869178",
+              "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_20.png?v=1701869399",
+              "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_2722_3_b4230ea2-39cf-4f96-918c-1abf18a74681.jpg?v=1701869399",
+              "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_5128.jpg?v=1701869399"
+            ],
+            "variants": [
+              {
+                "sku": "SHOPIFY-12224896204842",
+                "variant_id": "12224896204842",
+                "url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+                "option_name": "Size",
+                "option_value": "120g",
+                "price": "17",
+                "currency": "USD",
+                "stock": "In Stock",
+                "description": "Baa Ram Ewe  Lanolin Skin Balm  120g is a source-backed Lucamar body balm from the brand-owned US-localized Shopify product feed. The official ingredient section includes Lanolin Anhydrous, Pure Australian Lanolin, Vitellaria Paradora, Organic Shea Butter, Cera Alba. Price, availability, imagery, ingredient text, and Daily Ritual instructions are captured from the official source.",
+                "image_url": "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_14.png?v=1701869178",
+                "image_urls": [
+                  "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_14.png?v=1701869178",
+                  "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_20.png?v=1701869399",
+                  "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_2722_3_b4230ea2-39cf-4f96-918c-1abf18a74681.jpg?v=1701869399",
+                  "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_5128.jpg?v=1701869399"
+                ],
+                "images": [
+                  "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_14.png?v=1701869178",
+                  "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_20.png?v=1701869399",
+                  "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_2722_3_b4230ea2-39cf-4f96-918c-1abf18a74681.jpg?v=1701869399",
+                  "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_5128.jpg?v=1701869399"
+                ]
+              }
+            ],
+            "diagnostics": {
+              "requested_domain": "lucamarskincare.com",
+              "resolved_base_url": "https://lucamarskincare.com",
+              "discovery_strategy": "shopify_json",
+              "failure_category": null,
+              "block_provider": null,
+              "http_trace": [
+                {
+                  "url": "https://lucamarskincare.com/",
+                  "status": 200
+                },
+                {
+                  "url": "https://lucamarskincare.com/products.json?limit=1",
+                  "status": 200
+                },
+                {
+                  "url": "https://lucamarskincare.com/pages/usa",
+                  "status": 200
+                },
+                {
+                  "url": "https://lucamarskincare.com/products.json?limit=250&page=1",
+                  "status": 200
+                }
+              ]
+            },
+            "search_aliases": [
+              "Baa Ram Ewe  Lanolin Skin Balm  120g",
+              "Lucamar Baa Ram Ewe  Lanolin Skin Balm  120g",
+              "Lucamar Skin Care Baa Ram Ewe  Lanolin Skin Balm  120g"
+            ],
+            "authority_source": {
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+              "source_role": "direct_official_pdp_catalog_extract",
+              "matched_preferred_titles": [
+                "Baa Ram Ewe  Lanolin Skin Balm  120g"
+              ],
+              "official_description_raw": "Baa Ram Ewe Lanolin Skin Balm 120g Discover the timeless wonder of our Lanolin balm. Formulated with Pure lanolin, this rich, protective balm soothes and hydrates even the driest , most delicate skin. Its luxurious texture melts effortlessly providing a soothing layer of moisture that lasts all day. Perfect for hands, elbows, knees, lips, or any area in need of extra care, it forms a protective barrier that locks in moisture leaving skin feeling smooth & rejuvenated. Treat your skin to the nourishing luxury it deserves, with the enduring benefits of this multi-purpose balm. INGREDIENTS: Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinoids, Vitamin A , Tocoherol, Viamin E, Neroli & Musk body safe fragrance. DAILY RITUAL: Soften balm between hands and apply daily. Proudly Made In South Australia Cruelty Free No Artificial flavouring, parabéns, petrolatum, Peg's, Mineral oil, sulphates."
+            },
+            "source_validation": {
+              "source_type": "brand_owned",
+              "source_host": "lucamarskincare.com",
+              "requires_multi_offer_merge_validation": false
+            },
+            "commerce_facts_v1": {
+              "contract_version": "commerce_facts.v1",
+              "market_id": "US",
+              "country": "US",
+              "currency_target": "USD",
+              "source_authority": "catalog_extract_v2",
+              "captured_at": "2026-05-25T08:57:36.646Z",
+              "evidence_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+              "sellable_region": {
+                "status": "unknown",
+                "countries": [],
+                "evidence_source": "catalog_extract_v2",
+                "confidence": "medium",
+                "checked_at": "2026-05-25T08:57:36.646Z",
+                "reason_codes": [
+                  "market_currency_observed",
+                  "shipping_destination_not_verified",
+                  "external_checkout_not_queried"
+                ],
+                "evidence_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms"
+              },
+              "regional_price": {
+                "amount": 17,
+                "currency": "USD",
+                "display_raw": "17.00",
+                "price_type": "list",
+                "compare_at_amount": null,
+                "compare_at_currency": null,
+                "compare_at_display_raw": null,
+                "tax_included": "unknown",
+                "confidence": "medium",
+                "market_switch_status": "ok",
+                "observed_currency": "USD",
+                "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+                "captured_at": "2026-05-25T08:57:36.646Z"
+              },
+              "availability": {
+                "status": "in_stock",
+                "source": "catalog_extract_v2",
+                "confidence": "medium",
+                "captured_at": "2026-05-25T08:57:36.646Z"
+              },
+              "shipping": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_checkout_not_queried"
+                ],
+                "checked_at": "2026-05-25T08:57:36.646Z"
+              },
+              "promotions": [],
+              "returns": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_returns_not_extracted"
+                ],
+                "checked_at": "2026-05-25T08:57:36.646Z"
+              }
+            },
+            "commerce_facts_gate": {
+              "status": "pass",
+              "market_id": "US",
+              "expected_currency": "USD",
+              "observed_currency": "USD",
+              "market_switch_status": "ok",
+              "sellable_region_status": "unknown",
+              "shipping_status": "unknown",
+              "promotions_status": "unknown",
+              "availability_status": "in_stock",
+              "problems": []
+            },
+            "brand": "Lucamar Skin Care",
+            "external_product_id": "ext_0836525e72365da8ecbcc3b5",
+            "price_amount": 17,
+            "price_currency": "USD",
+            "availability": "in_stock",
+            "category": "Body Care",
+            "category_path": [
+              "beauty",
+              "bodycare",
+              "body-balm"
+            ],
+            "catalog_category_path": "beauty/bodycare/body-balm",
+            "product_kind": "single_formula",
+            "product_type": "Body Balm",
+            "pdp_description_raw": "Baa Ram Ewe  Lanolin Skin Balm  120g is a source-backed Lucamar body balm from the brand-owned US-localized Shopify product feed. The official ingredient section includes Lanolin Anhydrous, Pure Australian Lanolin, Vitellaria Paradora, Organic Shea Butter, Cera Alba. Price, availability, imagery, ingredient text, and Daily Ritual instructions are captured from the official source.",
+            "pdp_official_description_raw": "Baa Ram Ewe Lanolin Skin Balm 120g Discover the timeless wonder of our Lanolin balm. Formulated with Pure lanolin, this rich, protective balm soothes and hydrates even the driest , most delicate skin. Its luxurious texture melts effortlessly providing a soothing layer of moisture that lasts all day. Perfect for hands, elbows, knees, lips, or any area in need of extra care, it forms a protective barrier that locks in moisture leaving skin feeling smooth & rejuvenated. Treat your skin to the nourishing luxury it deserves, with the enduring benefits of this multi-purpose balm. INGREDIENTS: Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinoids, Vitamin A , Tocoherol, Viamin E, Neroli & Musk body safe fragrance. DAILY RITUAL: Soften balm between hands and apply daily. Proudly Made In South Australia Cruelty Free No Artificial flavouring, parabéns, petrolatum, Peg's, Mineral oil, sulphates.",
+            "pdp_source_description_raw": "Baa Ram Ewe Lanolin Skin Balm 120g Discover the timeless wonder of our Lanolin balm. Formulated with Pure lanolin, this rich, protective balm soothes and hydrates even the driest , most delicate skin. Its luxurious texture melts effortlessly providing a soothing layer of moisture that lasts all day. Perfect for hands, elbows, knees, lips, or any area in need of extra care, it forms a protective barrier that locks in moisture leaving skin feeling smooth & rejuvenated. Treat your skin to the nourishing luxury it deserves, with the enduring benefits of this multi-purpose balm. INGREDIENTS: Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinoids, Vitamin A , Tocoherol, Viamin E, Neroli & Musk body safe fragrance. DAILY RITUAL: Soften balm between hands and apply daily. Proudly Made In South Australia Cruelty Free No Artificial flavouring, parabéns, petrolatum, Peg's, Mineral oil, sulphates.",
+            "pdp_ingredients_raw": "Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinoids, Vitamin A , Tocoherol, Viamin E, Neroli & Musk body safe fragrance.",
+            "raw_ingredient_text_clean": "Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinoids, Vitamin A , Tocoherol, Viamin E, Neroli & Musk body safe fragrance.",
+            "ingredients_inci": [
+              "Lanolin Anhydrous",
+              "Pure Australian Lanolin",
+              "Vitellaria Paradora",
+              "Organic Shea Butter",
+              "Cera Alba",
+              "Bees Wax",
+              "Retinoids",
+              "Vitamin A",
+              "Tocoherol",
+              "Viamin E",
+              "Neroli & Musk body safe fragrance."
+            ],
+            "inci_list": [
+              "Lanolin Anhydrous",
+              "Pure Australian Lanolin",
+              "Vitellaria Paradora",
+              "Organic Shea Butter",
+              "Cera Alba",
+              "Bees Wax",
+              "Retinoids",
+              "Vitamin A",
+              "Tocoherol",
+              "Viamin E",
+              "Neroli & Musk body safe fragrance."
+            ],
+            "pdp_how_to_use_raw": "Soften balm between hands and apply daily.",
+            "pdp_details_sections": [
+              {
+                "heading": "How to Use",
+                "body": "Soften balm between hands and apply daily.",
+                "source_kind": "official_shopify_product_description_daily_ritual"
+              },
+              {
+                "heading": "Ingredients",
+                "body": "Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinoids, Vitamin A , Tocoherol, Viamin E, Neroli & Musk body safe fragrance.",
+                "source_kind": "official_shopify_product_description_ingredients"
+              }
+            ],
+            "ingredient_intel": {
+              "raw_ingredient_text_clean": "Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinoids, Vitamin A , Tocoherol, Viamin E, Neroli & Musk body safe fragrance.",
+              "inci_raw": "Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinoids, Vitamin A , Tocoherol, Viamin E, Neroli & Musk body safe fragrance.",
+              "inci_list": [
+                "Lanolin Anhydrous",
+                "Pure Australian Lanolin",
+                "Vitellaria Paradora",
+                "Organic Shea Butter",
+                "Cera Alba",
+                "Bees Wax",
+                "Retinoids",
+                "Vitamin A",
+                "Tocoherol",
+                "Viamin E",
+                "Neroli & Musk body safe fragrance."
+              ],
+              "inci_normalized": [
+                "Lanolin Anhydrous",
+                "Pure Australian Lanolin",
+                "Vitellaria Paradora",
+                "Organic Shea Butter",
+                "Cera Alba",
+                "Bees Wax",
+                "Retinoids",
+                "Vitamin A",
+                "Tocoherol",
+                "Viamin E",
+                "Neroli & Musk body safe fragrance."
+              ],
+              "source_kind": "official_shopify_product_description_ingredients",
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms"
+            },
+            "external_seed_snapshot_contract": {
+              "contract_version": "external_seed.snapshot_contract.v1",
+              "source": "wave16_lucamar_official_shopify_us_catalog_recovery",
+              "authoritative": true,
+              "structured_fields_authoritative": true,
+              "legacy_fields_quarantined": true,
+              "replace_strategy": "replace_not_merge",
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+              "updated_at": "2026-05-25T09:05:37.246Z"
+            },
+            "pdp_field_quality_summary": {
+              "description_raw": {
+                "source_origin": "official_shopify_us_catalog_pdp",
+                "source_quality_status": "high",
+                "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+                "reviewed_by": "codex_wave16_lucamar",
+                "reviewed_at": "2026-05-25T09:05:37.246Z"
+              },
+              "ingredients_raw": {
+                "source_origin": "official_shopify_us_catalog_pdp",
+                "source_quality_status": "high",
+                "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+                "reviewed_by": "codex_wave16_lucamar",
+                "reviewed_at": "2026-05-25T09:05:37.246Z"
+              },
+              "ingredients_inci": {
+                "source_origin": "official_shopify_us_catalog_pdp",
+                "source_quality_status": "high",
+                "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+                "reviewed_by": "codex_wave16_lucamar",
+                "reviewed_at": "2026-05-25T09:05:37.246Z"
+              },
+              "how_to_use_raw": {
+                "source_origin": "official_shopify_us_catalog_pdp",
+                "source_quality_status": "high",
+                "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+                "reviewed_by": "codex_wave16_lucamar",
+                "reviewed_at": "2026-05-25T09:05:37.246Z"
+              },
+              "details_sections": {
+                "source_origin": "official_shopify_us_catalog_pdp",
+                "source_quality_status": "high",
+                "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+                "reviewed_by": "codex_wave16_lucamar",
+                "reviewed_at": "2026-05-25T09:05:37.246Z"
+              },
+              "category": {
+                "source_origin": "official_shopify_us_catalog_pdp",
+                "source_quality_status": "high",
+                "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+                "reviewed_by": "codex_wave16_lucamar",
+                "reviewed_at": "2026-05-25T09:05:37.246Z"
+              },
+              "product_type": {
+                "source_origin": "official_shopify_us_catalog_pdp",
+                "source_quality_status": "high",
+                "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+                "reviewed_by": "codex_wave16_lucamar",
+                "reviewed_at": "2026-05-25T09:05:37.246Z"
+              },
+              "image_assets": {
+                "source_origin": "official_shopify_us_catalog_pdp",
+                "source_quality_status": "high",
+                "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+                "reviewed_by": "codex_wave16_lucamar",
+                "reviewed_at": "2026-05-25T09:05:37.246Z"
+              }
+            },
+            "pdp_field_capture_status": {
+              "description_raw": "captured",
+              "ingredients_raw": "captured",
+              "how_to_use_raw": "captured",
+              "details_sections": "captured"
+            }
+          },
+          "search_aliases": [
+            "Baa Ram Ewe  Lanolin Skin Balm  120g",
+            "Lucamar Baa Ram Ewe  Lanolin Skin Balm  120g",
+            "Lucamar Skin Care Baa Ram Ewe  Lanolin Skin Balm  120g"
+          ],
+          "authority_source": {
+            "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+            "source_role": "direct_official_pdp_catalog_extract",
+            "matched_preferred_titles": [
+              "Baa Ram Ewe  Lanolin Skin Balm  120g"
+            ],
+            "official_description_raw": "Baa Ram Ewe Lanolin Skin Balm 120g Discover the timeless wonder of our Lanolin balm. Formulated with Pure lanolin, this rich, protective balm soothes and hydrates even the driest , most delicate skin. Its luxurious texture melts effortlessly providing a soothing layer of moisture that lasts all day. Perfect for hands, elbows, knees, lips, or any area in need of extra care, it forms a protective barrier that locks in moisture leaving skin feeling smooth & rejuvenated. Treat your skin to the nourishing luxury it deserves, with the enduring benefits of this multi-purpose balm. INGREDIENTS: Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinoids, Vitamin A , Tocoherol, Viamin E, Neroli & Musk body safe fragrance. DAILY RITUAL: Soften balm between hands and apply daily. Proudly Made In South Australia Cruelty Free No Artificial flavouring, parabéns, petrolatum, Peg's, Mineral oil, sulphates."
+          },
+          "source_validation": {
+            "source_type": "brand_owned",
+            "source_host": "lucamarskincare.com",
+            "requires_multi_offer_merge_validation": false
+          },
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-25T08:57:36.646Z",
+            "evidence_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-25T08:57:36.646Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms"
+            },
+            "regional_price": {
+              "amount": 17,
+              "currency": "USD",
+              "display_raw": "17.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+              "captured_at": "2026-05-25T08:57:36.646Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T08:57:36.646Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T08:57:36.646Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T08:57:36.646Z"
+            }
+          },
+          "commerce_facts_gate": {
+            "status": "pass",
+            "market_id": "US",
+            "expected_currency": "USD",
+            "observed_currency": "USD",
+            "market_switch_status": "ok",
+            "sellable_region_status": "unknown",
+            "shipping_status": "unknown",
+            "promotions_status": "unknown",
+            "availability_status": "in_stock",
+            "problems": []
+          },
+          "pdp_description_raw": "Baa Ram Ewe  Lanolin Skin Balm  120g is a source-backed Lucamar body balm from the brand-owned US-localized Shopify product feed. The official ingredient section includes Lanolin Anhydrous, Pure Australian Lanolin, Vitellaria Paradora, Organic Shea Butter, Cera Alba. Price, availability, imagery, ingredient text, and Daily Ritual instructions are captured from the official source.",
+          "pdp_official_description_raw": "Baa Ram Ewe Lanolin Skin Balm 120g Discover the timeless wonder of our Lanolin balm. Formulated with Pure lanolin, this rich, protective balm soothes and hydrates even the driest , most delicate skin. Its luxurious texture melts effortlessly providing a soothing layer of moisture that lasts all day. Perfect for hands, elbows, knees, lips, or any area in need of extra care, it forms a protective barrier that locks in moisture leaving skin feeling smooth & rejuvenated. Treat your skin to the nourishing luxury it deserves, with the enduring benefits of this multi-purpose balm. INGREDIENTS: Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinoids, Vitamin A , Tocoherol, Viamin E, Neroli & Musk body safe fragrance. DAILY RITUAL: Soften balm between hands and apply daily. Proudly Made In South Australia Cruelty Free No Artificial flavouring, parabéns, petrolatum, Peg's, Mineral oil, sulphates.",
+          "pdp_source_description_raw": "Baa Ram Ewe Lanolin Skin Balm 120g Discover the timeless wonder of our Lanolin balm. Formulated with Pure lanolin, this rich, protective balm soothes and hydrates even the driest , most delicate skin. Its luxurious texture melts effortlessly providing a soothing layer of moisture that lasts all day. Perfect for hands, elbows, knees, lips, or any area in need of extra care, it forms a protective barrier that locks in moisture leaving skin feeling smooth & rejuvenated. Treat your skin to the nourishing luxury it deserves, with the enduring benefits of this multi-purpose balm. INGREDIENTS: Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinoids, Vitamin A , Tocoherol, Viamin E, Neroli & Musk body safe fragrance. DAILY RITUAL: Soften balm between hands and apply daily. Proudly Made In South Australia Cruelty Free No Artificial flavouring, parabéns, petrolatum, Peg's, Mineral oil, sulphates.",
+          "pdp_ingredients_raw": "Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinoids, Vitamin A , Tocoherol, Viamin E, Neroli & Musk body safe fragrance.",
+          "raw_ingredient_text_clean": "Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinoids, Vitamin A , Tocoherol, Viamin E, Neroli & Musk body safe fragrance.",
+          "ingredients_inci": [
+            "Lanolin Anhydrous",
+            "Pure Australian Lanolin",
+            "Vitellaria Paradora",
+            "Organic Shea Butter",
+            "Cera Alba",
+            "Bees Wax",
+            "Retinoids",
+            "Vitamin A",
+            "Tocoherol",
+            "Viamin E",
+            "Neroli & Musk body safe fragrance."
+          ],
+          "inci_list": [
+            "Lanolin Anhydrous",
+            "Pure Australian Lanolin",
+            "Vitellaria Paradora",
+            "Organic Shea Butter",
+            "Cera Alba",
+            "Bees Wax",
+            "Retinoids",
+            "Vitamin A",
+            "Tocoherol",
+            "Viamin E",
+            "Neroli & Musk body safe fragrance."
+          ],
+          "pdp_how_to_use_raw": "Soften balm between hands and apply daily.",
+          "pdp_details_sections": [
+            {
+              "heading": "How to Use",
+              "body": "Soften balm between hands and apply daily.",
+              "source_kind": "official_shopify_product_description_daily_ritual"
+            },
+            {
+              "heading": "Ingredients",
+              "body": "Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinoids, Vitamin A , Tocoherol, Viamin E, Neroli & Musk body safe fragrance.",
+              "source_kind": "official_shopify_product_description_ingredients"
+            }
+          ],
+          "ingredient_intel": {
+            "raw_ingredient_text_clean": "Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinoids, Vitamin A , Tocoherol, Viamin E, Neroli & Musk body safe fragrance.",
+            "inci_raw": "Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinoids, Vitamin A , Tocoherol, Viamin E, Neroli & Musk body safe fragrance.",
+            "inci_list": [
+              "Lanolin Anhydrous",
+              "Pure Australian Lanolin",
+              "Vitellaria Paradora",
+              "Organic Shea Butter",
+              "Cera Alba",
+              "Bees Wax",
+              "Retinoids",
+              "Vitamin A",
+              "Tocoherol",
+              "Viamin E",
+              "Neroli & Musk body safe fragrance."
+            ],
+            "inci_normalized": [
+              "Lanolin Anhydrous",
+              "Pure Australian Lanolin",
+              "Vitellaria Paradora",
+              "Organic Shea Butter",
+              "Cera Alba",
+              "Bees Wax",
+              "Retinoids",
+              "Vitamin A",
+              "Tocoherol",
+              "Viamin E",
+              "Neroli & Musk body safe fragrance."
+            ],
+            "source_kind": "official_shopify_product_description_ingredients",
+            "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms"
+          },
+          "category": "Body Care",
+          "category_path": [
+            "beauty",
+            "bodycare",
+            "body-balm"
+          ],
+          "catalog_category_path": "beauty/bodycare/body-balm",
+          "product_kind": "single_formula",
+          "product_type": "Body Balm",
+          "external_seed_snapshot_contract": {
+            "contract_version": "external_seed.snapshot_contract.v1",
+            "source": "wave16_lucamar_official_shopify_us_catalog_recovery",
+            "authoritative": true,
+            "structured_fields_authoritative": true,
+            "legacy_fields_quarantined": true,
+            "replace_strategy": "replace_not_merge",
+            "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+            "updated_at": "2026-05-25T09:05:37.246Z"
+          },
+          "pdp_field_quality_summary": {
+            "description_raw": {
+              "source_origin": "official_shopify_us_catalog_pdp",
+              "source_quality_status": "high",
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+              "reviewed_by": "codex_wave16_lucamar",
+              "reviewed_at": "2026-05-25T09:05:37.246Z"
+            },
+            "ingredients_raw": {
+              "source_origin": "official_shopify_us_catalog_pdp",
+              "source_quality_status": "high",
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+              "reviewed_by": "codex_wave16_lucamar",
+              "reviewed_at": "2026-05-25T09:05:37.246Z"
+            },
+            "ingredients_inci": {
+              "source_origin": "official_shopify_us_catalog_pdp",
+              "source_quality_status": "high",
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+              "reviewed_by": "codex_wave16_lucamar",
+              "reviewed_at": "2026-05-25T09:05:37.246Z"
+            },
+            "how_to_use_raw": {
+              "source_origin": "official_shopify_us_catalog_pdp",
+              "source_quality_status": "high",
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+              "reviewed_by": "codex_wave16_lucamar",
+              "reviewed_at": "2026-05-25T09:05:37.246Z"
+            },
+            "details_sections": {
+              "source_origin": "official_shopify_us_catalog_pdp",
+              "source_quality_status": "high",
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+              "reviewed_by": "codex_wave16_lucamar",
+              "reviewed_at": "2026-05-25T09:05:37.246Z"
+            },
+            "category": {
+              "source_origin": "official_shopify_us_catalog_pdp",
+              "source_quality_status": "high",
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+              "reviewed_by": "codex_wave16_lucamar",
+              "reviewed_at": "2026-05-25T09:05:37.246Z"
+            },
+            "product_type": {
+              "source_origin": "official_shopify_us_catalog_pdp",
+              "source_quality_status": "high",
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+              "reviewed_by": "codex_wave16_lucamar",
+              "reviewed_at": "2026-05-25T09:05:37.246Z"
+            },
+            "image_assets": {
+              "source_origin": "official_shopify_us_catalog_pdp",
+              "source_quality_status": "high",
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+              "reviewed_by": "codex_wave16_lucamar",
+              "reviewed_at": "2026-05-25T09:05:37.246Z"
+            }
+          },
+          "pdp_field_capture_status": {
+            "description_raw": "captured",
+            "ingredients_raw": "captured",
+            "how_to_use_raw": "captured",
+            "details_sections": "captured"
+          }
+        }
+      },
+      "curation_decision": {
+        "decision": "db_ready_candidate",
+        "reason_codes": [
+          "official_dtc_in_stock_usd_commerce_gate_pass",
+          "source_backed_ingredients_and_how_to"
+        ]
+      }
+    },
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "target_brand": "Lucamar Skin Care",
+      "target_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+      "extract_status": "official_shopify_us_catalog_recovered_ready",
+      "market": "US",
+      "source_domain": "https://lucamarskincare.com",
+      "source_role": "direct_official_pdp_catalog_extract",
+      "matched_preferred_titles": [
+        "Baa Ram Ewe Lanolin Skin Balm 50g"
+      ],
+      "seed_row": {
+        "ingredient_id": null,
+        "ingredient_name": null,
+        "seed_id": "eps_f4b6e76f5ce353e8980d61fd",
+        "brand": "Lucamar Skin Care",
+        "market": "US",
+        "tool": "creator_agents",
+        "status": "active",
+        "domain": "lucamarskincare.com",
+        "external_product_id": "ext_edcf7e510314384ac432b385",
+        "canonical_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+        "destination_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+        "title": "Baa Ram Ewe Lanolin Skin Balm 50g",
+        "image_url": "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_19.png?v=1701869285",
+        "price_amount": 12,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "attached_product_key": null,
+        "requires_seed_correction": false,
+        "seed_data": {
+          "brand": "Lucamar Skin Care",
+          "title": "Baa Ram Ewe Lanolin Skin Balm 50g",
+          "description": "Baa Ram Ewe Lanolin Skin Balm 50g is a source-backed Lucamar body balm from the brand-owned US-localized Shopify product feed. The official ingredient section includes Lanolin Anhydrous, Pure Australian Lanolin, Vitellaria Paradora, Organic Shea Butter, Cera Alba. Price, availability, imagery, ingredient text, and Daily Ritual instructions are captured from the official source.",
+          "external_product_id": "ext_edcf7e510314384ac432b385",
+          "canonical_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+          "destination_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+          "price_amount": 12,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_19.png?v=1701869285",
+          "image_urls": [
+            "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_19.png?v=1701869285",
+            "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_21.png?v=1701869579",
+            "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_5152.jpg?v=1701869579",
+            "https://cdn.shopify.com/s/files/1/2713/6250/files/7ef164cf-15d3-44b3-b9e4-85d26bba4154.png?v=1701869579"
+          ],
+          "images": [
+            "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_19.png?v=1701869285",
+            "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_21.png?v=1701869579",
+            "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_5152.jpg?v=1701869579",
+            "https://cdn.shopify.com/s/files/1/2713/6250/files/7ef164cf-15d3-44b3-b9e4-85d26bba4154.png?v=1701869579"
+          ],
+          "variants": [
+            {
+              "sku": "SHOPIFY-12224849608746",
+              "variant_id": "12224849608746",
+              "url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+              "option_name": "Size",
+              "option_value": "50g",
+              "price": "12",
+              "currency": "USD",
+              "stock": "In Stock",
+              "description": "Baa Ram Ewe Lanolin Skin Balm 50g is a source-backed Lucamar body balm from the brand-owned US-localized Shopify product feed. The official ingredient section includes Lanolin Anhydrous, Pure Australian Lanolin, Vitellaria Paradora, Organic Shea Butter, Cera Alba. Price, availability, imagery, ingredient text, and Daily Ritual instructions are captured from the official source.",
+              "image_url": "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_19.png?v=1701869285",
+              "image_urls": [
+                "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_19.png?v=1701869285",
+                "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_21.png?v=1701869579",
+                "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_5152.jpg?v=1701869579",
+                "https://cdn.shopify.com/s/files/1/2713/6250/files/7ef164cf-15d3-44b3-b9e4-85d26bba4154.png?v=1701869579"
+              ],
+              "images": [
+                "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_19.png?v=1701869285",
+                "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_21.png?v=1701869579",
+                "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_5152.jpg?v=1701869579",
+                "https://cdn.shopify.com/s/files/1/2713/6250/files/7ef164cf-15d3-44b3-b9e4-85d26bba4154.png?v=1701869579"
+              ]
+            }
+          ],
+          "snapshot": {
+            "source": "wave16_lucamar_official_shopify_us_catalog_seed_creation_manifest",
+            "extracted_at": "2026-05-25T09:05:37.246Z",
+            "canonical_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+            "destination_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+            "title": "Baa Ram Ewe Lanolin Skin Balm 50g",
+            "description": "Baa Ram Ewe Lanolin Skin Balm 50g is a source-backed Lucamar body balm from the brand-owned US-localized Shopify product feed. The official ingredient section includes Lanolin Anhydrous, Pure Australian Lanolin, Vitellaria Paradora, Organic Shea Butter, Cera Alba. Price, availability, imagery, ingredient text, and Daily Ritual instructions are captured from the official source.",
+            "image_url": "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_19.png?v=1701869285",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_19.png?v=1701869285",
+              "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_21.png?v=1701869579",
+              "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_5152.jpg?v=1701869579",
+              "https://cdn.shopify.com/s/files/1/2713/6250/files/7ef164cf-15d3-44b3-b9e4-85d26bba4154.png?v=1701869579"
+            ],
+            "images": [
+              "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_19.png?v=1701869285",
+              "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_21.png?v=1701869579",
+              "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_5152.jpg?v=1701869579",
+              "https://cdn.shopify.com/s/files/1/2713/6250/files/7ef164cf-15d3-44b3-b9e4-85d26bba4154.png?v=1701869579"
+            ],
+            "variants": [
+              {
+                "sku": "SHOPIFY-12224849608746",
+                "variant_id": "12224849608746",
+                "url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+                "option_name": "Size",
+                "option_value": "50g",
+                "price": "12",
+                "currency": "USD",
+                "stock": "In Stock",
+                "description": "Baa Ram Ewe Lanolin Skin Balm 50g is a source-backed Lucamar body balm from the brand-owned US-localized Shopify product feed. The official ingredient section includes Lanolin Anhydrous, Pure Australian Lanolin, Vitellaria Paradora, Organic Shea Butter, Cera Alba. Price, availability, imagery, ingredient text, and Daily Ritual instructions are captured from the official source.",
+                "image_url": "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_19.png?v=1701869285",
+                "image_urls": [
+                  "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_19.png?v=1701869285",
+                  "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_21.png?v=1701869579",
+                  "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_5152.jpg?v=1701869579",
+                  "https://cdn.shopify.com/s/files/1/2713/6250/files/7ef164cf-15d3-44b3-b9e4-85d26bba4154.png?v=1701869579"
+                ],
+                "images": [
+                  "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_19.png?v=1701869285",
+                  "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_21.png?v=1701869579",
+                  "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_5152.jpg?v=1701869579",
+                  "https://cdn.shopify.com/s/files/1/2713/6250/files/7ef164cf-15d3-44b3-b9e4-85d26bba4154.png?v=1701869579"
+                ]
+              }
+            ],
+            "diagnostics": {
+              "requested_domain": "lucamarskincare.com",
+              "resolved_base_url": "https://lucamarskincare.com",
+              "discovery_strategy": "shopify_json",
+              "failure_category": null,
+              "block_provider": null,
+              "http_trace": [
+                {
+                  "url": "https://lucamarskincare.com/",
+                  "status": 200
+                },
+                {
+                  "url": "https://lucamarskincare.com/products.json?limit=1",
+                  "status": 200
+                },
+                {
+                  "url": "https://lucamarskincare.com/pages/usa",
+                  "status": 200
+                },
+                {
+                  "url": "https://lucamarskincare.com/products.json?limit=250&page=1",
+                  "status": 200
+                }
+              ]
+            },
+            "search_aliases": [
+              "Baa Ram Ewe Lanolin Skin Balm 50g",
+              "Lucamar Baa Ram Ewe Lanolin Skin Balm 50g",
+              "Lucamar Skin Care Baa Ram Ewe Lanolin Skin Balm 50g"
+            ],
+            "authority_source": {
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+              "source_role": "direct_official_pdp_catalog_extract",
+              "matched_preferred_titles": [
+                "Baa Ram Ewe Lanolin Skin Balm 50g"
+              ],
+              "official_description_raw": "Discover the timeless wonder of our Lanolin Skin Balm. Formulated with pure lanolin, this rich, protective balm soothes and hydrates even the driest , most delicate skin. Its luxurious texture melts effortlessly providing a soothing layer of moisture that lasts all day. Perfect for hands, elbows, knees, lips, or any area in need of extra care, it forms a protective barrier that locks in moisture leaving skin feeling smooth & rejuvenated. Treat your skin to the nourishing luxury it deserves, with the enduring benefits of this multi-purpose balm. INGREDIENTS: Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinoids, Vitamin A , Tocoherol, Viamin E, Neroli & Musk body safe fragrance. DAILY RITUAL: Soften balm between hands and apply daily. Proudly Made In South Australia Cruelty Free Humanely Sourced & Cruelty Free No Artificial flavouring, parabéns, petrolatum, Peg's, Mineral oil, sulphates."
+            },
+            "source_validation": {
+              "source_type": "brand_owned",
+              "source_host": "lucamarskincare.com",
+              "requires_multi_offer_merge_validation": false
+            },
+            "commerce_facts_v1": {
+              "contract_version": "commerce_facts.v1",
+              "market_id": "US",
+              "country": "US",
+              "currency_target": "USD",
+              "source_authority": "catalog_extract_v2",
+              "captured_at": "2026-05-25T08:57:36.646Z",
+              "evidence_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+              "sellable_region": {
+                "status": "unknown",
+                "countries": [],
+                "evidence_source": "catalog_extract_v2",
+                "confidence": "medium",
+                "checked_at": "2026-05-25T08:57:36.646Z",
+                "reason_codes": [
+                  "market_currency_observed",
+                  "shipping_destination_not_verified",
+                  "external_checkout_not_queried"
+                ],
+                "evidence_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms"
+              },
+              "regional_price": {
+                "amount": 12,
+                "currency": "USD",
+                "display_raw": "12.00",
+                "price_type": "list",
+                "compare_at_amount": null,
+                "compare_at_currency": null,
+                "compare_at_display_raw": null,
+                "tax_included": "unknown",
+                "confidence": "medium",
+                "market_switch_status": "ok",
+                "observed_currency": "USD",
+                "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+                "captured_at": "2026-05-25T08:57:36.646Z"
+              },
+              "availability": {
+                "status": "in_stock",
+                "source": "catalog_extract_v2",
+                "confidence": "medium",
+                "captured_at": "2026-05-25T08:57:36.646Z"
+              },
+              "shipping": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_checkout_not_queried"
+                ],
+                "checked_at": "2026-05-25T08:57:36.646Z"
+              },
+              "promotions": [],
+              "returns": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_returns_not_extracted"
+                ],
+                "checked_at": "2026-05-25T08:57:36.646Z"
+              }
+            },
+            "commerce_facts_gate": {
+              "status": "pass",
+              "market_id": "US",
+              "expected_currency": "USD",
+              "observed_currency": "USD",
+              "market_switch_status": "ok",
+              "sellable_region_status": "unknown",
+              "shipping_status": "unknown",
+              "promotions_status": "unknown",
+              "availability_status": "in_stock",
+              "problems": []
+            },
+            "brand": "Lucamar Skin Care",
+            "external_product_id": "ext_edcf7e510314384ac432b385",
+            "price_amount": 12,
+            "price_currency": "USD",
+            "availability": "in_stock",
+            "category": "Body Care",
+            "category_path": [
+              "beauty",
+              "bodycare",
+              "body-balm"
+            ],
+            "catalog_category_path": "beauty/bodycare/body-balm",
+            "product_kind": "single_formula",
+            "product_type": "Body Balm",
+            "pdp_description_raw": "Baa Ram Ewe Lanolin Skin Balm 50g is a source-backed Lucamar body balm from the brand-owned US-localized Shopify product feed. The official ingredient section includes Lanolin Anhydrous, Pure Australian Lanolin, Vitellaria Paradora, Organic Shea Butter, Cera Alba. Price, availability, imagery, ingredient text, and Daily Ritual instructions are captured from the official source.",
+            "pdp_official_description_raw": "Discover the timeless wonder of our Lanolin Skin Balm. Formulated with pure lanolin, this rich, protective balm soothes and hydrates even the driest , most delicate skin. Its luxurious texture melts effortlessly providing a soothing layer of moisture that lasts all day. Perfect for hands, elbows, knees, lips, or any area in need of extra care, it forms a protective barrier that locks in moisture leaving skin feeling smooth & rejuvenated. Treat your skin to the nourishing luxury it deserves, with the enduring benefits of this multi-purpose balm. INGREDIENTS: Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinoids, Vitamin A , Tocoherol, Viamin E, Neroli & Musk body safe fragrance. DAILY RITUAL: Soften balm between hands and apply daily. Proudly Made In South Australia Cruelty Free Humanely Sourced & Cruelty Free No Artificial flavouring, parabéns, petrolatum, Peg's, Mineral oil, sulphates.",
+            "pdp_source_description_raw": "Discover the timeless wonder of our Lanolin Skin Balm. Formulated with pure lanolin, this rich, protective balm soothes and hydrates even the driest , most delicate skin. Its luxurious texture melts effortlessly providing a soothing layer of moisture that lasts all day. Perfect for hands, elbows, knees, lips, or any area in need of extra care, it forms a protective barrier that locks in moisture leaving skin feeling smooth & rejuvenated. Treat your skin to the nourishing luxury it deserves, with the enduring benefits of this multi-purpose balm. INGREDIENTS: Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinoids, Vitamin A , Tocoherol, Viamin E, Neroli & Musk body safe fragrance. DAILY RITUAL: Soften balm between hands and apply daily. Proudly Made In South Australia Cruelty Free Humanely Sourced & Cruelty Free No Artificial flavouring, parabéns, petrolatum, Peg's, Mineral oil, sulphates.",
+            "pdp_ingredients_raw": "Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinoids, Vitamin A , Tocoherol, Viamin E, Neroli & Musk body safe fragrance.",
+            "raw_ingredient_text_clean": "Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinoids, Vitamin A , Tocoherol, Viamin E, Neroli & Musk body safe fragrance.",
+            "ingredients_inci": [
+              "Lanolin Anhydrous",
+              "Pure Australian Lanolin",
+              "Vitellaria Paradora",
+              "Organic Shea Butter",
+              "Cera Alba",
+              "Bees Wax",
+              "Retinoids",
+              "Vitamin A",
+              "Tocoherol",
+              "Viamin E",
+              "Neroli & Musk body safe fragrance."
+            ],
+            "inci_list": [
+              "Lanolin Anhydrous",
+              "Pure Australian Lanolin",
+              "Vitellaria Paradora",
+              "Organic Shea Butter",
+              "Cera Alba",
+              "Bees Wax",
+              "Retinoids",
+              "Vitamin A",
+              "Tocoherol",
+              "Viamin E",
+              "Neroli & Musk body safe fragrance."
+            ],
+            "pdp_how_to_use_raw": "Soften balm between hands and apply daily.",
+            "pdp_details_sections": [
+              {
+                "heading": "How to Use",
+                "body": "Soften balm between hands and apply daily.",
+                "source_kind": "official_shopify_product_description_daily_ritual"
+              },
+              {
+                "heading": "Ingredients",
+                "body": "Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinoids, Vitamin A , Tocoherol, Viamin E, Neroli & Musk body safe fragrance.",
+                "source_kind": "official_shopify_product_description_ingredients"
+              }
+            ],
+            "ingredient_intel": {
+              "raw_ingredient_text_clean": "Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinoids, Vitamin A , Tocoherol, Viamin E, Neroli & Musk body safe fragrance.",
+              "inci_raw": "Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinoids, Vitamin A , Tocoherol, Viamin E, Neroli & Musk body safe fragrance.",
+              "inci_list": [
+                "Lanolin Anhydrous",
+                "Pure Australian Lanolin",
+                "Vitellaria Paradora",
+                "Organic Shea Butter",
+                "Cera Alba",
+                "Bees Wax",
+                "Retinoids",
+                "Vitamin A",
+                "Tocoherol",
+                "Viamin E",
+                "Neroli & Musk body safe fragrance."
+              ],
+              "inci_normalized": [
+                "Lanolin Anhydrous",
+                "Pure Australian Lanolin",
+                "Vitellaria Paradora",
+                "Organic Shea Butter",
+                "Cera Alba",
+                "Bees Wax",
+                "Retinoids",
+                "Vitamin A",
+                "Tocoherol",
+                "Viamin E",
+                "Neroli & Musk body safe fragrance."
+              ],
+              "source_kind": "official_shopify_product_description_ingredients",
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms"
+            },
+            "external_seed_snapshot_contract": {
+              "contract_version": "external_seed.snapshot_contract.v1",
+              "source": "wave16_lucamar_official_shopify_us_catalog_recovery",
+              "authoritative": true,
+              "structured_fields_authoritative": true,
+              "legacy_fields_quarantined": true,
+              "replace_strategy": "replace_not_merge",
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+              "updated_at": "2026-05-25T09:05:37.246Z"
+            },
+            "pdp_field_quality_summary": {
+              "description_raw": {
+                "source_origin": "official_shopify_us_catalog_pdp",
+                "source_quality_status": "high",
+                "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+                "reviewed_by": "codex_wave16_lucamar",
+                "reviewed_at": "2026-05-25T09:05:37.246Z"
+              },
+              "ingredients_raw": {
+                "source_origin": "official_shopify_us_catalog_pdp",
+                "source_quality_status": "high",
+                "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+                "reviewed_by": "codex_wave16_lucamar",
+                "reviewed_at": "2026-05-25T09:05:37.246Z"
+              },
+              "ingredients_inci": {
+                "source_origin": "official_shopify_us_catalog_pdp",
+                "source_quality_status": "high",
+                "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+                "reviewed_by": "codex_wave16_lucamar",
+                "reviewed_at": "2026-05-25T09:05:37.246Z"
+              },
+              "how_to_use_raw": {
+                "source_origin": "official_shopify_us_catalog_pdp",
+                "source_quality_status": "high",
+                "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+                "reviewed_by": "codex_wave16_lucamar",
+                "reviewed_at": "2026-05-25T09:05:37.246Z"
+              },
+              "details_sections": {
+                "source_origin": "official_shopify_us_catalog_pdp",
+                "source_quality_status": "high",
+                "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+                "reviewed_by": "codex_wave16_lucamar",
+                "reviewed_at": "2026-05-25T09:05:37.246Z"
+              },
+              "category": {
+                "source_origin": "official_shopify_us_catalog_pdp",
+                "source_quality_status": "high",
+                "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+                "reviewed_by": "codex_wave16_lucamar",
+                "reviewed_at": "2026-05-25T09:05:37.246Z"
+              },
+              "product_type": {
+                "source_origin": "official_shopify_us_catalog_pdp",
+                "source_quality_status": "high",
+                "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+                "reviewed_by": "codex_wave16_lucamar",
+                "reviewed_at": "2026-05-25T09:05:37.246Z"
+              },
+              "image_assets": {
+                "source_origin": "official_shopify_us_catalog_pdp",
+                "source_quality_status": "high",
+                "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+                "reviewed_by": "codex_wave16_lucamar",
+                "reviewed_at": "2026-05-25T09:05:37.246Z"
+              }
+            },
+            "pdp_field_capture_status": {
+              "description_raw": "captured",
+              "ingredients_raw": "captured",
+              "how_to_use_raw": "captured",
+              "details_sections": "captured"
+            }
+          },
+          "search_aliases": [
+            "Baa Ram Ewe Lanolin Skin Balm 50g",
+            "Lucamar Baa Ram Ewe Lanolin Skin Balm 50g",
+            "Lucamar Skin Care Baa Ram Ewe Lanolin Skin Balm 50g"
+          ],
+          "authority_source": {
+            "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+            "source_role": "direct_official_pdp_catalog_extract",
+            "matched_preferred_titles": [
+              "Baa Ram Ewe Lanolin Skin Balm 50g"
+            ],
+            "official_description_raw": "Discover the timeless wonder of our Lanolin Skin Balm. Formulated with pure lanolin, this rich, protective balm soothes and hydrates even the driest , most delicate skin. Its luxurious texture melts effortlessly providing a soothing layer of moisture that lasts all day. Perfect for hands, elbows, knees, lips, or any area in need of extra care, it forms a protective barrier that locks in moisture leaving skin feeling smooth & rejuvenated. Treat your skin to the nourishing luxury it deserves, with the enduring benefits of this multi-purpose balm. INGREDIENTS: Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinoids, Vitamin A , Tocoherol, Viamin E, Neroli & Musk body safe fragrance. DAILY RITUAL: Soften balm between hands and apply daily. Proudly Made In South Australia Cruelty Free Humanely Sourced & Cruelty Free No Artificial flavouring, parabéns, petrolatum, Peg's, Mineral oil, sulphates."
+          },
+          "source_validation": {
+            "source_type": "brand_owned",
+            "source_host": "lucamarskincare.com",
+            "requires_multi_offer_merge_validation": false
+          },
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-25T08:57:36.646Z",
+            "evidence_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-25T08:57:36.646Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms"
+            },
+            "regional_price": {
+              "amount": 12,
+              "currency": "USD",
+              "display_raw": "12.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+              "captured_at": "2026-05-25T08:57:36.646Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T08:57:36.646Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T08:57:36.646Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T08:57:36.646Z"
+            }
+          },
+          "commerce_facts_gate": {
+            "status": "pass",
+            "market_id": "US",
+            "expected_currency": "USD",
+            "observed_currency": "USD",
+            "market_switch_status": "ok",
+            "sellable_region_status": "unknown",
+            "shipping_status": "unknown",
+            "promotions_status": "unknown",
+            "availability_status": "in_stock",
+            "problems": []
+          },
+          "pdp_description_raw": "Baa Ram Ewe Lanolin Skin Balm 50g is a source-backed Lucamar body balm from the brand-owned US-localized Shopify product feed. The official ingredient section includes Lanolin Anhydrous, Pure Australian Lanolin, Vitellaria Paradora, Organic Shea Butter, Cera Alba. Price, availability, imagery, ingredient text, and Daily Ritual instructions are captured from the official source.",
+          "pdp_official_description_raw": "Discover the timeless wonder of our Lanolin Skin Balm. Formulated with pure lanolin, this rich, protective balm soothes and hydrates even the driest , most delicate skin. Its luxurious texture melts effortlessly providing a soothing layer of moisture that lasts all day. Perfect for hands, elbows, knees, lips, or any area in need of extra care, it forms a protective barrier that locks in moisture leaving skin feeling smooth & rejuvenated. Treat your skin to the nourishing luxury it deserves, with the enduring benefits of this multi-purpose balm. INGREDIENTS: Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinoids, Vitamin A , Tocoherol, Viamin E, Neroli & Musk body safe fragrance. DAILY RITUAL: Soften balm between hands and apply daily. Proudly Made In South Australia Cruelty Free Humanely Sourced & Cruelty Free No Artificial flavouring, parabéns, petrolatum, Peg's, Mineral oil, sulphates.",
+          "pdp_source_description_raw": "Discover the timeless wonder of our Lanolin Skin Balm. Formulated with pure lanolin, this rich, protective balm soothes and hydrates even the driest , most delicate skin. Its luxurious texture melts effortlessly providing a soothing layer of moisture that lasts all day. Perfect for hands, elbows, knees, lips, or any area in need of extra care, it forms a protective barrier that locks in moisture leaving skin feeling smooth & rejuvenated. Treat your skin to the nourishing luxury it deserves, with the enduring benefits of this multi-purpose balm. INGREDIENTS: Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinoids, Vitamin A , Tocoherol, Viamin E, Neroli & Musk body safe fragrance. DAILY RITUAL: Soften balm between hands and apply daily. Proudly Made In South Australia Cruelty Free Humanely Sourced & Cruelty Free No Artificial flavouring, parabéns, petrolatum, Peg's, Mineral oil, sulphates.",
+          "pdp_ingredients_raw": "Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinoids, Vitamin A , Tocoherol, Viamin E, Neroli & Musk body safe fragrance.",
+          "raw_ingredient_text_clean": "Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinoids, Vitamin A , Tocoherol, Viamin E, Neroli & Musk body safe fragrance.",
+          "ingredients_inci": [
+            "Lanolin Anhydrous",
+            "Pure Australian Lanolin",
+            "Vitellaria Paradora",
+            "Organic Shea Butter",
+            "Cera Alba",
+            "Bees Wax",
+            "Retinoids",
+            "Vitamin A",
+            "Tocoherol",
+            "Viamin E",
+            "Neroli & Musk body safe fragrance."
+          ],
+          "inci_list": [
+            "Lanolin Anhydrous",
+            "Pure Australian Lanolin",
+            "Vitellaria Paradora",
+            "Organic Shea Butter",
+            "Cera Alba",
+            "Bees Wax",
+            "Retinoids",
+            "Vitamin A",
+            "Tocoherol",
+            "Viamin E",
+            "Neroli & Musk body safe fragrance."
+          ],
+          "pdp_how_to_use_raw": "Soften balm between hands and apply daily.",
+          "pdp_details_sections": [
+            {
+              "heading": "How to Use",
+              "body": "Soften balm between hands and apply daily.",
+              "source_kind": "official_shopify_product_description_daily_ritual"
+            },
+            {
+              "heading": "Ingredients",
+              "body": "Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinoids, Vitamin A , Tocoherol, Viamin E, Neroli & Musk body safe fragrance.",
+              "source_kind": "official_shopify_product_description_ingredients"
+            }
+          ],
+          "ingredient_intel": {
+            "raw_ingredient_text_clean": "Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinoids, Vitamin A , Tocoherol, Viamin E, Neroli & Musk body safe fragrance.",
+            "inci_raw": "Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinoids, Vitamin A , Tocoherol, Viamin E, Neroli & Musk body safe fragrance.",
+            "inci_list": [
+              "Lanolin Anhydrous",
+              "Pure Australian Lanolin",
+              "Vitellaria Paradora",
+              "Organic Shea Butter",
+              "Cera Alba",
+              "Bees Wax",
+              "Retinoids",
+              "Vitamin A",
+              "Tocoherol",
+              "Viamin E",
+              "Neroli & Musk body safe fragrance."
+            ],
+            "inci_normalized": [
+              "Lanolin Anhydrous",
+              "Pure Australian Lanolin",
+              "Vitellaria Paradora",
+              "Organic Shea Butter",
+              "Cera Alba",
+              "Bees Wax",
+              "Retinoids",
+              "Vitamin A",
+              "Tocoherol",
+              "Viamin E",
+              "Neroli & Musk body safe fragrance."
+            ],
+            "source_kind": "official_shopify_product_description_ingredients",
+            "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms"
+          },
+          "category": "Body Care",
+          "category_path": [
+            "beauty",
+            "bodycare",
+            "body-balm"
+          ],
+          "catalog_category_path": "beauty/bodycare/body-balm",
+          "product_kind": "single_formula",
+          "product_type": "Body Balm",
+          "external_seed_snapshot_contract": {
+            "contract_version": "external_seed.snapshot_contract.v1",
+            "source": "wave16_lucamar_official_shopify_us_catalog_recovery",
+            "authoritative": true,
+            "structured_fields_authoritative": true,
+            "legacy_fields_quarantined": true,
+            "replace_strategy": "replace_not_merge",
+            "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+            "updated_at": "2026-05-25T09:05:37.246Z"
+          },
+          "pdp_field_quality_summary": {
+            "description_raw": {
+              "source_origin": "official_shopify_us_catalog_pdp",
+              "source_quality_status": "high",
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+              "reviewed_by": "codex_wave16_lucamar",
+              "reviewed_at": "2026-05-25T09:05:37.246Z"
+            },
+            "ingredients_raw": {
+              "source_origin": "official_shopify_us_catalog_pdp",
+              "source_quality_status": "high",
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+              "reviewed_by": "codex_wave16_lucamar",
+              "reviewed_at": "2026-05-25T09:05:37.246Z"
+            },
+            "ingredients_inci": {
+              "source_origin": "official_shopify_us_catalog_pdp",
+              "source_quality_status": "high",
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+              "reviewed_by": "codex_wave16_lucamar",
+              "reviewed_at": "2026-05-25T09:05:37.246Z"
+            },
+            "how_to_use_raw": {
+              "source_origin": "official_shopify_us_catalog_pdp",
+              "source_quality_status": "high",
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+              "reviewed_by": "codex_wave16_lucamar",
+              "reviewed_at": "2026-05-25T09:05:37.246Z"
+            },
+            "details_sections": {
+              "source_origin": "official_shopify_us_catalog_pdp",
+              "source_quality_status": "high",
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+              "reviewed_by": "codex_wave16_lucamar",
+              "reviewed_at": "2026-05-25T09:05:37.246Z"
+            },
+            "category": {
+              "source_origin": "official_shopify_us_catalog_pdp",
+              "source_quality_status": "high",
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+              "reviewed_by": "codex_wave16_lucamar",
+              "reviewed_at": "2026-05-25T09:05:37.246Z"
+            },
+            "product_type": {
+              "source_origin": "official_shopify_us_catalog_pdp",
+              "source_quality_status": "high",
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+              "reviewed_by": "codex_wave16_lucamar",
+              "reviewed_at": "2026-05-25T09:05:37.246Z"
+            },
+            "image_assets": {
+              "source_origin": "official_shopify_us_catalog_pdp",
+              "source_quality_status": "high",
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+              "reviewed_by": "codex_wave16_lucamar",
+              "reviewed_at": "2026-05-25T09:05:37.246Z"
+            }
+          },
+          "pdp_field_capture_status": {
+            "description_raw": "captured",
+            "ingredients_raw": "captured",
+            "how_to_use_raw": "captured",
+            "details_sections": "captured"
+          }
+        }
+      },
+      "curation_decision": {
+        "decision": "db_ready_candidate",
+        "reason_codes": [
+          "official_dtc_in_stock_usd_commerce_gate_pass",
+          "source_backed_ingredients_and_how_to"
+        ]
+      }
+    }
+  ]
+}
