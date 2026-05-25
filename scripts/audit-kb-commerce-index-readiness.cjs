@@ -21,8 +21,10 @@ const {
 } = require('../src/services/catalogServingIndex');
 const {
   buildReadinessAudit,
+  buildReadinessAuditForSeedRows,
   buildCheckpointedReadinessAudit,
   fetchSeedRows,
+  fetchSeedRowsByProductIds,
 } = require('./audit-external-seed-pdp-readiness');
 
 function argValue(name, fallback = '') {
@@ -48,6 +50,33 @@ function asString(value) {
 
 function asArray(value) {
   return Array.isArray(value) ? value : [];
+}
+
+function uniqueStrings(values) {
+  const seen = new Set();
+  const out = [];
+  for (const value of values || []) {
+    const normalized = asString(value);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(normalized);
+  }
+  return out;
+}
+
+function parseDelimitedValues(value) {
+  return uniqueStrings(
+    asString(value)
+      .split(/[\s,]+/)
+      .map((item) => item.trim())
+      .filter(Boolean),
+  );
+}
+
+function readDelimitedValuesFile(filePath) {
+  const resolved = asString(filePath);
+  if (!resolved) return [];
+  return parseDelimitedValues(fs.readFileSync(resolved, 'utf8'));
 }
 
 function asObject(value) {
@@ -997,9 +1026,14 @@ ${JSON.stringify(readinessSummary, null, 2)}
 
 async function main() {
   const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const externalProductIds = uniqueStrings([
+    ...parseDelimitedValues(argValue('external-product-ids') || argValue('externalProductIds')),
+    ...readDelimitedValuesFile(argValue('external-product-ids-file') || argValue('externalProductIdsFile')),
+  ]);
   const options = {
     market: asString(argValue('market', 'US')).toUpperCase() || 'US',
     domain: asString(argValue('domain', '')),
+    externalProductIds,
     limit: Math.max(1, Math.min(Number(argValue('limit', '20000')) || 20000, 20000)),
     pageSize: Math.max(1, Math.min(Number(argValue('page-size', '500')) || 500, 1000)),
     sampleLimit: Math.max(1, Math.min(Number(argValue('sample-limit', '10')) || 10, 100)),
@@ -1010,18 +1044,19 @@ async function main() {
   const outDir = path.resolve(options.outDir);
   ensureDir(outDir);
 
-  logStage(`start market=${options.market}${options.domain ? ` domain=${options.domain}` : ''} limit=${options.limit} out_dir=${outDir}`);
+  logStage(`start market=${options.market}${options.domain ? ` domain=${options.domain}` : ''}${options.externalProductIds.length ? ` external_product_ids=${options.externalProductIds.length}` : ''} limit=${options.limit} out_dir=${outDir}`);
   await query(`SET statement_timeout = '90000ms'`, []);
 
   logStage('fetch market counts');
   const warnings = [];
   const marketCounts = await fetchMarketCounts();
   const checkpointDir = path.join(outDir, 'pdp_readiness_checkpoint');
-  logStage(options.domain ? `build pdp readiness audit domain=${options.domain}` : `build/read checkpointed pdp readiness audit checkpoint_dir=${checkpointDir}`);
+  logStage(options.externalProductIds.length ? 'build pdp readiness audit exact external_product_ids' : options.domain ? `build pdp readiness audit domain=${options.domain}` : `build/read checkpointed pdp readiness audit checkpoint_dir=${checkpointDir}`);
   const readinessOptions = {
     market: options.market,
     includeAttached: true,
     domain: options.domain || null,
+    externalProductIds: options.externalProductIds,
     limit: options.limit,
     sampleLimit: options.sampleLimit,
     checkpointDir,
@@ -1032,14 +1067,33 @@ async function main() {
     pageSize: options.pageSize,
     format: 'json',
   };
-  const readinessAudit = options.domain
-    ? await buildReadinessAudit(readinessOptions)
-    : await buildCheckpointedReadinessAudit(readinessOptions);
+  let seedRows = null;
+  if (options.externalProductIds.length) {
+    logStage(`fetch exact seed rows external_product_ids=${options.externalProductIds.length}`);
+    seedRows = await fetchSeedRowsByProductIds(options.externalProductIds, {
+      market: options.market,
+      includeAttached: true,
+    });
+    const foundIds = new Set(seedRows.map((row) => asString(row.external_product_id)).filter(Boolean));
+    const missingIds = options.externalProductIds.filter((productId) => !foundIds.has(productId));
+    if (missingIds.length) {
+      warnings.push({
+        label: 'requested_external_product_ids_missing',
+        message: `Missing active ${options.market} seed rows for ${missingIds.length} requested external_product_ids.`,
+        external_product_ids: missingIds,
+      });
+    }
+  }
+  const readinessAudit = options.externalProductIds.length
+    ? await buildReadinessAuditForSeedRows(seedRows, readinessOptions)
+    : options.domain
+      ? await buildReadinessAudit(readinessOptions)
+      : await buildCheckpointedReadinessAudit(readinessOptions);
   writeJson(path.join(outDir, 'pdp_readiness_audit.json'), readinessAudit);
   logStage(`pdp readiness rows=${readinessAudit.rows?.length || 0}`);
 
   logStage('fetch seed rows for inventory');
-  const seedRows = await fetchSeedRows({
+  seedRows = seedRows || await fetchSeedRows({
     market: options.market,
     includeAttached: true,
     domain: options.domain || null,

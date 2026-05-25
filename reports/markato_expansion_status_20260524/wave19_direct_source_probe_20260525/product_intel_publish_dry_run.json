@@ -1,0 +1,18 @@
+{
+  "status": "ok",
+  "mode": "dry_run_validate_replacements",
+  "report": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/wave19_direct_source_probe_20260525/official_seed_product_intel_report_4.json",
+  "rows": [
+    "live_ext_684249c7a94a1a6f43fdbd77",
+    "live_ext_e1c4eb330321ebc6e9672d73",
+    "live_ext_81f5ddbf0c3ba5da04eabf9b",
+    "live_ext_4a50d003cfa7b0e4c7fc2f01"
+  ],
+  "entries": [
+    "product:ext_684249c7a94a1a6f43fdbd77",
+    "product:ext_e1c4eb330321ebc6e9672d73",
+    "product:ext_81f5ddbf0c3ba5da04eabf9b",
+    "product:ext_4a50d003cfa7b0e4c7fc2f01"
+  ],
+  "skipped_rows": []
+}

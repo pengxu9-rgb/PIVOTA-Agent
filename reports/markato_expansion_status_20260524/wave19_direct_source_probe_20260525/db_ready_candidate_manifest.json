@@ -1,0 +1,3151 @@
+{
+  "generated_at": "2026-05-25T16:53:34.528Z",
+  "market": "US",
+  "source": "wave19_direct_official_shopify_country_us_source_probe",
+  "curation_policy": "Direct official PDPs only: require Shopify country US, USD offer, in-stock schema offer, usable product imagery, explicit source-backed how-to, and full INCI for formulas. Reviewed accessory/tool rows may mark INCI not applicable only with material evidence and product_family=accessory. Hold sets, out-of-stock rows, duplicate/already-covered rows, non-US currency, and image-only how-to unless OCR has been manually reviewed from official PDP images.",
+  "item_count": 4,
+  "held_item_count": 5,
+  "held_items": [
+    {
+      "file": "aetas_cleanser_country_us.html",
+      "target_url": "https://aetasofficial.com/en/products/cleanser?country=US",
+      "html_path": "reports/markato_expansion_status_20260524/wave19_direct_source_probe_20260525/source_html/aetas_cleanser_country_us.html",
+      "brand": "Aetās",
+      "title": "The Cleanser 200mL",
+      "price_currency": "USD",
+      "offer_currencies": [
+        "USD"
+      ],
+      "shopify_country": "US",
+      "availability_values": [
+        "http://schema.org/OutOfStock"
+      ],
+      "available": false,
+      "has_product_json_ld": true,
+      "variant_count": 1,
+      "image_count": 10,
+      "price": 85,
+      "product_family": "single_formula",
+      "ingredients_raw_length": 273,
+      "ingredients_count": 11,
+      "how_to_use_length": 346,
+      "category_path": "beauty/skincare/cleanse/cleanser",
+      "status": "hold",
+      "reasons": [
+        "out_of_stock_or_unavailable",
+        "manual_candidate_hold"
+      ],
+      "warnings": []
+    },
+    {
+      "file": "aetas_lotion_country_us.html",
+      "target_url": "https://aetasofficial.com/en/products/lotion?country=US",
+      "html_path": "reports/markato_expansion_status_20260524/wave19_direct_source_probe_20260525/source_html/aetas_lotion_country_us.html",
+      "brand": "Aetās",
+      "title": "The Lotion 200mL",
+      "price_currency": "USD",
+      "offer_currencies": [
+        "USD"
+      ],
+      "shopify_country": "US",
+      "availability_values": [
+        "http://schema.org/OutOfStock"
+      ],
+      "available": false,
+      "has_product_json_ld": true,
+      "variant_count": 1,
+      "image_count": 10,
+      "price": 85,
+      "product_family": "single_formula",
+      "ingredients_raw_length": 454,
+      "ingredients_count": 21,
+      "how_to_use_length": 261,
+      "category_path": "beauty/skincare/tone/toner",
+      "status": "hold",
+      "reasons": [
+        "out_of_stock_or_unavailable",
+        "manual_candidate_hold"
+      ],
+      "warnings": []
+    },
+    {
+      "file": "aetas_moisturizer_country_us.html",
+      "target_url": "https://aetasofficial.com/en/products/moisturizer?country=US",
+      "html_path": "reports/markato_expansion_status_20260524/wave19_direct_source_probe_20260525/source_html/aetas_moisturizer_country_us.html",
+      "brand": "Aetās",
+      "title": "The Moisturizer 50mL",
+      "price_currency": "USD",
+      "offer_currencies": [
+        "USD"
+      ],
+      "shopify_country": "US",
+      "availability_values": [
+        "http://schema.org/OutOfStock"
+      ],
+      "available": false,
+      "has_product_json_ld": true,
+      "variant_count": 1,
+      "image_count": 10,
+      "price": 85,
+      "product_family": "single_formula",
+      "ingredients_raw_length": 435,
+      "ingredients_count": 23,
+      "how_to_use_length": 320,
+      "category_path": "beauty/skincare/moisturize/moisturizer",
+      "status": "hold",
+      "reasons": [
+        "out_of_stock_or_unavailable",
+        "manual_candidate_hold"
+      ],
+      "warnings": []
+    },
+    {
+      "file": "daeby_bathroom_basics_country_us.html",
+      "target_url": "https://www.daebyskin.com/products/bathroom-basics?country=US",
+      "html_path": "reports/markato_expansion_status_20260524/wave19_direct_source_probe_20260525/source_html/daeby_bathroom_basics_country_us.html",
+      "brand": "DAEBY",
+      "title": "Bathroom Basics Set",
+      "price_currency": "USD",
+      "offer_currencies": [
+        "USD"
+      ],
+      "shopify_country": "US",
+      "availability_values": [
+        "https://schema.org/InStock"
+      ],
+      "available": true,
+      "has_product_json_ld": true,
+      "variant_count": 1,
+      "image_count": 2,
+      "price": 36,
+      "product_family": "set_or_collection",
+      "ingredients_raw_length": 1606,
+      "ingredients_count": 69,
+      "how_to_use_length": 0,
+      "category_path": "beauty/skincare/sets",
+      "status": "hold",
+      "reasons": [
+        "missing_official_how_to",
+        "set_or_collection_hold",
+        "manual_candidate_hold"
+      ],
+      "warnings": []
+    },
+    {
+      "file": "daeby_skincare_essentials_country_us.html",
+      "target_url": "https://www.daebyskin.com/products/skincare-essentials?country=US",
+      "html_path": "reports/markato_expansion_status_20260524/wave19_direct_source_probe_20260525/source_html/daeby_skincare_essentials_country_us.html",
+      "brand": "DAEBY",
+      "title": "Skincare Essentials Set",
+      "price_currency": "USD",
+      "offer_currencies": [
+        "USD"
+      ],
+      "shopify_country": "US",
+      "availability_values": [
+        "https://schema.org/InStock"
+      ],
+      "available": true,
+      "has_product_json_ld": true,
+      "variant_count": 1,
+      "image_count": 2,
+      "price": 49,
+      "product_family": "set_or_collection",
+      "ingredients_raw_length": 2100,
+      "ingredients_count": 89,
+      "how_to_use_length": 0,
+      "category_path": "beauty/skincare/sets",
+      "status": "hold",
+      "reasons": [
+        "missing_official_how_to",
+        "set_or_collection_hold",
+        "manual_candidate_hold"
+      ],
+      "warnings": []
+    }
+  ],
+  "items": [
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "target_brand": "Aetās",
+      "target_url": "https://aetasofficial.com/en/products/serum?country=US",
+      "extract_status": "official_shopify_us_pdp_ready",
+      "market": "US",
+      "source_domain": "aetasofficial.com",
+      "source_role": "direct_official_pdp_html",
+      "matched_preferred_titles": [
+        "The Serum"
+      ],
+      "seed_row": {
+        "ingredient_id": null,
+        "ingredient_name": null,
+        "seed_id": "eps_d7930d2d33ac3613ed8648b1",
+        "brand": "Aetās",
+        "market": "US",
+        "tool": "creator_agents",
+        "status": "active",
+        "domain": "aetasofficial.com",
+        "external_product_id": "ext_684249c7a94a1a6f43fdbd77",
+        "canonical_url": "https://aetasofficial.com/en/products/serum?country=US",
+        "destination_url": "https://aetasofficial.com/en/products/serum?country=US",
+        "title": "The Serum",
+        "image_url": "https://aetasofficial.com/cdn/shop/files/SerumyB__2048px_2048.jpg?v=1751105329",
+        "price_amount": 60,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "attached_product_key": null,
+        "requires_seed_correction": false,
+        "seed_data": {
+          "brand": "Aetās",
+          "title": "The Serum",
+          "description": "The Serum is an Aetās face serum with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Butylene Glycol, Pentylene Glycol, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate.",
+          "external_product_id": "ext_684249c7a94a1a6f43fdbd77",
+          "canonical_url": "https://aetasofficial.com/en/products/serum?country=US",
+          "destination_url": "https://aetasofficial.com/en/products/serum?country=US",
+          "price_amount": 60,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://aetasofficial.com/cdn/shop/files/SerumyB__2048px_2048.jpg?v=1751105329",
+          "image_urls": [
+            "https://aetasofficial.com/cdn/shop/files/SerumyB__2048px_2048.jpg?v=1751105329",
+            "http://aetasofficial.com/cdn/shop/files/SerumyB__2048px_2048.jpg?v=1751105329",
+            "https://aetasofficial.com/cdn/shop/files/2604_serumB_fd14afbd-3c5c-4c9a-a7f5-270868d884d3.png?v=1779693433&width=1920",
+            "https://aetasofficial.com/cdn/shop/files/2604_serumY_f7f27cb0-6145-4206-a182-4707ef18455e.png?v=1779693473",
+            "https://aetasofficial.com/cdn/shop/files/2604_serumB_fd14afbd-3c5c-4c9a-a7f5-270868d884d3.png?v=1779693433&amp;width=1946",
+            "https://aetasofficial.com/cdn/shop/files/SerumyB__2048px_2048.jpg?v=1751105329&amp;width=1946",
+            "https://aetasofficial.com/cdn/shop/files/7IV09579_Large_48161306-3df3-45a5-910c-cb5ec6c37f5d.jpg?v=1751105329&amp;width=1946",
+            "https://aetasofficial.com/cdn/shop/files/7IV09377.jpg?v=1751105329&amp;width=1946",
+            "https://aetasofficial.com/cdn/shop/files/7IV09372.jpg?v=1751105329&amp;width=1946",
+            "https://aetasofficial.com/cdn/shop/files/7IV09406_Large_841f00ba-1c87-469e-82e2-c32b50cb46df.jpg?v=1751105329&amp;width=1946"
+          ],
+          "images": [
+            "https://aetasofficial.com/cdn/shop/files/SerumyB__2048px_2048.jpg?v=1751105329",
+            "http://aetasofficial.com/cdn/shop/files/SerumyB__2048px_2048.jpg?v=1751105329",
+            "https://aetasofficial.com/cdn/shop/files/2604_serumB_fd14afbd-3c5c-4c9a-a7f5-270868d884d3.png?v=1779693433&width=1920",
+            "https://aetasofficial.com/cdn/shop/files/2604_serumY_f7f27cb0-6145-4206-a182-4707ef18455e.png?v=1779693473",
+            "https://aetasofficial.com/cdn/shop/files/2604_serumB_fd14afbd-3c5c-4c9a-a7f5-270868d884d3.png?v=1779693433&amp;width=1946",
+            "https://aetasofficial.com/cdn/shop/files/SerumyB__2048px_2048.jpg?v=1751105329&amp;width=1946",
+            "https://aetasofficial.com/cdn/shop/files/7IV09579_Large_48161306-3df3-45a5-910c-cb5ec6c37f5d.jpg?v=1751105329&amp;width=1946",
+            "https://aetasofficial.com/cdn/shop/files/7IV09377.jpg?v=1751105329&amp;width=1946",
+            "https://aetasofficial.com/cdn/shop/files/7IV09372.jpg?v=1751105329&amp;width=1946",
+            "https://aetasofficial.com/cdn/shop/files/7IV09406_Large_841f00ba-1c87-469e-82e2-c32b50cb46df.jpg?v=1751105329&amp;width=1946"
+          ],
+          "variants": [
+            {
+              "sku": "400",
+              "variant_id": "46009531236507",
+              "url": "https://aetasofficial.com/en/products/serum?variant=46009531236507&country=US",
+              "option_name": "Skin Undertone",
+              "option_value": "β (Cool)",
+              "axis_kind": "shade",
+              "price": "60",
+              "currency": "USD",
+              "stock": "In Stock",
+              "description": "The Serum is an Aetās face serum with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Butylene Glycol, Pentylene Glycol, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate.",
+              "image_url": "https://aetasofficial.com/cdn/shop/files/2604_serumB_fd14afbd-3c5c-4c9a-a7f5-270868d884d3.png?v=1779693433",
+              "image_urls": [
+                "https://aetasofficial.com/cdn/shop/files/2604_serumB_fd14afbd-3c5c-4c9a-a7f5-270868d884d3.png?v=1779693433"
+              ],
+              "images": [
+                "https://aetasofficial.com/cdn/shop/files/2604_serumB_fd14afbd-3c5c-4c9a-a7f5-270868d884d3.png?v=1779693433"
+              ]
+            },
+            {
+              "sku": "410",
+              "variant_id": "46009531269275",
+              "url": "https://aetasofficial.com/en/products/serum?variant=46009531269275&country=US",
+              "option_name": "Skin Undertone",
+              "option_value": "γ (Warm)",
+              "axis_kind": "shade",
+              "price": "60",
+              "currency": "USD",
+              "stock": "In Stock",
+              "description": "The Serum is an Aetās face serum with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Butylene Glycol, Pentylene Glycol, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate.",
+              "image_url": "https://aetasofficial.com/cdn/shop/files/2604_serumY_f7f27cb0-6145-4206-a182-4707ef18455e.png?v=1779693473",
+              "image_urls": [
+                "https://aetasofficial.com/cdn/shop/files/2604_serumY_f7f27cb0-6145-4206-a182-4707ef18455e.png?v=1779693473"
+              ],
+              "images": [
+                "https://aetasofficial.com/cdn/shop/files/2604_serumY_f7f27cb0-6145-4206-a182-4707ef18455e.png?v=1779693473"
+              ]
+            }
+          ],
+          "category": "Skincare",
+          "category_path": [
+            "beauty",
+            "skincare",
+            "treat",
+            "serum"
+          ],
+          "catalog_category_path": "beauty/skincare/treat/serum",
+          "product_kind": "single_formula",
+          "product_family": "single_formula",
+          "product_type": "Face Serum",
+          "pdp_description_raw": "The Serum is an Aetās face serum with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Butylene Glycol, Pentylene Glycol, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate.",
+          "pdp_official_description_raw": "The Serum is an Aetās face serum with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Butylene Glycol, Pentylene Glycol, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate.",
+          "pdp_source_description_raw": "The Serum is an Aetās face serum with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Butylene Glycol, Pentylene Glycol, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate. How to Use: After face wash and before applying lotion, take about 3-4 pumps (about the size of a large coin) onto the palm and spread evenly over the face. Ingredients: Water, Butylene Glycol, Pentylene Glycol, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate, Sodium PCA, Citric Acid, Sodium Citrate, Citrus Aurantifolia (Lime) Juice, Citrus Aurantium Dulcis (Orange) Juice, Citrus Medica Limonum (Lemon) Juice, Citrus Grandis (Grapefruit) Fruit Extract, Crataegus Cuneata Fruit Extract, Ziziphus Jujuba Fruit Extract, Pyrus Malus (Apple) Fruit Extract, Phenoxyethanol Water, Butylene Glycol, Glycerin, Pentylene Glycol, Ascorbyl Glucoside, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate, Glucosyl Hesperidin, Caffeine, Citric Acid, Sodium Citrate, PEG/PPG/Polybutylene Glycol-8/5/3 Glycerin, Potassium Hydroxide",
+          "pdp_ingredients_raw": "Water, Butylene Glycol, Pentylene Glycol, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate, Sodium PCA, Citric Acid, Sodium Citrate, Citrus Aurantifolia (Lime) Juice, Citrus Aurantium Dulcis (Orange) Juice, Citrus Medica Limonum (Lemon) Juice, Citrus Grandis (Grapefruit) Fruit Extract, Crataegus Cuneata Fruit Extract, Ziziphus Jujuba Fruit Extract, Pyrus Malus (Apple) Fruit Extract, Phenoxyethanol Water, Butylene Glycol, Glycerin, Pentylene Glycol, Ascorbyl Glucoside, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate, Glucosyl Hesperidin, Caffeine, Citric Acid, Sodium Citrate, PEG/PPG/Polybutylene Glycol-8/5/3 Glycerin, Potassium Hydroxide",
+          "raw_ingredient_text_clean": "Water, Butylene Glycol, Pentylene Glycol, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate, Sodium PCA, Citric Acid, Sodium Citrate, Citrus Aurantifolia (Lime) Juice, Citrus Aurantium Dulcis (Orange) Juice, Citrus Medica Limonum (Lemon) Juice, Citrus Grandis (Grapefruit) Fruit Extract, Crataegus Cuneata Fruit Extract, Ziziphus Jujuba Fruit Extract, Pyrus Malus (Apple) Fruit Extract, Phenoxyethanol Water, Butylene Glycol, Glycerin, Pentylene Glycol, Ascorbyl Glucoside, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate, Glucosyl Hesperidin, Caffeine, Citric Acid, Sodium Citrate, PEG/PPG/Polybutylene Glycol-8/5/3 Glycerin, Potassium Hydroxide",
+          "ingredients_inci": [
+            "Water",
+            "Butylene Glycol",
+            "Pentylene Glycol",
+            "Potassium Ascorbyl Tocopheryl Phosphate",
+            "Dipotassium Glycyrrhizate",
+            "Sodium PCA",
+            "Citric Acid",
+            "Sodium Citrate",
+            "Citrus Aurantifolia (Lime) Juice",
+            "Citrus Aurantium Dulcis (Orange) Juice",
+            "Citrus Medica Limonum (Lemon) Juice",
+            "Citrus Grandis (Grapefruit) Fruit Extract",
+            "Crataegus Cuneata Fruit Extract",
+            "Ziziphus Jujuba Fruit Extract",
+            "Pyrus Malus (Apple) Fruit Extract",
+            "Phenoxyethanol Water",
+            "Butylene Glycol",
+            "Glycerin",
+            "Pentylene Glycol",
+            "Ascorbyl Glucoside",
+            "Potassium Ascorbyl Tocopheryl Phosphate",
+            "Dipotassium Glycyrrhizate",
+            "Glucosyl Hesperidin",
+            "Caffeine",
+            "Citric Acid",
+            "Sodium Citrate",
+            "PEG/PPG/Polybutylene Glycol-8/5/3 Glycerin",
+            "Potassium Hydroxide"
+          ],
+          "inci_list": [
+            "Water",
+            "Butylene Glycol",
+            "Pentylene Glycol",
+            "Potassium Ascorbyl Tocopheryl Phosphate",
+            "Dipotassium Glycyrrhizate",
+            "Sodium PCA",
+            "Citric Acid",
+            "Sodium Citrate",
+            "Citrus Aurantifolia (Lime) Juice",
+            "Citrus Aurantium Dulcis (Orange) Juice",
+            "Citrus Medica Limonum (Lemon) Juice",
+            "Citrus Grandis (Grapefruit) Fruit Extract",
+            "Crataegus Cuneata Fruit Extract",
+            "Ziziphus Jujuba Fruit Extract",
+            "Pyrus Malus (Apple) Fruit Extract",
+            "Phenoxyethanol Water",
+            "Butylene Glycol",
+            "Glycerin",
+            "Pentylene Glycol",
+            "Ascorbyl Glucoside",
+            "Potassium Ascorbyl Tocopheryl Phosphate",
+            "Dipotassium Glycyrrhizate",
+            "Glucosyl Hesperidin",
+            "Caffeine",
+            "Citric Acid",
+            "Sodium Citrate",
+            "PEG/PPG/Polybutylene Glycol-8/5/3 Glycerin",
+            "Potassium Hydroxide"
+          ],
+          "pdp_how_to_use_raw": "After face wash and before applying lotion, take about 3-4 pumps (about the size of a large coin) onto the palm and spread evenly over the face.",
+          "pdp_details_sections": [
+            {
+              "heading": "How to Use",
+              "body": "After face wash and before applying lotion, take about 3-4 pumps (about the size of a large coin) onto the palm and spread evenly over the face.",
+              "source_kind": "official_shopify_pdp_usage_accordion"
+            },
+            {
+              "heading": "Ingredients",
+              "body": "Water, Butylene Glycol, Pentylene Glycol, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate, Sodium PCA, Citric Acid, Sodium Citrate, Citrus Aurantifolia (Lime) Juice, Citrus Aurantium Dulcis (Orange) Juice, Citrus Medica Limonum (Lemon) Juice, Citrus Grandis (Grapefruit) Fruit Extract, Crataegus Cuneata Fruit Extract, Ziziphus Jujuba Fruit Extract, Pyrus Malus (Apple) Fruit Extract, Phenoxyethanol Water, Butylene Glycol, Glycerin, Pentylene Glycol, Ascorbyl Glucoside, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate, Glucosyl Hesperidin, Caffeine, Citric Acid, Sodium Citrate, PEG/PPG/Polybutylene Glycol-8/5/3 Glycerin, Potassium Hydroxide",
+              "source_kind": "official_shopify_pdp_ingredient_accordion"
+            }
+          ],
+          "ingredient_intel": {
+            "raw_ingredient_text_clean": "Water, Butylene Glycol, Pentylene Glycol, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate, Sodium PCA, Citric Acid, Sodium Citrate, Citrus Aurantifolia (Lime) Juice, Citrus Aurantium Dulcis (Orange) Juice, Citrus Medica Limonum (Lemon) Juice, Citrus Grandis (Grapefruit) Fruit Extract, Crataegus Cuneata Fruit Extract, Ziziphus Jujuba Fruit Extract, Pyrus Malus (Apple) Fruit Extract, Phenoxyethanol Water, Butylene Glycol, Glycerin, Pentylene Glycol, Ascorbyl Glucoside, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate, Glucosyl Hesperidin, Caffeine, Citric Acid, Sodium Citrate, PEG/PPG/Polybutylene Glycol-8/5/3 Glycerin, Potassium Hydroxide",
+            "inci_raw": "Water, Butylene Glycol, Pentylene Glycol, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate, Sodium PCA, Citric Acid, Sodium Citrate, Citrus Aurantifolia (Lime) Juice, Citrus Aurantium Dulcis (Orange) Juice, Citrus Medica Limonum (Lemon) Juice, Citrus Grandis (Grapefruit) Fruit Extract, Crataegus Cuneata Fruit Extract, Ziziphus Jujuba Fruit Extract, Pyrus Malus (Apple) Fruit Extract, Phenoxyethanol Water, Butylene Glycol, Glycerin, Pentylene Glycol, Ascorbyl Glucoside, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate, Glucosyl Hesperidin, Caffeine, Citric Acid, Sodium Citrate, PEG/PPG/Polybutylene Glycol-8/5/3 Glycerin, Potassium Hydroxide",
+            "inci_list": [
+              "Water",
+              "Butylene Glycol",
+              "Pentylene Glycol",
+              "Potassium Ascorbyl Tocopheryl Phosphate",
+              "Dipotassium Glycyrrhizate",
+              "Sodium PCA",
+              "Citric Acid",
+              "Sodium Citrate",
+              "Citrus Aurantifolia (Lime) Juice",
+              "Citrus Aurantium Dulcis (Orange) Juice",
+              "Citrus Medica Limonum (Lemon) Juice",
+              "Citrus Grandis (Grapefruit) Fruit Extract",
+              "Crataegus Cuneata Fruit Extract",
+              "Ziziphus Jujuba Fruit Extract",
+              "Pyrus Malus (Apple) Fruit Extract",
+              "Phenoxyethanol Water",
+              "Butylene Glycol",
+              "Glycerin",
+              "Pentylene Glycol",
+              "Ascorbyl Glucoside",
+              "Potassium Ascorbyl Tocopheryl Phosphate",
+              "Dipotassium Glycyrrhizate",
+              "Glucosyl Hesperidin",
+              "Caffeine",
+              "Citric Acid",
+              "Sodium Citrate",
+              "PEG/PPG/Polybutylene Glycol-8/5/3 Glycerin",
+              "Potassium Hydroxide"
+            ],
+            "inci_normalized": [
+              "Water",
+              "Butylene Glycol",
+              "Pentylene Glycol",
+              "Potassium Ascorbyl Tocopheryl Phosphate",
+              "Dipotassium Glycyrrhizate",
+              "Sodium PCA",
+              "Citric Acid",
+              "Sodium Citrate",
+              "Citrus Aurantifolia (Lime) Juice",
+              "Citrus Aurantium Dulcis (Orange) Juice",
+              "Citrus Medica Limonum (Lemon) Juice",
+              "Citrus Grandis (Grapefruit) Fruit Extract",
+              "Crataegus Cuneata Fruit Extract",
+              "Ziziphus Jujuba Fruit Extract",
+              "Pyrus Malus (Apple) Fruit Extract",
+              "Phenoxyethanol Water",
+              "Butylene Glycol",
+              "Glycerin",
+              "Pentylene Glycol",
+              "Ascorbyl Glucoside",
+              "Potassium Ascorbyl Tocopheryl Phosphate",
+              "Dipotassium Glycyrrhizate",
+              "Glucosyl Hesperidin",
+              "Caffeine",
+              "Citric Acid",
+              "Sodium Citrate",
+              "PEG/PPG/Polybutylene Glycol-8/5/3 Glycerin",
+              "Potassium Hydroxide"
+            ],
+            "source_kind": "official_shopify_pdp_ingredient_accordion",
+            "source_url": "https://aetasofficial.com/en/products/serum?country=US"
+          },
+          "external_seed_snapshot_contract": {
+            "contract_version": "external_seed.snapshot_contract.v1",
+            "source": "wave19_aetas_shopify_country_us_seed_creation_manifest",
+            "authoritative": true,
+            "structured_fields_authoritative": true,
+            "legacy_fields_quarantined": true,
+            "replace_strategy": "replace_not_merge",
+            "source_url": "https://aetasofficial.com/en/products/serum?country=US",
+            "updated_at": "2026-05-25T16:53:34.528Z"
+          },
+          "pdp_field_quality_summary": {
+            "description_raw": {
+              "source_origin": "official_shopify_country_us_pdp_html",
+              "source_quality_status": "high",
+              "source_url": "https://aetasofficial.com/en/products/serum?country=US",
+              "reviewed_by": "codex_wave19_direct_source",
+              "reviewed_at": "2026-05-25T16:53:34.528Z"
+            },
+            "ingredients_raw": {
+              "source_origin": "official_shopify_country_us_pdp_html",
+              "source_quality_status": "high",
+              "source_url": "https://aetasofficial.com/en/products/serum?country=US",
+              "reviewed_by": "codex_wave19_direct_source",
+              "reviewed_at": "2026-05-25T16:53:34.528Z"
+            },
+            "ingredients_inci": {
+              "source_origin": "official_shopify_country_us_pdp_html",
+              "source_quality_status": "high",
+              "source_url": "https://aetasofficial.com/en/products/serum?country=US",
+              "reviewed_by": "codex_wave19_direct_source",
+              "reviewed_at": "2026-05-25T16:53:34.528Z"
+            },
+            "how_to_use_raw": {
+              "source_origin": "official_shopify_country_us_pdp_html",
+              "source_quality_status": "high",
+              "source_url": "https://aetasofficial.com/en/products/serum?country=US",
+              "reviewed_by": "codex_wave19_direct_source",
+              "reviewed_at": "2026-05-25T16:53:34.528Z"
+            },
+            "details_sections": {
+              "source_origin": "official_shopify_country_us_pdp_html",
+              "source_quality_status": "high",
+              "source_url": "https://aetasofficial.com/en/products/serum?country=US",
+              "reviewed_by": "codex_wave19_direct_source",
+              "reviewed_at": "2026-05-25T16:53:34.528Z"
+            },
+            "category": {
+              "source_origin": "official_shopify_country_us_pdp_html",
+              "source_quality_status": "high",
+              "source_url": "https://aetasofficial.com/en/products/serum?country=US",
+              "reviewed_by": "codex_wave19_direct_source",
+              "reviewed_at": "2026-05-25T16:53:34.528Z"
+            },
+            "product_type": {
+              "source_origin": "official_shopify_country_us_pdp_html",
+              "source_quality_status": "high",
+              "source_url": "https://aetasofficial.com/en/products/serum?country=US",
+              "reviewed_by": "codex_wave19_direct_source",
+              "reviewed_at": "2026-05-25T16:53:34.528Z"
+            },
+            "image_assets": {
+              "source_origin": "official_shopify_country_us_pdp_html",
+              "source_quality_status": "high",
+              "source_url": "https://aetasofficial.com/en/products/serum?country=US",
+              "reviewed_by": "codex_wave19_direct_source",
+              "reviewed_at": "2026-05-25T16:53:34.528Z"
+            }
+          },
+          "pdp_field_capture_status": {
+            "description_raw": "captured",
+            "ingredients_raw": "captured",
+            "how_to_use_raw": "captured",
+            "details_sections": "captured"
+          },
+          "authority_source": {
+            "source_url": "https://aetasofficial.com/en/products/serum?country=US",
+            "official_canonical_url": "https://aetasofficial.com/en/products/serum",
+            "source_role": "direct_official_pdp_html",
+            "official_description_raw": "Booster serums that enhance warm and cool skin undertones. Bring out the natural radiance of your skin and create a translucent*1 look that suits your skin undertone.\nThe focus is on the difference in skin types, one of the factors that determines whether you have a warm or cool skin undertone in a personal color diagnosis. Research has been conducted on the ideal form of non-dull*2, translucent*1 beautiful skin and the different approaches required. These booster serums bring out the unique characteristics of each skin undertone to the fullest and let radiant beauty shine from within. Awaken your skin's natural charm and achieve a confident glow.\nThe Serum γ (For warm skin undertone) Natural Origin Index*3 : 99.54%\nFor those with a warm (yellow) skin undertone reflecting energy and liveliness. By addressing roughness in the skin and smoothing the skin texture, this serum leaves the skin soft and supple, giving the appearance of bright and radiant skin.Formulated with PCA-Na*4 and Fruit acids*5 The Serum β (For cool skin undertone) Natural Origin Index*3 : 98.89%\nFor those with a cool (blue) skin undertone reflecting freshness and sharpness.By addressing dryness in the skin and hydrating the skin, this serum leaves the skin firm and clear, giving the appearance of transparency*1 and creates a sense of sophistication.Formulated with Vitamin P*6 and Caffeine*4\n*1 Skin impression due to moisture *2 Skin dullness due to dryness *3 The natural origin index including water. The ratio of natural ingredients to the total ingredients in the product based on the provisions of the ISO16128 international standard.*4 Moisturizing ingredients *5 Lime juice, orange juice, grapefruit extract, hawthorn extract, jujube fruit extract, apple fruit extract (skin conditioning ingredient) *6 Glucosyl hesperidin (skin conditioning ingredient)",
+            "official_ingredients_source_raw": "The Serum γ\nWater, Butylene Glycol, Pentylene Glycol, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate, Sodium PCA, Citric Acid, Sodium Citrate, Citrus Aurantifolia (Lime) Juice, Citrus Aurantium Dulcis (Orange) Juice, Citrus Medica Limonum (Lemon) Juice, Citrus Grandis (Grapefruit) Fruit Extract, Crataegus Cuneata Fruit Extract, Ziziphus Jujuba Fruit Extract, Pyrus Malus (Apple) Fruit Extract, Phenoxyethanol\nThe Serum β\nWater, Butylene Glycol, Glycerin, Pentylene Glycol, Ascorbyl Glucoside, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate, Glucosyl Hesperidin, Caffeine, Citric Acid, Sodium Citrate, PEG/PPG/Polybutylene Glycol-8/5/3 Glycerin, Potassium Hydroxide",
+            "official_how_to_source_raw": "After face wash and before applying lotion, take about 3-4 pumps (about the size of a large coin) onto the palm and spread evenly over the face.",
+            "matched_preferred_titles": [
+              "The Serum"
+            ]
+          },
+          "source_validation": {
+            "source_type": "brand_owned",
+            "source_host": "aetasofficial.com",
+            "requires_multi_offer_merge_validation": false
+          },
+          "search_aliases": [
+            "The Serum",
+            "Aetās The Serum",
+            "Aetās Face Serum"
+          ],
+          "snapshot": {
+            "source": "wave19_aetas_shopify_country_us_official_seed_creation_manifest",
+            "extracted_at": "2026-05-25T16:53:34.528Z",
+            "canonical_url": "https://aetasofficial.com/en/products/serum?country=US",
+            "destination_url": "https://aetasofficial.com/en/products/serum?country=US",
+            "title": "The Serum",
+            "description": "The Serum is an Aetās face serum with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Butylene Glycol, Pentylene Glycol, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate.",
+            "image_url": "https://aetasofficial.com/cdn/shop/files/SerumyB__2048px_2048.jpg?v=1751105329",
+            "image_urls": [
+              "https://aetasofficial.com/cdn/shop/files/SerumyB__2048px_2048.jpg?v=1751105329",
+              "http://aetasofficial.com/cdn/shop/files/SerumyB__2048px_2048.jpg?v=1751105329",
+              "https://aetasofficial.com/cdn/shop/files/2604_serumB_fd14afbd-3c5c-4c9a-a7f5-270868d884d3.png?v=1779693433&width=1920",
+              "https://aetasofficial.com/cdn/shop/files/2604_serumY_f7f27cb0-6145-4206-a182-4707ef18455e.png?v=1779693473",
+              "https://aetasofficial.com/cdn/shop/files/2604_serumB_fd14afbd-3c5c-4c9a-a7f5-270868d884d3.png?v=1779693433&amp;width=1946",
+              "https://aetasofficial.com/cdn/shop/files/SerumyB__2048px_2048.jpg?v=1751105329&amp;width=1946",
+              "https://aetasofficial.com/cdn/shop/files/7IV09579_Large_48161306-3df3-45a5-910c-cb5ec6c37f5d.jpg?v=1751105329&amp;width=1946",
+              "https://aetasofficial.com/cdn/shop/files/7IV09377.jpg?v=1751105329&amp;width=1946",
+              "https://aetasofficial.com/cdn/shop/files/7IV09372.jpg?v=1751105329&amp;width=1946",
+              "https://aetasofficial.com/cdn/shop/files/7IV09406_Large_841f00ba-1c87-469e-82e2-c32b50cb46df.jpg?v=1751105329&amp;width=1946"
+            ],
+            "images": [
+              "https://aetasofficial.com/cdn/shop/files/SerumyB__2048px_2048.jpg?v=1751105329",
+              "http://aetasofficial.com/cdn/shop/files/SerumyB__2048px_2048.jpg?v=1751105329",
+              "https://aetasofficial.com/cdn/shop/files/2604_serumB_fd14afbd-3c5c-4c9a-a7f5-270868d884d3.png?v=1779693433&width=1920",
+              "https://aetasofficial.com/cdn/shop/files/2604_serumY_f7f27cb0-6145-4206-a182-4707ef18455e.png?v=1779693473",
+              "https://aetasofficial.com/cdn/shop/files/2604_serumB_fd14afbd-3c5c-4c9a-a7f5-270868d884d3.png?v=1779693433&amp;width=1946",
+              "https://aetasofficial.com/cdn/shop/files/SerumyB__2048px_2048.jpg?v=1751105329&amp;width=1946",
+              "https://aetasofficial.com/cdn/shop/files/7IV09579_Large_48161306-3df3-45a5-910c-cb5ec6c37f5d.jpg?v=1751105329&amp;width=1946",
+              "https://aetasofficial.com/cdn/shop/files/7IV09377.jpg?v=1751105329&amp;width=1946",
+              "https://aetasofficial.com/cdn/shop/files/7IV09372.jpg?v=1751105329&amp;width=1946",
+              "https://aetasofficial.com/cdn/shop/files/7IV09406_Large_841f00ba-1c87-469e-82e2-c32b50cb46df.jpg?v=1751105329&amp;width=1946"
+            ],
+            "variants": [
+              {
+                "sku": "400",
+                "variant_id": "46009531236507",
+                "url": "https://aetasofficial.com/en/products/serum?variant=46009531236507&country=US",
+                "option_name": "Skin Undertone",
+                "option_value": "β (Cool)",
+                "axis_kind": "shade",
+                "price": "60",
+                "currency": "USD",
+                "stock": "In Stock",
+                "description": "The Serum is an Aetās face serum with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Butylene Glycol, Pentylene Glycol, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate.",
+                "image_url": "https://aetasofficial.com/cdn/shop/files/2604_serumB_fd14afbd-3c5c-4c9a-a7f5-270868d884d3.png?v=1779693433",
+                "image_urls": [
+                  "https://aetasofficial.com/cdn/shop/files/2604_serumB_fd14afbd-3c5c-4c9a-a7f5-270868d884d3.png?v=1779693433"
+                ],
+                "images": [
+                  "https://aetasofficial.com/cdn/shop/files/2604_serumB_fd14afbd-3c5c-4c9a-a7f5-270868d884d3.png?v=1779693433"
+                ]
+              },
+              {
+                "sku": "410",
+                "variant_id": "46009531269275",
+                "url": "https://aetasofficial.com/en/products/serum?variant=46009531269275&country=US",
+                "option_name": "Skin Undertone",
+                "option_value": "γ (Warm)",
+                "axis_kind": "shade",
+                "price": "60",
+                "currency": "USD",
+                "stock": "In Stock",
+                "description": "The Serum is an Aetās face serum with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Butylene Glycol, Pentylene Glycol, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate.",
+                "image_url": "https://aetasofficial.com/cdn/shop/files/2604_serumY_f7f27cb0-6145-4206-a182-4707ef18455e.png?v=1779693473",
+                "image_urls": [
+                  "https://aetasofficial.com/cdn/shop/files/2604_serumY_f7f27cb0-6145-4206-a182-4707ef18455e.png?v=1779693473"
+                ],
+                "images": [
+                  "https://aetasofficial.com/cdn/shop/files/2604_serumY_f7f27cb0-6145-4206-a182-4707ef18455e.png?v=1779693473"
+                ]
+              }
+            ],
+            "shopify_country": "US",
+            "product_family": "single_formula",
+            "brand": "Aetās",
+            "external_product_id": "ext_684249c7a94a1a6f43fdbd77",
+            "price_amount": 60,
+            "price_currency": "USD",
+            "availability": "in_stock",
+            "category": "Skincare",
+            "category_path": [
+              "beauty",
+              "skincare",
+              "treat",
+              "serum"
+            ],
+            "catalog_category_path": "beauty/skincare/treat/serum",
+            "product_kind": "single_formula",
+            "product_type": "Face Serum",
+            "pdp_description_raw": "The Serum is an Aetās face serum with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Butylene Glycol, Pentylene Glycol, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate.",
+            "pdp_official_description_raw": "The Serum is an Aetās face serum with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Butylene Glycol, Pentylene Glycol, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate.",
+            "pdp_source_description_raw": "The Serum is an Aetās face serum with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Butylene Glycol, Pentylene Glycol, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate. How to Use: After face wash and before applying lotion, take about 3-4 pumps (about the size of a large coin) onto the palm and spread evenly over the face. Ingredients: Water, Butylene Glycol, Pentylene Glycol, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate, Sodium PCA, Citric Acid, Sodium Citrate, Citrus Aurantifolia (Lime) Juice, Citrus Aurantium Dulcis (Orange) Juice, Citrus Medica Limonum (Lemon) Juice, Citrus Grandis (Grapefruit) Fruit Extract, Crataegus Cuneata Fruit Extract, Ziziphus Jujuba Fruit Extract, Pyrus Malus (Apple) Fruit Extract, Phenoxyethanol Water, Butylene Glycol, Glycerin, Pentylene Glycol, Ascorbyl Glucoside, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate, Glucosyl Hesperidin, Caffeine, Citric Acid, Sodium Citrate, PEG/PPG/Polybutylene Glycol-8/5/3 Glycerin, Potassium Hydroxide",
+            "pdp_ingredients_raw": "Water, Butylene Glycol, Pentylene Glycol, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate, Sodium PCA, Citric Acid, Sodium Citrate, Citrus Aurantifolia (Lime) Juice, Citrus Aurantium Dulcis (Orange) Juice, Citrus Medica Limonum (Lemon) Juice, Citrus Grandis (Grapefruit) Fruit Extract, Crataegus Cuneata Fruit Extract, Ziziphus Jujuba Fruit Extract, Pyrus Malus (Apple) Fruit Extract, Phenoxyethanol Water, Butylene Glycol, Glycerin, Pentylene Glycol, Ascorbyl Glucoside, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate, Glucosyl Hesperidin, Caffeine, Citric Acid, Sodium Citrate, PEG/PPG/Polybutylene Glycol-8/5/3 Glycerin, Potassium Hydroxide",
+            "raw_ingredient_text_clean": "Water, Butylene Glycol, Pentylene Glycol, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate, Sodium PCA, Citric Acid, Sodium Citrate, Citrus Aurantifolia (Lime) Juice, Citrus Aurantium Dulcis (Orange) Juice, Citrus Medica Limonum (Lemon) Juice, Citrus Grandis (Grapefruit) Fruit Extract, Crataegus Cuneata Fruit Extract, Ziziphus Jujuba Fruit Extract, Pyrus Malus (Apple) Fruit Extract, Phenoxyethanol Water, Butylene Glycol, Glycerin, Pentylene Glycol, Ascorbyl Glucoside, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate, Glucosyl Hesperidin, Caffeine, Citric Acid, Sodium Citrate, PEG/PPG/Polybutylene Glycol-8/5/3 Glycerin, Potassium Hydroxide",
+            "ingredients_inci": [
+              "Water",
+              "Butylene Glycol",
+              "Pentylene Glycol",
+              "Potassium Ascorbyl Tocopheryl Phosphate",
+              "Dipotassium Glycyrrhizate",
+              "Sodium PCA",
+              "Citric Acid",
+              "Sodium Citrate",
+              "Citrus Aurantifolia (Lime) Juice",
+              "Citrus Aurantium Dulcis (Orange) Juice",
+              "Citrus Medica Limonum (Lemon) Juice",
+              "Citrus Grandis (Grapefruit) Fruit Extract",
+              "Crataegus Cuneata Fruit Extract",
+              "Ziziphus Jujuba Fruit Extract",
+              "Pyrus Malus (Apple) Fruit Extract",
+              "Phenoxyethanol Water",
+              "Butylene Glycol",
+              "Glycerin",
+              "Pentylene Glycol",
+              "Ascorbyl Glucoside",
+              "Potassium Ascorbyl Tocopheryl Phosphate",
+              "Dipotassium Glycyrrhizate",
+              "Glucosyl Hesperidin",
+              "Caffeine",
+              "Citric Acid",
+              "Sodium Citrate",
+              "PEG/PPG/Polybutylene Glycol-8/5/3 Glycerin",
+              "Potassium Hydroxide"
+            ],
+            "inci_list": [
+              "Water",
+              "Butylene Glycol",
+              "Pentylene Glycol",
+              "Potassium Ascorbyl Tocopheryl Phosphate",
+              "Dipotassium Glycyrrhizate",
+              "Sodium PCA",
+              "Citric Acid",
+              "Sodium Citrate",
+              "Citrus Aurantifolia (Lime) Juice",
+              "Citrus Aurantium Dulcis (Orange) Juice",
+              "Citrus Medica Limonum (Lemon) Juice",
+              "Citrus Grandis (Grapefruit) Fruit Extract",
+              "Crataegus Cuneata Fruit Extract",
+              "Ziziphus Jujuba Fruit Extract",
+              "Pyrus Malus (Apple) Fruit Extract",
+              "Phenoxyethanol Water",
+              "Butylene Glycol",
+              "Glycerin",
+              "Pentylene Glycol",
+              "Ascorbyl Glucoside",
+              "Potassium Ascorbyl Tocopheryl Phosphate",
+              "Dipotassium Glycyrrhizate",
+              "Glucosyl Hesperidin",
+              "Caffeine",
+              "Citric Acid",
+              "Sodium Citrate",
+              "PEG/PPG/Polybutylene Glycol-8/5/3 Glycerin",
+              "Potassium Hydroxide"
+            ],
+            "pdp_how_to_use_raw": "After face wash and before applying lotion, take about 3-4 pumps (about the size of a large coin) onto the palm and spread evenly over the face.",
+            "pdp_details_sections": [
+              {
+                "heading": "How to Use",
+                "body": "After face wash and before applying lotion, take about 3-4 pumps (about the size of a large coin) onto the palm and spread evenly over the face.",
+                "source_kind": "official_shopify_pdp_usage_accordion"
+              },
+              {
+                "heading": "Ingredients",
+                "body": "Water, Butylene Glycol, Pentylene Glycol, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate, Sodium PCA, Citric Acid, Sodium Citrate, Citrus Aurantifolia (Lime) Juice, Citrus Aurantium Dulcis (Orange) Juice, Citrus Medica Limonum (Lemon) Juice, Citrus Grandis (Grapefruit) Fruit Extract, Crataegus Cuneata Fruit Extract, Ziziphus Jujuba Fruit Extract, Pyrus Malus (Apple) Fruit Extract, Phenoxyethanol Water, Butylene Glycol, Glycerin, Pentylene Glycol, Ascorbyl Glucoside, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate, Glucosyl Hesperidin, Caffeine, Citric Acid, Sodium Citrate, PEG/PPG/Polybutylene Glycol-8/5/3 Glycerin, Potassium Hydroxide",
+                "source_kind": "official_shopify_pdp_ingredient_accordion"
+              }
+            ],
+            "ingredient_intel": {
+              "raw_ingredient_text_clean": "Water, Butylene Glycol, Pentylene Glycol, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate, Sodium PCA, Citric Acid, Sodium Citrate, Citrus Aurantifolia (Lime) Juice, Citrus Aurantium Dulcis (Orange) Juice, Citrus Medica Limonum (Lemon) Juice, Citrus Grandis (Grapefruit) Fruit Extract, Crataegus Cuneata Fruit Extract, Ziziphus Jujuba Fruit Extract, Pyrus Malus (Apple) Fruit Extract, Phenoxyethanol Water, Butylene Glycol, Glycerin, Pentylene Glycol, Ascorbyl Glucoside, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate, Glucosyl Hesperidin, Caffeine, Citric Acid, Sodium Citrate, PEG/PPG/Polybutylene Glycol-8/5/3 Glycerin, Potassium Hydroxide",
+              "inci_raw": "Water, Butylene Glycol, Pentylene Glycol, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate, Sodium PCA, Citric Acid, Sodium Citrate, Citrus Aurantifolia (Lime) Juice, Citrus Aurantium Dulcis (Orange) Juice, Citrus Medica Limonum (Lemon) Juice, Citrus Grandis (Grapefruit) Fruit Extract, Crataegus Cuneata Fruit Extract, Ziziphus Jujuba Fruit Extract, Pyrus Malus (Apple) Fruit Extract, Phenoxyethanol Water, Butylene Glycol, Glycerin, Pentylene Glycol, Ascorbyl Glucoside, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate, Glucosyl Hesperidin, Caffeine, Citric Acid, Sodium Citrate, PEG/PPG/Polybutylene Glycol-8/5/3 Glycerin, Potassium Hydroxide",
+              "inci_list": [
+                "Water",
+                "Butylene Glycol",
+                "Pentylene Glycol",
+                "Potassium Ascorbyl Tocopheryl Phosphate",
+                "Dipotassium Glycyrrhizate",
+                "Sodium PCA",
+                "Citric Acid",
+                "Sodium Citrate",
+                "Citrus Aurantifolia (Lime) Juice",
+                "Citrus Aurantium Dulcis (Orange) Juice",
+                "Citrus Medica Limonum (Lemon) Juice",
+                "Citrus Grandis (Grapefruit) Fruit Extract",
+                "Crataegus Cuneata Fruit Extract",
+                "Ziziphus Jujuba Fruit Extract",
+                "Pyrus Malus (Apple) Fruit Extract",
+                "Phenoxyethanol Water",
+                "Butylene Glycol",
+                "Glycerin",
+                "Pentylene Glycol",
+                "Ascorbyl Glucoside",
+                "Potassium Ascorbyl Tocopheryl Phosphate",
+                "Dipotassium Glycyrrhizate",
+                "Glucosyl Hesperidin",
+                "Caffeine",
+                "Citric Acid",
+                "Sodium Citrate",
+                "PEG/PPG/Polybutylene Glycol-8/5/3 Glycerin",
+                "Potassium Hydroxide"
+              ],
+              "inci_normalized": [
+                "Water",
+                "Butylene Glycol",
+                "Pentylene Glycol",
+                "Potassium Ascorbyl Tocopheryl Phosphate",
+                "Dipotassium Glycyrrhizate",
+                "Sodium PCA",
+                "Citric Acid",
+                "Sodium Citrate",
+                "Citrus Aurantifolia (Lime) Juice",
+                "Citrus Aurantium Dulcis (Orange) Juice",
+                "Citrus Medica Limonum (Lemon) Juice",
+                "Citrus Grandis (Grapefruit) Fruit Extract",
+                "Crataegus Cuneata Fruit Extract",
+                "Ziziphus Jujuba Fruit Extract",
+                "Pyrus Malus (Apple) Fruit Extract",
+                "Phenoxyethanol Water",
+                "Butylene Glycol",
+                "Glycerin",
+                "Pentylene Glycol",
+                "Ascorbyl Glucoside",
+                "Potassium Ascorbyl Tocopheryl Phosphate",
+                "Dipotassium Glycyrrhizate",
+                "Glucosyl Hesperidin",
+                "Caffeine",
+                "Citric Acid",
+                "Sodium Citrate",
+                "PEG/PPG/Polybutylene Glycol-8/5/3 Glycerin",
+                "Potassium Hydroxide"
+              ],
+              "source_kind": "official_shopify_pdp_ingredient_accordion",
+              "source_url": "https://aetasofficial.com/en/products/serum?country=US"
+            },
+            "external_seed_snapshot_contract": {
+              "contract_version": "external_seed.snapshot_contract.v1",
+              "source": "wave19_aetas_shopify_country_us_seed_creation_manifest",
+              "authoritative": true,
+              "structured_fields_authoritative": true,
+              "legacy_fields_quarantined": true,
+              "replace_strategy": "replace_not_merge",
+              "source_url": "https://aetasofficial.com/en/products/serum?country=US",
+              "updated_at": "2026-05-25T16:53:34.528Z"
+            },
+            "pdp_field_quality_summary": {
+              "description_raw": {
+                "source_origin": "official_shopify_country_us_pdp_html",
+                "source_quality_status": "high",
+                "source_url": "https://aetasofficial.com/en/products/serum?country=US",
+                "reviewed_by": "codex_wave19_direct_source",
+                "reviewed_at": "2026-05-25T16:53:34.528Z"
+              },
+              "ingredients_raw": {
+                "source_origin": "official_shopify_country_us_pdp_html",
+                "source_quality_status": "high",
+                "source_url": "https://aetasofficial.com/en/products/serum?country=US",
+                "reviewed_by": "codex_wave19_direct_source",
+                "reviewed_at": "2026-05-25T16:53:34.528Z"
+              },
+              "ingredients_inci": {
+                "source_origin": "official_shopify_country_us_pdp_html",
+                "source_quality_status": "high",
+                "source_url": "https://aetasofficial.com/en/products/serum?country=US",
+                "reviewed_by": "codex_wave19_direct_source",
+                "reviewed_at": "2026-05-25T16:53:34.528Z"
+              },
+              "how_to_use_raw": {
+                "source_origin": "official_shopify_country_us_pdp_html",
+                "source_quality_status": "high",
+                "source_url": "https://aetasofficial.com/en/products/serum?country=US",
+                "reviewed_by": "codex_wave19_direct_source",
+                "reviewed_at": "2026-05-25T16:53:34.528Z"
+              },
+              "details_sections": {
+                "source_origin": "official_shopify_country_us_pdp_html",
+                "source_quality_status": "high",
+                "source_url": "https://aetasofficial.com/en/products/serum?country=US",
+                "reviewed_by": "codex_wave19_direct_source",
+                "reviewed_at": "2026-05-25T16:53:34.528Z"
+              },
+              "category": {
+                "source_origin": "official_shopify_country_us_pdp_html",
+                "source_quality_status": "high",
+                "source_url": "https://aetasofficial.com/en/products/serum?country=US",
+                "reviewed_by": "codex_wave19_direct_source",
+                "reviewed_at": "2026-05-25T16:53:34.528Z"
+              },
+              "product_type": {
+                "source_origin": "official_shopify_country_us_pdp_html",
+                "source_quality_status": "high",
+                "source_url": "https://aetasofficial.com/en/products/serum?country=US",
+                "reviewed_by": "codex_wave19_direct_source",
+                "reviewed_at": "2026-05-25T16:53:34.528Z"
+              },
+              "image_assets": {
+                "source_origin": "official_shopify_country_us_pdp_html",
+                "source_quality_status": "high",
+                "source_url": "https://aetasofficial.com/en/products/serum?country=US",
+                "reviewed_by": "codex_wave19_direct_source",
+                "reviewed_at": "2026-05-25T16:53:34.528Z"
+              }
+            },
+            "pdp_field_capture_status": {
+              "description_raw": "captured",
+              "ingredients_raw": "captured",
+              "how_to_use_raw": "captured",
+              "details_sections": "captured"
+            },
+            "authority_source": {
+              "source_url": "https://aetasofficial.com/en/products/serum?country=US",
+              "official_canonical_url": "https://aetasofficial.com/en/products/serum",
+              "source_role": "direct_official_pdp_html",
+              "official_description_raw": "Booster serums that enhance warm and cool skin undertones. Bring out the natural radiance of your skin and create a translucent*1 look that suits your skin undertone.\nThe focus is on the difference in skin types, one of the factors that determines whether you have a warm or cool skin undertone in a personal color diagnosis. Research has been conducted on the ideal form of non-dull*2, translucent*1 beautiful skin and the different approaches required. These booster serums bring out the unique characteristics of each skin undertone to the fullest and let radiant beauty shine from within. Awaken your skin's natural charm and achieve a confident glow.\nThe Serum γ (For warm skin undertone) Natural Origin Index*3 : 99.54%\nFor those with a warm (yellow) skin undertone reflecting energy and liveliness. By addressing roughness in the skin and smoothing the skin texture, this serum leaves the skin soft and supple, giving the appearance of bright and radiant skin.Formulated with PCA-Na*4 and Fruit acids*5 The Serum β (For cool skin undertone) Natural Origin Index*3 : 98.89%\nFor those with a cool (blue) skin undertone reflecting freshness and sharpness.By addressing dryness in the skin and hydrating the skin, this serum leaves the skin firm and clear, giving the appearance of transparency*1 and creates a sense of sophistication.Formulated with Vitamin P*6 and Caffeine*4\n*1 Skin impression due to moisture *2 Skin dullness due to dryness *3 The natural origin index including water. The ratio of natural ingredients to the total ingredients in the product based on the provisions of the ISO16128 international standard.*4 Moisturizing ingredients *5 Lime juice, orange juice, grapefruit extract, hawthorn extract, jujube fruit extract, apple fruit extract (skin conditioning ingredient) *6 Glucosyl hesperidin (skin conditioning ingredient)",
+              "official_ingredients_source_raw": "The Serum γ\nWater, Butylene Glycol, Pentylene Glycol, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate, Sodium PCA, Citric Acid, Sodium Citrate, Citrus Aurantifolia (Lime) Juice, Citrus Aurantium Dulcis (Orange) Juice, Citrus Medica Limonum (Lemon) Juice, Citrus Grandis (Grapefruit) Fruit Extract, Crataegus Cuneata Fruit Extract, Ziziphus Jujuba Fruit Extract, Pyrus Malus (Apple) Fruit Extract, Phenoxyethanol\nThe Serum β\nWater, Butylene Glycol, Glycerin, Pentylene Glycol, Ascorbyl Glucoside, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate, Glucosyl Hesperidin, Caffeine, Citric Acid, Sodium Citrate, PEG/PPG/Polybutylene Glycol-8/5/3 Glycerin, Potassium Hydroxide",
+              "official_how_to_source_raw": "After face wash and before applying lotion, take about 3-4 pumps (about the size of a large coin) onto the palm and spread evenly over the face.",
+              "matched_preferred_titles": [
+                "The Serum"
+              ]
+            },
+            "source_validation": {
+              "source_type": "brand_owned",
+              "source_host": "aetasofficial.com",
+              "requires_multi_offer_merge_validation": false
+            },
+            "search_aliases": [
+              "The Serum",
+              "Aetās The Serum",
+              "Aetās Face Serum"
+            ],
+            "commerce_facts_v1": {
+              "contract_version": "commerce_facts.v1",
+              "market_id": "US",
+              "country": "US",
+              "currency_target": "USD",
+              "source_authority": "official_aetas_shopify_country_us_pdp_html",
+              "captured_at": "2026-05-25T16:53:34.528Z",
+              "evidence_url": "https://aetasofficial.com/en/products/serum?country=US",
+              "sellable_region": {
+                "status": "unknown",
+                "countries": [],
+                "evidence_source": "official_aetas_shopify_country_us_pdp_html",
+                "confidence": "unknown",
+                "checked_at": "2026-05-25T16:53:34.528Z",
+                "reason_codes": [
+                  "shipping_destination_not_verified"
+                ],
+                "evidence_url": "https://aetasofficial.com/en/products/serum?country=US"
+              },
+              "regional_price": {
+                "amount": 60,
+                "currency": "USD",
+                "display_raw": null,
+                "price_type": "unknown",
+                "compare_at_amount": null,
+                "compare_at_currency": null,
+                "compare_at_display_raw": null,
+                "tax_included": "unknown",
+                "confidence": "medium",
+                "market_switch_status": "ok",
+                "observed_currency": "USD",
+                "source_url": "https://aetasofficial.com/en/products/serum?country=US",
+                "captured_at": "2026-05-25T16:53:34.528Z"
+              },
+              "availability": {
+                "status": "in_stock",
+                "source": "official_aetas_shopify_country_us_pdp_html",
+                "confidence": "medium",
+                "captured_at": "2026-05-25T16:53:34.528Z"
+              },
+              "shipping": {
+                "status": "unknown",
+                "source": "official_aetas_shopify_country_us_pdp_html",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_checkout_not_queried"
+                ],
+                "checked_at": "2026-05-25T16:53:34.528Z"
+              },
+              "promotions": [],
+              "returns": {
+                "status": "unknown",
+                "source": "official_aetas_shopify_country_us_pdp_html",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_returns_not_extracted"
+                ],
+                "checked_at": "2026-05-25T16:53:34.528Z"
+              }
+            },
+            "commerce_facts_gate": {
+              "status": "pass",
+              "market_id": "US",
+              "expected_currency": "USD",
+              "observed_currency": "USD",
+              "market_switch_status": "ok",
+              "sellable_region_status": "unknown",
+              "shipping_status": "unknown",
+              "promotions_status": "unknown",
+              "availability_status": "in_stock",
+              "problems": []
+            }
+          },
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "official_aetas_shopify_country_us_pdp_html",
+            "captured_at": "2026-05-25T16:53:34.528Z",
+            "evidence_url": "https://aetasofficial.com/en/products/serum?country=US",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "official_aetas_shopify_country_us_pdp_html",
+              "confidence": "unknown",
+              "checked_at": "2026-05-25T16:53:34.528Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://aetasofficial.com/en/products/serum?country=US"
+            },
+            "regional_price": {
+              "amount": 60,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://aetasofficial.com/en/products/serum?country=US",
+              "captured_at": "2026-05-25T16:53:34.528Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_aetas_shopify_country_us_pdp_html",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T16:53:34.528Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "official_aetas_shopify_country_us_pdp_html",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T16:53:34.528Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "official_aetas_shopify_country_us_pdp_html",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T16:53:34.528Z"
+            }
+          },
+          "commerce_facts_gate": {
+            "status": "pass",
+            "market_id": "US",
+            "expected_currency": "USD",
+            "observed_currency": "USD",
+            "market_switch_status": "ok",
+            "sellable_region_status": "unknown",
+            "shipping_status": "unknown",
+            "promotions_status": "unknown",
+            "availability_status": "in_stock",
+            "problems": []
+          }
+        }
+      },
+      "curation_decision": {
+        "decision": "db_ready_candidate",
+        "reason_codes": [
+          "official_usd_in_stock_pdp",
+          "source_backed_ingredients_and_how_to"
+        ]
+      }
+    },
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "target_brand": "DAEBY",
+      "target_url": "https://www.daebyskin.com/products/cleanser?country=US",
+      "extract_status": "official_shopify_us_pdp_ready",
+      "market": "US",
+      "source_domain": "daebyskin.com",
+      "source_role": "direct_official_pdp_html",
+      "matched_preferred_titles": [
+        "Daily Cleanser"
+      ],
+      "seed_row": {
+        "ingredient_id": null,
+        "ingredient_name": null,
+        "seed_id": "eps_e061138dca4586901570de42",
+        "brand": "DAEBY",
+        "market": "US",
+        "tool": "creator_agents",
+        "status": "active",
+        "domain": "daebyskin.com",
+        "external_product_id": "ext_e1c4eb330321ebc6e9672d73",
+        "canonical_url": "https://www.daebyskin.com/products/cleanser?country=US",
+        "destination_url": "https://www.daebyskin.com/products/cleanser?country=US",
+        "title": "Daily Cleanser",
+        "image_url": "https://www.daebyskin.com/cdn/shop/files/daily-cleanser-2641825.jpg?v=1767685448",
+        "price_amount": 19,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "attached_product_key": null,
+        "requires_seed_correction": false,
+        "seed_data": {
+          "brand": "DAEBY",
+          "title": "Daily Cleanser",
+          "description": "Daily Cleanser is a DAEBY cleanser with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Sodium C14-16 Olefin Sulfonate, Disodium Laureth Sulfosuccinate, Lauryl Betaine, Sodium Lauroyl Methyl Isethionate.",
+          "external_product_id": "ext_e1c4eb330321ebc6e9672d73",
+          "canonical_url": "https://www.daebyskin.com/products/cleanser?country=US",
+          "destination_url": "https://www.daebyskin.com/products/cleanser?country=US",
+          "price_amount": 19,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://www.daebyskin.com/cdn/shop/files/daily-cleanser-2641825.jpg?v=1767685448",
+          "image_urls": [
+            "https://www.daebyskin.com/cdn/shop/files/daily-cleanser-2641825.jpg?v=1767685448",
+            "http://www.daebyskin.com/cdn/shop/files/daily-cleanser-2641825.jpg?v=1767685448",
+            "https://www.daebyskin.com/cdn/shop/files/daily-cleanser-2641825.jpg?v=1767685448&amp;width=200",
+            "https://www.daebyskin.com/cdn/shop/files/daily-cleanser-5219868.png?v=1775565862&amp;width=200",
+            "https://www.daebyskin.com/cdn/shop/files/10_2.svg?v=1775565862&amp;width=200",
+            "https://www.daebyskin.com/cdn/shop/files/11_1.svg?v=1775565862&amp;width=200",
+            "https://www.daebyskin.com/cdn/shop/files/12.svg?v=1775565862&amp;width=200",
+            "https://www.daebyskin.com/cdn/shop/files/13.svg?v=1775565862&amp;width=200",
+            "https://www.daebyskin.com/cdn/shop/files/14.svg?v=1775565862&amp;width=200",
+            "https://www.daebyskin.com/cdn/shop/files/15.svg?v=1775565862&amp;width=200"
+          ],
+          "images": [
+            "https://www.daebyskin.com/cdn/shop/files/daily-cleanser-2641825.jpg?v=1767685448",
+            "http://www.daebyskin.com/cdn/shop/files/daily-cleanser-2641825.jpg?v=1767685448",
+            "https://www.daebyskin.com/cdn/shop/files/daily-cleanser-2641825.jpg?v=1767685448&amp;width=200",
+            "https://www.daebyskin.com/cdn/shop/files/daily-cleanser-5219868.png?v=1775565862&amp;width=200",
+            "https://www.daebyskin.com/cdn/shop/files/10_2.svg?v=1775565862&amp;width=200",
+            "https://www.daebyskin.com/cdn/shop/files/11_1.svg?v=1775565862&amp;width=200",
+            "https://www.daebyskin.com/cdn/shop/files/12.svg?v=1775565862&amp;width=200",
+            "https://www.daebyskin.com/cdn/shop/files/13.svg?v=1775565862&amp;width=200",
+            "https://www.daebyskin.com/cdn/shop/files/14.svg?v=1775565862&amp;width=200",
+            "https://www.daebyskin.com/cdn/shop/files/15.svg?v=1775565862&amp;width=200"
+          ],
+          "variants": [
+            {
+              "sku": "199284610552",
+              "variant_id": "45409374765222",
+              "url": "https://www.daebyskin.com/products/cleanser?variant=45409374765222&country=US",
+              "option_name": "Title",
+              "option_value": "Default Title",
+              "price": "19",
+              "currency": "USD",
+              "stock": "In Stock",
+              "description": "Daily Cleanser is a DAEBY cleanser with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Sodium C14-16 Olefin Sulfonate, Disodium Laureth Sulfosuccinate, Lauryl Betaine, Sodium Lauroyl Methyl Isethionate.",
+              "image_url": "https://www.daebyskin.com/cdn/shop/files/daily-cleanser-2641825.jpg?v=1767685448",
+              "image_urls": [
+                "https://www.daebyskin.com/cdn/shop/files/daily-cleanser-2641825.jpg?v=1767685448"
+              ],
+              "images": [
+                "https://www.daebyskin.com/cdn/shop/files/daily-cleanser-2641825.jpg?v=1767685448"
+              ]
+            }
+          ],
+          "category": "Skincare",
+          "category_path": [
+            "beauty",
+            "skincare",
+            "cleanse",
+            "cleanser"
+          ],
+          "catalog_category_path": "beauty/skincare/cleanse/cleanser",
+          "product_kind": "single_formula",
+          "product_family": "single_formula",
+          "product_type": "Cleanser",
+          "pdp_description_raw": "Daily Cleanser is a DAEBY cleanser with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Sodium C14-16 Olefin Sulfonate, Disodium Laureth Sulfosuccinate, Lauryl Betaine, Sodium Lauroyl Methyl Isethionate.",
+          "pdp_official_description_raw": "Daily Cleanser is a DAEBY cleanser with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Sodium C14-16 Olefin Sulfonate, Disodium Laureth Sulfosuccinate, Lauryl Betaine, Sodium Lauroyl Methyl Isethionate.",
+          "pdp_source_description_raw": "Daily Cleanser is a DAEBY cleanser with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Sodium C14-16 Olefin Sulfonate, Disodium Laureth Sulfosuccinate, Lauryl Betaine, Sodium Lauroyl Methyl Isethionate. How to Use: Work into a lather. Massage onto face and neck. Rinse away with lukewarm water. Use daily - morning and night. Ingredients: Water, Sodium C14-16 Olefin Sulfonate, Disodium Laureth Sulfosuccinate, Lauryl Betaine, Sodium Lauroyl Methyl Isethionate, Sodium Chloride, Polyquaternium-10, Caviar Extract, Squalane, Glycyrrhiza Glabra (Licorice) Root Extract, Camellia Sinensis Leaf Extract, Asiaticoside, Propolis Wax, Zingiber Officinale (Ginger) Root Extract, Schisandra Chinensis Fruit Extract, Coptis Japonica Root Extract, Allantoin, Glycerin, Hizikia Fusiforme Extract, Laminaria Japonica Extract, Plankton Extract, Sargassum Fulvellum Extract, Spirulina Platensis Extract, Butylene Glycol, Trisodium Ethylenediamine Disuccinate, Citric Acid, Chlorphenesin, Ethylhexylglycerin, Caprylyl Glycol, 2-Hexanediol",
+          "pdp_ingredients_raw": "Water, Sodium C14-16 Olefin Sulfonate, Disodium Laureth Sulfosuccinate, Lauryl Betaine, Sodium Lauroyl Methyl Isethionate, Sodium Chloride, Polyquaternium-10, Caviar Extract, Squalane, Glycyrrhiza Glabra (Licorice) Root Extract, Camellia Sinensis Leaf Extract, Asiaticoside, Propolis Wax, Zingiber Officinale (Ginger) Root Extract, Schisandra Chinensis Fruit Extract, Coptis Japonica Root Extract, Allantoin, Glycerin, Hizikia Fusiforme Extract, Laminaria Japonica Extract, Plankton Extract, Sargassum Fulvellum Extract, Spirulina Platensis Extract, Butylene Glycol, Trisodium Ethylenediamine Disuccinate, Citric Acid, Chlorphenesin, Ethylhexylglycerin, Caprylyl Glycol, 2-Hexanediol",
+          "raw_ingredient_text_clean": "Water, Sodium C14-16 Olefin Sulfonate, Disodium Laureth Sulfosuccinate, Lauryl Betaine, Sodium Lauroyl Methyl Isethionate, Sodium Chloride, Polyquaternium-10, Caviar Extract, Squalane, Glycyrrhiza Glabra (Licorice) Root Extract, Camellia Sinensis Leaf Extract, Asiaticoside, Propolis Wax, Zingiber Officinale (Ginger) Root Extract, Schisandra Chinensis Fruit Extract, Coptis Japonica Root Extract, Allantoin, Glycerin, Hizikia Fusiforme Extract, Laminaria Japonica Extract, Plankton Extract, Sargassum Fulvellum Extract, Spirulina Platensis Extract, Butylene Glycol, Trisodium Ethylenediamine Disuccinate, Citric Acid, Chlorphenesin, Ethylhexylglycerin, Caprylyl Glycol, 2-Hexanediol",
+          "ingredients_inci": [
+            "Water",
+            "Sodium C14-16 Olefin Sulfonate",
+            "Disodium Laureth Sulfosuccinate",
+            "Lauryl Betaine",
+            "Sodium Lauroyl Methyl Isethionate",
+            "Sodium Chloride",
+            "Polyquaternium-10",
+            "Caviar Extract",
+            "Squalane",
+            "Glycyrrhiza Glabra (Licorice) Root Extract",
+            "Camellia Sinensis Leaf Extract",
+            "Asiaticoside",
+            "Propolis Wax",
+            "Zingiber Officinale (Ginger) Root Extract",
+            "Schisandra Chinensis Fruit Extract",
+            "Coptis Japonica Root Extract",
+            "Allantoin",
+            "Glycerin",
+            "Hizikia Fusiforme Extract",
+            "Laminaria Japonica Extract",
+            "Plankton Extract",
+            "Sargassum Fulvellum Extract",
+            "Spirulina Platensis Extract",
+            "Butylene Glycol",
+            "Trisodium Ethylenediamine Disuccinate",
+            "Citric Acid",
+            "Chlorphenesin",
+            "Ethylhexylglycerin",
+            "Caprylyl Glycol",
+            "2-Hexanediol"
+          ],
+          "inci_list": [
+            "Water",
+            "Sodium C14-16 Olefin Sulfonate",
+            "Disodium Laureth Sulfosuccinate",
+            "Lauryl Betaine",
+            "Sodium Lauroyl Methyl Isethionate",
+            "Sodium Chloride",
+            "Polyquaternium-10",
+            "Caviar Extract",
+            "Squalane",
+            "Glycyrrhiza Glabra (Licorice) Root Extract",
+            "Camellia Sinensis Leaf Extract",
+            "Asiaticoside",
+            "Propolis Wax",
+            "Zingiber Officinale (Ginger) Root Extract",
+            "Schisandra Chinensis Fruit Extract",
+            "Coptis Japonica Root Extract",
+            "Allantoin",
+            "Glycerin",
+            "Hizikia Fusiforme Extract",
+            "Laminaria Japonica Extract",
+            "Plankton Extract",
+            "Sargassum Fulvellum Extract",
+            "Spirulina Platensis Extract",
+            "Butylene Glycol",
+            "Trisodium Ethylenediamine Disuccinate",
+            "Citric Acid",
+            "Chlorphenesin",
+            "Ethylhexylglycerin",
+            "Caprylyl Glycol",
+            "2-Hexanediol"
+          ],
+          "pdp_how_to_use_raw": "Work into a lather. Massage onto face and neck. Rinse away with lukewarm water. Use daily - morning and night.",
+          "pdp_details_sections": [
+            {
+              "heading": "How to Use",
+              "body": "Work into a lather. Massage onto face and neck. Rinse away with lukewarm water. Use daily - morning and night.",
+              "source_kind": "official_pdp_image_ocr_how_to"
+            },
+            {
+              "heading": "Ingredients",
+              "body": "Water, Sodium C14-16 Olefin Sulfonate, Disodium Laureth Sulfosuccinate, Lauryl Betaine, Sodium Lauroyl Methyl Isethionate, Sodium Chloride, Polyquaternium-10, Caviar Extract, Squalane, Glycyrrhiza Glabra (Licorice) Root Extract, Camellia Sinensis Leaf Extract, Asiaticoside, Propolis Wax, Zingiber Officinale (Ginger) Root Extract, Schisandra Chinensis Fruit Extract, Coptis Japonica Root Extract, Allantoin, Glycerin, Hizikia Fusiforme Extract, Laminaria Japonica Extract, Plankton Extract, Sargassum Fulvellum Extract, Spirulina Platensis Extract, Butylene Glycol, Trisodium Ethylenediamine Disuccinate, Citric Acid, Chlorphenesin, Ethylhexylglycerin, Caprylyl Glycol, 2-Hexanediol",
+              "source_kind": "official_shopify_pdp_ingredient_accordion"
+            }
+          ],
+          "ingredient_intel": {
+            "raw_ingredient_text_clean": "Water, Sodium C14-16 Olefin Sulfonate, Disodium Laureth Sulfosuccinate, Lauryl Betaine, Sodium Lauroyl Methyl Isethionate, Sodium Chloride, Polyquaternium-10, Caviar Extract, Squalane, Glycyrrhiza Glabra (Licorice) Root Extract, Camellia Sinensis Leaf Extract, Asiaticoside, Propolis Wax, Zingiber Officinale (Ginger) Root Extract, Schisandra Chinensis Fruit Extract, Coptis Japonica Root Extract, Allantoin, Glycerin, Hizikia Fusiforme Extract, Laminaria Japonica Extract, Plankton Extract, Sargassum Fulvellum Extract, Spirulina Platensis Extract, Butylene Glycol, Trisodium Ethylenediamine Disuccinate, Citric Acid, Chlorphenesin, Ethylhexylglycerin, Caprylyl Glycol, 2-Hexanediol",
+            "inci_raw": "Water, Sodium C14-16 Olefin Sulfonate, Disodium Laureth Sulfosuccinate, Lauryl Betaine, Sodium Lauroyl Methyl Isethionate, Sodium Chloride, Polyquaternium-10, Caviar Extract, Squalane, Glycyrrhiza Glabra (Licorice) Root Extract, Camellia Sinensis Leaf Extract, Asiaticoside, Propolis Wax, Zingiber Officinale (Ginger) Root Extract, Schisandra Chinensis Fruit Extract, Coptis Japonica Root Extract, Allantoin, Glycerin, Hizikia Fusiforme Extract, Laminaria Japonica Extract, Plankton Extract, Sargassum Fulvellum Extract, Spirulina Platensis Extract, Butylene Glycol, Trisodium Ethylenediamine Disuccinate, Citric Acid, Chlorphenesin, Ethylhexylglycerin, Caprylyl Glycol, 2-Hexanediol",
+            "inci_list": [
+              "Water",
+              "Sodium C14-16 Olefin Sulfonate",
+              "Disodium Laureth Sulfosuccinate",
+              "Lauryl Betaine",
+              "Sodium Lauroyl Methyl Isethionate",
+              "Sodium Chloride",
+              "Polyquaternium-10",
+              "Caviar Extract",
+              "Squalane",
+              "Glycyrrhiza Glabra (Licorice) Root Extract",
+              "Camellia Sinensis Leaf Extract",
+              "Asiaticoside",
+              "Propolis Wax",
+              "Zingiber Officinale (Ginger) Root Extract",
+              "Schisandra Chinensis Fruit Extract",
+              "Coptis Japonica Root Extract",
+              "Allantoin",
+              "Glycerin",
+              "Hizikia Fusiforme Extract",
+              "Laminaria Japonica Extract",
+              "Plankton Extract",
+              "Sargassum Fulvellum Extract",
+              "Spirulina Platensis Extract",
+              "Butylene Glycol",
+              "Trisodium Ethylenediamine Disuccinate",
+              "Citric Acid",
+              "Chlorphenesin",
+              "Ethylhexylglycerin",
+              "Caprylyl Glycol",
+              "2-Hexanediol"
+            ],
+            "inci_normalized": [
+              "Water",
+              "Sodium C14-16 Olefin Sulfonate",
+              "Disodium Laureth Sulfosuccinate",
+              "Lauryl Betaine",
+              "Sodium Lauroyl Methyl Isethionate",
+              "Sodium Chloride",
+              "Polyquaternium-10",
+              "Caviar Extract",
+              "Squalane",
+              "Glycyrrhiza Glabra (Licorice) Root Extract",
+              "Camellia Sinensis Leaf Extract",
+              "Asiaticoside",
+              "Propolis Wax",
+              "Zingiber Officinale (Ginger) Root Extract",
+              "Schisandra Chinensis Fruit Extract",
+              "Coptis Japonica Root Extract",
+              "Allantoin",
+              "Glycerin",
+              "Hizikia Fusiforme Extract",
+              "Laminaria Japonica Extract",
+              "Plankton Extract",
+              "Sargassum Fulvellum Extract",
+              "Spirulina Platensis Extract",
+              "Butylene Glycol",
+              "Trisodium Ethylenediamine Disuccinate",
+              "Citric Acid",
+              "Chlorphenesin",
+              "Ethylhexylglycerin",
+              "Caprylyl Glycol",
+              "2-Hexanediol"
+            ],
+            "source_kind": "official_shopify_pdp_ingredient_accordion",
+            "source_url": "https://www.daebyskin.com/products/cleanser?country=US"
+          },
+          "external_seed_snapshot_contract": {
+            "contract_version": "external_seed.snapshot_contract.v1",
+            "source": "wave19_daeby_shopify_country_us_seed_creation_manifest",
+            "authoritative": true,
+            "structured_fields_authoritative": true,
+            "legacy_fields_quarantined": true,
+            "replace_strategy": "replace_not_merge",
+            "source_url": "https://www.daebyskin.com/products/cleanser?country=US",
+            "updated_at": "2026-05-25T16:53:34.528Z"
+          },
+          "pdp_field_quality_summary": {
+            "description_raw": {
+              "source_origin": "official_shopify_country_us_pdp_html",
+              "source_quality_status": "high",
+              "source_url": "https://www.daebyskin.com/products/cleanser?country=US",
+              "reviewed_by": "codex_wave19_direct_source",
+              "reviewed_at": "2026-05-25T16:53:34.528Z"
+            },
+            "ingredients_raw": {
+              "source_origin": "official_shopify_country_us_pdp_html",
+              "source_quality_status": "high",
+              "source_url": "https://www.daebyskin.com/products/cleanser?country=US",
+              "reviewed_by": "codex_wave19_direct_source",
+              "reviewed_at": "2026-05-25T16:53:34.528Z"
+            },
+            "ingredients_inci": {
+              "source_origin": "official_shopify_country_us_pdp_html",
+              "source_quality_status": "high",
+              "source_url": "https://www.daebyskin.com/products/cleanser?country=US",
+              "reviewed_by": "codex_wave19_direct_source",
+              "reviewed_at": "2026-05-25T16:53:34.528Z"
+            },
+            "how_to_use_raw": {
+              "source_origin": "official_pdp_image_ocr_how_to",
+              "source_quality_status": "high",
+              "source_url": "https://www.daebyskin.com/products/cleanser?country=US",
+              "reviewed_by": "codex_wave19_direct_source",
+              "reviewed_at": "2026-05-25T16:53:34.528Z"
+            },
+            "details_sections": {
+              "source_origin": "official_shopify_country_us_pdp_html",
+              "source_quality_status": "high",
+              "source_url": "https://www.daebyskin.com/products/cleanser?country=US",
+              "reviewed_by": "codex_wave19_direct_source",
+              "reviewed_at": "2026-05-25T16:53:34.528Z"
+            },
+            "category": {
+              "source_origin": "official_shopify_country_us_pdp_html",
+              "source_quality_status": "high",
+              "source_url": "https://www.daebyskin.com/products/cleanser?country=US",
+              "reviewed_by": "codex_wave19_direct_source",
+              "reviewed_at": "2026-05-25T16:53:34.528Z"
+            },
+            "product_type": {
+              "source_origin": "official_shopify_country_us_pdp_html",
+              "source_quality_status": "high",
+              "source_url": "https://www.daebyskin.com/products/cleanser?country=US",
+              "reviewed_by": "codex_wave19_direct_source",
+              "reviewed_at": "2026-05-25T16:53:34.528Z"
+            },
+            "image_assets": {
+              "source_origin": "official_shopify_country_us_pdp_html",
+              "source_quality_status": "high",
+              "source_url": "https://www.daebyskin.com/products/cleanser?country=US",
+              "reviewed_by": "codex_wave19_direct_source",
+              "reviewed_at": "2026-05-25T16:53:34.528Z"
+            }
+          },
+          "pdp_field_capture_status": {
+            "description_raw": "captured",
+            "ingredients_raw": "captured",
+            "how_to_use_raw": "captured",
+            "details_sections": "captured"
+          },
+          "authority_source": {
+            "source_url": "https://www.daebyskin.com/products/cleanser?country=US",
+            "official_canonical_url": "https://www.daebyskin.com/products/cleanser",
+            "source_role": "direct_official_pdp_html",
+            "official_description_raw": "A gel-to-foam cleanser that removes daily grime without stripping your skin's natural barrier. Fresh, soft, and never tight.\nDeeply lifts oil, sweat, and pollutants\nMaintains essential moisture\nBalances skin pH\nNon-drying, gentle formula\nPreps skin for serums and moisturizers\nUse morning and night",
+            "official_ingredients_source_raw": "Water, Sodium C14-16 Olefin Sulfonate, Disodium Laureth Sulfosuccinate, Lauryl Betaine, Sodium Lauroyl Methyl Isethionate, Sodium Chloride, Polyquaternium-10, Caviar Extract, Squalane, Glycyrrhiza Glabra (Licorice) Root Extract, Camellia Sinensis Leaf Extract, Asiaticoside, Propolis Wax, Zingiber Officinale (Ginger) Root Extract, Schisandra Chinensis Fruit Extract, Coptis Japonica Root Extract, Allantoin, Glycerin, Hizikia Fusiforme Extract, Laminaria Japonica Extract, Plankton Extract, Sargassum Fulvellum Extract, Spirulina Platensis Extract, Butylene Glycol, Trisodium Ethylenediamine Disuccinate, Citric Acid, Chlorphenesin, Ethylhexylglycerin, Caprylyl Glycol, 1,2-Hexanediol",
+            "official_how_to_source_raw": "Work into a lather. Massage onto face and neck. Rinse away with lukewarm water. Use daily - morning and night.",
+            "matched_preferred_titles": [
+              "Daily Cleanser"
+            ]
+          },
+          "source_validation": {
+            "source_type": "brand_owned",
+            "source_host": "daebyskin.com",
+            "requires_multi_offer_merge_validation": false
+          },
+          "search_aliases": [
+            "Daily Cleanser",
+            "DAEBY Daily Cleanser",
+            "DAEBY Cleanser"
+          ],
+          "snapshot": {
+            "source": "wave19_daeby_shopify_country_us_official_seed_creation_manifest",
+            "extracted_at": "2026-05-25T16:53:34.528Z",
+            "canonical_url": "https://www.daebyskin.com/products/cleanser?country=US",
+            "destination_url": "https://www.daebyskin.com/products/cleanser?country=US",
+            "title": "Daily Cleanser",
+            "description": "Daily Cleanser is a DAEBY cleanser with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Sodium C14-16 Olefin Sulfonate, Disodium Laureth Sulfosuccinate, Lauryl Betaine, Sodium Lauroyl Methyl Isethionate.",
+            "image_url": "https://www.daebyskin.com/cdn/shop/files/daily-cleanser-2641825.jpg?v=1767685448",
+            "image_urls": [
+              "https://www.daebyskin.com/cdn/shop/files/daily-cleanser-2641825.jpg?v=1767685448",
+              "http://www.daebyskin.com/cdn/shop/files/daily-cleanser-2641825.jpg?v=1767685448",
+              "https://www.daebyskin.com/cdn/shop/files/daily-cleanser-2641825.jpg?v=1767685448&amp;width=200",
+              "https://www.daebyskin.com/cdn/shop/files/daily-cleanser-5219868.png?v=1775565862&amp;width=200",
+              "https://www.daebyskin.com/cdn/shop/files/10_2.svg?v=1775565862&amp;width=200",
+              "https://www.daebyskin.com/cdn/shop/files/11_1.svg?v=1775565862&amp;width=200",
+              "https://www.daebyskin.com/cdn/shop/files/12.svg?v=1775565862&amp;width=200",
+              "https://www.daebyskin.com/cdn/shop/files/13.svg?v=1775565862&amp;width=200",
+              "https://www.daebyskin.com/cdn/shop/files/14.svg?v=1775565862&amp;width=200",
+              "https://www.daebyskin.com/cdn/shop/files/15.svg?v=1775565862&amp;width=200"
+            ],
+            "images": [
+              "https://www.daebyskin.com/cdn/shop/files/daily-cleanser-2641825.jpg?v=1767685448",
+              "http://www.daebyskin.com/cdn/shop/files/daily-cleanser-2641825.jpg?v=1767685448",
+              "https://www.daebyskin.com/cdn/shop/files/daily-cleanser-2641825.jpg?v=1767685448&amp;width=200",
+              "https://www.daebyskin.com/cdn/shop/files/daily-cleanser-5219868.png?v=1775565862&amp;width=200",
+              "https://www.daebyskin.com/cdn/shop/files/10_2.svg?v=1775565862&amp;width=200",
+              "https://www.daebyskin.com/cdn/shop/files/11_1.svg?v=1775565862&amp;width=200",
+              "https://www.daebyskin.com/cdn/shop/files/12.svg?v=1775565862&amp;width=200",
+              "https://www.daebyskin.com/cdn/shop/files/13.svg?v=1775565862&amp;width=200",
+              "https://www.daebyskin.com/cdn/shop/files/14.svg?v=1775565862&amp;width=200",
+              "https://www.daebyskin.com/cdn/shop/files/15.svg?v=1775565862&amp;width=200"
+            ],
+            "variants": [
+              {
+                "sku": "199284610552",
+                "variant_id": "45409374765222",
+                "url": "https://www.daebyskin.com/products/cleanser?variant=45409374765222&country=US",
+                "option_name": "Title",
+                "option_value": "Default Title",
+                "price": "19",
+                "currency": "USD",
+                "stock": "In Stock",
+                "description": "Daily Cleanser is a DAEBY cleanser with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Sodium C14-16 Olefin Sulfonate, Disodium Laureth Sulfosuccinate, Lauryl Betaine, Sodium Lauroyl Methyl Isethionate.",
+                "image_url": "https://www.daebyskin.com/cdn/shop/files/daily-cleanser-2641825.jpg?v=1767685448",
+                "image_urls": [
+                  "https://www.daebyskin.com/cdn/shop/files/daily-cleanser-2641825.jpg?v=1767685448"
+                ],
+                "images": [
+                  "https://www.daebyskin.com/cdn/shop/files/daily-cleanser-2641825.jpg?v=1767685448"
+                ]
+              }
+            ],
+            "shopify_country": "US",
+            "product_family": "single_formula",
+            "brand": "DAEBY",
+            "external_product_id": "ext_e1c4eb330321ebc6e9672d73",
+            "price_amount": 19,
+            "price_currency": "USD",
+            "availability": "in_stock",
+            "category": "Skincare",
+            "category_path": [
+              "beauty",
+              "skincare",
+              "cleanse",
+              "cleanser"
+            ],
+            "catalog_category_path": "beauty/skincare/cleanse/cleanser",
+            "product_kind": "single_formula",
+            "product_type": "Cleanser",
+            "pdp_description_raw": "Daily Cleanser is a DAEBY cleanser with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Sodium C14-16 Olefin Sulfonate, Disodium Laureth Sulfosuccinate, Lauryl Betaine, Sodium Lauroyl Methyl Isethionate.",
+            "pdp_official_description_raw": "Daily Cleanser is a DAEBY cleanser with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Sodium C14-16 Olefin Sulfonate, Disodium Laureth Sulfosuccinate, Lauryl Betaine, Sodium Lauroyl Methyl Isethionate.",
+            "pdp_source_description_raw": "Daily Cleanser is a DAEBY cleanser with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Sodium C14-16 Olefin Sulfonate, Disodium Laureth Sulfosuccinate, Lauryl Betaine, Sodium Lauroyl Methyl Isethionate. How to Use: Work into a lather. Massage onto face and neck. Rinse away with lukewarm water. Use daily - morning and night. Ingredients: Water, Sodium C14-16 Olefin Sulfonate, Disodium Laureth Sulfosuccinate, Lauryl Betaine, Sodium Lauroyl Methyl Isethionate, Sodium Chloride, Polyquaternium-10, Caviar Extract, Squalane, Glycyrrhiza Glabra (Licorice) Root Extract, Camellia Sinensis Leaf Extract, Asiaticoside, Propolis Wax, Zingiber Officinale (Ginger) Root Extract, Schisandra Chinensis Fruit Extract, Coptis Japonica Root Extract, Allantoin, Glycerin, Hizikia Fusiforme Extract, Laminaria Japonica Extract, Plankton Extract, Sargassum Fulvellum Extract, Spirulina Platensis Extract, Butylene Glycol, Trisodium Ethylenediamine Disuccinate, Citric Acid, Chlorphenesin, Ethylhexylglycerin, Caprylyl Glycol, 2-Hexanediol",
+            "pdp_ingredients_raw": "Water, Sodium C14-16 Olefin Sulfonate, Disodium Laureth Sulfosuccinate, Lauryl Betaine, Sodium Lauroyl Methyl Isethionate, Sodium Chloride, Polyquaternium-10, Caviar Extract, Squalane, Glycyrrhiza Glabra (Licorice) Root Extract, Camellia Sinensis Leaf Extract, Asiaticoside, Propolis Wax, Zingiber Officinale (Ginger) Root Extract, Schisandra Chinensis Fruit Extract, Coptis Japonica Root Extract, Allantoin, Glycerin, Hizikia Fusiforme Extract, Laminaria Japonica Extract, Plankton Extract, Sargassum Fulvellum Extract, Spirulina Platensis Extract, Butylene Glycol, Trisodium Ethylenediamine Disuccinate, Citric Acid, Chlorphenesin, Ethylhexylglycerin, Caprylyl Glycol, 2-Hexanediol",
+            "raw_ingredient_text_clean": "Water, Sodium C14-16 Olefin Sulfonate, Disodium Laureth Sulfosuccinate, Lauryl Betaine, Sodium Lauroyl Methyl Isethionate, Sodium Chloride, Polyquaternium-10, Caviar Extract, Squalane, Glycyrrhiza Glabra (Licorice) Root Extract, Camellia Sinensis Leaf Extract, Asiaticoside, Propolis Wax, Zingiber Officinale (Ginger) Root Extract, Schisandra Chinensis Fruit Extract, Coptis Japonica Root Extract, Allantoin, Glycerin, Hizikia Fusiforme Extract, Laminaria Japonica Extract, Plankton Extract, Sargassum Fulvellum Extract, Spirulina Platensis Extract, Butylene Glycol, Trisodium Ethylenediamine Disuccinate, Citric Acid, Chlorphenesin, Ethylhexylglycerin, Caprylyl Glycol, 2-Hexanediol",
+            "ingredients_inci": [
+              "Water",
+              "Sodium C14-16 Olefin Sulfonate",
+              "Disodium Laureth Sulfosuccinate",
+              "Lauryl Betaine",
+              "Sodium Lauroyl Methyl Isethionate",
+              "Sodium Chloride",
+              "Polyquaternium-10",
+              "Caviar Extract",
+              "Squalane",
+              "Glycyrrhiza Glabra (Licorice) Root Extract",
+              "Camellia Sinensis Leaf Extract",
+              "Asiaticoside",
+              "Propolis Wax",
+              "Zingiber Officinale (Ginger) Root Extract",
+              "Schisandra Chinensis Fruit Extract",
+              "Coptis Japonica Root Extract",
+              "Allantoin",
+              "Glycerin",
+              "Hizikia Fusiforme Extract",
+              "Laminaria Japonica Extract",
+              "Plankton Extract",
+              "Sargassum Fulvellum Extract",
+              "Spirulina Platensis Extract",
+              "Butylene Glycol",
+              "Trisodium Ethylenediamine Disuccinate",
+              "Citric Acid",
+              "Chlorphenesin",
+              "Ethylhexylglycerin",
+              "Caprylyl Glycol",
+              "2-Hexanediol"
+            ],
+            "inci_list": [
+              "Water",
+              "Sodium C14-16 Olefin Sulfonate",
+              "Disodium Laureth Sulfosuccinate",
+              "Lauryl Betaine",
+              "Sodium Lauroyl Methyl Isethionate",
+              "Sodium Chloride",
+              "Polyquaternium-10",
+              "Caviar Extract",
+              "Squalane",
+              "Glycyrrhiza Glabra (Licorice) Root Extract",
+              "Camellia Sinensis Leaf Extract",
+              "Asiaticoside",
+              "Propolis Wax",
+              "Zingiber Officinale (Ginger) Root Extract",
+              "Schisandra Chinensis Fruit Extract",
+              "Coptis Japonica Root Extract",
+              "Allantoin",
+              "Glycerin",
+              "Hizikia Fusiforme Extract",
+              "Laminaria Japonica Extract",
+              "Plankton Extract",
+              "Sargassum Fulvellum Extract",
+              "Spirulina Platensis Extract",
+              "Butylene Glycol",
+              "Trisodium Ethylenediamine Disuccinate",
+              "Citric Acid",
+              "Chlorphenesin",
+              "Ethylhexylglycerin",
+              "Caprylyl Glycol",
+              "2-Hexanediol"
+            ],
+            "pdp_how_to_use_raw": "Work into a lather. Massage onto face and neck. Rinse away with lukewarm water. Use daily - morning and night.",
+            "pdp_details_sections": [
+              {
+                "heading": "How to Use",
+                "body": "Work into a lather. Massage onto face and neck. Rinse away with lukewarm water. Use daily - morning and night.",
+                "source_kind": "official_pdp_image_ocr_how_to"
+              },
+              {
+                "heading": "Ingredients",
+                "body": "Water, Sodium C14-16 Olefin Sulfonate, Disodium Laureth Sulfosuccinate, Lauryl Betaine, Sodium Lauroyl Methyl Isethionate, Sodium Chloride, Polyquaternium-10, Caviar Extract, Squalane, Glycyrrhiza Glabra (Licorice) Root Extract, Camellia Sinensis Leaf Extract, Asiaticoside, Propolis Wax, Zingiber Officinale (Ginger) Root Extract, Schisandra Chinensis Fruit Extract, Coptis Japonica Root Extract, Allantoin, Glycerin, Hizikia Fusiforme Extract, Laminaria Japonica Extract, Plankton Extract, Sargassum Fulvellum Extract, Spirulina Platensis Extract, Butylene Glycol, Trisodium Ethylenediamine Disuccinate, Citric Acid, Chlorphenesin, Ethylhexylglycerin, Caprylyl Glycol, 2-Hexanediol",
+                "source_kind": "official_shopify_pdp_ingredient_accordion"
+              }
+            ],
+            "ingredient_intel": {
+              "raw_ingredient_text_clean": "Water, Sodium C14-16 Olefin Sulfonate, Disodium Laureth Sulfosuccinate, Lauryl Betaine, Sodium Lauroyl Methyl Isethionate, Sodium Chloride, Polyquaternium-10, Caviar Extract, Squalane, Glycyrrhiza Glabra (Licorice) Root Extract, Camellia Sinensis Leaf Extract, Asiaticoside, Propolis Wax, Zingiber Officinale (Ginger) Root Extract, Schisandra Chinensis Fruit Extract, Coptis Japonica Root Extract, Allantoin, Glycerin, Hizikia Fusiforme Extract, Laminaria Japonica Extract, Plankton Extract, Sargassum Fulvellum Extract, Spirulina Platensis Extract, Butylene Glycol, Trisodium Ethylenediamine Disuccinate, Citric Acid, Chlorphenesin, Ethylhexylglycerin, Caprylyl Glycol, 2-Hexanediol",
+              "inci_raw": "Water, Sodium C14-16 Olefin Sulfonate, Disodium Laureth Sulfosuccinate, Lauryl Betaine, Sodium Lauroyl Methyl Isethionate, Sodium Chloride, Polyquaternium-10, Caviar Extract, Squalane, Glycyrrhiza Glabra (Licorice) Root Extract, Camellia Sinensis Leaf Extract, Asiaticoside, Propolis Wax, Zingiber Officinale (Ginger) Root Extract, Schisandra Chinensis Fruit Extract, Coptis Japonica Root Extract, Allantoin, Glycerin, Hizikia Fusiforme Extract, Laminaria Japonica Extract, Plankton Extract, Sargassum Fulvellum Extract, Spirulina Platensis Extract, Butylene Glycol, Trisodium Ethylenediamine Disuccinate, Citric Acid, Chlorphenesin, Ethylhexylglycerin, Caprylyl Glycol, 2-Hexanediol",
+              "inci_list": [
+                "Water",
+                "Sodium C14-16 Olefin Sulfonate",
+                "Disodium Laureth Sulfosuccinate",
+                "Lauryl Betaine",
+                "Sodium Lauroyl Methyl Isethionate",
+                "Sodium Chloride",
+                "Polyquaternium-10",
+                "Caviar Extract",
+                "Squalane",
+                "Glycyrrhiza Glabra (Licorice) Root Extract",
+                "Camellia Sinensis Leaf Extract",
+                "Asiaticoside",
+                "Propolis Wax",
+                "Zingiber Officinale (Ginger) Root Extract",
+                "Schisandra Chinensis Fruit Extract",
+                "Coptis Japonica Root Extract",
+                "Allantoin",
+                "Glycerin",
+                "Hizikia Fusiforme Extract",
+                "Laminaria Japonica Extract",
+                "Plankton Extract",
+                "Sargassum Fulvellum Extract",
+                "Spirulina Platensis Extract",
+                "Butylene Glycol",
+                "Trisodium Ethylenediamine Disuccinate",
+                "Citric Acid",
+                "Chlorphenesin",
+                "Ethylhexylglycerin",
+                "Caprylyl Glycol",
+                "2-Hexanediol"
+              ],
+              "inci_normalized": [
+                "Water",
+                "Sodium C14-16 Olefin Sulfonate",
+                "Disodium Laureth Sulfosuccinate",
+                "Lauryl Betaine",
+                "Sodium Lauroyl Methyl Isethionate",
+                "Sodium Chloride",
+                "Polyquaternium-10",
+                "Caviar Extract",
+                "Squalane",
+                "Glycyrrhiza Glabra (Licorice) Root Extract",
+                "Camellia Sinensis Leaf Extract",
+                "Asiaticoside",
+                "Propolis Wax",
+                "Zingiber Officinale (Ginger) Root Extract",
+                "Schisandra Chinensis Fruit Extract",
+                "Coptis Japonica Root Extract",
+                "Allantoin",
+                "Glycerin",
+                "Hizikia Fusiforme Extract",
+                "Laminaria Japonica Extract",
+                "Plankton Extract",
+                "Sargassum Fulvellum Extract",
+                "Spirulina Platensis Extract",
+                "Butylene Glycol",
+                "Trisodium Ethylenediamine Disuccinate",
+                "Citric Acid",
+                "Chlorphenesin",
+                "Ethylhexylglycerin",
+                "Caprylyl Glycol",
+                "2-Hexanediol"
+              ],
+              "source_kind": "official_shopify_pdp_ingredient_accordion",
+              "source_url": "https://www.daebyskin.com/products/cleanser?country=US"
+            },
+            "external_seed_snapshot_contract": {
+              "contract_version": "external_seed.snapshot_contract.v1",
+              "source": "wave19_daeby_shopify_country_us_seed_creation_manifest",
+              "authoritative": true,
+              "structured_fields_authoritative": true,
+              "legacy_fields_quarantined": true,
+              "replace_strategy": "replace_not_merge",
+              "source_url": "https://www.daebyskin.com/products/cleanser?country=US",
+              "updated_at": "2026-05-25T16:53:34.528Z"
+            },
+            "pdp_field_quality_summary": {
+              "description_raw": {
+                "source_origin": "official_shopify_country_us_pdp_html",
+                "source_quality_status": "high",
+                "source_url": "https://www.daebyskin.com/products/cleanser?country=US",
+                "reviewed_by": "codex_wave19_direct_source",
+                "reviewed_at": "2026-05-25T16:53:34.528Z"
+              },
+              "ingredients_raw": {
+                "source_origin": "official_shopify_country_us_pdp_html",
+                "source_quality_status": "high",
+                "source_url": "https://www.daebyskin.com/products/cleanser?country=US",
+                "reviewed_by": "codex_wave19_direct_source",
+                "reviewed_at": "2026-05-25T16:53:34.528Z"
+              },
+              "ingredients_inci": {
+                "source_origin": "official_shopify_country_us_pdp_html",
+                "source_quality_status": "high",
+                "source_url": "https://www.daebyskin.com/products/cleanser?country=US",
+                "reviewed_by": "codex_wave19_direct_source",
+                "reviewed_at": "2026-05-25T16:53:34.528Z"
+              },
+              "how_to_use_raw": {
+                "source_origin": "official_pdp_image_ocr_how_to",
+                "source_quality_status": "high",
+                "source_url": "https://www.daebyskin.com/products/cleanser?country=US",
+                "reviewed_by": "codex_wave19_direct_source",
+                "reviewed_at": "2026-05-25T16:53:34.528Z"
+              },
+              "details_sections": {
+                "source_origin": "official_shopify_country_us_pdp_html",
+                "source_quality_status": "high",
+                "source_url": "https://www.daebyskin.com/products/cleanser?country=US",
+                "reviewed_by": "codex_wave19_direct_source",
+                "reviewed_at": "2026-05-25T16:53:34.528Z"
+              },
+              "category": {
+                "source_origin": "official_shopify_country_us_pdp_html",
+                "source_quality_status": "high",
+                "source_url": "https://www.daebyskin.com/products/cleanser?country=US",
+                "reviewed_by": "codex_wave19_direct_source",
+                "reviewed_at": "2026-05-25T16:53:34.528Z"
+              },
+              "product_type": {
+                "source_origin": "official_shopify_country_us_pdp_html",
+                "source_quality_status": "high",
+                "source_url": "https://www.daebyskin.com/products/cleanser?country=US",
+                "reviewed_by": "codex_wave19_direct_source",
+                "reviewed_at": "2026-05-25T16:53:34.528Z"
+              },
+              "image_assets": {
+                "source_origin": "official_shopify_country_us_pdp_html",
+                "source_quality_status": "high",
+                "source_url": "https://www.daebyskin.com/products/cleanser?country=US",
+                "reviewed_by": "codex_wave19_direct_source",
+                "reviewed_at": "2026-05-25T16:53:34.528Z"
+              }
+            },
+            "pdp_field_capture_status": {
+              "description_raw": "captured",
+              "ingredients_raw": "captured",
+              "how_to_use_raw": "captured",
+              "details_sections": "captured"
+            },
+            "authority_source": {
+              "source_url": "https://www.daebyskin.com/products/cleanser?country=US",
+              "official_canonical_url": "https://www.daebyskin.com/products/cleanser",
+              "source_role": "direct_official_pdp_html",
+              "official_description_raw": "A gel-to-foam cleanser that removes daily grime without stripping your skin's natural barrier. Fresh, soft, and never tight.\nDeeply lifts oil, sweat, and pollutants\nMaintains essential moisture\nBalances skin pH\nNon-drying, gentle formula\nPreps skin for serums and moisturizers\nUse morning and night",
+              "official_ingredients_source_raw": "Water, Sodium C14-16 Olefin Sulfonate, Disodium Laureth Sulfosuccinate, Lauryl Betaine, Sodium Lauroyl Methyl Isethionate, Sodium Chloride, Polyquaternium-10, Caviar Extract, Squalane, Glycyrrhiza Glabra (Licorice) Root Extract, Camellia Sinensis Leaf Extract, Asiaticoside, Propolis Wax, Zingiber Officinale (Ginger) Root Extract, Schisandra Chinensis Fruit Extract, Coptis Japonica Root Extract, Allantoin, Glycerin, Hizikia Fusiforme Extract, Laminaria Japonica Extract, Plankton Extract, Sargassum Fulvellum Extract, Spirulina Platensis Extract, Butylene Glycol, Trisodium Ethylenediamine Disuccinate, Citric Acid, Chlorphenesin, Ethylhexylglycerin, Caprylyl Glycol, 1,2-Hexanediol",
+              "official_how_to_source_raw": "Work into a lather. Massage onto face and neck. Rinse away with lukewarm water. Use daily - morning and night.",
+              "matched_preferred_titles": [
+                "Daily Cleanser"
+              ]
+            },
+            "source_validation": {
+              "source_type": "brand_owned",
+              "source_host": "daebyskin.com",
+              "requires_multi_offer_merge_validation": false
+            },
+            "search_aliases": [
+              "Daily Cleanser",
+              "DAEBY Daily Cleanser",
+              "DAEBY Cleanser"
+            ],
+            "commerce_facts_v1": {
+              "contract_version": "commerce_facts.v1",
+              "market_id": "US",
+              "country": "US",
+              "currency_target": "USD",
+              "source_authority": "official_daeby_shopify_country_us_pdp_html",
+              "captured_at": "2026-05-25T16:53:34.528Z",
+              "evidence_url": "https://www.daebyskin.com/products/cleanser?country=US",
+              "sellable_region": {
+                "status": "unknown",
+                "countries": [],
+                "evidence_source": "official_daeby_shopify_country_us_pdp_html",
+                "confidence": "unknown",
+                "checked_at": "2026-05-25T16:53:34.528Z",
+                "reason_codes": [
+                  "shipping_destination_not_verified"
+                ],
+                "evidence_url": "https://www.daebyskin.com/products/cleanser?country=US"
+              },
+              "regional_price": {
+                "amount": 19,
+                "currency": "USD",
+                "display_raw": null,
+                "price_type": "unknown",
+                "compare_at_amount": null,
+                "compare_at_currency": null,
+                "compare_at_display_raw": null,
+                "tax_included": "unknown",
+                "confidence": "medium",
+                "market_switch_status": "ok",
+                "observed_currency": "USD",
+                "source_url": "https://www.daebyskin.com/products/cleanser?country=US",
+                "captured_at": "2026-05-25T16:53:34.528Z"
+              },
+              "availability": {
+                "status": "in_stock",
+                "source": "official_daeby_shopify_country_us_pdp_html",
+                "confidence": "medium",
+                "captured_at": "2026-05-25T16:53:34.528Z"
+              },
+              "shipping": {
+                "status": "unknown",
+                "source": "official_daeby_shopify_country_us_pdp_html",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_checkout_not_queried"
+                ],
+                "checked_at": "2026-05-25T16:53:34.528Z"
+              },
+              "promotions": [],
+              "returns": {
+                "status": "unknown",
+                "source": "official_daeby_shopify_country_us_pdp_html",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_returns_not_extracted"
+                ],
+                "checked_at": "2026-05-25T16:53:34.528Z"
+              }
+            },
+            "commerce_facts_gate": {
+              "status": "pass",
+              "market_id": "US",
+              "expected_currency": "USD",
+              "observed_currency": "USD",
+              "market_switch_status": "ok",
+              "sellable_region_status": "unknown",
+              "shipping_status": "unknown",
+              "promotions_status": "unknown",
+              "availability_status": "in_stock",
+              "problems": []
+            }
+          },
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "official_daeby_shopify_country_us_pdp_html",
+            "captured_at": "2026-05-25T16:53:34.528Z",
+            "evidence_url": "https://www.daebyskin.com/products/cleanser?country=US",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "official_daeby_shopify_country_us_pdp_html",
+              "confidence": "unknown",
+              "checked_at": "2026-05-25T16:53:34.528Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://www.daebyskin.com/products/cleanser?country=US"
+            },
+            "regional_price": {
+              "amount": 19,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.daebyskin.com/products/cleanser?country=US",
+              "captured_at": "2026-05-25T16:53:34.528Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_daeby_shopify_country_us_pdp_html",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T16:53:34.528Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "official_daeby_shopify_country_us_pdp_html",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T16:53:34.528Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "official_daeby_shopify_country_us_pdp_html",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T16:53:34.528Z"
+            }
+          },
+          "commerce_facts_gate": {
+            "status": "pass",
+            "market_id": "US",
+            "expected_currency": "USD",
+            "observed_currency": "USD",
+            "market_switch_status": "ok",
+            "sellable_region_status": "unknown",
+            "shipping_status": "unknown",
+            "promotions_status": "unknown",
+            "availability_status": "in_stock",
+            "problems": []
+          }
+        }
+      },
+      "curation_decision": {
+        "decision": "db_ready_candidate",
+        "reason_codes": [
+          "official_usd_in_stock_pdp",
+          "source_backed_ingredients_and_how_to"
+        ]
+      }
+    },
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "target_brand": "DAEBY",
+      "target_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+      "extract_status": "official_shopify_us_pdp_ready",
+      "market": "US",
+      "source_domain": "daebyskin.com",
+      "source_role": "direct_official_pdp_html",
+      "matched_preferred_titles": [
+        "Exfoliating Facial Scrub"
+      ],
+      "seed_row": {
+        "ingredient_id": null,
+        "ingredient_name": null,
+        "seed_id": "eps_2752d5a2dc5a62e09d50c96c",
+        "brand": "DAEBY",
+        "market": "US",
+        "tool": "creator_agents",
+        "status": "active",
+        "domain": "daebyskin.com",
+        "external_product_id": "ext_81f5ddbf0c3ba5da04eabf9b",
+        "canonical_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+        "destination_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+        "title": "Exfoliating Facial Scrub",
+        "image_url": "https://www.daebyskin.com/cdn/shop/files/gentle-scrub-5952419.jpg?v=1767685448",
+        "price_amount": 18,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "attached_product_key": null,
+        "requires_seed_correction": false,
+        "seed_data": {
+          "brand": "DAEBY",
+          "title": "Exfoliating Facial Scrub",
+          "description": "Exfoliating Facial Scrub is a DAEBY facial scrub with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Coco-Betaine, Sodium Lauroyl Methyl Isethionate, Oryza Sativa Powder, Polyacrylate Crosspolymer-6.",
+          "external_product_id": "ext_81f5ddbf0c3ba5da04eabf9b",
+          "canonical_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+          "destination_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+          "price_amount": 18,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://www.daebyskin.com/cdn/shop/files/gentle-scrub-5952419.jpg?v=1767685448",
+          "image_urls": [
+            "https://www.daebyskin.com/cdn/shop/files/gentle-scrub-5952419.jpg?v=1767685448",
+            "http://www.daebyskin.com/cdn/shop/files/gentle-scrub-5952419.jpg?v=1767685448",
+            "https://www.daebyskin.com/cdn/shop/files/gentle-scrub-5952419.jpg?v=1767685448&amp;width=200",
+            "https://www.daebyskin.com/cdn/shop/files/gentle-scrub-3535137.png?v=1775565943&amp;width=200",
+            "https://www.daebyskin.com/cdn/shop/files/2_1.svg?v=1775565943&amp;width=200",
+            "https://www.daebyskin.com/cdn/shop/files/3_2.svg?v=1775565943&amp;width=200",
+            "https://www.daebyskin.com/cdn/shop/files/4_1.svg?v=1775565943&amp;width=200",
+            "https://www.daebyskin.com/cdn/shop/files/5_1.svg?v=1775565943&amp;width=200",
+            "https://www.daebyskin.com/cdn/shop/files/6_1.svg?v=1775565943&amp;width=200",
+            "https://www.daebyskin.com/cdn/shop/files/7_1.svg?v=1775565943&amp;width=200"
+          ],
+          "images": [
+            "https://www.daebyskin.com/cdn/shop/files/gentle-scrub-5952419.jpg?v=1767685448",
+            "http://www.daebyskin.com/cdn/shop/files/gentle-scrub-5952419.jpg?v=1767685448",
+            "https://www.daebyskin.com/cdn/shop/files/gentle-scrub-5952419.jpg?v=1767685448&amp;width=200",
+            "https://www.daebyskin.com/cdn/shop/files/gentle-scrub-3535137.png?v=1775565943&amp;width=200",
+            "https://www.daebyskin.com/cdn/shop/files/2_1.svg?v=1775565943&amp;width=200",
+            "https://www.daebyskin.com/cdn/shop/files/3_2.svg?v=1775565943&amp;width=200",
+            "https://www.daebyskin.com/cdn/shop/files/4_1.svg?v=1775565943&amp;width=200",
+            "https://www.daebyskin.com/cdn/shop/files/5_1.svg?v=1775565943&amp;width=200",
+            "https://www.daebyskin.com/cdn/shop/files/6_1.svg?v=1775565943&amp;width=200",
+            "https://www.daebyskin.com/cdn/shop/files/7_1.svg?v=1775565943&amp;width=200"
+          ],
+          "variants": [
+            {
+              "sku": "199284310551",
+              "variant_id": "45409382662310",
+              "url": "https://www.daebyskin.com/products/gentle-scrub?variant=45409382662310&country=US",
+              "option_name": "Title",
+              "option_value": "Default Title",
+              "price": "18",
+              "currency": "USD",
+              "stock": "In Stock",
+              "description": "Exfoliating Facial Scrub is a DAEBY facial scrub with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Coco-Betaine, Sodium Lauroyl Methyl Isethionate, Oryza Sativa Powder, Polyacrylate Crosspolymer-6.",
+              "image_url": "https://www.daebyskin.com/cdn/shop/files/gentle-scrub-5952419.jpg?v=1767685448",
+              "image_urls": [
+                "https://www.daebyskin.com/cdn/shop/files/gentle-scrub-5952419.jpg?v=1767685448"
+              ],
+              "images": [
+                "https://www.daebyskin.com/cdn/shop/files/gentle-scrub-5952419.jpg?v=1767685448"
+              ]
+            }
+          ],
+          "category": "Skincare",
+          "category_path": [
+            "beauty",
+            "skincare",
+            "exfoliate",
+            "face-scrub"
+          ],
+          "catalog_category_path": "beauty/skincare/exfoliate/face-scrub",
+          "product_kind": "single_formula",
+          "product_family": "single_formula",
+          "product_type": "Facial Scrub",
+          "pdp_description_raw": "Exfoliating Facial Scrub is a DAEBY facial scrub with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Coco-Betaine, Sodium Lauroyl Methyl Isethionate, Oryza Sativa Powder, Polyacrylate Crosspolymer-6.",
+          "pdp_official_description_raw": "Exfoliating Facial Scrub is a DAEBY facial scrub with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Coco-Betaine, Sodium Lauroyl Methyl Isethionate, Oryza Sativa Powder, Polyacrylate Crosspolymer-6.",
+          "pdp_source_description_raw": "Exfoliating Facial Scrub is a DAEBY facial scrub with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Coco-Betaine, Sodium Lauroyl Methyl Isethionate, Oryza Sativa Powder, Polyacrylate Crosspolymer-6. How to Use: Apply 1-2 pumps to damp skin. Massage gently in circles. Rinse thoroughly. Use 2-3 times per week. Ingredients: Water, Coco-Betaine, Sodium Lauroyl Methyl Isethionate, Oryza Sativa Powder, Polyacrylate Crosspolymer-6, 2-Hexanediol, Arginine, Lactic Acid, Glycolic Acid, Phaseolus Angularis Seed Powder, Brassica Oleracea Italica (Broccoli) Sprout Extract, Triticum Vulgare (Wheat) Sprout Extract, Brassica Napus Sprout Extract, Lepidium Sativum Sprout Extract, Phaseolus Radiatus Sprout Extract, Glycerin, Butylene Glycol, Disodium EDTA, Ethylhexylglycerin, Fragrance, Limonene",
+          "pdp_ingredients_raw": "Water, Coco-Betaine, Sodium Lauroyl Methyl Isethionate, Oryza Sativa Powder, Polyacrylate Crosspolymer-6, 2-Hexanediol, Arginine, Lactic Acid, Glycolic Acid, Phaseolus Angularis Seed Powder, Brassica Oleracea Italica (Broccoli) Sprout Extract, Triticum Vulgare (Wheat) Sprout Extract, Brassica Napus Sprout Extract, Lepidium Sativum Sprout Extract, Phaseolus Radiatus Sprout Extract, Glycerin, Butylene Glycol, Disodium EDTA, Ethylhexylglycerin, Fragrance, Limonene",
+          "raw_ingredient_text_clean": "Water, Coco-Betaine, Sodium Lauroyl Methyl Isethionate, Oryza Sativa Powder, Polyacrylate Crosspolymer-6, 2-Hexanediol, Arginine, Lactic Acid, Glycolic Acid, Phaseolus Angularis Seed Powder, Brassica Oleracea Italica (Broccoli) Sprout Extract, Triticum Vulgare (Wheat) Sprout Extract, Brassica Napus Sprout Extract, Lepidium Sativum Sprout Extract, Phaseolus Radiatus Sprout Extract, Glycerin, Butylene Glycol, Disodium EDTA, Ethylhexylglycerin, Fragrance, Limonene",
+          "ingredients_inci": [
+            "Water",
+            "Coco-Betaine",
+            "Sodium Lauroyl Methyl Isethionate",
+            "Oryza Sativa Powder",
+            "Polyacrylate Crosspolymer-6",
+            "2-Hexanediol",
+            "Arginine",
+            "Lactic Acid",
+            "Glycolic Acid",
+            "Phaseolus Angularis Seed Powder",
+            "Brassica Oleracea Italica (Broccoli) Sprout Extract",
+            "Triticum Vulgare (Wheat) Sprout Extract",
+            "Brassica Napus Sprout Extract",
+            "Lepidium Sativum Sprout Extract",
+            "Phaseolus Radiatus Sprout Extract",
+            "Glycerin",
+            "Butylene Glycol",
+            "Disodium EDTA",
+            "Ethylhexylglycerin",
+            "Fragrance",
+            "Limonene"
+          ],
+          "inci_list": [
+            "Water",
+            "Coco-Betaine",
+            "Sodium Lauroyl Methyl Isethionate",
+            "Oryza Sativa Powder",
+            "Polyacrylate Crosspolymer-6",
+            "2-Hexanediol",
+            "Arginine",
+            "Lactic Acid",
+            "Glycolic Acid",
+            "Phaseolus Angularis Seed Powder",
+            "Brassica Oleracea Italica (Broccoli) Sprout Extract",
+            "Triticum Vulgare (Wheat) Sprout Extract",
+            "Brassica Napus Sprout Extract",
+            "Lepidium Sativum Sprout Extract",
+            "Phaseolus Radiatus Sprout Extract",
+            "Glycerin",
+            "Butylene Glycol",
+            "Disodium EDTA",
+            "Ethylhexylglycerin",
+            "Fragrance",
+            "Limonene"
+          ],
+          "pdp_how_to_use_raw": "Apply 1-2 pumps to damp skin. Massage gently in circles. Rinse thoroughly. Use 2-3 times per week.",
+          "pdp_details_sections": [
+            {
+              "heading": "How to Use",
+              "body": "Apply 1-2 pumps to damp skin. Massage gently in circles. Rinse thoroughly. Use 2-3 times per week.",
+              "source_kind": "official_pdp_image_ocr_how_to"
+            },
+            {
+              "heading": "Ingredients",
+              "body": "Water, Coco-Betaine, Sodium Lauroyl Methyl Isethionate, Oryza Sativa Powder, Polyacrylate Crosspolymer-6, 2-Hexanediol, Arginine, Lactic Acid, Glycolic Acid, Phaseolus Angularis Seed Powder, Brassica Oleracea Italica (Broccoli) Sprout Extract, Triticum Vulgare (Wheat) Sprout Extract, Brassica Napus Sprout Extract, Lepidium Sativum Sprout Extract, Phaseolus Radiatus Sprout Extract, Glycerin, Butylene Glycol, Disodium EDTA, Ethylhexylglycerin, Fragrance, Limonene",
+              "source_kind": "official_shopify_pdp_ingredient_accordion"
+            }
+          ],
+          "ingredient_intel": {
+            "raw_ingredient_text_clean": "Water, Coco-Betaine, Sodium Lauroyl Methyl Isethionate, Oryza Sativa Powder, Polyacrylate Crosspolymer-6, 2-Hexanediol, Arginine, Lactic Acid, Glycolic Acid, Phaseolus Angularis Seed Powder, Brassica Oleracea Italica (Broccoli) Sprout Extract, Triticum Vulgare (Wheat) Sprout Extract, Brassica Napus Sprout Extract, Lepidium Sativum Sprout Extract, Phaseolus Radiatus Sprout Extract, Glycerin, Butylene Glycol, Disodium EDTA, Ethylhexylglycerin, Fragrance, Limonene",
+            "inci_raw": "Water, Coco-Betaine, Sodium Lauroyl Methyl Isethionate, Oryza Sativa Powder, Polyacrylate Crosspolymer-6, 2-Hexanediol, Arginine, Lactic Acid, Glycolic Acid, Phaseolus Angularis Seed Powder, Brassica Oleracea Italica (Broccoli) Sprout Extract, Triticum Vulgare (Wheat) Sprout Extract, Brassica Napus Sprout Extract, Lepidium Sativum Sprout Extract, Phaseolus Radiatus Sprout Extract, Glycerin, Butylene Glycol, Disodium EDTA, Ethylhexylglycerin, Fragrance, Limonene",
+            "inci_list": [
+              "Water",
+              "Coco-Betaine",
+              "Sodium Lauroyl Methyl Isethionate",
+              "Oryza Sativa Powder",
+              "Polyacrylate Crosspolymer-6",
+              "2-Hexanediol",
+              "Arginine",
+              "Lactic Acid",
+              "Glycolic Acid",
+              "Phaseolus Angularis Seed Powder",
+              "Brassica Oleracea Italica (Broccoli) Sprout Extract",
+              "Triticum Vulgare (Wheat) Sprout Extract",
+              "Brassica Napus Sprout Extract",
+              "Lepidium Sativum Sprout Extract",
+              "Phaseolus Radiatus Sprout Extract",
+              "Glycerin",
+              "Butylene Glycol",
+              "Disodium EDTA",
+              "Ethylhexylglycerin",
+              "Fragrance",
+              "Limonene"
+            ],
+            "inci_normalized": [
+              "Water",
+              "Coco-Betaine",
+              "Sodium Lauroyl Methyl Isethionate",
+              "Oryza Sativa Powder",
+              "Polyacrylate Crosspolymer-6",
+              "2-Hexanediol",
+              "Arginine",
+              "Lactic Acid",
+              "Glycolic Acid",
+              "Phaseolus Angularis Seed Powder",
+              "Brassica Oleracea Italica (Broccoli) Sprout Extract",
+              "Triticum Vulgare (Wheat) Sprout Extract",
+              "Brassica Napus Sprout Extract",
+              "Lepidium Sativum Sprout Extract",
+              "Phaseolus Radiatus Sprout Extract",
+              "Glycerin",
+              "Butylene Glycol",
+              "Disodium EDTA",
+              "Ethylhexylglycerin",
+              "Fragrance",
+              "Limonene"
+            ],
+            "source_kind": "official_shopify_pdp_ingredient_accordion",
+            "source_url": "https://www.daebyskin.com/products/gentle-scrub?country=US"
+          },
+          "external_seed_snapshot_contract": {
+            "contract_version": "external_seed.snapshot_contract.v1",
+            "source": "wave19_daeby_shopify_country_us_seed_creation_manifest",
+            "authoritative": true,
+            "structured_fields_authoritative": true,
+            "legacy_fields_quarantined": true,
+            "replace_strategy": "replace_not_merge",
+            "source_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+            "updated_at": "2026-05-25T16:53:34.528Z"
+          },
+          "pdp_field_quality_summary": {
+            "description_raw": {
+              "source_origin": "official_shopify_country_us_pdp_html",
+              "source_quality_status": "high",
+              "source_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+              "reviewed_by": "codex_wave19_direct_source",
+              "reviewed_at": "2026-05-25T16:53:34.528Z"
+            },
+            "ingredients_raw": {
+              "source_origin": "official_shopify_country_us_pdp_html",
+              "source_quality_status": "high",
+              "source_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+              "reviewed_by": "codex_wave19_direct_source",
+              "reviewed_at": "2026-05-25T16:53:34.528Z"
+            },
+            "ingredients_inci": {
+              "source_origin": "official_shopify_country_us_pdp_html",
+              "source_quality_status": "high",
+              "source_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+              "reviewed_by": "codex_wave19_direct_source",
+              "reviewed_at": "2026-05-25T16:53:34.528Z"
+            },
+            "how_to_use_raw": {
+              "source_origin": "official_pdp_image_ocr_how_to",
+              "source_quality_status": "high",
+              "source_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+              "reviewed_by": "codex_wave19_direct_source",
+              "reviewed_at": "2026-05-25T16:53:34.528Z"
+            },
+            "details_sections": {
+              "source_origin": "official_shopify_country_us_pdp_html",
+              "source_quality_status": "high",
+              "source_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+              "reviewed_by": "codex_wave19_direct_source",
+              "reviewed_at": "2026-05-25T16:53:34.528Z"
+            },
+            "category": {
+              "source_origin": "official_shopify_country_us_pdp_html",
+              "source_quality_status": "high",
+              "source_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+              "reviewed_by": "codex_wave19_direct_source",
+              "reviewed_at": "2026-05-25T16:53:34.528Z"
+            },
+            "product_type": {
+              "source_origin": "official_shopify_country_us_pdp_html",
+              "source_quality_status": "high",
+              "source_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+              "reviewed_by": "codex_wave19_direct_source",
+              "reviewed_at": "2026-05-25T16:53:34.528Z"
+            },
+            "image_assets": {
+              "source_origin": "official_shopify_country_us_pdp_html",
+              "source_quality_status": "high",
+              "source_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+              "reviewed_by": "codex_wave19_direct_source",
+              "reviewed_at": "2026-05-25T16:53:34.528Z"
+            }
+          },
+          "pdp_field_capture_status": {
+            "description_raw": "captured",
+            "ingredients_raw": "captured",
+            "how_to_use_raw": "captured",
+            "details_sections": "captured"
+          },
+          "authority_source": {
+            "source_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+            "official_canonical_url": "https://www.daebyskin.com/products/gentle-scrub",
+            "source_role": "direct_official_pdp_html",
+            "official_description_raw": "Smooth. Bright. Refined. Skin-friendly particles remove dead cells and boost turnover for next-level clarity.\nGently lifts dulling dead skin cells\nStimulates natural cell turnover\nRefines texture and targets roughness\nUncovers smoother, brighter skin\nSkin-friendly particles - never harsh\nOne essential step for visible results",
+            "official_ingredients_source_raw": "Water, Coco-Betaine, Sodium Lauroyl Methyl Isethionate, Oryza Sativa Powder, Polyacrylate Crosspolymer-6, 1,2-Hexanediol, Arginine, Lactic Acid, Glycolic Acid, Phaseolus Angularis Seed Powder, Brassica Oleracea Italica (Broccoli) Sprout Extract, Triticum Vulgare (Wheat) Sprout Extract, Brassica Napus Sprout Extract, Lepidium Sativum Sprout Extract, Phaseolus Radiatus Sprout Extract, Glycerin, Butylene Glycol, Disodium EDTA, Ethylhexylglycerin, Fragrance, Limonene",
+            "official_how_to_source_raw": "Apply 1-2 pumps to damp skin. Massage gently in circles. Rinse thoroughly. Use 2-3 times per week.",
+            "matched_preferred_titles": [
+              "Exfoliating Facial Scrub"
+            ]
+          },
+          "source_validation": {
+            "source_type": "brand_owned",
+            "source_host": "daebyskin.com",
+            "requires_multi_offer_merge_validation": false
+          },
+          "search_aliases": [
+            "Exfoliating Facial Scrub",
+            "DAEBY Exfoliating Facial Scrub",
+            "DAEBY Facial Scrub"
+          ],
+          "snapshot": {
+            "source": "wave19_daeby_shopify_country_us_official_seed_creation_manifest",
+            "extracted_at": "2026-05-25T16:53:34.528Z",
+            "canonical_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+            "destination_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+            "title": "Exfoliating Facial Scrub",
+            "description": "Exfoliating Facial Scrub is a DAEBY facial scrub with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Coco-Betaine, Sodium Lauroyl Methyl Isethionate, Oryza Sativa Powder, Polyacrylate Crosspolymer-6.",
+            "image_url": "https://www.daebyskin.com/cdn/shop/files/gentle-scrub-5952419.jpg?v=1767685448",
+            "image_urls": [
+              "https://www.daebyskin.com/cdn/shop/files/gentle-scrub-5952419.jpg?v=1767685448",
+              "http://www.daebyskin.com/cdn/shop/files/gentle-scrub-5952419.jpg?v=1767685448",
+              "https://www.daebyskin.com/cdn/shop/files/gentle-scrub-5952419.jpg?v=1767685448&amp;width=200",
+              "https://www.daebyskin.com/cdn/shop/files/gentle-scrub-3535137.png?v=1775565943&amp;width=200",
+              "https://www.daebyskin.com/cdn/shop/files/2_1.svg?v=1775565943&amp;width=200",
+              "https://www.daebyskin.com/cdn/shop/files/3_2.svg?v=1775565943&amp;width=200",
+              "https://www.daebyskin.com/cdn/shop/files/4_1.svg?v=1775565943&amp;width=200",
+              "https://www.daebyskin.com/cdn/shop/files/5_1.svg?v=1775565943&amp;width=200",
+              "https://www.daebyskin.com/cdn/shop/files/6_1.svg?v=1775565943&amp;width=200",
+              "https://www.daebyskin.com/cdn/shop/files/7_1.svg?v=1775565943&amp;width=200"
+            ],
+            "images": [
+              "https://www.daebyskin.com/cdn/shop/files/gentle-scrub-5952419.jpg?v=1767685448",
+              "http://www.daebyskin.com/cdn/shop/files/gentle-scrub-5952419.jpg?v=1767685448",
+              "https://www.daebyskin.com/cdn/shop/files/gentle-scrub-5952419.jpg?v=1767685448&amp;width=200",
+              "https://www.daebyskin.com/cdn/shop/files/gentle-scrub-3535137.png?v=1775565943&amp;width=200",
+              "https://www.daebyskin.com/cdn/shop/files/2_1.svg?v=1775565943&amp;width=200",
+              "https://www.daebyskin.com/cdn/shop/files/3_2.svg?v=1775565943&amp;width=200",
+              "https://www.daebyskin.com/cdn/shop/files/4_1.svg?v=1775565943&amp;width=200",
+              "https://www.daebyskin.com/cdn/shop/files/5_1.svg?v=1775565943&amp;width=200",
+              "https://www.daebyskin.com/cdn/shop/files/6_1.svg?v=1775565943&amp;width=200",
+              "https://www.daebyskin.com/cdn/shop/files/7_1.svg?v=1775565943&amp;width=200"
+            ],
+            "variants": [
+              {
+                "sku": "199284310551",
+                "variant_id": "45409382662310",
+                "url": "https://www.daebyskin.com/products/gentle-scrub?variant=45409382662310&country=US",
+                "option_name": "Title",
+                "option_value": "Default Title",
+                "price": "18",
+                "currency": "USD",
+                "stock": "In Stock",
+                "description": "Exfoliating Facial Scrub is a DAEBY facial scrub with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Coco-Betaine, Sodium Lauroyl Methyl Isethionate, Oryza Sativa Powder, Polyacrylate Crosspolymer-6.",
+                "image_url": "https://www.daebyskin.com/cdn/shop/files/gentle-scrub-5952419.jpg?v=1767685448",
+                "image_urls": [
+                  "https://www.daebyskin.com/cdn/shop/files/gentle-scrub-5952419.jpg?v=1767685448"
+                ],
+                "images": [
+                  "https://www.daebyskin.com/cdn/shop/files/gentle-scrub-5952419.jpg?v=1767685448"
+                ]
+              }
+            ],
+            "shopify_country": "US",
+            "product_family": "single_formula",
+            "brand": "DAEBY",
+            "external_product_id": "ext_81f5ddbf0c3ba5da04eabf9b",
+            "price_amount": 18,
+            "price_currency": "USD",
+            "availability": "in_stock",
+            "category": "Skincare",
+            "category_path": [
+              "beauty",
+              "skincare",
+              "exfoliate",
+              "face-scrub"
+            ],
+            "catalog_category_path": "beauty/skincare/exfoliate/face-scrub",
+            "product_kind": "single_formula",
+            "product_type": "Facial Scrub",
+            "pdp_description_raw": "Exfoliating Facial Scrub is a DAEBY facial scrub with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Coco-Betaine, Sodium Lauroyl Methyl Isethionate, Oryza Sativa Powder, Polyacrylate Crosspolymer-6.",
+            "pdp_official_description_raw": "Exfoliating Facial Scrub is a DAEBY facial scrub with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Coco-Betaine, Sodium Lauroyl Methyl Isethionate, Oryza Sativa Powder, Polyacrylate Crosspolymer-6.",
+            "pdp_source_description_raw": "Exfoliating Facial Scrub is a DAEBY facial scrub with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Coco-Betaine, Sodium Lauroyl Methyl Isethionate, Oryza Sativa Powder, Polyacrylate Crosspolymer-6. How to Use: Apply 1-2 pumps to damp skin. Massage gently in circles. Rinse thoroughly. Use 2-3 times per week. Ingredients: Water, Coco-Betaine, Sodium Lauroyl Methyl Isethionate, Oryza Sativa Powder, Polyacrylate Crosspolymer-6, 2-Hexanediol, Arginine, Lactic Acid, Glycolic Acid, Phaseolus Angularis Seed Powder, Brassica Oleracea Italica (Broccoli) Sprout Extract, Triticum Vulgare (Wheat) Sprout Extract, Brassica Napus Sprout Extract, Lepidium Sativum Sprout Extract, Phaseolus Radiatus Sprout Extract, Glycerin, Butylene Glycol, Disodium EDTA, Ethylhexylglycerin, Fragrance, Limonene",
+            "pdp_ingredients_raw": "Water, Coco-Betaine, Sodium Lauroyl Methyl Isethionate, Oryza Sativa Powder, Polyacrylate Crosspolymer-6, 2-Hexanediol, Arginine, Lactic Acid, Glycolic Acid, Phaseolus Angularis Seed Powder, Brassica Oleracea Italica (Broccoli) Sprout Extract, Triticum Vulgare (Wheat) Sprout Extract, Brassica Napus Sprout Extract, Lepidium Sativum Sprout Extract, Phaseolus Radiatus Sprout Extract, Glycerin, Butylene Glycol, Disodium EDTA, Ethylhexylglycerin, Fragrance, Limonene",
+            "raw_ingredient_text_clean": "Water, Coco-Betaine, Sodium Lauroyl Methyl Isethionate, Oryza Sativa Powder, Polyacrylate Crosspolymer-6, 2-Hexanediol, Arginine, Lactic Acid, Glycolic Acid, Phaseolus Angularis Seed Powder, Brassica Oleracea Italica (Broccoli) Sprout Extract, Triticum Vulgare (Wheat) Sprout Extract, Brassica Napus Sprout Extract, Lepidium Sativum Sprout Extract, Phaseolus Radiatus Sprout Extract, Glycerin, Butylene Glycol, Disodium EDTA, Ethylhexylglycerin, Fragrance, Limonene",
+            "ingredients_inci": [
+              "Water",
+              "Coco-Betaine",
+              "Sodium Lauroyl Methyl Isethionate",
+              "Oryza Sativa Powder",
+              "Polyacrylate Crosspolymer-6",
+              "2-Hexanediol",
+              "Arginine",
+              "Lactic Acid",
+              "Glycolic Acid",
+              "Phaseolus Angularis Seed Powder",
+              "Brassica Oleracea Italica (Broccoli) Sprout Extract",
+              "Triticum Vulgare (Wheat) Sprout Extract",
+              "Brassica Napus Sprout Extract",
+              "Lepidium Sativum Sprout Extract",
+              "Phaseolus Radiatus Sprout Extract",
+              "Glycerin",
+              "Butylene Glycol",
+              "Disodium EDTA",
+              "Ethylhexylglycerin",
+              "Fragrance",
+              "Limonene"
+            ],
+            "inci_list": [
+              "Water",
+              "Coco-Betaine",
+              "Sodium Lauroyl Methyl Isethionate",
+              "Oryza Sativa Powder",
+              "Polyacrylate Crosspolymer-6",
+              "2-Hexanediol",
+              "Arginine",
+              "Lactic Acid",
+              "Glycolic Acid",
+              "Phaseolus Angularis Seed Powder",
+              "Brassica Oleracea Italica (Broccoli) Sprout Extract",
+              "Triticum Vulgare (Wheat) Sprout Extract",
+              "Brassica Napus Sprout Extract",
+              "Lepidium Sativum Sprout Extract",
+              "Phaseolus Radiatus Sprout Extract",
+              "Glycerin",
+              "Butylene Glycol",
+              "Disodium EDTA",
+              "Ethylhexylglycerin",
+              "Fragrance",
+              "Limonene"
+            ],
+            "pdp_how_to_use_raw": "Apply 1-2 pumps to damp skin. Massage gently in circles. Rinse thoroughly. Use 2-3 times per week.",
+            "pdp_details_sections": [
+              {
+                "heading": "How to Use",
+                "body": "Apply 1-2 pumps to damp skin. Massage gently in circles. Rinse thoroughly. Use 2-3 times per week.",
+                "source_kind": "official_pdp_image_ocr_how_to"
+              },
+              {
+                "heading": "Ingredients",
+                "body": "Water, Coco-Betaine, Sodium Lauroyl Methyl Isethionate, Oryza Sativa Powder, Polyacrylate Crosspolymer-6, 2-Hexanediol, Arginine, Lactic Acid, Glycolic Acid, Phaseolus Angularis Seed Powder, Brassica Oleracea Italica (Broccoli) Sprout Extract, Triticum Vulgare (Wheat) Sprout Extract, Brassica Napus Sprout Extract, Lepidium Sativum Sprout Extract, Phaseolus Radiatus Sprout Extract, Glycerin, Butylene Glycol, Disodium EDTA, Ethylhexylglycerin, Fragrance, Limonene",
+                "source_kind": "official_shopify_pdp_ingredient_accordion"
+              }
+            ],
+            "ingredient_intel": {
+              "raw_ingredient_text_clean": "Water, Coco-Betaine, Sodium Lauroyl Methyl Isethionate, Oryza Sativa Powder, Polyacrylate Crosspolymer-6, 2-Hexanediol, Arginine, Lactic Acid, Glycolic Acid, Phaseolus Angularis Seed Powder, Brassica Oleracea Italica (Broccoli) Sprout Extract, Triticum Vulgare (Wheat) Sprout Extract, Brassica Napus Sprout Extract, Lepidium Sativum Sprout Extract, Phaseolus Radiatus Sprout Extract, Glycerin, Butylene Glycol, Disodium EDTA, Ethylhexylglycerin, Fragrance, Limonene",
+              "inci_raw": "Water, Coco-Betaine, Sodium Lauroyl Methyl Isethionate, Oryza Sativa Powder, Polyacrylate Crosspolymer-6, 2-Hexanediol, Arginine, Lactic Acid, Glycolic Acid, Phaseolus Angularis Seed Powder, Brassica Oleracea Italica (Broccoli) Sprout Extract, Triticum Vulgare (Wheat) Sprout Extract, Brassica Napus Sprout Extract, Lepidium Sativum Sprout Extract, Phaseolus Radiatus Sprout Extract, Glycerin, Butylene Glycol, Disodium EDTA, Ethylhexylglycerin, Fragrance, Limonene",
+              "inci_list": [
+                "Water",
+                "Coco-Betaine",
+                "Sodium Lauroyl Methyl Isethionate",
+                "Oryza Sativa Powder",
+                "Polyacrylate Crosspolymer-6",
+                "2-Hexanediol",
+                "Arginine",
+                "Lactic Acid",
+                "Glycolic Acid",
+                "Phaseolus Angularis Seed Powder",
+                "Brassica Oleracea Italica (Broccoli) Sprout Extract",
+                "Triticum Vulgare (Wheat) Sprout Extract",
+                "Brassica Napus Sprout Extract",
+                "Lepidium Sativum Sprout Extract",
+                "Phaseolus Radiatus Sprout Extract",
+                "Glycerin",
+                "Butylene Glycol",
+                "Disodium EDTA",
+                "Ethylhexylglycerin",
+                "Fragrance",
+                "Limonene"
+              ],
+              "inci_normalized": [
+                "Water",
+                "Coco-Betaine",
+                "Sodium Lauroyl Methyl Isethionate",
+                "Oryza Sativa Powder",
+                "Polyacrylate Crosspolymer-6",
+                "2-Hexanediol",
+                "Arginine",
+                "Lactic Acid",
+                "Glycolic Acid",
+                "Phaseolus Angularis Seed Powder",
+                "Brassica Oleracea Italica (Broccoli) Sprout Extract",
+                "Triticum Vulgare (Wheat) Sprout Extract",
+                "Brassica Napus Sprout Extract",
+                "Lepidium Sativum Sprout Extract",
+                "Phaseolus Radiatus Sprout Extract",
+                "Glycerin",
+                "Butylene Glycol",
+                "Disodium EDTA",
+                "Ethylhexylglycerin",
+                "Fragrance",
+                "Limonene"
+              ],
+              "source_kind": "official_shopify_pdp_ingredient_accordion",
+              "source_url": "https://www.daebyskin.com/products/gentle-scrub?country=US"
+            },
+            "external_seed_snapshot_contract": {
+              "contract_version": "external_seed.snapshot_contract.v1",
+              "source": "wave19_daeby_shopify_country_us_seed_creation_manifest",
+              "authoritative": true,
+              "structured_fields_authoritative": true,
+              "legacy_fields_quarantined": true,
+              "replace_strategy": "replace_not_merge",
+              "source_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+              "updated_at": "2026-05-25T16:53:34.528Z"
+            },
+            "pdp_field_quality_summary": {
+              "description_raw": {
+                "source_origin": "official_shopify_country_us_pdp_html",
+                "source_quality_status": "high",
+                "source_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+                "reviewed_by": "codex_wave19_direct_source",
+                "reviewed_at": "2026-05-25T16:53:34.528Z"
+              },
+              "ingredients_raw": {
+                "source_origin": "official_shopify_country_us_pdp_html",
+                "source_quality_status": "high",
+                "source_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+                "reviewed_by": "codex_wave19_direct_source",
+                "reviewed_at": "2026-05-25T16:53:34.528Z"
+              },
+              "ingredients_inci": {
+                "source_origin": "official_shopify_country_us_pdp_html",
+                "source_quality_status": "high",
+                "source_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+                "reviewed_by": "codex_wave19_direct_source",
+                "reviewed_at": "2026-05-25T16:53:34.528Z"
+              },
+              "how_to_use_raw": {
+                "source_origin": "official_pdp_image_ocr_how_to",
+                "source_quality_status": "high",
+                "source_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+                "reviewed_by": "codex_wave19_direct_source",
+                "reviewed_at": "2026-05-25T16:53:34.528Z"
+              },
+              "details_sections": {
+                "source_origin": "official_shopify_country_us_pdp_html",
+                "source_quality_status": "high",
+                "source_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+                "reviewed_by": "codex_wave19_direct_source",
+                "reviewed_at": "2026-05-25T16:53:34.528Z"
+              },
+              "category": {
+                "source_origin": "official_shopify_country_us_pdp_html",
+                "source_quality_status": "high",
+                "source_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+                "reviewed_by": "codex_wave19_direct_source",
+                "reviewed_at": "2026-05-25T16:53:34.528Z"
+              },
+              "product_type": {
+                "source_origin": "official_shopify_country_us_pdp_html",
+                "source_quality_status": "high",
+                "source_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+                "reviewed_by": "codex_wave19_direct_source",
+                "reviewed_at": "2026-05-25T16:53:34.528Z"
+              },
+              "image_assets": {
+                "source_origin": "official_shopify_country_us_pdp_html",
+                "source_quality_status": "high",
+                "source_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+                "reviewed_by": "codex_wave19_direct_source",
+                "reviewed_at": "2026-05-25T16:53:34.528Z"
+              }
+            },
+            "pdp_field_capture_status": {
+              "description_raw": "captured",
+              "ingredients_raw": "captured",
+              "how_to_use_raw": "captured",
+              "details_sections": "captured"
+            },
+            "authority_source": {
+              "source_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+              "official_canonical_url": "https://www.daebyskin.com/products/gentle-scrub",
+              "source_role": "direct_official_pdp_html",
+              "official_description_raw": "Smooth. Bright. Refined. Skin-friendly particles remove dead cells and boost turnover for next-level clarity.\nGently lifts dulling dead skin cells\nStimulates natural cell turnover\nRefines texture and targets roughness\nUncovers smoother, brighter skin\nSkin-friendly particles - never harsh\nOne essential step for visible results",
+              "official_ingredients_source_raw": "Water, Coco-Betaine, Sodium Lauroyl Methyl Isethionate, Oryza Sativa Powder, Polyacrylate Crosspolymer-6, 1,2-Hexanediol, Arginine, Lactic Acid, Glycolic Acid, Phaseolus Angularis Seed Powder, Brassica Oleracea Italica (Broccoli) Sprout Extract, Triticum Vulgare (Wheat) Sprout Extract, Brassica Napus Sprout Extract, Lepidium Sativum Sprout Extract, Phaseolus Radiatus Sprout Extract, Glycerin, Butylene Glycol, Disodium EDTA, Ethylhexylglycerin, Fragrance, Limonene",
+              "official_how_to_source_raw": "Apply 1-2 pumps to damp skin. Massage gently in circles. Rinse thoroughly. Use 2-3 times per week.",
+              "matched_preferred_titles": [
+                "Exfoliating Facial Scrub"
+              ]
+            },
+            "source_validation": {
+              "source_type": "brand_owned",
+              "source_host": "daebyskin.com",
+              "requires_multi_offer_merge_validation": false
+            },
+            "search_aliases": [
+              "Exfoliating Facial Scrub",
+              "DAEBY Exfoliating Facial Scrub",
+              "DAEBY Facial Scrub"
+            ],
+            "commerce_facts_v1": {
+              "contract_version": "commerce_facts.v1",
+              "market_id": "US",
+              "country": "US",
+              "currency_target": "USD",
+              "source_authority": "official_daeby_shopify_country_us_pdp_html",
+              "captured_at": "2026-05-25T16:53:34.528Z",
+              "evidence_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+              "sellable_region": {
+                "status": "unknown",
+                "countries": [],
+                "evidence_source": "official_daeby_shopify_country_us_pdp_html",
+                "confidence": "unknown",
+                "checked_at": "2026-05-25T16:53:34.528Z",
+                "reason_codes": [
+                  "shipping_destination_not_verified"
+                ],
+                "evidence_url": "https://www.daebyskin.com/products/gentle-scrub?country=US"
+              },
+              "regional_price": {
+                "amount": 18,
+                "currency": "USD",
+                "display_raw": null,
+                "price_type": "unknown",
+                "compare_at_amount": null,
+                "compare_at_currency": null,
+                "compare_at_display_raw": null,
+                "tax_included": "unknown",
+                "confidence": "medium",
+                "market_switch_status": "ok",
+                "observed_currency": "USD",
+                "source_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+                "captured_at": "2026-05-25T16:53:34.528Z"
+              },
+              "availability": {
+                "status": "in_stock",
+                "source": "official_daeby_shopify_country_us_pdp_html",
+                "confidence": "medium",
+                "captured_at": "2026-05-25T16:53:34.528Z"
+              },
+              "shipping": {
+                "status": "unknown",
+                "source": "official_daeby_shopify_country_us_pdp_html",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_checkout_not_queried"
+                ],
+                "checked_at": "2026-05-25T16:53:34.528Z"
+              },
+              "promotions": [],
+              "returns": {
+                "status": "unknown",
+                "source": "official_daeby_shopify_country_us_pdp_html",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_returns_not_extracted"
+                ],
+                "checked_at": "2026-05-25T16:53:34.528Z"
+              }
+            },
+            "commerce_facts_gate": {
+              "status": "pass",
+              "market_id": "US",
+              "expected_currency": "USD",
+              "observed_currency": "USD",
+              "market_switch_status": "ok",
+              "sellable_region_status": "unknown",
+              "shipping_status": "unknown",
+              "promotions_status": "unknown",
+              "availability_status": "in_stock",
+              "problems": []
+            }
+          },
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "official_daeby_shopify_country_us_pdp_html",
+            "captured_at": "2026-05-25T16:53:34.528Z",
+            "evidence_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "official_daeby_shopify_country_us_pdp_html",
+              "confidence": "unknown",
+              "checked_at": "2026-05-25T16:53:34.528Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://www.daebyskin.com/products/gentle-scrub?country=US"
+            },
+            "regional_price": {
+              "amount": 18,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+              "captured_at": "2026-05-25T16:53:34.528Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_daeby_shopify_country_us_pdp_html",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T16:53:34.528Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "official_daeby_shopify_country_us_pdp_html",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T16:53:34.528Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "official_daeby_shopify_country_us_pdp_html",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T16:53:34.528Z"
+            }
+          },
+          "commerce_facts_gate": {
+            "status": "pass",
+            "market_id": "US",
+            "expected_currency": "USD",
+            "observed_currency": "USD",
+            "market_switch_status": "ok",
+            "sellable_region_status": "unknown",
+            "shipping_status": "unknown",
+            "promotions_status": "unknown",
+            "availability_status": "in_stock",
+            "problems": []
+          }
+        }
+      },
+      "curation_decision": {
+        "decision": "db_ready_candidate",
+        "reason_codes": [
+          "official_usd_in_stock_pdp",
+          "source_backed_ingredients_and_how_to"
+        ]
+      }
+    },
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "target_brand": "Seresilk",
+      "target_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+      "extract_status": "official_shopify_us_pdp_ready",
+      "market": "US",
+      "source_domain": "seresilk.com.au",
+      "source_role": "direct_official_pdp_html",
+      "matched_preferred_titles": [
+        "Pure Silk Exfoliator"
+      ],
+      "seed_row": {
+        "ingredient_id": null,
+        "ingredient_name": null,
+        "seed_id": "eps_fae4f44625d308fe8b47149b",
+        "brand": "Seresilk",
+        "market": "US",
+        "tool": "creator_agents",
+        "status": "active",
+        "domain": "seresilk.com.au",
+        "external_product_id": "ext_4a50d003cfa7b0e4c7fc2f01",
+        "canonical_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+        "destination_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+        "title": "Pure Silk Exfoliator",
+        "image_url": "https://seresilk.com.au/cdn/shop/files/Ecomm_Square_PureSilkExfoliator.jpg?v=1753242189&width=1024",
+        "price_amount": 43.92,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "attached_product_key": null,
+        "requires_seed_correction": false,
+        "seed_data": {
+          "brand": "Seresilk",
+          "title": "Pure Silk Exfoliator",
+          "description": "Pure Silk Exfoliator is a Seresilk reusable silk skincare exfoliator with source-backed use directions and material details. INCI is not applicable because this reviewed item is a skincare tool, not a formula.",
+          "external_product_id": "ext_4a50d003cfa7b0e4c7fc2f01",
+          "canonical_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+          "destination_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+          "price_amount": 43.92,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://seresilk.com.au/cdn/shop/files/Ecomm_Square_PureSilkExfoliator.jpg?v=1753242189&width=1024",
+          "image_urls": [
+            "https://seresilk.com.au/cdn/shop/files/Ecomm_Square_PureSilkExfoliator.jpg?v=1753242189&width=1024",
+            "http://seresilk.com.au/cdn/shop/files/Ecomm_Square_PureSilkExfoliator.jpg?v=1753242189&width=1024",
+            "https://seresilk.com.au/cdn/shop/files/Shop_Collection.webp?v=1765592792&width=320",
+            "https://seresilk.com.au/cdn/shop/files/Discover_Silk.webp?v=1765592792&width=320",
+            "https://seresilk.com.au/cdn/shop/files/EditorialBackground1Vertical.webp?v=1752627013&width=320",
+            "https://seresilk.com.au/cdn/shop/files/Texture_Square_PureSilkExfoliator.webp?v=1753242189&width=320",
+            "https://seresilk.com.au/cdn/shop/files/EditorialPureSilkExfoliatorSquare.webp?v=1753242189&width=320",
+            "https://seresilk.com.au/cdn/shop/files/CocoonCheek.webp?v=1752597163&width=320",
+            "https://seresilk.com.au/cdn/shop/files/MulberryLeafSproutSquare.webp?v=1752604441&width=320",
+            "https://seresilk.com.au/cdn/shop/files/EditorialExfoliator.webp?v=1752603631&width=320"
+          ],
+          "images": [
+            "https://seresilk.com.au/cdn/shop/files/Ecomm_Square_PureSilkExfoliator.jpg?v=1753242189&width=1024",
+            "http://seresilk.com.au/cdn/shop/files/Ecomm_Square_PureSilkExfoliator.jpg?v=1753242189&width=1024",
+            "https://seresilk.com.au/cdn/shop/files/Shop_Collection.webp?v=1765592792&width=320",
+            "https://seresilk.com.au/cdn/shop/files/Discover_Silk.webp?v=1765592792&width=320",
+            "https://seresilk.com.au/cdn/shop/files/EditorialBackground1Vertical.webp?v=1752627013&width=320",
+            "https://seresilk.com.au/cdn/shop/files/Texture_Square_PureSilkExfoliator.webp?v=1753242189&width=320",
+            "https://seresilk.com.au/cdn/shop/files/EditorialPureSilkExfoliatorSquare.webp?v=1753242189&width=320",
+            "https://seresilk.com.au/cdn/shop/files/CocoonCheek.webp?v=1752597163&width=320",
+            "https://seresilk.com.au/cdn/shop/files/MulberryLeafSproutSquare.webp?v=1752604441&width=320",
+            "https://seresilk.com.au/cdn/shop/files/EditorialExfoliator.webp?v=1752603631&width=320"
+          ],
+          "variants": [
+            {
+              "sku": "7698800719",
+              "variant_id": "40087698800719",
+              "url": "https://seresilk.com.au/products/pure-silk-exfoliator?variant=40087698800719&country=US",
+              "option_name": "Title",
+              "option_value": "Default Title",
+              "price": "43.92",
+              "currency": "USD",
+              "stock": "In Stock",
+              "description": "Pure Silk Exfoliator is a Seresilk reusable silk skincare exfoliator with source-backed use directions and material details. INCI is not applicable because this reviewed item is a skincare tool, not a formula.",
+              "image_url": "https://seresilk.com.au/cdn/shop/files/Ecomm_Square_PureSilkExfoliator.jpg?v=1753242189",
+              "image_urls": [
+                "https://seresilk.com.au/cdn/shop/files/Ecomm_Square_PureSilkExfoliator.jpg?v=1753242189"
+              ],
+              "images": [
+                "https://seresilk.com.au/cdn/shop/files/Ecomm_Square_PureSilkExfoliator.jpg?v=1753242189"
+              ]
+            }
+          ],
+          "category": "Beauty Tool",
+          "category_path": [
+            "beauty",
+            "skincare",
+            "tools",
+            "exfoliator"
+          ],
+          "catalog_category_path": "beauty/skincare/tools/exfoliator",
+          "product_kind": "accessory",
+          "product_family": "accessory",
+          "product_type": "Skincare Tool",
+          "pdp_description_raw": "Pure Silk Exfoliator is a Seresilk reusable silk skincare exfoliator with source-backed use directions and material details. INCI is not applicable because this reviewed item is a skincare tool, not a formula.",
+          "pdp_official_description_raw": "Pure Silk Exfoliator is a Seresilk reusable silk skincare exfoliator with source-backed use directions and material details. INCI is not applicable because this reviewed item is a skincare tool, not a formula.",
+          "pdp_source_description_raw": "Pure Silk Exfoliator is a Seresilk reusable silk skincare exfoliator with source-backed use directions and material details. INCI is not applicable because this reviewed item is a skincare tool, not a formula. How to Use: Soften the Pure Silk Exfoliator by running it under warm water for 10–15 seconds. Slip over the fingertip and massage gently across the cheeks, forehead, and décolletage in circular motions. After use, allow the cocoon to air dry in a well-ventilated space. Each Pure Silk Exfoliator allows for 2-3 uses and is biodegradable. Finish with Silk Night Serum and Silk Night Cream. Materials: INCI not applicable. Material source: Pure, raw and unrefined silk / silk cocoon.",
+          "pdp_ingredients_raw": "INCI not applicable. Material source: Pure, raw and unrefined silk / silk cocoon.",
+          "raw_ingredient_text_clean": "",
+          "ingredients_inci": [],
+          "inci_list": [],
+          "pdp_how_to_use_raw": "Soften the Pure Silk Exfoliator by running it under warm water for 10–15 seconds. Slip over the fingertip and massage gently across the cheeks, forehead, and décolletage in circular motions. After use, allow the cocoon to air dry in a well-ventilated space. Each Pure Silk Exfoliator allows for 2-3 uses and is biodegradable. Finish with Silk Night Serum and Silk Night Cream.",
+          "pdp_details_sections": [
+            {
+              "heading": "How to Use",
+              "body": "Soften the Pure Silk Exfoliator by running it under warm water for 10–15 seconds. Slip over the fingertip and massage gently across the cheeks, forehead, and décolletage in circular motions. After use, allow the cocoon to air dry in a well-ventilated space. Each Pure Silk Exfoliator allows for 2-3 uses and is biodegradable. Finish with Silk Night Serum and Silk Night Cream.",
+              "source_kind": "official_shopify_pdp_how_to_tab"
+            },
+            {
+              "heading": "Materials",
+              "body": "INCI not applicable. Material source: Pure, raw and unrefined silk / silk cocoon.",
+              "source_kind": "official_shopify_pdp_materials_tab"
+            }
+          ],
+          "ingredient_intel": {
+            "not_applicable": true,
+            "inci_applicability": {
+              "status": "not_applicable",
+              "reason": "reviewed_skincare_tool_not_formula"
+            },
+            "not_applicable_reason": "reviewed_skincare_tool_not_formula",
+            "source_kind": "official_shopify_pdp_materials_tab",
+            "source_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US"
+          },
+          "external_seed_snapshot_contract": {
+            "contract_version": "external_seed.snapshot_contract.v1",
+            "source": "wave19_seresilk_shopify_country_us_seed_creation_manifest",
+            "authoritative": true,
+            "structured_fields_authoritative": true,
+            "legacy_fields_quarantined": true,
+            "replace_strategy": "replace_not_merge",
+            "source_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+            "updated_at": "2026-05-25T16:53:34.528Z"
+          },
+          "pdp_field_quality_summary": {
+            "description_raw": {
+              "source_origin": "official_shopify_country_us_pdp_html",
+              "source_quality_status": "high",
+              "source_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+              "reviewed_by": "codex_wave19_direct_source",
+              "reviewed_at": "2026-05-25T16:53:34.528Z"
+            },
+            "ingredients_raw": {
+              "source_origin": "official_shopify_country_us_pdp_html",
+              "source_quality_status": "reviewed_not_applicable",
+              "source_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+              "reviewed_by": "codex_wave19_direct_source",
+              "reviewed_at": "2026-05-25T16:53:34.528Z",
+              "not_applicable_reason": "reviewed_skincare_tool_not_formula"
+            },
+            "ingredients_inci": {
+              "source_origin": "official_shopify_country_us_pdp_html",
+              "source_quality_status": "reviewed_not_applicable",
+              "source_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+              "reviewed_by": "codex_wave19_direct_source",
+              "reviewed_at": "2026-05-25T16:53:34.528Z",
+              "not_applicable_reason": "reviewed_skincare_tool_not_formula"
+            },
+            "how_to_use_raw": {
+              "source_origin": "official_shopify_country_us_pdp_html",
+              "source_quality_status": "high",
+              "source_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+              "reviewed_by": "codex_wave19_direct_source",
+              "reviewed_at": "2026-05-25T16:53:34.528Z"
+            },
+            "details_sections": {
+              "source_origin": "official_shopify_country_us_pdp_html",
+              "source_quality_status": "high",
+              "source_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+              "reviewed_by": "codex_wave19_direct_source",
+              "reviewed_at": "2026-05-25T16:53:34.528Z"
+            },
+            "category": {
+              "source_origin": "official_shopify_country_us_pdp_html",
+              "source_quality_status": "high",
+              "source_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+              "reviewed_by": "codex_wave19_direct_source",
+              "reviewed_at": "2026-05-25T16:53:34.528Z"
+            },
+            "product_type": {
+              "source_origin": "official_shopify_country_us_pdp_html",
+              "source_quality_status": "high",
+              "source_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+              "reviewed_by": "codex_wave19_direct_source",
+              "reviewed_at": "2026-05-25T16:53:34.528Z"
+            },
+            "image_assets": {
+              "source_origin": "official_shopify_country_us_pdp_html",
+              "source_quality_status": "high",
+              "source_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+              "reviewed_by": "codex_wave19_direct_source",
+              "reviewed_at": "2026-05-25T16:53:34.528Z"
+            }
+          },
+          "pdp_field_capture_status": {
+            "description_raw": "captured",
+            "ingredients_raw": "not_applicable",
+            "how_to_use_raw": "captured",
+            "details_sections": "captured"
+          },
+          "authority_source": {
+            "source_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+            "official_canonical_url": "https://seresilk.com.au/products/pure-silk-exfoliator",
+            "source_role": "direct_official_pdp_html",
+            "official_description_raw": "150ml / 12 Pieces \nEmbrace the purest expression of nature’s most sacred fibre.\nCrafted from 100% pure, cruelty-free silk, this reusable exfoliator glides effortlessly across the skin, delicately lifting away impurities and surface buildup. Its unique fibre structure supports skin renewal, helping to smooth texture, reduce the appearance of fine lines, and improve elasticity.\nWith continued use, the complexion appears clearer, more refined, and visibly revitalised—revealing the skin’s natural luminosity.\nDermatologically tested and approved across clinical trials.\nBENEFITS \nImmediately: Skin feels softened and visibly polished.\nOver time: Skin appears smoother, more even-toned, and refined in texture.\nTESTING\n(1) Clinical patch test conducted on 55 healthy volunteers.\n(2) 50% of participants had self-assessed sensitive skin.\n(3) Tested under repeated application conditions for 3 weeks.\n(4) No visible reactions observed during or after application.\n(5) Clinically confirmed as non-irritating and suitable for all skin types.",
+            "official_ingredients_source_raw": "Pure, raw & unrefined silk Silk Cocoon 100% biodegradable; discard with consideration.",
+            "official_how_to_source_raw": "Soften the Pure Silk Exfoliator by running it under warm water for 10–15 seconds. Slip over the fingertip and massage gently across the cheeks, forehead, and décolletage in circular motions. After use, allow the cocoon to air dry in a well-ventilated space. Each Pure Silk Exfoliator allows for 2-3 uses and is biodegradable. Finish with Silk Night Serum and Silk Night Cream.",
+            "matched_preferred_titles": [
+              "Pure Silk Exfoliator"
+            ]
+          },
+          "source_validation": {
+            "source_type": "brand_owned",
+            "source_host": "seresilk.com.au",
+            "requires_multi_offer_merge_validation": false
+          },
+          "search_aliases": [
+            "Pure Silk Exfoliator",
+            "Seresilk Pure Silk Exfoliator",
+            "Seresilk Skincare Tool"
+          ],
+          "ingredient_remediation_v1": {
+            "action": "mark_inci_not_applicable",
+            "source_quality_status": "reviewed_not_applicable",
+            "reason": "reviewed_skincare_tool_not_formula"
+          },
+          "snapshot": {
+            "source": "wave19_seresilk_shopify_country_us_official_seed_creation_manifest",
+            "extracted_at": "2026-05-25T16:53:34.528Z",
+            "canonical_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+            "destination_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+            "title": "Pure Silk Exfoliator",
+            "description": "Pure Silk Exfoliator is a Seresilk reusable silk skincare exfoliator with source-backed use directions and material details. INCI is not applicable because this reviewed item is a skincare tool, not a formula.",
+            "image_url": "https://seresilk.com.au/cdn/shop/files/Ecomm_Square_PureSilkExfoliator.jpg?v=1753242189&width=1024",
+            "image_urls": [
+              "https://seresilk.com.au/cdn/shop/files/Ecomm_Square_PureSilkExfoliator.jpg?v=1753242189&width=1024",
+              "http://seresilk.com.au/cdn/shop/files/Ecomm_Square_PureSilkExfoliator.jpg?v=1753242189&width=1024",
+              "https://seresilk.com.au/cdn/shop/files/Shop_Collection.webp?v=1765592792&width=320",
+              "https://seresilk.com.au/cdn/shop/files/Discover_Silk.webp?v=1765592792&width=320",
+              "https://seresilk.com.au/cdn/shop/files/EditorialBackground1Vertical.webp?v=1752627013&width=320",
+              "https://seresilk.com.au/cdn/shop/files/Texture_Square_PureSilkExfoliator.webp?v=1753242189&width=320",
+              "https://seresilk.com.au/cdn/shop/files/EditorialPureSilkExfoliatorSquare.webp?v=1753242189&width=320",
+              "https://seresilk.com.au/cdn/shop/files/CocoonCheek.webp?v=1752597163&width=320",
+              "https://seresilk.com.au/cdn/shop/files/MulberryLeafSproutSquare.webp?v=1752604441&width=320",
+              "https://seresilk.com.au/cdn/shop/files/EditorialExfoliator.webp?v=1752603631&width=320"
+            ],
+            "images": [
+              "https://seresilk.com.au/cdn/shop/files/Ecomm_Square_PureSilkExfoliator.jpg?v=1753242189&width=1024",
+              "http://seresilk.com.au/cdn/shop/files/Ecomm_Square_PureSilkExfoliator.jpg?v=1753242189&width=1024",
+              "https://seresilk.com.au/cdn/shop/files/Shop_Collection.webp?v=1765592792&width=320",
+              "https://seresilk.com.au/cdn/shop/files/Discover_Silk.webp?v=1765592792&width=320",
+              "https://seresilk.com.au/cdn/shop/files/EditorialBackground1Vertical.webp?v=1752627013&width=320",
+              "https://seresilk.com.au/cdn/shop/files/Texture_Square_PureSilkExfoliator.webp?v=1753242189&width=320",
+              "https://seresilk.com.au/cdn/shop/files/EditorialPureSilkExfoliatorSquare.webp?v=1753242189&width=320",
+              "https://seresilk.com.au/cdn/shop/files/CocoonCheek.webp?v=1752597163&width=320",
+              "https://seresilk.com.au/cdn/shop/files/MulberryLeafSproutSquare.webp?v=1752604441&width=320",
+              "https://seresilk.com.au/cdn/shop/files/EditorialExfoliator.webp?v=1752603631&width=320"
+            ],
+            "variants": [
+              {
+                "sku": "7698800719",
+                "variant_id": "40087698800719",
+                "url": "https://seresilk.com.au/products/pure-silk-exfoliator?variant=40087698800719&country=US",
+                "option_name": "Title",
+                "option_value": "Default Title",
+                "price": "43.92",
+                "currency": "USD",
+                "stock": "In Stock",
+                "description": "Pure Silk Exfoliator is a Seresilk reusable silk skincare exfoliator with source-backed use directions and material details. INCI is not applicable because this reviewed item is a skincare tool, not a formula.",
+                "image_url": "https://seresilk.com.au/cdn/shop/files/Ecomm_Square_PureSilkExfoliator.jpg?v=1753242189",
+                "image_urls": [
+                  "https://seresilk.com.au/cdn/shop/files/Ecomm_Square_PureSilkExfoliator.jpg?v=1753242189"
+                ],
+                "images": [
+                  "https://seresilk.com.au/cdn/shop/files/Ecomm_Square_PureSilkExfoliator.jpg?v=1753242189"
+                ]
+              }
+            ],
+            "shopify_country": "US",
+            "product_family": "accessory",
+            "brand": "Seresilk",
+            "external_product_id": "ext_4a50d003cfa7b0e4c7fc2f01",
+            "price_amount": 43.92,
+            "price_currency": "USD",
+            "availability": "in_stock",
+            "category": "Beauty Tool",
+            "category_path": [
+              "beauty",
+              "skincare",
+              "tools",
+              "exfoliator"
+            ],
+            "catalog_category_path": "beauty/skincare/tools/exfoliator",
+            "product_kind": "accessory",
+            "product_type": "Skincare Tool",
+            "pdp_description_raw": "Pure Silk Exfoliator is a Seresilk reusable silk skincare exfoliator with source-backed use directions and material details. INCI is not applicable because this reviewed item is a skincare tool, not a formula.",
+            "pdp_official_description_raw": "Pure Silk Exfoliator is a Seresilk reusable silk skincare exfoliator with source-backed use directions and material details. INCI is not applicable because this reviewed item is a skincare tool, not a formula.",
+            "pdp_source_description_raw": "Pure Silk Exfoliator is a Seresilk reusable silk skincare exfoliator with source-backed use directions and material details. INCI is not applicable because this reviewed item is a skincare tool, not a formula. How to Use: Soften the Pure Silk Exfoliator by running it under warm water for 10–15 seconds. Slip over the fingertip and massage gently across the cheeks, forehead, and décolletage in circular motions. After use, allow the cocoon to air dry in a well-ventilated space. Each Pure Silk Exfoliator allows for 2-3 uses and is biodegradable. Finish with Silk Night Serum and Silk Night Cream. Materials: INCI not applicable. Material source: Pure, raw and unrefined silk / silk cocoon.",
+            "pdp_ingredients_raw": "INCI not applicable. Material source: Pure, raw and unrefined silk / silk cocoon.",
+            "raw_ingredient_text_clean": "",
+            "ingredients_inci": [],
+            "inci_list": [],
+            "pdp_how_to_use_raw": "Soften the Pure Silk Exfoliator by running it under warm water for 10–15 seconds. Slip over the fingertip and massage gently across the cheeks, forehead, and décolletage in circular motions. After use, allow the cocoon to air dry in a well-ventilated space. Each Pure Silk Exfoliator allows for 2-3 uses and is biodegradable. Finish with Silk Night Serum and Silk Night Cream.",
+            "pdp_details_sections": [
+              {
+                "heading": "How to Use",
+                "body": "Soften the Pure Silk Exfoliator by running it under warm water for 10–15 seconds. Slip over the fingertip and massage gently across the cheeks, forehead, and décolletage in circular motions. After use, allow the cocoon to air dry in a well-ventilated space. Each Pure Silk Exfoliator allows for 2-3 uses and is biodegradable. Finish with Silk Night Serum and Silk Night Cream.",
+                "source_kind": "official_shopify_pdp_how_to_tab"
+              },
+              {
+                "heading": "Materials",
+                "body": "INCI not applicable. Material source: Pure, raw and unrefined silk / silk cocoon.",
+                "source_kind": "official_shopify_pdp_materials_tab"
+              }
+            ],
+            "ingredient_intel": {
+              "not_applicable": true,
+              "inci_applicability": {
+                "status": "not_applicable",
+                "reason": "reviewed_skincare_tool_not_formula"
+              },
+              "not_applicable_reason": "reviewed_skincare_tool_not_formula",
+              "source_kind": "official_shopify_pdp_materials_tab",
+              "source_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US"
+            },
+            "ingredient_remediation_v1": {
+              "action": "mark_inci_not_applicable",
+              "source_quality_status": "reviewed_not_applicable",
+              "reason": "reviewed_skincare_tool_not_formula"
+            },
+            "external_seed_snapshot_contract": {
+              "contract_version": "external_seed.snapshot_contract.v1",
+              "source": "wave19_seresilk_shopify_country_us_seed_creation_manifest",
+              "authoritative": true,
+              "structured_fields_authoritative": true,
+              "legacy_fields_quarantined": true,
+              "replace_strategy": "replace_not_merge",
+              "source_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+              "updated_at": "2026-05-25T16:53:34.528Z"
+            },
+            "pdp_field_quality_summary": {
+              "description_raw": {
+                "source_origin": "official_shopify_country_us_pdp_html",
+                "source_quality_status": "high",
+                "source_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+                "reviewed_by": "codex_wave19_direct_source",
+                "reviewed_at": "2026-05-25T16:53:34.528Z"
+              },
+              "ingredients_raw": {
+                "source_origin": "official_shopify_country_us_pdp_html",
+                "source_quality_status": "reviewed_not_applicable",
+                "source_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+                "reviewed_by": "codex_wave19_direct_source",
+                "reviewed_at": "2026-05-25T16:53:34.528Z",
+                "not_applicable_reason": "reviewed_skincare_tool_not_formula"
+              },
+              "ingredients_inci": {
+                "source_origin": "official_shopify_country_us_pdp_html",
+                "source_quality_status": "reviewed_not_applicable",
+                "source_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+                "reviewed_by": "codex_wave19_direct_source",
+                "reviewed_at": "2026-05-25T16:53:34.528Z",
+                "not_applicable_reason": "reviewed_skincare_tool_not_formula"
+              },
+              "how_to_use_raw": {
+                "source_origin": "official_shopify_country_us_pdp_html",
+                "source_quality_status": "high",
+                "source_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+                "reviewed_by": "codex_wave19_direct_source",
+                "reviewed_at": "2026-05-25T16:53:34.528Z"
+              },
+              "details_sections": {
+                "source_origin": "official_shopify_country_us_pdp_html",
+                "source_quality_status": "high",
+                "source_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+                "reviewed_by": "codex_wave19_direct_source",
+                "reviewed_at": "2026-05-25T16:53:34.528Z"
+              },
+              "category": {
+                "source_origin": "official_shopify_country_us_pdp_html",
+                "source_quality_status": "high",
+                "source_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+                "reviewed_by": "codex_wave19_direct_source",
+                "reviewed_at": "2026-05-25T16:53:34.528Z"
+              },
+              "product_type": {
+                "source_origin": "official_shopify_country_us_pdp_html",
+                "source_quality_status": "high",
+                "source_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+                "reviewed_by": "codex_wave19_direct_source",
+                "reviewed_at": "2026-05-25T16:53:34.528Z"
+              },
+              "image_assets": {
+                "source_origin": "official_shopify_country_us_pdp_html",
+                "source_quality_status": "high",
+                "source_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+                "reviewed_by": "codex_wave19_direct_source",
+                "reviewed_at": "2026-05-25T16:53:34.528Z"
+              }
+            },
+            "pdp_field_capture_status": {
+              "description_raw": "captured",
+              "ingredients_raw": "not_applicable",
+              "how_to_use_raw": "captured",
+              "details_sections": "captured"
+            },
+            "authority_source": {
+              "source_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+              "official_canonical_url": "https://seresilk.com.au/products/pure-silk-exfoliator",
+              "source_role": "direct_official_pdp_html",
+              "official_description_raw": "150ml / 12 Pieces \nEmbrace the purest expression of nature’s most sacred fibre.\nCrafted from 100% pure, cruelty-free silk, this reusable exfoliator glides effortlessly across the skin, delicately lifting away impurities and surface buildup. Its unique fibre structure supports skin renewal, helping to smooth texture, reduce the appearance of fine lines, and improve elasticity.\nWith continued use, the complexion appears clearer, more refined, and visibly revitalised—revealing the skin’s natural luminosity.\nDermatologically tested and approved across clinical trials.\nBENEFITS \nImmediately: Skin feels softened and visibly polished.\nOver time: Skin appears smoother, more even-toned, and refined in texture.\nTESTING\n(1) Clinical patch test conducted on 55 healthy volunteers.\n(2) 50% of participants had self-assessed sensitive skin.\n(3) Tested under repeated application conditions for 3 weeks.\n(4) No visible reactions observed during or after application.\n(5) Clinically confirmed as non-irritating and suitable for all skin types.",
+              "official_ingredients_source_raw": "Pure, raw & unrefined silk Silk Cocoon 100% biodegradable; discard with consideration.",
+              "official_how_to_source_raw": "Soften the Pure Silk Exfoliator by running it under warm water for 10–15 seconds. Slip over the fingertip and massage gently across the cheeks, forehead, and décolletage in circular motions. After use, allow the cocoon to air dry in a well-ventilated space. Each Pure Silk Exfoliator allows for 2-3 uses and is biodegradable. Finish with Silk Night Serum and Silk Night Cream.",
+              "matched_preferred_titles": [
+                "Pure Silk Exfoliator"
+              ]
+            },
+            "source_validation": {
+              "source_type": "brand_owned",
+              "source_host": "seresilk.com.au",
+              "requires_multi_offer_merge_validation": false
+            },
+            "search_aliases": [
+              "Pure Silk Exfoliator",
+              "Seresilk Pure Silk Exfoliator",
+              "Seresilk Skincare Tool"
+            ],
+            "commerce_facts_v1": {
+              "contract_version": "commerce_facts.v1",
+              "market_id": "US",
+              "country": "US",
+              "currency_target": "USD",
+              "source_authority": "official_seresilk_shopify_country_us_pdp_html",
+              "captured_at": "2026-05-25T16:53:34.528Z",
+              "evidence_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+              "sellable_region": {
+                "status": "unknown",
+                "countries": [],
+                "evidence_source": "official_seresilk_shopify_country_us_pdp_html",
+                "confidence": "unknown",
+                "checked_at": "2026-05-25T16:53:34.528Z",
+                "reason_codes": [
+                  "shipping_destination_not_verified"
+                ],
+                "evidence_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US"
+              },
+              "regional_price": {
+                "amount": 43.92,
+                "currency": "USD",
+                "display_raw": null,
+                "price_type": "unknown",
+                "compare_at_amount": null,
+                "compare_at_currency": null,
+                "compare_at_display_raw": null,
+                "tax_included": "unknown",
+                "confidence": "medium",
+                "market_switch_status": "ok",
+                "observed_currency": "USD",
+                "source_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+                "captured_at": "2026-05-25T16:53:34.528Z"
+              },
+              "availability": {
+                "status": "in_stock",
+                "source": "official_seresilk_shopify_country_us_pdp_html",
+                "confidence": "medium",
+                "captured_at": "2026-05-25T16:53:34.528Z"
+              },
+              "shipping": {
+                "status": "unknown",
+                "source": "official_seresilk_shopify_country_us_pdp_html",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_checkout_not_queried"
+                ],
+                "checked_at": "2026-05-25T16:53:34.528Z"
+              },
+              "promotions": [],
+              "returns": {
+                "status": "unknown",
+                "source": "official_seresilk_shopify_country_us_pdp_html",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_returns_not_extracted"
+                ],
+                "checked_at": "2026-05-25T16:53:34.528Z"
+              }
+            },
+            "commerce_facts_gate": {
+              "status": "pass",
+              "market_id": "US",
+              "expected_currency": "USD",
+              "observed_currency": "USD",
+              "market_switch_status": "ok",
+              "sellable_region_status": "unknown",
+              "shipping_status": "unknown",
+              "promotions_status": "unknown",
+              "availability_status": "in_stock",
+              "problems": []
+            }
+          },
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "official_seresilk_shopify_country_us_pdp_html",
+            "captured_at": "2026-05-25T16:53:34.528Z",
+            "evidence_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "official_seresilk_shopify_country_us_pdp_html",
+              "confidence": "unknown",
+              "checked_at": "2026-05-25T16:53:34.528Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US"
+            },
+            "regional_price": {
+              "amount": 43.92,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+              "captured_at": "2026-05-25T16:53:34.528Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_seresilk_shopify_country_us_pdp_html",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T16:53:34.528Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "official_seresilk_shopify_country_us_pdp_html",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T16:53:34.528Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "official_seresilk_shopify_country_us_pdp_html",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T16:53:34.528Z"
+            }
+          },
+          "commerce_facts_gate": {
+            "status": "pass",
+            "market_id": "US",
+            "expected_currency": "USD",
+            "observed_currency": "USD",
+            "market_switch_status": "ok",
+            "sellable_region_status": "unknown",
+            "shipping_status": "unknown",
+            "promotions_status": "unknown",
+            "availability_status": "in_stock",
+            "problems": []
+          }
+        }
+      },
+      "curation_decision": {
+        "decision": "db_ready_candidate",
+        "reason_codes": [
+          "official_usd_in_stock_pdp",
+          "reviewed_accessory_inci_not_applicable"
+        ]
+      }
+    }
+  ]
+}

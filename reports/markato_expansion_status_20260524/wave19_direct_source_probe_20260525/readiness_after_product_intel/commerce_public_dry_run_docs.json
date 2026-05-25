@@ -1,0 +1,250 @@
+{
+  "generated_at": "2026-05-25T17:32:09.288Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 4,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_bcb7a39b781c257319850000",
+      "sellable_item_group_id": "sig_bcb7a39b781c257319850000",
+      "product_line_id": "pl_356cf89eddfbeb69c878321e",
+      "review_family_id": "rf_356cf89eddfbeb69c878321e",
+      "brand_name": "Aetās",
+      "category_paths": [
+        "Skincare",
+        "Face Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "The Serum",
+      "subtitle": "The Serum is an Aetās face serum with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Butylene Glycol, Pentylene Glycol, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate.",
+      "variant_axes": {
+        "shade": "β cool",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://aetasofficial.com/cdn/shop/files/SerumyB__2048px_2048.jpg?v=1751105329",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://aetasofficial.com/cdn/shop/files/SerumyB__2048px_2048.jpg?v=1751105329",
+        "http://aetasofficial.com/cdn/shop/files/SerumyB__2048px_2048.jpg?v=1751105329",
+        "https://aetasofficial.com/cdn/shop/files/2604_serumB_fd14afbd-3c5c-4c9a-a7f5-270868d884d3.png?v=1779693433&width=1920",
+        "https://aetasofficial.com/cdn/shop/files/2604_serumY_f7f27cb0-6145-4206-a182-4707ef18455e.png?v=1779693473",
+        "https://aetasofficial.com/cdn/shop/files/2604_serumB_fd14afbd-3c5c-4c9a-a7f5-270868d884d3.png?v=1779693433&amp;width=1946",
+        "https://aetasofficial.com/cdn/shop/files/SerumyB__2048px_2048.jpg?v=1751105329&amp;width=1946",
+        "https://aetasofficial.com/cdn/shop/files/7IV09579_Large_48161306-3df3-45a5-910c-cb5ec6c37f5d.jpg?v=1751105329&amp;width=1946",
+        "https://aetasofficial.com/cdn/shop/files/7IV09377.jpg?v=1751105329&amp;width=1946"
+      ],
+      "price_min": 60,
+      "price_max": 60,
+      "default_offer_id": "external_seed:ext_684249c7a94a1a6f43fdbd77",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "An Aetās serum listed on the brand source page as The Serum.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Aetās",
+        "Skincare",
+        "Face Serum"
+      ],
+      "sort_keys": {
+        "price_min": 60,
+        "price_max": 60,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_684249c7a94a1a6f43fdbd77"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_303cd69abca9ff69eeab8596",
+      "sellable_item_group_id": "sig_303cd69abca9ff69eeab8596",
+      "product_line_id": "pl_0c226c97594579a50d748864",
+      "review_family_id": "rf_0c226c97594579a50d748864",
+      "brand_name": "DAEBY",
+      "category_paths": [
+        "Skincare",
+        "Cleanser"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Daily Cleanser",
+      "subtitle": "Daily Cleanser is a DAEBY cleanser with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Sodium C14-16 Olefin Sulfonate, Disodium Laureth Sulfosuccinate, Lauryl Betaine, Sodium Lauroyl Methyl Isethionate.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://www.daebyskin.com/cdn/shop/files/daily-cleanser-2641825.jpg?v=1767685448",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://www.daebyskin.com/cdn/shop/files/daily-cleanser-2641825.jpg?v=1767685448",
+        "http://www.daebyskin.com/cdn/shop/files/daily-cleanser-2641825.jpg?v=1767685448",
+        "https://www.daebyskin.com/cdn/shop/files/daily-cleanser-2641825.jpg?v=1767685448&amp;width=200",
+        "https://www.daebyskin.com/cdn/shop/files/daily-cleanser-5219868.png?v=1775565862&amp;width=200",
+        "https://www.daebyskin.com/cdn/shop/files/10_2.svg?v=1775565862&amp;width=200",
+        "https://www.daebyskin.com/cdn/shop/files/11_1.svg?v=1775565862&amp;width=200",
+        "https://www.daebyskin.com/cdn/shop/files/12.svg?v=1775565862&amp;width=200",
+        "https://www.daebyskin.com/cdn/shop/files/13.svg?v=1775565862&amp;width=200"
+      ],
+      "price_min": 19,
+      "price_max": 19,
+      "default_offer_id": "external_seed:ext_e1c4eb330321ebc6e9672d73",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A DAEBY cleanser listed on the brand source page as Daily Cleanser.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "DAEBY",
+        "Skincare",
+        "Cleanser"
+      ],
+      "sort_keys": {
+        "price_min": 19,
+        "price_max": 19,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_e1c4eb330321ebc6e9672d73"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_46aea7b66d57935e8d0f2cad",
+      "sellable_item_group_id": "sig_46aea7b66d57935e8d0f2cad",
+      "product_line_id": "pl_6e0f230fbde44deeba712f44",
+      "review_family_id": "rf_6e0f230fbde44deeba712f44",
+      "brand_name": "DAEBY",
+      "category_paths": [
+        "Skincare",
+        "Facial Scrub"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Exfoliating Facial Scrub",
+      "subtitle": "Exfoliating Facial Scrub is a DAEBY facial scrub with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Coco-Betaine, Sodium Lauroyl Methyl Isethionate, Oryza Sativa Powder, Polyacrylate Crosspolymer-6.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://www.daebyskin.com/cdn/shop/files/gentle-scrub-5952419.jpg?v=1767685448",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://www.daebyskin.com/cdn/shop/files/gentle-scrub-5952419.jpg?v=1767685448",
+        "http://www.daebyskin.com/cdn/shop/files/gentle-scrub-5952419.jpg?v=1767685448",
+        "https://www.daebyskin.com/cdn/shop/files/gentle-scrub-5952419.jpg?v=1767685448&amp;width=200",
+        "https://www.daebyskin.com/cdn/shop/files/gentle-scrub-3535137.png?v=1775565943&amp;width=200",
+        "https://www.daebyskin.com/cdn/shop/files/2_1.svg?v=1775565943&amp;width=200",
+        "https://www.daebyskin.com/cdn/shop/files/3_2.svg?v=1775565943&amp;width=200",
+        "https://www.daebyskin.com/cdn/shop/files/4_1.svg?v=1775565943&amp;width=200",
+        "https://www.daebyskin.com/cdn/shop/files/5_1.svg?v=1775565943&amp;width=200"
+      ],
+      "price_min": 18,
+      "price_max": 18,
+      "default_offer_id": "external_seed:ext_81f5ddbf0c3ba5da04eabf9b",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A DAEBY skincare product listed on the brand source page as Exfoliating Facial Scrub.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "DAEBY",
+        "Skincare",
+        "Facial Scrub"
+      ],
+      "sort_keys": {
+        "price_min": 18,
+        "price_max": 18,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_81f5ddbf0c3ba5da04eabf9b"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_ba2d3143335712ac9351ba4f",
+      "sellable_item_group_id": "sig_ba2d3143335712ac9351ba4f",
+      "product_line_id": "pl_6512a0574c28f5afa29741df",
+      "review_family_id": "rf_6512a0574c28f5afa29741df",
+      "brand_name": "Seresilk",
+      "category_paths": [
+        "Beauty Tool",
+        "Skincare Tool"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Pure Silk Exfoliator",
+      "subtitle": "Pure Silk Exfoliator is a Seresilk reusable silk skincare exfoliator with source-backed use directions and material details. INCI is not applicable because this reviewed item is a skincare tool, not a formula.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://seresilk.com.au/cdn/shop/files/Ecomm_Square_PureSilkExfoliator.jpg?v=1753242189&width=1024",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://seresilk.com.au/cdn/shop/files/Ecomm_Square_PureSilkExfoliator.jpg?v=1753242189&width=1024",
+        "http://seresilk.com.au/cdn/shop/files/Ecomm_Square_PureSilkExfoliator.jpg?v=1753242189&width=1024",
+        "https://seresilk.com.au/cdn/shop/files/Shop_Collection.webp?v=1765592792&width=320",
+        "https://seresilk.com.au/cdn/shop/files/Discover_Silk.webp?v=1765592792&width=320",
+        "https://seresilk.com.au/cdn/shop/files/EditorialBackground1Vertical.webp?v=1752627013&width=320",
+        "https://seresilk.com.au/cdn/shop/files/Texture_Square_PureSilkExfoliator.webp?v=1753242189&width=320",
+        "https://seresilk.com.au/cdn/shop/files/EditorialPureSilkExfoliatorSquare.webp?v=1753242189&width=320",
+        "https://seresilk.com.au/cdn/shop/files/CocoonCheek.webp?v=1752597163&width=320"
+      ],
+      "price_min": 43.92,
+      "price_max": 43.92,
+      "default_offer_id": "external_seed:ext_4a50d003cfa7b0e4c7fc2f01",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Seresilk skincare product listed on the brand source page as Pure Silk Exfoliator.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Seresilk",
+        "Beauty Tool",
+        "Skincare Tool"
+      ],
+      "sort_keys": {
+        "price_min": 43.92,
+        "price_max": 43.92,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_4a50d003cfa7b0e4c7fc2f01"
+      ]
+    }
+  ]
+}

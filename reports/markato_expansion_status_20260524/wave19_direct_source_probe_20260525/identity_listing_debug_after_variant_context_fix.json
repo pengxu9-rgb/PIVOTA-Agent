@@ -1,0 +1,194 @@
+{
+  "ok": true,
+  "generated_at": "2026-05-25T17:09:42.932Z",
+  "requested_ids": [
+    "ext_684249c7a94a1a6f43fdbd77",
+    "ext_e1c4eb330321ebc6e9672d73",
+    "ext_81f5ddbf0c3ba5da04eabf9b",
+    "ext_4a50d003cfa7b0e4c7fc2f01"
+  ],
+  "rows": [
+    {
+      "source_listing_ref": "external_seed:ext_684249c7a94a1a6f43fdbd77",
+      "brand": "Aetās",
+      "title": "The Serum",
+      "identity_status": "approved",
+      "review_required": false,
+      "review_reason_codes": [],
+      "matched_by_rule": "official_url_axes",
+      "match_basis": [
+        "official_url:https://aetasofficial.com/en/products/serum",
+        "variant_axes:shade:β cool"
+      ],
+      "variant_axes": {
+        "shade": "β cool",
+        "multi_variant": true
+      },
+      "variants": [
+        {
+          "title": "β (Cool)",
+          "option_name": "Shade",
+          "option_value": "β (Cool)",
+          "axis_kind": "shade",
+          "display_label": "Shade: β (Cool)",
+          "source_quality_status": "captured"
+        },
+        {
+          "title": "γ (Warm)",
+          "option_name": "Shade",
+          "option_value": "γ (Warm)",
+          "axis_kind": "shade",
+          "display_label": "Shade: γ (Warm)",
+          "source_quality_status": "captured"
+        }
+      ],
+      "source_meta": {
+        "external_seed_id": "eps_d7930d2d33ac3613ed8648b1",
+        "market": "US",
+        "tool": "creator_agents",
+        "updated_at": "2026-05-25T16:54:51.112Z",
+        "serving_eligible": false,
+        "index_pipeline_state": {
+          "serving_eligible": false,
+          "pipeline_stage": null,
+          "blocker_code": null,
+          "blocker_detail": null,
+          "content_quality_score": null,
+          "content_key": null
+        },
+        "attached_product_key": null,
+        "catalog_product_key": null,
+        "catalog_content_key": null,
+        "catalog_pivota_signature_id": null,
+        "catalog_sync_status": null,
+        "catalog_pdp_lifecycle_stage": null
+      }
+    },
+    {
+      "source_listing_ref": "external_seed:ext_4a50d003cfa7b0e4c7fc2f01",
+      "brand": "Seresilk",
+      "title": "Pure Silk Exfoliator",
+      "identity_status": "approved",
+      "review_required": false,
+      "review_reason_codes": [],
+      "matched_by_rule": "official_url_route",
+      "match_basis": [
+        "official_url:https://seresilk.com.au/products/pure-silk-exfoliator"
+      ],
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "variants": [
+        {
+          "title": "Default",
+          "source_quality_status": "blocked"
+        }
+      ],
+      "source_meta": {
+        "external_seed_id": "eps_fae4f44625d308fe8b47149b",
+        "market": "US",
+        "tool": "creator_agents",
+        "updated_at": "2026-05-25T16:47:52.446Z",
+        "serving_eligible": false,
+        "index_pipeline_state": {
+          "serving_eligible": false,
+          "pipeline_stage": null,
+          "blocker_code": null,
+          "blocker_detail": null,
+          "content_quality_score": null,
+          "content_key": null
+        },
+        "attached_product_key": null,
+        "catalog_product_key": null,
+        "catalog_content_key": null,
+        "catalog_pivota_signature_id": null,
+        "catalog_sync_status": null,
+        "catalog_pdp_lifecycle_stage": null
+      }
+    },
+    {
+      "source_listing_ref": "external_seed:ext_81f5ddbf0c3ba5da04eabf9b",
+      "brand": "DAEBY",
+      "title": "Exfoliating Facial Scrub",
+      "identity_status": "approved",
+      "review_required": false,
+      "review_reason_codes": [],
+      "matched_by_rule": "official_url_route",
+      "match_basis": [
+        "official_url:https://daebyskin.com/products/gentle-scrub"
+      ],
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "variants": [
+        {
+          "title": "Default",
+          "source_quality_status": "blocked"
+        }
+      ],
+      "source_meta": {
+        "external_seed_id": "eps_2752d5a2dc5a62e09d50c96c",
+        "market": "US",
+        "tool": "creator_agents",
+        "updated_at": "2026-05-25T16:47:52.446Z",
+        "serving_eligible": false,
+        "index_pipeline_state": {
+          "serving_eligible": false,
+          "pipeline_stage": null,
+          "blocker_code": null,
+          "blocker_detail": null,
+          "content_quality_score": null,
+          "content_key": null
+        },
+        "attached_product_key": null,
+        "catalog_product_key": null,
+        "catalog_content_key": null,
+        "catalog_pivota_signature_id": null,
+        "catalog_sync_status": null,
+        "catalog_pdp_lifecycle_stage": null
+      }
+    },
+    {
+      "source_listing_ref": "external_seed:ext_e1c4eb330321ebc6e9672d73",
+      "brand": "DAEBY",
+      "title": "Daily Cleanser",
+      "identity_status": "approved",
+      "review_required": false,
+      "review_reason_codes": [],
+      "matched_by_rule": "official_url_route",
+      "match_basis": [
+        "official_url:https://daebyskin.com/products/cleanser"
+      ],
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "variants": [
+        {
+          "title": "Default",
+          "source_quality_status": "blocked"
+        }
+      ],
+      "source_meta": {
+        "external_seed_id": "eps_e061138dca4586901570de42",
+        "market": "US",
+        "tool": "creator_agents",
+        "updated_at": "2026-05-25T16:47:52.446Z",
+        "serving_eligible": false,
+        "index_pipeline_state": {
+          "serving_eligible": false,
+          "pipeline_stage": null,
+          "blocker_code": null,
+          "blocker_detail": null,
+          "content_quality_score": null,
+          "content_key": null
+        },
+        "attached_product_key": null,
+        "catalog_product_key": null,
+        "catalog_content_key": null,
+        "catalog_pivota_signature_id": null,
+        "catalog_sync_status": null,
+        "catalog_pdp_lifecycle_stage": null
+      }
+    }
+  ]
+}

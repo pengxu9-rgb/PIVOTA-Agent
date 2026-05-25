@@ -19,6 +19,7 @@ function parseArgs(argv) {
   const out = {
     report: '',
     caseIds: [],
+    out: '',
     write: false,
     validateReplacements: false,
   };
@@ -34,6 +35,9 @@ function parseArgs(argv) {
         .split(',')
         .map((item) => item.trim())
         .filter(Boolean);
+      i += 1;
+    } else if (token === '--out' && next) {
+      out.out = next;
       i += 1;
     } else if (token === '--write') {
       out.write = true;
@@ -59,6 +63,12 @@ function asString(value) {
 
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+}
+
+function writeJson(filePath, value) {
+  if (!filePath) return;
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
 function pickRows(report, caseIds) {
@@ -272,16 +282,16 @@ async function main() {
     );
   }
 
-  process.stdout.write(
-    `${JSON.stringify({
-      status: 'ok',
-      mode: args.write ? 'write' : args.validateReplacements ? 'dry_run_validate_replacements' : 'dry_run',
-      report: reportPath,
-      rows: rows.map((row) => asString(row.case_id)),
-      entries: entries.map((entry) => entry.kb_key),
-      skipped_rows: skippedRows,
-    })}\n`,
-  );
+  const result = {
+    status: 'ok',
+    mode: args.write ? 'write' : args.validateReplacements ? 'dry_run_validate_replacements' : 'dry_run',
+    report: reportPath,
+    rows: rows.map((row) => asString(row.case_id)),
+    entries: entries.map((entry) => entry.kb_key),
+    skipped_rows: skippedRows,
+  };
+  writeJson(resolvePath(rootDir, args.out), result);
+  process.stdout.write(`${JSON.stringify(result)}\n`);
 }
 
 if (require.main === module) {

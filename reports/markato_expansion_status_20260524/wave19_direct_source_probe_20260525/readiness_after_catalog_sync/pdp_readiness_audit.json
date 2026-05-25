@@ -1,0 +1,657 @@
+{
+  "generated_at": "2026-05-25T17:17:53.104Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": null,
+    "externalProductIds": [
+      "ext_684249c7a94a1a6f43fdbd77",
+      "ext_e1c4eb330321ebc6e9672d73",
+      "ext_81f5ddbf0c3ba5da04eabf9b",
+      "ext_4a50d003cfa7b0e4c7fc2f01"
+    ],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/wave19_direct_source_probe_20260525/readiness_after_catalog_sync/pdp_readiness_checkpoint",
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json"
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 4,
+    "by_market": {
+      "US": 4
+    },
+    "by_domain": [
+      {
+        "key": "daebyskin.com",
+        "count": 2
+      },
+      {
+        "key": "aetasofficial.com",
+        "count": 1
+      },
+      {
+        "key": "seresilk.com.au",
+        "count": 1
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 3
+      },
+      {
+        "key": "accessory",
+        "count": 1
+      }
+    ],
+    "coverage": {
+      "missing_inci": 0,
+      "missing_active_raw": 3,
+      "missing_details": 0,
+      "missing_how_to": 0,
+      "missing_faq": 4
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 0,
+        "high_quality_ready": 0,
+        "missing_kb": 4,
+        "not_displayable": 0
+      },
+      "effective": {
+        "displayable": 0,
+        "high_quality_ready": 0,
+        "missing_kb": 4,
+        "not_displayable": 0,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [
+        {
+          "key": "missing_kb",
+          "count": 4
+        }
+      ],
+      "effective_issue_domains": [
+        {
+          "key": "daebyskin.com::missing_kb",
+          "count": 2
+        },
+        {
+          "key": "aetasofficial.com::missing_kb",
+          "count": 1
+        },
+        {
+          "key": "seresilk.com.au::missing_kb",
+          "count": 1
+        }
+      ],
+      "quality_state": [
+        {
+          "key": "missing",
+          "count": 4
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "missing",
+          "count": 4
+        }
+      ],
+      "samples": {
+        "missing_kb": [
+          {
+            "external_product_id": "ext_684249c7a94a1a6f43fdbd77",
+            "domain": "aetasofficial.com",
+            "title": "The Serum",
+            "used_product_id": "ext_684249c7a94a1a6f43fdbd77",
+            "quality_state": "missing",
+            "evidence_profile": "missing"
+          },
+          {
+            "external_product_id": "ext_e1c4eb330321ebc6e9672d73",
+            "domain": "daebyskin.com",
+            "title": "Daily Cleanser",
+            "used_product_id": "ext_e1c4eb330321ebc6e9672d73",
+            "quality_state": "missing",
+            "evidence_profile": "missing"
+          },
+          {
+            "external_product_id": "ext_81f5ddbf0c3ba5da04eabf9b",
+            "domain": "daebyskin.com",
+            "title": "Exfoliating Facial Scrub",
+            "used_product_id": "ext_81f5ddbf0c3ba5da04eabf9b",
+            "quality_state": "missing",
+            "evidence_profile": "missing"
+          },
+          {
+            "external_product_id": "ext_4a50d003cfa7b0e4c7fc2f01",
+            "domain": "seresilk.com.au",
+            "title": "Pure Silk Exfoliator",
+            "used_product_id": "ext_4a50d003cfa7b0e4c7fc2f01",
+            "quality_state": "missing",
+            "evidence_profile": "missing"
+          }
+        ]
+      }
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 3,
+      "any_active_items": 0,
+      "status": [
+        {
+          "key": "missing_hero",
+          "count": 3
+        },
+        {
+          "key": "not_applicable_product_family",
+          "count": 1
+        }
+      ],
+      "issues": [
+        {
+          "key": "missing_hero",
+          "count": 3
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "daebyskin.com::missing_hero",
+          "count": 2
+        },
+        {
+          "key": "aetasofficial.com::missing_hero",
+          "count": 1
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "pdp_section",
+          "count": 3
+        },
+        {
+          "key": "none",
+          "count": 1
+        }
+      ],
+      "samples": {
+        "missing_hero": [
+          {
+            "external_product_id": "ext_684249c7a94a1a6f43fdbd77",
+            "domain": "aetasofficial.com",
+            "title": "The Serum",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_e1c4eb330321ebc6e9672d73",
+            "domain": "daebyskin.com",
+            "title": "Daily Cleanser",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_81f5ddbf0c3ba5da04eabf9b",
+            "domain": "daebyskin.com",
+            "title": "Exfoliating Facial Scrub",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "no_visible_variant_axis",
+          "count": 3
+        },
+        {
+          "key": "flagged",
+          "count": 1
+        }
+      ],
+      "issues": [
+        {
+          "key": "wrong_axis_for_category",
+          "count": 1
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "aetasofficial.com::wrong_axis_for_category",
+          "count": 1
+        }
+      ],
+      "samples": {
+        "wrong_axis_for_category": [
+          {
+            "external_product_id": "ext_684249c7a94a1a6f43fdbd77",
+            "domain": "aetasofficial.com",
+            "title": "The Serum",
+            "status": "flagged",
+            "examples": [
+              {
+                "axis_name": "shade",
+                "axis_kind": "shade",
+                "value": "β (cool)",
+                "visual": true
+              },
+              {
+                "axis_name": "shade",
+                "axis_kind": "shade",
+                "value": "γ (warm)",
+                "visual": true
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_d7930d2d33ac3613ed8648b1",
+      "external_product_id": "ext_684249c7a94a1a6f43fdbd77",
+      "market": "US",
+      "domain": "aetasofficial.com",
+      "title": "The Serum",
+      "canonical_url": "https://aetasofficial.com/en/products/serum?country=US",
+      "product_family": "single_formula",
+      "product_line_id": "pl_356cf89eddfbeb69c878321e",
+      "identity_variant_axes": {
+        "shade": "β cool",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_684249c7a94a1a6f43fdbd77",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "effective": {
+          "product_id": "ext_684249c7a94a1a6f43fdbd77",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "product_line_id": "pl_356cf89eddfbeb69c878321e",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 144,
+          "inci_chars": 682,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 682,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "flagged",
+        "issues": [
+          "wrong_axis_for_category"
+        ],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [
+            {
+              "axis_name": "shade",
+              "axis_kind": "shade",
+              "value": "β (cool)",
+              "visual": true
+            },
+            {
+              "axis_name": "shade",
+              "axis_kind": "shade",
+              "value": "γ (warm)",
+              "visual": true
+            }
+          ],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 144,
+        "inci_chars": 682,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 682,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_e061138dca4586901570de42",
+      "external_product_id": "ext_e1c4eb330321ebc6e9672d73",
+      "market": "US",
+      "domain": "daebyskin.com",
+      "title": "Daily Cleanser",
+      "canonical_url": "https://www.daebyskin.com/products/cleanser?country=US",
+      "product_family": "single_formula",
+      "product_line_id": "pl_0c226c97594579a50d748864",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_e1c4eb330321ebc6e9672d73",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "effective": {
+          "product_id": "ext_e1c4eb330321ebc6e9672d73",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "product_line_id": "pl_0c226c97594579a50d748864",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 110,
+          "inci_chars": 683,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 683,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 110,
+        "inci_chars": 683,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 683,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_2752d5a2dc5a62e09d50c96c",
+      "external_product_id": "ext_81f5ddbf0c3ba5da04eabf9b",
+      "market": "US",
+      "domain": "daebyskin.com",
+      "title": "Exfoliating Facial Scrub",
+      "canonical_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+      "product_family": "single_formula",
+      "product_line_id": "pl_6e0f230fbde44deeba712f44",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_81f5ddbf0c3ba5da04eabf9b",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "effective": {
+          "product_id": "ext_81f5ddbf0c3ba5da04eabf9b",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "product_line_id": "pl_6e0f230fbde44deeba712f44",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 98,
+          "inci_chars": 465,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 465,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 98,
+        "inci_chars": 465,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 465,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_fae4f44625d308fe8b47149b",
+      "external_product_id": "ext_4a50d003cfa7b0e4c7fc2f01",
+      "market": "US",
+      "domain": "seresilk.com.au",
+      "title": "Pure Silk Exfoliator",
+      "canonical_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+      "product_family": "accessory",
+      "product_line_id": "pl_6512a0574c28f5afa29741df",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_4a50d003cfa7b0e4c7fc2f01",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "effective": {
+          "product_id": "ext_4a50d003cfa7b0e4c7fc2f01",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "product_line_id": "pl_6512a0574c28f5afa29741df",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 376,
+          "inci_chars": 81,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "not_applicable",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "mark_inci_not_applicable",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 81,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "accessory"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 376,
+        "inci_chars": 81,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "not_applicable",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "mark_inci_not_applicable",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 81,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

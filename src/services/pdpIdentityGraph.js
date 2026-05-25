@@ -704,6 +704,15 @@ function collectVariantCategoryContext(product) {
       product?.category_path,
       product?.department,
       product?.tags,
+      product?.variants?.map((variant) => [
+        variant?.option_name,
+        variant?.optionName,
+        variant?.axis_kind,
+        variant?.axisKind,
+        variant?.display_label,
+        variant?.displayLabel,
+        variant?.options,
+      ]),
     ]).join(' '),
   );
 }
@@ -711,7 +720,7 @@ function collectVariantCategoryContext(product) {
 function allowsColorAxisForProduct(product) {
   const haystack = collectVariantCategoryContext(product);
   if (!haystack) return false;
-  return /\b(tinted?|skin tint|shade|color correct|colour correct|tone up|tone correct|lip tint|lipstick|lip gloss|lip oil|lip balm|lip liner|lip pencil|foundation|concealer|bronzer|blush|highlighter|diamond veil|powder|eyeshadow|eyeliner|brow|mascara|makeup|cosmetic)\b/i.test(
+  return /\b(tinted?|skin tint|shade|undertones?|skin undertones?|color correct|colour correct|tone up|tone correct|lip tint|lipstick|lip gloss|lip oil|lip balm|lip liner|lip pencil|foundation|concealer|bronzer|blush|highlighter|diamond veil|powder|eyeshadow|eyeliner|brow|mascara|makeup|cosmetic)\b/i.test(
     haystack,
   );
 }

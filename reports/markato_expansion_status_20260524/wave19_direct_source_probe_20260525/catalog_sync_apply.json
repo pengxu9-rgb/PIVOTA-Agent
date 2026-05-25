@@ -1,0 +1,864 @@
+{
+  "generated_at": "2026-05-25T17:11:29.388Z",
+  "mode": "apply",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": true,
+  "requested_ids": 4,
+  "fetched_rows": 4,
+  "mirror_rows": 4,
+  "planned_sku_rows": 5,
+  "planned_offer_rows": 5,
+  "planned_index_state_rows": 4,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "apply",
+    "existing_before": {
+      "catalog_products": 4,
+      "catalog_skus": 0,
+      "catalog_offers": 0,
+      "product_group_members": 0
+    },
+    "batch_size": null,
+    "batches": 1,
+    "product_upserts": 4,
+    "sku_upserts": 5,
+    "offer_upserts": 5,
+    "group_member_upserts": 4,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 4,
+    "index_state_upserts": 4,
+    "identity_live_read_updates": 4
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_684249c7a94a1a6f43fdbd77",
+      "product_key": "prod::external_seed::external_seed::ext_684249c7a94a1a6f43fdbd77",
+      "product_group_id": "sig_bcb7a39b781c257319850000",
+      "title": "The Serum",
+      "brand": "Aetās",
+      "product_type": "Face Serum",
+      "category": "Face Serum",
+      "category_path": "beauty/skincare/treat/serum",
+      "canonical_url": "https://aetasofficial.com/en/products/serum?country=US",
+      "pivota_signature_id": "sig_7f13d7ed708f4585f93f8935168ac9b8",
+      "sku_rows": 2,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_684249c7a94a1a6f43fdbd77::sku_25a47f243271c1809703",
+        "product_key": "prod::external_seed::external_seed::ext_684249c7a94a1a6f43fdbd77",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_684249c7a94a1a6f43fdbd77",
+        "source_variant_id": "ext_684249c7a94a1a6f43fdbd77:46009531236507",
+        "sku": "400",
+        "title": "The Serum",
+        "currency": "USD",
+        "image_url": "https://aetasofficial.com/cdn/shop/files/2604_serumB_fd14afbd-3c5c-4c9a-a7f5-270868d884d3.png?v=1779693433",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_684249c7a94a1a6f43fdbd77",
+          "raw_variant_id": "46009531236507",
+          "source_variant_id": "ext_684249c7a94a1a6f43fdbd77:46009531236507",
+          "variant_sku": "400",
+          "source_url": "https://aetasofficial.com/en/products/serum?country=US",
+          "external_redirect_url": "https://aetasofficial.com/en/products/serum?country=US",
+          "price": "60",
+          "price_amount": 60,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://aetasofficial.com/cdn/shop/files/2604_serumB_fd14afbd-3c5c-4c9a-a7f5-270868d884d3.png?v=1779693433",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "400",
+            "url": "https://aetasofficial.com/en/products/serum?variant=46009531236507&country=US",
+            "price": "60",
+            "stock": "In Stock",
+            "images": [
+              "https://aetasofficial.com/cdn/shop/files/2604_serumB_fd14afbd-3c5c-4c9a-a7f5-270868d884d3.png?v=1779693433"
+            ],
+            "currency": "USD",
+            "axis_kind": "shade",
+            "image_url": "https://aetasofficial.com/cdn/shop/files/2604_serumB_fd14afbd-3c5c-4c9a-a7f5-270868d884d3.png?v=1779693433",
+            "image_urls": [
+              "https://aetasofficial.com/cdn/shop/files/2604_serumB_fd14afbd-3c5c-4c9a-a7f5-270868d884d3.png?v=1779693433"
+            ],
+            "variant_id": "46009531236507",
+            "description": "The Serum is an Aetās face serum with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Butylene Glycol, Pentylene Glycol, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate.",
+            "option_name": "Skin Undertone",
+            "option_value": "β (Cool)"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:3ba99fc76a70d269e648bc24a639b6d1",
+        "sku_key": "prod::external_seed::external_seed::ext_684249c7a94a1a6f43fdbd77::sku_25a47f243271c1809703",
+        "product_key": "prod::external_seed::external_seed::ext_684249c7a94a1a6f43fdbd77",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 60,
+        "merchant_effective_price": 60,
+        "estimated_best_price": 60,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_d7930d2d33ac3613ed8648b1",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_d7930d2d33ac3613ed8648b1",
+          "external_product_id": "ext_684249c7a94a1a6f43fdbd77",
+          "domain": "aetasofficial.com",
+          "market": "US",
+          "product_title": "The Serum",
+          "variant_title": "The Serum",
+          "variant_sku": "400",
+          "raw_variant_id": "46009531236507",
+          "url": "https://aetasofficial.com/en/products/serum?country=US",
+          "offer_url": "https://aetasofficial.com/en/products/serum?country=US",
+          "canonical_url": "https://aetasofficial.com/en/products/serum?country=US",
+          "destination_url": "https://aetasofficial.com/en/products/serum?country=US",
+          "external_redirect_url": "https://aetasofficial.com/en/products/serum?country=US",
+          "merchant_display_name": "Aetās",
+          "price": "60",
+          "price_amount": 60,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "official_aetas_shopify_country_us_pdp_html",
+            "captured_at": "2026-05-25T16:53:34.528Z",
+            "evidence_url": "https://aetasofficial.com/en/products/serum?country=US",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "official_aetas_shopify_country_us_pdp_html",
+              "confidence": "unknown",
+              "checked_at": "2026-05-25T16:53:34.528Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://aetasofficial.com/en/products/serum?country=US"
+            },
+            "regional_price": {
+              "amount": 60,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://aetasofficial.com/en/products/serum?country=US",
+              "captured_at": "2026-05-25T16:53:34.528Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_aetas_shopify_country_us_pdp_html",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T16:53:34.528Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "official_aetas_shopify_country_us_pdp_html",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T16:53:34.528Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "official_aetas_shopify_country_us_pdp_html",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T16:53:34.528Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 60,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://aetasofficial.com/en/products/serum?country=US",
+              "captured_at": "2026-05-25T16:53:34.528Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_aetas_shopify_country_us_pdp_html",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T16:53:34.528Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 239
+      }
+    },
+    {
+      "external_product_id": "ext_e1c4eb330321ebc6e9672d73",
+      "product_key": "prod::external_seed::external_seed::ext_e1c4eb330321ebc6e9672d73",
+      "product_group_id": "sig_303cd69abca9ff69eeab8596",
+      "title": "Daily Cleanser",
+      "brand": "DAEBY",
+      "product_type": "Cleanser",
+      "category": "Cleanser",
+      "category_path": "beauty/skincare/cleanse/cleanser",
+      "canonical_url": "https://www.daebyskin.com/products/cleanser?country=US",
+      "pivota_signature_id": "sig_b7861d41783ae62b5ed6b46df01e1e74",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_e1c4eb330321ebc6e9672d73::sku_8d06d82d485c2a37d6c2",
+        "product_key": "prod::external_seed::external_seed::ext_e1c4eb330321ebc6e9672d73",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_e1c4eb330321ebc6e9672d73",
+        "source_variant_id": "ext_e1c4eb330321ebc6e9672d73:45409374765222",
+        "sku": "199284610552",
+        "title": "Daily Cleanser",
+        "currency": "USD",
+        "image_url": "https://www.daebyskin.com/cdn/shop/files/daily-cleanser-2641825.jpg?v=1767685448",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_e1c4eb330321ebc6e9672d73",
+          "raw_variant_id": "45409374765222",
+          "source_variant_id": "ext_e1c4eb330321ebc6e9672d73:45409374765222",
+          "variant_sku": "199284610552",
+          "source_url": "https://www.daebyskin.com/products/cleanser?country=US",
+          "external_redirect_url": "https://www.daebyskin.com/products/cleanser?country=US",
+          "price": "19",
+          "price_amount": 19,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://www.daebyskin.com/cdn/shop/files/daily-cleanser-2641825.jpg?v=1767685448",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "199284610552",
+            "url": "https://www.daebyskin.com/products/cleanser?variant=45409374765222&country=US",
+            "price": "19",
+            "stock": "In Stock",
+            "images": [
+              "https://www.daebyskin.com/cdn/shop/files/daily-cleanser-2641825.jpg?v=1767685448"
+            ],
+            "currency": "USD",
+            "image_url": "https://www.daebyskin.com/cdn/shop/files/daily-cleanser-2641825.jpg?v=1767685448",
+            "image_urls": [
+              "https://www.daebyskin.com/cdn/shop/files/daily-cleanser-2641825.jpg?v=1767685448"
+            ],
+            "variant_id": "45409374765222",
+            "description": "Daily Cleanser is a DAEBY cleanser with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Sodium C14-16 Olefin Sulfonate, Disodium Laureth Sulfosuccinate, Lauryl Betaine, Sodium Lauroyl Methyl Isethionate.",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:be14d96738ab42ca5bd6dd4819e13828",
+        "sku_key": "prod::external_seed::external_seed::ext_e1c4eb330321ebc6e9672d73::sku_8d06d82d485c2a37d6c2",
+        "product_key": "prod::external_seed::external_seed::ext_e1c4eb330321ebc6e9672d73",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 19,
+        "merchant_effective_price": 19,
+        "estimated_best_price": 19,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_e061138dca4586901570de42",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_e061138dca4586901570de42",
+          "external_product_id": "ext_e1c4eb330321ebc6e9672d73",
+          "domain": "daebyskin.com",
+          "market": "US",
+          "product_title": "Daily Cleanser",
+          "variant_title": "Daily Cleanser",
+          "variant_sku": "199284610552",
+          "raw_variant_id": "45409374765222",
+          "url": "https://www.daebyskin.com/products/cleanser?country=US",
+          "offer_url": "https://www.daebyskin.com/products/cleanser?country=US",
+          "canonical_url": "https://www.daebyskin.com/products/cleanser?country=US",
+          "destination_url": "https://www.daebyskin.com/products/cleanser?country=US",
+          "external_redirect_url": "https://www.daebyskin.com/products/cleanser?country=US",
+          "merchant_display_name": "DAEBY",
+          "price": "19",
+          "price_amount": 19,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "official_daeby_shopify_country_us_pdp_html",
+            "captured_at": "2026-05-25T16:36:28.433Z",
+            "evidence_url": "https://www.daebyskin.com/products/cleanser?country=US",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "official_daeby_shopify_country_us_pdp_html",
+              "confidence": "unknown",
+              "checked_at": "2026-05-25T16:36:28.433Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://www.daebyskin.com/products/cleanser?country=US"
+            },
+            "regional_price": {
+              "amount": 19,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.daebyskin.com/products/cleanser?country=US",
+              "captured_at": "2026-05-25T16:36:28.433Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_daeby_shopify_country_us_pdp_html",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T16:36:28.433Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "official_daeby_shopify_country_us_pdp_html",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T16:36:28.433Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "official_daeby_shopify_country_us_pdp_html",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T16:36:28.433Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 19,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.daebyskin.com/products/cleanser?country=US",
+              "captured_at": "2026-05-25T16:36:28.433Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_daeby_shopify_country_us_pdp_html",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T16:36:28.433Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 254
+      }
+    },
+    {
+      "external_product_id": "ext_81f5ddbf0c3ba5da04eabf9b",
+      "product_key": "prod::external_seed::external_seed::ext_81f5ddbf0c3ba5da04eabf9b",
+      "product_group_id": "sig_46aea7b66d57935e8d0f2cad",
+      "title": "Exfoliating Facial Scrub",
+      "brand": "DAEBY",
+      "product_type": "Facial Scrub",
+      "category": "Facial Scrub",
+      "category_path": "beauty/skincare/exfoliate/face-scrub",
+      "canonical_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+      "pivota_signature_id": "sig_05be8b2c9c3d425a95b0ef1b5cae9695",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_81f5ddbf0c3ba5da04eabf9b::sku_8e7882a7beff0db30569",
+        "product_key": "prod::external_seed::external_seed::ext_81f5ddbf0c3ba5da04eabf9b",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_81f5ddbf0c3ba5da04eabf9b",
+        "source_variant_id": "ext_81f5ddbf0c3ba5da04eabf9b:45409382662310",
+        "sku": "199284310551",
+        "title": "Exfoliating Facial Scrub",
+        "currency": "USD",
+        "image_url": "https://www.daebyskin.com/cdn/shop/files/gentle-scrub-5952419.jpg?v=1767685448",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_81f5ddbf0c3ba5da04eabf9b",
+          "raw_variant_id": "45409382662310",
+          "source_variant_id": "ext_81f5ddbf0c3ba5da04eabf9b:45409382662310",
+          "variant_sku": "199284310551",
+          "source_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+          "external_redirect_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+          "price": "18",
+          "price_amount": 18,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://www.daebyskin.com/cdn/shop/files/gentle-scrub-5952419.jpg?v=1767685448",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "199284310551",
+            "url": "https://www.daebyskin.com/products/gentle-scrub?variant=45409382662310&country=US",
+            "price": "18",
+            "stock": "In Stock",
+            "images": [
+              "https://www.daebyskin.com/cdn/shop/files/gentle-scrub-5952419.jpg?v=1767685448"
+            ],
+            "currency": "USD",
+            "image_url": "https://www.daebyskin.com/cdn/shop/files/gentle-scrub-5952419.jpg?v=1767685448",
+            "image_urls": [
+              "https://www.daebyskin.com/cdn/shop/files/gentle-scrub-5952419.jpg?v=1767685448"
+            ],
+            "variant_id": "45409382662310",
+            "description": "Exfoliating Facial Scrub is a DAEBY facial scrub with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Coco-Betaine, Sodium Lauroyl Methyl Isethionate, Oryza Sativa Powder, Polyacrylate Crosspolymer-6.",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:ca033f87c11a66ab2be998d4940dbb01",
+        "sku_key": "prod::external_seed::external_seed::ext_81f5ddbf0c3ba5da04eabf9b::sku_8e7882a7beff0db30569",
+        "product_key": "prod::external_seed::external_seed::ext_81f5ddbf0c3ba5da04eabf9b",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 18,
+        "merchant_effective_price": 18,
+        "estimated_best_price": 18,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_2752d5a2dc5a62e09d50c96c",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_2752d5a2dc5a62e09d50c96c",
+          "external_product_id": "ext_81f5ddbf0c3ba5da04eabf9b",
+          "domain": "daebyskin.com",
+          "market": "US",
+          "product_title": "Exfoliating Facial Scrub",
+          "variant_title": "Exfoliating Facial Scrub",
+          "variant_sku": "199284310551",
+          "raw_variant_id": "45409382662310",
+          "url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+          "offer_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+          "canonical_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+          "destination_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+          "external_redirect_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+          "merchant_display_name": "DAEBY",
+          "price": "18",
+          "price_amount": 18,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "official_daeby_shopify_country_us_pdp_html",
+            "captured_at": "2026-05-25T16:36:28.433Z",
+            "evidence_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "official_daeby_shopify_country_us_pdp_html",
+              "confidence": "unknown",
+              "checked_at": "2026-05-25T16:36:28.433Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://www.daebyskin.com/products/gentle-scrub?country=US"
+            },
+            "regional_price": {
+              "amount": 18,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+              "captured_at": "2026-05-25T16:36:28.433Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_daeby_shopify_country_us_pdp_html",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T16:36:28.433Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "official_daeby_shopify_country_us_pdp_html",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T16:36:28.433Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "official_daeby_shopify_country_us_pdp_html",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T16:36:28.433Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 18,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+              "captured_at": "2026-05-25T16:36:28.433Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_daeby_shopify_country_us_pdp_html",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T16:36:28.433Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 251
+      }
+    },
+    {
+      "external_product_id": "ext_4a50d003cfa7b0e4c7fc2f01",
+      "product_key": "prod::external_seed::external_seed::ext_4a50d003cfa7b0e4c7fc2f01",
+      "product_group_id": "sig_ba2d3143335712ac9351ba4f",
+      "title": "Pure Silk Exfoliator",
+      "brand": "Seresilk",
+      "product_type": "Skincare Tool",
+      "category": "Skincare Tool",
+      "category_path": "beauty/skincare/tools/exfoliator",
+      "canonical_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+      "pivota_signature_id": "sig_244943bca888a12a1591a2181bb89a92",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_4a50d003cfa7b0e4c7fc2f01::sku_4e5cf71b6f9add6af3e7",
+        "product_key": "prod::external_seed::external_seed::ext_4a50d003cfa7b0e4c7fc2f01",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_4a50d003cfa7b0e4c7fc2f01",
+        "source_variant_id": "ext_4a50d003cfa7b0e4c7fc2f01:40087698800719",
+        "sku": "7698800719",
+        "title": "Pure Silk Exfoliator",
+        "currency": "USD",
+        "image_url": "https://seresilk.com.au/cdn/shop/files/Ecomm_Square_PureSilkExfoliator.jpg?v=1753242189",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_4a50d003cfa7b0e4c7fc2f01",
+          "raw_variant_id": "40087698800719",
+          "source_variant_id": "ext_4a50d003cfa7b0e4c7fc2f01:40087698800719",
+          "variant_sku": "7698800719",
+          "source_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+          "external_redirect_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+          "price": "43.92",
+          "price_amount": 43.92,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://seresilk.com.au/cdn/shop/files/Ecomm_Square_PureSilkExfoliator.jpg?v=1753242189",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "7698800719",
+            "url": "https://seresilk.com.au/products/pure-silk-exfoliator?variant=40087698800719&country=US",
+            "price": "43.92",
+            "stock": "In Stock",
+            "images": [
+              "https://seresilk.com.au/cdn/shop/files/Ecomm_Square_PureSilkExfoliator.jpg?v=1753242189"
+            ],
+            "currency": "USD",
+            "image_url": "https://seresilk.com.au/cdn/shop/files/Ecomm_Square_PureSilkExfoliator.jpg?v=1753242189",
+            "image_urls": [
+              "https://seresilk.com.au/cdn/shop/files/Ecomm_Square_PureSilkExfoliator.jpg?v=1753242189"
+            ],
+            "variant_id": "40087698800719",
+            "description": "Pure Silk Exfoliator is a Seresilk reusable silk skincare exfoliator with source-backed use directions and material details. INCI is not applicable because this reviewed item is a skincare tool, not a formula.",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:f9e3f75393c8699feecf20addd422b5a",
+        "sku_key": "prod::external_seed::external_seed::ext_4a50d003cfa7b0e4c7fc2f01::sku_4e5cf71b6f9add6af3e7",
+        "product_key": "prod::external_seed::external_seed::ext_4a50d003cfa7b0e4c7fc2f01",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 43.92,
+        "merchant_effective_price": 43.92,
+        "estimated_best_price": 43.92,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_fae4f44625d308fe8b47149b",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_fae4f44625d308fe8b47149b",
+          "external_product_id": "ext_4a50d003cfa7b0e4c7fc2f01",
+          "domain": "seresilk.com.au",
+          "market": "US",
+          "product_title": "Pure Silk Exfoliator",
+          "variant_title": "Pure Silk Exfoliator",
+          "variant_sku": "7698800719",
+          "raw_variant_id": "40087698800719",
+          "url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+          "offer_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+          "canonical_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+          "destination_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+          "external_redirect_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+          "merchant_display_name": "Seresilk",
+          "price": "43.92",
+          "price_amount": 43.92,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "official_seresilk_shopify_country_us_pdp_html",
+            "captured_at": "2026-05-25T16:36:28.433Z",
+            "evidence_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "official_seresilk_shopify_country_us_pdp_html",
+              "confidence": "unknown",
+              "checked_at": "2026-05-25T16:36:28.433Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US"
+            },
+            "regional_price": {
+              "amount": 43.92,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+              "captured_at": "2026-05-25T16:36:28.433Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_seresilk_shopify_country_us_pdp_html",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T16:36:28.433Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "official_seresilk_shopify_country_us_pdp_html",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T16:36:28.433Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "official_seresilk_shopify_country_us_pdp_html",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T16:36:28.433Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 43.92,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+              "captured_at": "2026-05-25T16:36:28.433Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_seresilk_shopify_country_us_pdp_html",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T16:36:28.433Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 209
+      }
+    }
+  ]
+}

@@ -138,6 +138,45 @@ describe('pdpIdentityGraph', () => {
     expect(servingReady.source_meta.live_read_blocker).toBeUndefined();
   });
 
+  test('buildIdentityListingFromProduct accepts skin undertone variants as exact shade axes', () => {
+    const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
+
+    const listing = buildIdentityListingFromProduct({
+      merchantId: 'external_seed',
+      productId: 'ext_aetas_serum',
+      product: {
+        title: 'The Serum',
+        brand: 'Aetas',
+        description: 'Booster serums for warm and cool skin undertones.',
+        canonical_url: 'https://aetasofficial.com/en/products/serum',
+        variants: [
+          {
+            variant_id: '46009531236507',
+            option_name: 'Shade',
+            option_value: 'beta cool',
+            axis_kind: 'shade',
+          },
+          {
+            variant_id: '46009531269275',
+            option_name: 'Shade',
+            option_value: 'gamma warm',
+            axis_kind: 'shade',
+          },
+        ],
+      },
+      sourceKind: 'external_seed',
+    });
+
+    expect(listing.identity_status).toBe('approved');
+    expect(listing.review_required).toBe(false);
+    expect(listing.review_reason_codes).toEqual([]);
+    expect(listing.matched_by_rule).toBe('official_url_axes');
+    expect(listing.variant_axes).toEqual({
+      shade: 'beta cool',
+      multi_variant: true,
+    });
+  });
+
   test('buildIdentityListingFromProduct classifies external seed source tier by brand-owned domain', () => {
     const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
 

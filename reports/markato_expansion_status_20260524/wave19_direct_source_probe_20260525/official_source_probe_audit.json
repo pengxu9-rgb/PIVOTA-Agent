@@ -1,0 +1,343 @@
+{
+  "generated_at": "2026-05-25T16:53:34.528Z",
+  "market": "US",
+  "source": "wave19_direct_official_shopify_country_us_source_probe",
+  "scanned": 9,
+  "ready_count": 4,
+  "held_count": 5,
+  "audit_rows": [
+    {
+      "file": "aetas_serum_country_us.html",
+      "target_url": "https://aetasofficial.com/en/products/serum?country=US",
+      "html_path": "reports/markato_expansion_status_20260524/wave19_direct_source_probe_20260525/source_html/aetas_serum_country_us.html",
+      "brand": "Aetās",
+      "title": "The Serum",
+      "price_currency": "USD",
+      "offer_currencies": [
+        "USD",
+        "USD"
+      ],
+      "shopify_country": "US",
+      "availability_values": [
+        "http://schema.org/InStock",
+        "http://schema.org/InStock"
+      ],
+      "available": true,
+      "has_product_json_ld": true,
+      "variant_count": 2,
+      "image_count": 10,
+      "price": 60,
+      "product_family": "single_formula",
+      "ingredients_raw_length": 706,
+      "ingredients_count": 28,
+      "how_to_use_length": 144,
+      "category_path": "beauty/skincare/treat/serum",
+      "seed_id": "eps_d7930d2d33ac3613ed8648b1",
+      "external_product_id": "ext_684249c7a94a1a6f43fdbd77",
+      "public_description_length": 239,
+      "commerce_gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "ok",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "promotions_status": "unknown",
+        "availability_status": "in_stock",
+        "problems": []
+      },
+      "status": "ready",
+      "reasons": [],
+      "warnings": []
+    },
+    {
+      "file": "aetas_cleanser_country_us.html",
+      "target_url": "https://aetasofficial.com/en/products/cleanser?country=US",
+      "html_path": "reports/markato_expansion_status_20260524/wave19_direct_source_probe_20260525/source_html/aetas_cleanser_country_us.html",
+      "brand": "Aetās",
+      "title": "The Cleanser 200mL",
+      "price_currency": "USD",
+      "offer_currencies": [
+        "USD"
+      ],
+      "shopify_country": "US",
+      "availability_values": [
+        "http://schema.org/OutOfStock"
+      ],
+      "available": false,
+      "has_product_json_ld": true,
+      "variant_count": 1,
+      "image_count": 10,
+      "price": 85,
+      "product_family": "single_formula",
+      "ingredients_raw_length": 273,
+      "ingredients_count": 11,
+      "how_to_use_length": 346,
+      "category_path": "beauty/skincare/cleanse/cleanser",
+      "status": "hold",
+      "reasons": [
+        "out_of_stock_or_unavailable",
+        "manual_candidate_hold"
+      ],
+      "warnings": []
+    },
+    {
+      "file": "aetas_lotion_country_us.html",
+      "target_url": "https://aetasofficial.com/en/products/lotion?country=US",
+      "html_path": "reports/markato_expansion_status_20260524/wave19_direct_source_probe_20260525/source_html/aetas_lotion_country_us.html",
+      "brand": "Aetās",
+      "title": "The Lotion 200mL",
+      "price_currency": "USD",
+      "offer_currencies": [
+        "USD"
+      ],
+      "shopify_country": "US",
+      "availability_values": [
+        "http://schema.org/OutOfStock"
+      ],
+      "available": false,
+      "has_product_json_ld": true,
+      "variant_count": 1,
+      "image_count": 10,
+      "price": 85,
+      "product_family": "single_formula",
+      "ingredients_raw_length": 454,
+      "ingredients_count": 21,
+      "how_to_use_length": 261,
+      "category_path": "beauty/skincare/tone/toner",
+      "status": "hold",
+      "reasons": [
+        "out_of_stock_or_unavailable",
+        "manual_candidate_hold"
+      ],
+      "warnings": []
+    },
+    {
+      "file": "aetas_moisturizer_country_us.html",
+      "target_url": "https://aetasofficial.com/en/products/moisturizer?country=US",
+      "html_path": "reports/markato_expansion_status_20260524/wave19_direct_source_probe_20260525/source_html/aetas_moisturizer_country_us.html",
+      "brand": "Aetās",
+      "title": "The Moisturizer 50mL",
+      "price_currency": "USD",
+      "offer_currencies": [
+        "USD"
+      ],
+      "shopify_country": "US",
+      "availability_values": [
+        "http://schema.org/OutOfStock"
+      ],
+      "available": false,
+      "has_product_json_ld": true,
+      "variant_count": 1,
+      "image_count": 10,
+      "price": 85,
+      "product_family": "single_formula",
+      "ingredients_raw_length": 435,
+      "ingredients_count": 23,
+      "how_to_use_length": 320,
+      "category_path": "beauty/skincare/moisturize/moisturizer",
+      "status": "hold",
+      "reasons": [
+        "out_of_stock_or_unavailable",
+        "manual_candidate_hold"
+      ],
+      "warnings": []
+    },
+    {
+      "file": "daeby_cleanser_country_us.html",
+      "target_url": "https://www.daebyskin.com/products/cleanser?country=US",
+      "html_path": "reports/markato_expansion_status_20260524/wave19_direct_source_probe_20260525/source_html/daeby_cleanser_country_us.html",
+      "brand": "DAEBY",
+      "title": "Daily Cleanser",
+      "price_currency": "USD",
+      "offer_currencies": [
+        "USD"
+      ],
+      "shopify_country": "US",
+      "availability_values": [
+        "https://schema.org/InStock"
+      ],
+      "available": true,
+      "has_product_json_ld": true,
+      "variant_count": 1,
+      "image_count": 10,
+      "price": 19,
+      "product_family": "single_formula",
+      "ingredients_raw_length": 685,
+      "ingredients_count": 30,
+      "how_to_use_length": 110,
+      "category_path": "beauty/skincare/cleanse/cleanser",
+      "seed_id": "eps_e061138dca4586901570de42",
+      "external_product_id": "ext_e1c4eb330321ebc6e9672d73",
+      "public_description_length": 254,
+      "commerce_gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "ok",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "promotions_status": "unknown",
+        "availability_status": "in_stock",
+        "problems": []
+      },
+      "status": "ready",
+      "reasons": [],
+      "warnings": []
+    },
+    {
+      "file": "daeby_gentle_scrub_country_us.html",
+      "target_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+      "html_path": "reports/markato_expansion_status_20260524/wave19_direct_source_probe_20260525/source_html/daeby_gentle_scrub_country_us.html",
+      "brand": "DAEBY",
+      "title": "Exfoliating Facial Scrub",
+      "price_currency": "USD",
+      "offer_currencies": [
+        "USD"
+      ],
+      "shopify_country": "US",
+      "availability_values": [
+        "https://schema.org/InStock"
+      ],
+      "available": true,
+      "has_product_json_ld": true,
+      "variant_count": 1,
+      "image_count": 10,
+      "price": 18,
+      "product_family": "single_formula",
+      "ingredients_raw_length": 467,
+      "ingredients_count": 21,
+      "how_to_use_length": 98,
+      "category_path": "beauty/skincare/exfoliate/face-scrub",
+      "seed_id": "eps_2752d5a2dc5a62e09d50c96c",
+      "external_product_id": "ext_81f5ddbf0c3ba5da04eabf9b",
+      "public_description_length": 251,
+      "commerce_gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "ok",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "promotions_status": "unknown",
+        "availability_status": "in_stock",
+        "problems": []
+      },
+      "status": "ready",
+      "reasons": [],
+      "warnings": []
+    },
+    {
+      "file": "daeby_bathroom_basics_country_us.html",
+      "target_url": "https://www.daebyskin.com/products/bathroom-basics?country=US",
+      "html_path": "reports/markato_expansion_status_20260524/wave19_direct_source_probe_20260525/source_html/daeby_bathroom_basics_country_us.html",
+      "brand": "DAEBY",
+      "title": "Bathroom Basics Set",
+      "price_currency": "USD",
+      "offer_currencies": [
+        "USD"
+      ],
+      "shopify_country": "US",
+      "availability_values": [
+        "https://schema.org/InStock"
+      ],
+      "available": true,
+      "has_product_json_ld": true,
+      "variant_count": 1,
+      "image_count": 2,
+      "price": 36,
+      "product_family": "set_or_collection",
+      "ingredients_raw_length": 1606,
+      "ingredients_count": 69,
+      "how_to_use_length": 0,
+      "category_path": "beauty/skincare/sets",
+      "status": "hold",
+      "reasons": [
+        "missing_official_how_to",
+        "set_or_collection_hold",
+        "manual_candidate_hold"
+      ],
+      "warnings": []
+    },
+    {
+      "file": "daeby_skincare_essentials_country_us.html",
+      "target_url": "https://www.daebyskin.com/products/skincare-essentials?country=US",
+      "html_path": "reports/markato_expansion_status_20260524/wave19_direct_source_probe_20260525/source_html/daeby_skincare_essentials_country_us.html",
+      "brand": "DAEBY",
+      "title": "Skincare Essentials Set",
+      "price_currency": "USD",
+      "offer_currencies": [
+        "USD"
+      ],
+      "shopify_country": "US",
+      "availability_values": [
+        "https://schema.org/InStock"
+      ],
+      "available": true,
+      "has_product_json_ld": true,
+      "variant_count": 1,
+      "image_count": 2,
+      "price": 49,
+      "product_family": "set_or_collection",
+      "ingredients_raw_length": 2100,
+      "ingredients_count": 89,
+      "how_to_use_length": 0,
+      "category_path": "beauty/skincare/sets",
+      "status": "hold",
+      "reasons": [
+        "missing_official_how_to",
+        "set_or_collection_hold",
+        "manual_candidate_hold"
+      ],
+      "warnings": []
+    },
+    {
+      "file": "seresilk_pure_silk_exfoliator_country_us.html",
+      "target_url": "https://seresilk.com.au/products/pure-silk-exfoliator?country=US",
+      "html_path": "reports/markato_expansion_status_20260524/wave19_direct_source_probe_20260525/source_html/seresilk_pure_silk_exfoliator_country_us.html",
+      "brand": "Seresilk",
+      "title": "Pure Silk Exfoliator",
+      "price_currency": "USD",
+      "offer_currencies": [
+        "USD"
+      ],
+      "shopify_country": "US",
+      "availability_values": [
+        "http://schema.org/InStock"
+      ],
+      "available": true,
+      "has_product_json_ld": true,
+      "variant_count": 1,
+      "image_count": 10,
+      "price": 43.92,
+      "product_family": "accessory",
+      "ingredients_raw_length": 86,
+      "ingredients_count": 0,
+      "how_to_use_length": 376,
+      "category_path": "beauty/skincare/tools/exfoliator",
+      "seed_id": "eps_fae4f44625d308fe8b47149b",
+      "external_product_id": "ext_4a50d003cfa7b0e4c7fc2f01",
+      "public_description_length": 209,
+      "commerce_gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "ok",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "promotions_status": "unknown",
+        "availability_status": "in_stock",
+        "problems": []
+      },
+      "status": "ready",
+      "reasons": [],
+      "warnings": [
+        "source_claim_terms_sanitized_from_public_description"
+      ]
+    }
+  ]
+}

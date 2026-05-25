@@ -1,0 +1,25 @@
+{
+  "ok": true,
+  "generated_at": "2026-05-25T16:54:31.749Z",
+  "mode": "dry_run",
+  "manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/wave19_direct_source_probe_20260525/db_ready_candidate_manifest.json",
+  "selected_rows": 1,
+  "updated": 0,
+  "would_update": 1,
+  "unchanged": 0,
+  "missing": 0,
+  "plans": [
+    {
+      "external_product_id": "ext_684249c7a94a1a6f43fdbd77",
+      "seed_id": "eps_d7930d2d33ac3613ed8648b1",
+      "title": "The Serum",
+      "status": "would_update",
+      "before_hash": "bcae73d34c4fb986",
+      "after_hash": "689386dae099d50f",
+      "variant_axis_kinds": [
+        "shade",
+        "shade"
+      ]
+    }
+  ]
+}
