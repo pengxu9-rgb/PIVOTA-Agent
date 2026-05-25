@@ -1,0 +1,1277 @@
+{
+  "generated_at": "2026-05-25T13:53:39.860Z",
+  "mode": "dry_run",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": true,
+  "requested_ids": 6,
+  "fetched_rows": 6,
+  "mirror_rows": 6,
+  "planned_sku_rows": 11,
+  "planned_offer_rows": 11,
+  "planned_index_state_rows": 6,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "dry_run",
+    "existing_before": {
+      "catalog_products": 6,
+      "catalog_skus": 11,
+      "catalog_offers": 11,
+      "product_group_members": 6
+    },
+    "batch_size": null,
+    "batches": 1,
+    "product_upserts": 0,
+    "sku_upserts": 0,
+    "offer_upserts": 0,
+    "group_member_upserts": 0,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 0,
+    "identity_live_read_updates": 0
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_3916e5e378df1e75041a1b68",
+      "product_key": "prod::external_seed::external_seed::ext_3916e5e378df1e75041a1b68",
+      "product_group_id": "sig_e97a58be6023ed10e4830305",
+      "title": "Daily Shield Superfood Conditioner",
+      "brand": "Abyssian",
+      "product_type": "Conditioner",
+      "category": "Conditioner",
+      "category_path": "beauty/haircare/conditioner",
+      "canonical_url": "https://www.abyssianhaircare.com/products/daily-shield-superfood-conditioner",
+      "pivota_signature_id": "sig_a3ce87e8437b7828b5e2b0fbb9ab88b6",
+      "sku_rows": 2,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_3916e5e378df1e75041a1b68::sku_291d711f619ab5bd95e5",
+        "product_key": "prod::external_seed::external_seed::ext_3916e5e378df1e75041a1b68",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_3916e5e378df1e75041a1b68",
+        "source_variant_id": "ext_3916e5e378df1e75041a1b68:39398974488730",
+        "sku": "50CD25",
+        "title": "Daily Shield Superfood Conditioner",
+        "currency": "USD",
+        "image_url": "https://www.abyssianhaircare.com/cdn/shop/files/withoutbg_250ml_Daily-Shield.jpg?v=1764227123",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_3916e5e378df1e75041a1b68",
+          "raw_variant_id": "39398974488730",
+          "source_variant_id": "ext_3916e5e378df1e75041a1b68:39398974488730",
+          "variant_sku": "50CD25",
+          "source_url": "https://www.abyssianhaircare.com/products/daily-shield-superfood-conditioner",
+          "external_redirect_url": "https://www.abyssianhaircare.com/products/daily-shield-superfood-conditioner",
+          "price": "26",
+          "price_amount": 26,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://www.abyssianhaircare.com/cdn/shop/files/withoutbg_250ml_Daily-Shield.jpg?v=1764227123",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "50CD25",
+            "url": "https://www.abyssianhaircare.com/products/daily-shield-superfood-conditioner",
+            "price": "26",
+            "stock": "In Stock",
+            "images": [
+              "https://www.abyssianhaircare.com/cdn/shop/files/withoutbg_250ml_Daily-Shield.jpg?v=1764227123"
+            ],
+            "currency": "USD",
+            "image_url": "https://www.abyssianhaircare.com/cdn/shop/files/withoutbg_250ml_Daily-Shield.jpg?v=1764227123",
+            "image_urls": [
+              "https://www.abyssianhaircare.com/cdn/shop/files/withoutbg_250ml_Daily-Shield.jpg?v=1764227123"
+            ],
+            "variant_id": "39398974488730",
+            "description": "Daily Shield Superfood Conditioner is an Abyssian conditioner for hair care routines, with a complete ingredient list and clear use directions. Key listed ingredients include Aqua, Aloe Barbadensis Leaf Juice**, Cetearyl Alcohol**, Hydroxypropyl Starch Phosphate**, Propanediol**.",
+            "option_name": "Size",
+            "option_value": "250ml / 8.45 fl oz"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:245d921e851a15420330e9231d1a56a1",
+        "sku_key": "prod::external_seed::external_seed::ext_3916e5e378df1e75041a1b68::sku_291d711f619ab5bd95e5",
+        "product_key": "prod::external_seed::external_seed::ext_3916e5e378df1e75041a1b68",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 26,
+        "merchant_effective_price": 26,
+        "estimated_best_price": 26,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_71f0c0e031d8efe4d72e4f24",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_71f0c0e031d8efe4d72e4f24",
+          "external_product_id": "ext_3916e5e378df1e75041a1b68",
+          "domain": "abyssianhaircare.com",
+          "market": "US",
+          "product_title": "Daily Shield Superfood Conditioner",
+          "variant_title": "Daily Shield Superfood Conditioner",
+          "variant_sku": "50CD25",
+          "raw_variant_id": "39398974488730",
+          "url": "https://www.abyssianhaircare.com/products/daily-shield-superfood-conditioner",
+          "offer_url": "https://www.abyssianhaircare.com/products/daily-shield-superfood-conditioner",
+          "canonical_url": "https://www.abyssianhaircare.com/products/daily-shield-superfood-conditioner",
+          "destination_url": "https://www.abyssianhaircare.com/products/daily-shield-superfood-conditioner",
+          "external_redirect_url": "https://www.abyssianhaircare.com/products/daily-shield-superfood-conditioner",
+          "merchant_display_name": "Abyssian",
+          "price": "26",
+          "price_amount": 26,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "official_shopify_us_pdp_html_embedded_product_json",
+            "captured_at": "2026-05-25T13:11:04.915Z",
+            "evidence_url": "https://www.abyssianhaircare.com/products/daily-shield-superfood-conditioner",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "official_shopify_us_pdp_html_embedded_product_json",
+              "confidence": "unknown",
+              "checked_at": "2026-05-25T13:11:04.915Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://www.abyssianhaircare.com/products/daily-shield-superfood-conditioner"
+            },
+            "regional_price": {
+              "amount": 26,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.abyssianhaircare.com/products/daily-shield-superfood-conditioner",
+              "captured_at": "2026-05-25T13:11:04.915Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_shopify_us_pdp_html_embedded_product_json",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T13:11:04.915Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "official_shopify_us_pdp_html_embedded_product_json",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T13:11:04.915Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "official_shopify_us_pdp_html_embedded_product_json",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T13:11:04.915Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 26,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.abyssianhaircare.com/products/daily-shield-superfood-conditioner",
+              "captured_at": "2026-05-25T13:11:04.915Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_shopify_us_pdp_html_embedded_product_json",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T13:11:04.915Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 280
+      }
+    },
+    {
+      "external_product_id": "ext_3508560cf76c6d564d97f6d0",
+      "product_key": "prod::external_seed::external_seed::ext_3508560cf76c6d564d97f6d0",
+      "product_group_id": "sig_0deebd19cd647845b38cf064",
+      "title": "Dream Bonds Bio Emulsion",
+      "brand": "Abyssian",
+      "product_type": "Hair Treatment",
+      "category": "Hair Treatment",
+      "category_path": "beauty/haircare/treatment",
+      "canonical_url": "https://www.abyssianhaircare.com/products/dream-bonds-bio-emulsion",
+      "pivota_signature_id": "sig_8042cf8061b0b322a4a901a09c14902b",
+      "sku_rows": 2,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_3508560cf76c6d564d97f6d0::sku_512ee3b8620af54b0681",
+        "product_key": "prod::external_seed::external_seed::ext_3508560cf76c6d564d97f6d0",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_3508560cf76c6d564d97f6d0",
+        "source_variant_id": "ext_3508560cf76c6d564d97f6d0:45668436377754",
+        "sku": "50BB45",
+        "title": "Dream Bonds Bio Emulsion",
+        "currency": "USD",
+        "image_url": "https://www.abyssianhaircare.com/cdn/shop/files/DreamBondsBioEmulsion_Infographics_5FEB2025_45mlpackshot.jpg?v=1748832578",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_3508560cf76c6d564d97f6d0",
+          "raw_variant_id": "45668436377754",
+          "source_variant_id": "ext_3508560cf76c6d564d97f6d0:45668436377754",
+          "variant_sku": "50BB45",
+          "source_url": "https://www.abyssianhaircare.com/products/dream-bonds-bio-emulsion",
+          "external_redirect_url": "https://www.abyssianhaircare.com/products/dream-bonds-bio-emulsion",
+          "price": "50",
+          "price_amount": 50,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://www.abyssianhaircare.com/cdn/shop/files/DreamBondsBioEmulsion_Infographics_5FEB2025_45mlpackshot.jpg?v=1748832578",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "50BB45",
+            "url": "https://www.abyssianhaircare.com/products/dream-bonds-bio-emulsion",
+            "price": "50",
+            "stock": "In Stock",
+            "images": [
+              "https://www.abyssianhaircare.com/cdn/shop/files/DreamBondsBioEmulsion_Infographics_5FEB2025_45mlpackshot.jpg?v=1748832578"
+            ],
+            "currency": "USD",
+            "image_url": "https://www.abyssianhaircare.com/cdn/shop/files/DreamBondsBioEmulsion_Infographics_5FEB2025_45mlpackshot.jpg?v=1748832578",
+            "image_urls": [
+              "https://www.abyssianhaircare.com/cdn/shop/files/DreamBondsBioEmulsion_Infographics_5FEB2025_45mlpackshot.jpg?v=1748832578"
+            ],
+            "variant_id": "45668436377754",
+            "description": "Dream Bonds Bio Emulsion is an Abyssian hair treatment for hair care routines, with a complete ingredient list and clear use directions. Key listed ingredients include Aqua (Water)*, Caprylic/capric Triglyceride***, Coco-caprylate/caprate**, Lysine Carboxymethyl Cysteinate, *** Stearamidopropyl Dimethylamine.",
+            "option_name": "SIZE",
+            "option_value": "45ml / 1.52 fl oz"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:ce91150ec8acc5e886ff4b14299e9b65",
+        "sku_key": "prod::external_seed::external_seed::ext_3508560cf76c6d564d97f6d0::sku_512ee3b8620af54b0681",
+        "product_key": "prod::external_seed::external_seed::ext_3508560cf76c6d564d97f6d0",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 50,
+        "merchant_effective_price": 50,
+        "estimated_best_price": 50,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_cfbf9875fe7da56d22526802",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_cfbf9875fe7da56d22526802",
+          "external_product_id": "ext_3508560cf76c6d564d97f6d0",
+          "domain": "abyssianhaircare.com",
+          "market": "US",
+          "product_title": "Dream Bonds Bio Emulsion",
+          "variant_title": "Dream Bonds Bio Emulsion",
+          "variant_sku": "50BB45",
+          "raw_variant_id": "45668436377754",
+          "url": "https://www.abyssianhaircare.com/products/dream-bonds-bio-emulsion",
+          "offer_url": "https://www.abyssianhaircare.com/products/dream-bonds-bio-emulsion",
+          "canonical_url": "https://www.abyssianhaircare.com/products/dream-bonds-bio-emulsion",
+          "destination_url": "https://www.abyssianhaircare.com/products/dream-bonds-bio-emulsion",
+          "external_redirect_url": "https://www.abyssianhaircare.com/products/dream-bonds-bio-emulsion",
+          "merchant_display_name": "Abyssian",
+          "price": "50",
+          "price_amount": 50,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "official_shopify_us_pdp_html_embedded_product_json",
+            "captured_at": "2026-05-25T13:11:04.915Z",
+            "evidence_url": "https://www.abyssianhaircare.com/products/dream-bonds-bio-emulsion",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "official_shopify_us_pdp_html_embedded_product_json",
+              "confidence": "unknown",
+              "checked_at": "2026-05-25T13:11:04.915Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://www.abyssianhaircare.com/products/dream-bonds-bio-emulsion"
+            },
+            "regional_price": {
+              "amount": 20,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.abyssianhaircare.com/products/dream-bonds-bio-emulsion",
+              "captured_at": "2026-05-25T13:11:04.915Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_shopify_us_pdp_html_embedded_product_json",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T13:11:04.915Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "official_shopify_us_pdp_html_embedded_product_json",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T13:11:04.915Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "official_shopify_us_pdp_html_embedded_product_json",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T13:11:04.915Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 20,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.abyssianhaircare.com/products/dream-bonds-bio-emulsion",
+              "captured_at": "2026-05-25T13:11:04.915Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_shopify_us_pdp_html_embedded_product_json",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T13:11:04.915Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 310
+      }
+    },
+    {
+      "external_product_id": "ext_6cb55d2964fca74dbcade8e7",
+      "product_key": "prod::external_seed::external_seed::ext_6cb55d2964fca74dbcade8e7",
+      "product_group_id": "sig_f5bb30e7e80cad4f0ce4f295",
+      "title": "Nano Repair Shampoo",
+      "brand": "Abyssian",
+      "product_type": "Shampoo",
+      "category": "Shampoo",
+      "category_path": "beauty/haircare/shampoo",
+      "canonical_url": "https://www.abyssianhaircare.com/products/nano-repair-shampoo",
+      "pivota_signature_id": "sig_ccc880427eff8c04a11f3b07d7502488",
+      "sku_rows": 2,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_6cb55d2964fca74dbcade8e7::sku_8afe726932ad49a62817",
+        "product_key": "prod::external_seed::external_seed::ext_6cb55d2964fca74dbcade8e7",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_6cb55d2964fca74dbcade8e7",
+        "source_variant_id": "ext_6cb55d2964fca74dbcade8e7:45659186364570",
+        "sku": "50WNR34",
+        "title": "Nano Repair Shampoo",
+        "currency": "USD",
+        "image_url": "https://www.abyssianhaircare.com/cdn/shop/files/NanoRepairShampoo_Infographics_5FEB2025_NanoRepairConditioner340mlshopify.jpg?v=1759966461",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_6cb55d2964fca74dbcade8e7",
+          "raw_variant_id": "45659186364570",
+          "source_variant_id": "ext_6cb55d2964fca74dbcade8e7:45659186364570",
+          "variant_sku": "50WNR34",
+          "source_url": "https://www.abyssianhaircare.com/products/nano-repair-shampoo",
+          "external_redirect_url": "https://www.abyssianhaircare.com/products/nano-repair-shampoo",
+          "price": "38",
+          "price_amount": 38,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://www.abyssianhaircare.com/cdn/shop/files/NanoRepairShampoo_Infographics_5FEB2025_NanoRepairConditioner340mlshopify.jpg?v=1759966461",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "50WNR34",
+            "url": "https://www.abyssianhaircare.com/products/nano-repair-shampoo",
+            "price": "38",
+            "stock": "In Stock",
+            "images": [
+              "https://www.abyssianhaircare.com/cdn/shop/files/NanoRepairShampoo_Infographics_5FEB2025_NanoRepairConditioner340mlshopify.jpg?v=1759966461"
+            ],
+            "currency": "USD",
+            "image_url": "https://www.abyssianhaircare.com/cdn/shop/files/NanoRepairShampoo_Infographics_5FEB2025_NanoRepairConditioner340mlshopify.jpg?v=1759966461",
+            "image_urls": [
+              "https://www.abyssianhaircare.com/cdn/shop/files/NanoRepairShampoo_Infographics_5FEB2025_NanoRepairConditioner340mlshopify.jpg?v=1759966461"
+            ],
+            "variant_id": "45659186364570",
+            "description": "Nano Repair Shampoo is an Abyssian shampoo for hair care routines, with a complete ingredient list and clear use directions. Key listed ingredients include Aqua (Water)*, Cocamidopropyl Hydroxysultaine**, Sodium C14-16 Olefin Sulfonate**, Sodium Cocoamphoacetate**, Decyl Glucoside**.",
+            "option_name": "Size",
+            "option_value": "340 mL / 11.50 fl oz"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:83280afc5d4ba692ca56b18aa7d25ee9",
+        "sku_key": "prod::external_seed::external_seed::ext_6cb55d2964fca74dbcade8e7::sku_8afe726932ad49a62817",
+        "product_key": "prod::external_seed::external_seed::ext_6cb55d2964fca74dbcade8e7",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 38,
+        "merchant_effective_price": 38,
+        "estimated_best_price": 38,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_e883a2903c27afee30ec84c9",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_e883a2903c27afee30ec84c9",
+          "external_product_id": "ext_6cb55d2964fca74dbcade8e7",
+          "domain": "abyssianhaircare.com",
+          "market": "US",
+          "product_title": "Nano Repair Shampoo",
+          "variant_title": "Nano Repair Shampoo",
+          "variant_sku": "50WNR34",
+          "raw_variant_id": "45659186364570",
+          "url": "https://www.abyssianhaircare.com/products/nano-repair-shampoo",
+          "offer_url": "https://www.abyssianhaircare.com/products/nano-repair-shampoo",
+          "canonical_url": "https://www.abyssianhaircare.com/products/nano-repair-shampoo",
+          "destination_url": "https://www.abyssianhaircare.com/products/nano-repair-shampoo",
+          "external_redirect_url": "https://www.abyssianhaircare.com/products/nano-repair-shampoo",
+          "merchant_display_name": "Abyssian",
+          "price": "38",
+          "price_amount": 38,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "official_shopify_us_pdp_html_embedded_product_json",
+            "captured_at": "2026-05-25T13:11:04.915Z",
+            "evidence_url": "https://www.abyssianhaircare.com/products/nano-repair-shampoo",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "official_shopify_us_pdp_html_embedded_product_json",
+              "confidence": "unknown",
+              "checked_at": "2026-05-25T13:11:04.915Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://www.abyssianhaircare.com/products/nano-repair-shampoo"
+            },
+            "regional_price": {
+              "amount": 38,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.abyssianhaircare.com/products/nano-repair-shampoo",
+              "captured_at": "2026-05-25T13:11:04.915Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_shopify_us_pdp_html_embedded_product_json",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T13:11:04.915Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "official_shopify_us_pdp_html_embedded_product_json",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T13:11:04.915Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "official_shopify_us_pdp_html_embedded_product_json",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T13:11:04.915Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 38,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.abyssianhaircare.com/products/nano-repair-shampoo",
+              "captured_at": "2026-05-25T13:11:04.915Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_shopify_us_pdp_html_embedded_product_json",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T13:11:04.915Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 284
+      }
+    },
+    {
+      "external_product_id": "ext_d8737399fc72ef06c147bd0c",
+      "product_key": "prod::external_seed::external_seed::ext_d8737399fc72ef06c147bd0c",
+      "product_group_id": "sig_107c46d79853152fe6da7505",
+      "title": "Protein Shake Hair Mask",
+      "brand": "Abyssian",
+      "product_type": "Hair Mask",
+      "category": "Hair Mask",
+      "category_path": "beauty/haircare/hair-mask",
+      "canonical_url": "https://www.abyssianhaircare.com/products/protein-shake-hair-mask",
+      "pivota_signature_id": "sig_3aab8f2b9cc42c0a22886fa598146cbb",
+      "sku_rows": 2,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_d8737399fc72ef06c147bd0c::sku_329ad72041dc9b3dd525",
+        "product_key": "prod::external_seed::external_seed::ext_d8737399fc72ef06c147bd0c",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_d8737399fc72ef06c147bd0c",
+        "source_variant_id": "ext_d8737399fc72ef06c147bd0c:39398983368858",
+        "sku": "50MD25",
+        "title": "Protein Shake Hair Mask",
+        "currency": "USD",
+        "image_url": "https://www.abyssianhaircare.com/cdn/shop/products/withoutbg_250ml_protienshakehairmask_Packshot_2000px.jpg?v=1684902483",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_d8737399fc72ef06c147bd0c",
+          "raw_variant_id": "39398983368858",
+          "source_variant_id": "ext_d8737399fc72ef06c147bd0c:39398983368858",
+          "variant_sku": "50MD25",
+          "source_url": "https://www.abyssianhaircare.com/products/protein-shake-hair-mask",
+          "external_redirect_url": "https://www.abyssianhaircare.com/products/protein-shake-hair-mask",
+          "price": "38",
+          "price_amount": 38,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://www.abyssianhaircare.com/cdn/shop/products/withoutbg_250ml_protienshakehairmask_Packshot_2000px.jpg?v=1684902483",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "50MD25",
+            "url": "https://www.abyssianhaircare.com/products/protein-shake-hair-mask",
+            "price": "38",
+            "stock": "In Stock",
+            "images": [
+              "https://www.abyssianhaircare.com/cdn/shop/products/withoutbg_250ml_protienshakehairmask_Packshot_2000px.jpg?v=1684902483"
+            ],
+            "currency": "USD",
+            "image_url": "https://www.abyssianhaircare.com/cdn/shop/products/withoutbg_250ml_protienshakehairmask_Packshot_2000px.jpg?v=1684902483",
+            "image_urls": [
+              "https://www.abyssianhaircare.com/cdn/shop/products/withoutbg_250ml_protienshakehairmask_Packshot_2000px.jpg?v=1684902483"
+            ],
+            "variant_id": "39398983368858",
+            "description": "Protein Shake Hair Mask is an Abyssian hair mask for hair care routines, with a complete ingredient list and clear use directions. Key listed ingredients include Aqua (Water)*, Glycerin**, Cetyl Alcohol**, Stearyl Alcohol**, Ricinus Communis(Castor) Seed Oil**.",
+            "option_name": "Size",
+            "option_value": "250ml / 8.45 fl oz"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:7fa792469cc78213e7e2cdf039cfb08d",
+        "sku_key": "prod::external_seed::external_seed::ext_d8737399fc72ef06c147bd0c::sku_329ad72041dc9b3dd525",
+        "product_key": "prod::external_seed::external_seed::ext_d8737399fc72ef06c147bd0c",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 38,
+        "merchant_effective_price": 38,
+        "estimated_best_price": 38,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_a2f89fc0d4698f67fd370992",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_a2f89fc0d4698f67fd370992",
+          "external_product_id": "ext_d8737399fc72ef06c147bd0c",
+          "domain": "abyssianhaircare.com",
+          "market": "US",
+          "product_title": "Protein Shake Hair Mask",
+          "variant_title": "Protein Shake Hair Mask",
+          "variant_sku": "50MD25",
+          "raw_variant_id": "39398983368858",
+          "url": "https://www.abyssianhaircare.com/products/protein-shake-hair-mask",
+          "offer_url": "https://www.abyssianhaircare.com/products/protein-shake-hair-mask",
+          "canonical_url": "https://www.abyssianhaircare.com/products/protein-shake-hair-mask",
+          "destination_url": "https://www.abyssianhaircare.com/products/protein-shake-hair-mask",
+          "external_redirect_url": "https://www.abyssianhaircare.com/products/protein-shake-hair-mask",
+          "merchant_display_name": "Abyssian",
+          "price": "38",
+          "price_amount": 38,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "official_shopify_us_pdp_html_embedded_product_json",
+            "captured_at": "2026-05-25T13:11:04.915Z",
+            "evidence_url": "https://www.abyssianhaircare.com/products/protein-shake-hair-mask",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "official_shopify_us_pdp_html_embedded_product_json",
+              "confidence": "unknown",
+              "checked_at": "2026-05-25T13:11:04.915Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://www.abyssianhaircare.com/products/protein-shake-hair-mask"
+            },
+            "regional_price": {
+              "amount": 20,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.abyssianhaircare.com/products/protein-shake-hair-mask",
+              "captured_at": "2026-05-25T13:11:04.915Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_shopify_us_pdp_html_embedded_product_json",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T13:11:04.915Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "official_shopify_us_pdp_html_embedded_product_json",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T13:11:04.915Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "official_shopify_us_pdp_html_embedded_product_json",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T13:11:04.915Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 20,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.abyssianhaircare.com/products/protein-shake-hair-mask",
+              "captured_at": "2026-05-25T13:11:04.915Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_shopify_us_pdp_html_embedded_product_json",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T13:11:04.915Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 261
+      }
+    },
+    {
+      "external_product_id": "ext_443039d2322b0af440c1ce9a",
+      "product_key": "prod::external_seed::external_seed::ext_443039d2322b0af440c1ce9a",
+      "product_group_id": "sig_16f99136045edae6b1d333be",
+      "title": "Solar Glow Dry Shampoo",
+      "brand": "Abyssian",
+      "product_type": "Dry Shampoo",
+      "category": "Dry Shampoo",
+      "category_path": "beauty/haircare/dry-shampoo",
+      "canonical_url": "https://www.abyssianhaircare.com/products/solar-glow-dry-shampoo",
+      "pivota_signature_id": "sig_634c3aad8f9a6fd01b9fea92fad9ab56",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_443039d2322b0af440c1ce9a::sku_df83d0767c4615ba4660",
+        "product_key": "prod::external_seed::external_seed::ext_443039d2322b0af440c1ce9a",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_443039d2322b0af440c1ce9a",
+        "source_variant_id": "ext_443039d2322b0af440c1ce9a:44699444314266",
+        "sku": "50D28",
+        "title": "Solar Glow Dry Shampoo",
+        "currency": "USD",
+        "image_url": "https://www.abyssianhaircare.com/cdn/shop/files/solar_glow_dry_shampoo_28g_packshot_with_box.jpg?v=1724063710",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_443039d2322b0af440c1ce9a",
+          "raw_variant_id": "44699444314266",
+          "source_variant_id": "ext_443039d2322b0af440c1ce9a:44699444314266",
+          "variant_sku": "50D28",
+          "source_url": "https://www.abyssianhaircare.com/products/solar-glow-dry-shampoo",
+          "external_redirect_url": "https://www.abyssianhaircare.com/products/solar-glow-dry-shampoo",
+          "price": "26",
+          "price_amount": 26,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://www.abyssianhaircare.com/cdn/shop/files/solar_glow_dry_shampoo_28g_packshot_with_box.jpg?v=1724063710",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "50D28",
+            "url": "https://www.abyssianhaircare.com/products/solar-glow-dry-shampoo",
+            "price": "26",
+            "stock": "In Stock",
+            "images": [
+              "https://www.abyssianhaircare.com/cdn/shop/files/solar_glow_dry_shampoo_28g_packshot_with_box.jpg?v=1724063710"
+            ],
+            "currency": "USD",
+            "image_url": "https://www.abyssianhaircare.com/cdn/shop/files/solar_glow_dry_shampoo_28g_packshot_with_box.jpg?v=1724063710",
+            "image_urls": [
+              "https://www.abyssianhaircare.com/cdn/shop/files/solar_glow_dry_shampoo_28g_packshot_with_box.jpg?v=1724063710"
+            ],
+            "variant_id": "44699444314266",
+            "description": "Solar Glow Dry Shampoo is an Abyssian dry shampoo for hair care routines, with a complete ingredient list and clear use directions. Key listed ingredients include Oryza Sativa Starch**, Tapioca Starch**, Zinc Oxide*, Silica*, Kaolin*.",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:f2ccb1323ce59632383870fc932ba338",
+        "sku_key": "prod::external_seed::external_seed::ext_443039d2322b0af440c1ce9a::sku_df83d0767c4615ba4660",
+        "product_key": "prod::external_seed::external_seed::ext_443039d2322b0af440c1ce9a",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 26,
+        "merchant_effective_price": 26,
+        "estimated_best_price": 26,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_6634928446a0a781f3c52c7e",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_6634928446a0a781f3c52c7e",
+          "external_product_id": "ext_443039d2322b0af440c1ce9a",
+          "domain": "abyssianhaircare.com",
+          "market": "US",
+          "product_title": "Solar Glow Dry Shampoo",
+          "variant_title": "Solar Glow Dry Shampoo",
+          "variant_sku": "50D28",
+          "raw_variant_id": "44699444314266",
+          "url": "https://www.abyssianhaircare.com/products/solar-glow-dry-shampoo",
+          "offer_url": "https://www.abyssianhaircare.com/products/solar-glow-dry-shampoo",
+          "canonical_url": "https://www.abyssianhaircare.com/products/solar-glow-dry-shampoo",
+          "destination_url": "https://www.abyssianhaircare.com/products/solar-glow-dry-shampoo",
+          "external_redirect_url": "https://www.abyssianhaircare.com/products/solar-glow-dry-shampoo",
+          "merchant_display_name": "Abyssian",
+          "price": "26",
+          "price_amount": 26,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "official_shopify_us_pdp_html_embedded_product_json",
+            "captured_at": "2026-05-25T13:11:04.915Z",
+            "evidence_url": "https://www.abyssianhaircare.com/products/solar-glow-dry-shampoo",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "official_shopify_us_pdp_html_embedded_product_json",
+              "confidence": "unknown",
+              "checked_at": "2026-05-25T13:11:04.915Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://www.abyssianhaircare.com/products/solar-glow-dry-shampoo"
+            },
+            "regional_price": {
+              "amount": 26,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.abyssianhaircare.com/products/solar-glow-dry-shampoo",
+              "captured_at": "2026-05-25T13:11:04.915Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_shopify_us_pdp_html_embedded_product_json",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T13:11:04.915Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "official_shopify_us_pdp_html_embedded_product_json",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T13:11:04.915Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "official_shopify_us_pdp_html_embedded_product_json",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T13:11:04.915Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 26,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.abyssianhaircare.com/products/solar-glow-dry-shampoo",
+              "captured_at": "2026-05-25T13:11:04.915Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_shopify_us_pdp_html_embedded_product_json",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T13:11:04.915Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 234
+      }
+    },
+    {
+      "external_product_id": "ext_ac6c6e795d7f3efe5cc22f7c",
+      "product_key": "prod::external_seed::external_seed::ext_ac6c6e795d7f3efe5cc22f7c",
+      "product_group_id": "sig_a998605f90ecd49a8f45928e",
+      "title": "Youth Bloom Hair Mist",
+      "brand": "Abyssian",
+      "product_type": "Hair Mist",
+      "category": "Hair Mist",
+      "category_path": "beauty/haircare/hair-mist",
+      "canonical_url": "https://www.abyssianhaircare.com/products/revitalizing-rinsing-mist",
+      "pivota_signature_id": "sig_f1a11b1a9f03a9a24b170eb9736d3439",
+      "sku_rows": 2,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_ac6c6e795d7f3efe5cc22f7c::sku_fa87e4699242fd56c3bd",
+        "product_key": "prod::external_seed::external_seed::ext_ac6c6e795d7f3efe5cc22f7c",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_ac6c6e795d7f3efe5cc22f7c",
+        "source_variant_id": "ext_ac6c6e795d7f3efe5cc22f7c:39399125778586",
+        "sku": "50QY22",
+        "title": "Youth Bloom Hair Mist",
+        "currency": "USD",
+        "image_url": "https://www.abyssianhaircare.com/cdn/shop/files/Youth_Bloom_Hair_Mist_Infographics_10FEB2025_Page_6.jpg?v=1759903625",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_ac6c6e795d7f3efe5cc22f7c",
+          "raw_variant_id": "39399125778586",
+          "source_variant_id": "ext_ac6c6e795d7f3efe5cc22f7c:39399125778586",
+          "variant_sku": "50QY22",
+          "source_url": "https://www.abyssianhaircare.com/products/revitalizing-rinsing-mist",
+          "external_redirect_url": "https://www.abyssianhaircare.com/products/revitalizing-rinsing-mist",
+          "price": "31",
+          "price_amount": 31,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://www.abyssianhaircare.com/cdn/shop/files/Youth_Bloom_Hair_Mist_Infographics_10FEB2025_Page_6.jpg?v=1759903625",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "50QY22",
+            "url": "https://www.abyssianhaircare.com/products/revitalizing-rinsing-mist",
+            "price": "31",
+            "stock": "In Stock",
+            "images": [
+              "https://www.abyssianhaircare.com/cdn/shop/files/Youth_Bloom_Hair_Mist_Infographics_10FEB2025_Page_6.jpg?v=1759903625"
+            ],
+            "currency": "USD",
+            "image_url": "https://www.abyssianhaircare.com/cdn/shop/files/Youth_Bloom_Hair_Mist_Infographics_10FEB2025_Page_6.jpg?v=1759903625",
+            "image_urls": [
+              "https://www.abyssianhaircare.com/cdn/shop/files/Youth_Bloom_Hair_Mist_Infographics_10FEB2025_Page_6.jpg?v=1759903625"
+            ],
+            "variant_id": "39399125778586",
+            "description": "Youth Bloom Hair Mist is an Abyssian hair mist for hair care routines, with a complete ingredient list and clear use directions. Key listed ingredients include Aqua (Water)*, Magnesium Sulfate**, Glycerin**, Hydrolyzed Rice Protein**, Oryza Sativa (Rice) Extract**.",
+            "option_name": "Size",
+            "option_value": "225 ml / 7.61 fl oz"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:4e4ac98355ae04c1e3fcd7d97d029852",
+        "sku_key": "prod::external_seed::external_seed::ext_ac6c6e795d7f3efe5cc22f7c::sku_fa87e4699242fd56c3bd",
+        "product_key": "prod::external_seed::external_seed::ext_ac6c6e795d7f3efe5cc22f7c",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 31,
+        "merchant_effective_price": 31,
+        "estimated_best_price": 31,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_60516da07ba1a46eeeabe0ea",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_60516da07ba1a46eeeabe0ea",
+          "external_product_id": "ext_ac6c6e795d7f3efe5cc22f7c",
+          "domain": "abyssianhaircare.com",
+          "market": "US",
+          "product_title": "Youth Bloom Hair Mist",
+          "variant_title": "Youth Bloom Hair Mist",
+          "variant_sku": "50QY22",
+          "raw_variant_id": "39399125778586",
+          "url": "https://www.abyssianhaircare.com/products/revitalizing-rinsing-mist",
+          "offer_url": "https://www.abyssianhaircare.com/products/revitalizing-rinsing-mist",
+          "canonical_url": "https://www.abyssianhaircare.com/products/revitalizing-rinsing-mist",
+          "destination_url": "https://www.abyssianhaircare.com/products/revitalizing-rinsing-mist",
+          "external_redirect_url": "https://www.abyssianhaircare.com/products/revitalizing-rinsing-mist",
+          "merchant_display_name": "Abyssian",
+          "price": "31",
+          "price_amount": 31,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "official_shopify_us_pdp_html_embedded_product_json",
+            "captured_at": "2026-05-25T13:11:04.915Z",
+            "evidence_url": "https://www.abyssianhaircare.com/products/revitalizing-rinsing-mist",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "official_shopify_us_pdp_html_embedded_product_json",
+              "confidence": "unknown",
+              "checked_at": "2026-05-25T13:11:04.915Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://www.abyssianhaircare.com/products/revitalizing-rinsing-mist"
+            },
+            "regional_price": {
+              "amount": 10,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.abyssianhaircare.com/products/revitalizing-rinsing-mist",
+              "captured_at": "2026-05-25T13:11:04.915Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_shopify_us_pdp_html_embedded_product_json",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T13:11:04.915Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "official_shopify_us_pdp_html_embedded_product_json",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T13:11:04.915Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "official_shopify_us_pdp_html_embedded_product_json",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T13:11:04.915Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 10,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.abyssianhaircare.com/products/revitalizing-rinsing-mist",
+              "captured_at": "2026-05-25T13:11:04.915Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_shopify_us_pdp_html_embedded_product_json",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T13:11:04.915Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 265
+      }
+    }
+  ]
+}

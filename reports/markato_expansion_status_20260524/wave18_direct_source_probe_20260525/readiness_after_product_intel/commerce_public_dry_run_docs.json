@@ -1,0 +1,371 @@
+{
+  "generated_at": "2026-05-25T14:21:25.246Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 6,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_0deebd19cd647845b38cf064",
+      "sellable_item_group_id": "sig_0deebd19cd647845b38cf064",
+      "product_line_id": "pl_dd4e5d5ad9d0db55aac25e2f",
+      "review_family_id": "rf_dd4e5d5ad9d0db55aac25e2f",
+      "brand_name": "Abyssian",
+      "category_paths": [
+        "Hair Care",
+        "Hair Treatment"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Dream Bonds Bio Emulsion",
+      "subtitle": "Dream Bonds Bio Emulsion is an Abyssian hair treatment for hair care routines, with a complete ingredient list and clear use directions. Key listed ingredients include Aqua (Water)*, Caprylic/capric Triglyceride***, Coco-caprylate/caprate**, Lysine Carboxymethyl Cysteinate, *** Stearamidopropyl Dimethylamine.",
+      "variant_axes": {
+        "size": "1 52 fl oz 45 ml",
+        "volume": "52floz",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://www.abyssianhaircare.com/cdn/shop/files/DreamBondsBioEmulsion_Infographics_5FEB2025_45mlpackshot.jpg?v=1748832578",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://www.abyssianhaircare.com/cdn/shop/files/DreamBondsBioEmulsion_Infographics_5FEB2025_45mlpackshot.jpg?v=1748832578",
+        "https://www.abyssianhaircare.com/cdn/shop/files/DreamBondsBioEmulsion_Infographics_5FEB2025_12mlpackshot.jpg?v=1748832557",
+        "https://www.abyssianhaircare.com/cdn/shop/files/DreamBondsBioEmulsion_Infographics_5FEB2025_Benefits.jpg?v=1759969202",
+        "https://www.abyssianhaircare.com/cdn/shop/files/DreamBondsBioEmulsion_Infographics_5FEB2025_3pointbenefits.jpg?v=1759969202",
+        "https://www.abyssianhaircare.com/cdn/shop/files/DreamBondsBioEmulsion_Infographics_5FEB2025_application.jpg?v=1748832578",
+        "https://www.abyssianhaircare.com/cdn/shop/files/DreamBondsBioEmulsion_Infographics_5FEB2025_Ingredientsinfographic.jpg?v=1759969202",
+        "https://www.abyssianhaircare.com/cdn/shop/files/DreamBondsBioEmulsion_Infographics_5FEB2025_texture.jpg?v=1759969202"
+      ],
+      "price_min": 20,
+      "price_max": 20,
+      "default_offer_id": "external_seed:ext_3508560cf76c6d564d97f6d0",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "An Abyssian hair mask listed on the brand source page as Dream Bonds Bio Emulsion.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Abyssian",
+        "Hair Care",
+        "Hair Treatment"
+      ],
+      "sort_keys": {
+        "price_min": 20,
+        "price_max": 20,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_3508560cf76c6d564d97f6d0"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_e97a58be6023ed10e4830305",
+      "sellable_item_group_id": "sig_e97a58be6023ed10e4830305",
+      "product_line_id": "pl_d7d93421194924f28cb1a248",
+      "review_family_id": "rf_d7d93421194924f28cb1a248",
+      "brand_name": "Abyssian",
+      "category_paths": [
+        "Hair Care",
+        "Conditioner"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Daily Shield Superfood Conditioner",
+      "subtitle": "Daily Shield Superfood Conditioner is an Abyssian conditioner for hair care routines, with a complete ingredient list and clear use directions. Key listed ingredients include Aqua, Aloe Barbadensis Leaf Juice**, Cetearyl Alcohol**, Hydroxypropyl Starch Phosphate**, Propanediol**.",
+      "variant_axes": {
+        "size": "8 45 fl oz 250 ml",
+        "volume": "45floz",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://www.abyssianhaircare.com/cdn/shop/products/conditioner500.jpg?v=1750211161",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://www.abyssianhaircare.com/cdn/shop/products/conditioner500.jpg?v=1750211161",
+        "https://www.abyssianhaircare.com/cdn/shop/files/withoutbg_250ml_Daily-Shield.jpg?v=1764227123",
+        "https://www.abyssianhaircare.com/cdn/shop/files/SUPERFOOD_CONDITIONER_REFILL.png?v=1764227707",
+        "https://www.abyssianhaircare.com/cdn/shop/files/SF_Conditioner_11.jpg?v=1750211161",
+        "https://www.abyssianhaircare.com/cdn/shop/products/Artboard10_2x-100.jpg?v=1750211161",
+        "https://www.abyssianhaircare.com/cdn/shop/products/Artboard16_2x-100.jpg?v=1750211161",
+        "https://www.abyssianhaircare.com/cdn/shop/products/Artboard24_2x-100.jpg?v=1750211161"
+      ],
+      "price_min": 26,
+      "price_max": 26,
+      "default_offer_id": "external_seed:ext_3916e5e378df1e75041a1b68",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "An Abyssian hair conditioner listed on the brand source page as Daily Shield Superfood Conditioner. The source description identifies: Daily Shield Superfood Conditioner is an Abyssian conditioner for hair care routines, with a complete ingredient list and clear use directions.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Abyssian",
+        "Hair Care",
+        "Conditioner"
+      ],
+      "sort_keys": {
+        "price_min": 26,
+        "price_max": 26,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_3916e5e378df1e75041a1b68"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_16f99136045edae6b1d333be",
+      "sellable_item_group_id": "sig_16f99136045edae6b1d333be",
+      "product_line_id": "pl_fcb58d055c977a405931cd52",
+      "review_family_id": "rf_fcb58d055c977a405931cd52",
+      "brand_name": "Abyssian",
+      "category_paths": [
+        "Hair Care",
+        "Dry Shampoo"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Solar Glow Dry Shampoo",
+      "subtitle": "Solar Glow Dry Shampoo is an Abyssian dry shampoo for hair care routines, with a complete ingredient list and clear use directions. Key listed ingredients include Oryza Sativa Starch**, Tapioca Starch**, Zinc Oxide*, Silica*, Kaolin*.",
+      "variant_axes": {
+        "volume": "28g",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://www.abyssianhaircare.com/cdn/shop/files/solar_glow_dry_shampoo_28g_packshot_with_box.jpg?v=1724063710",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://www.abyssianhaircare.com/cdn/shop/files/solar_glow_dry_shampoo_28g_packshot_with_box.jpg?v=1724063710",
+        "https://www.abyssianhaircare.com/cdn/shop/files/solar_glow_dry_shampoo_odor_control_UV_blocker.jpg?v=1720411830",
+        "https://www.abyssianhaircare.com/cdn/shop/files/solar_glow_dry_shampoo_ingredient_story.jpg?v=1720411830",
+        "https://www.abyssianhaircare.com/cdn/shop/files/solarglowdryshampoo_texture.png?v=1724063773",
+        "https://www.abyssianhaircare.com/cdn/shop/files/solar_glow_dry_shampoo_28g_ingredients.jpg?v=1724063710",
+        "https://www.abyssianhaircare.com/cdn/shop/files/solar_glow_dry_shampoo_benefits.jpg?v=1720411829",
+        "https://www.abyssianhaircare.com/cdn/shop/files/solar_glow_dry_shampoo_28g_packshot_bottlle_only.jpg?v=1724063711"
+      ],
+      "price_min": 26,
+      "price_max": 26,
+      "default_offer_id": "external_seed:ext_443039d2322b0af440c1ce9a",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "An Abyssian dry shampoo listed on the brand source page as Solar Glow Dry Shampoo.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Abyssian",
+        "Hair Care",
+        "Dry Shampoo"
+      ],
+      "sort_keys": {
+        "price_min": 26,
+        "price_max": 26,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_443039d2322b0af440c1ce9a"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_f5bb30e7e80cad4f0ce4f295",
+      "sellable_item_group_id": "sig_f5bb30e7e80cad4f0ce4f295",
+      "product_line_id": "pl_2b30f71af4a25be44693a7ea",
+      "review_family_id": "rf_2b30f71af4a25be44693a7ea",
+      "brand_name": "Abyssian",
+      "category_paths": [
+        "Hair Care",
+        "Shampoo"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Nano Repair Shampoo",
+      "subtitle": "Nano Repair Shampoo is an Abyssian shampoo for hair care routines, with a complete ingredient list and clear use directions. Key listed ingredients include Aqua (Water)*, Cocamidopropyl Hydroxysultaine**, Sodium C14-16 Olefin Sulfonate**, Sodium Cocoamphoacetate**, Decyl Glucoside**.",
+      "variant_axes": {
+        "size": "11 50 fl oz 340 ml",
+        "volume": "50floz",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://www.abyssianhaircare.com/cdn/shop/files/NanoRepairShampoo_Infographics_5FEB2025_NanoRepairConditioner340mlshopify.jpg?v=1759966461",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://www.abyssianhaircare.com/cdn/shop/files/NanoRepairShampoo_Infographics_5FEB2025_NanoRepairConditioner340mlshopify.jpg?v=1759966461",
+        "https://www.abyssianhaircare.com/cdn/shop/files/Nano_Repair_Shampoo_Infographics_5FEB2025_Nano_Repair_Conditioner_1000ml_shopify_04712cb0-5d28-49bc-9b64-10e97cd45bc7.png?v=1759970641",
+        "https://www.abyssianhaircare.com/cdn/shop/files/Nano_Repair_Shampoo_05SEP2025_Benefits.jpg?v=1759970624",
+        "https://www.abyssianhaircare.com/cdn/shop/files/Nano_Repair_Shampoo_Infographics_05SEP2025_Ingredients_infographic.jpg?v=1759970624",
+        "https://www.abyssianhaircare.com/cdn/shop/files/Nano_Repair_Shampoo_28AUG2025_Fregrance.jpg?v=1759970624",
+        "https://www.abyssianhaircare.com/cdn/shop/files/Nano_Repair_Shampoo__10SEPT2025_Texture_Infographics.png?v=1759970641"
+      ],
+      "price_min": 38,
+      "price_max": 38,
+      "default_offer_id": "external_seed:ext_6cb55d2964fca74dbcade8e7",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "An Abyssian shampoo listed on the brand source page as Nano Repair Shampoo.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Abyssian",
+        "Hair Care",
+        "Shampoo"
+      ],
+      "sort_keys": {
+        "price_min": 38,
+        "price_max": 38,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_6cb55d2964fca74dbcade8e7"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_a998605f90ecd49a8f45928e",
+      "sellable_item_group_id": "sig_a998605f90ecd49a8f45928e",
+      "product_line_id": "pl_b7ccd661af866c414cbf8f96",
+      "review_family_id": "rf_b7ccd661af866c414cbf8f96",
+      "brand_name": "Abyssian",
+      "category_paths": [
+        "Hair Care",
+        "Hair Mist"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Youth Bloom Hair Mist",
+      "subtitle": "Youth Bloom Hair Mist is an Abyssian hair mist for hair care routines, with a complete ingredient list and clear use directions. Key listed ingredients include Aqua (Water)*, Magnesium Sulfate**, Glycerin**, Hydrolyzed Rice Protein**, Oryza Sativa (Rice) Extract**.",
+      "variant_axes": {
+        "size": "7 61 fl oz 225 ml",
+        "volume": "61floz",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://www.abyssianhaircare.com/cdn/shop/files/Youth_Bloom_Hair_Mist_Infographics_10FEB2025_Page_6.jpg?v=1759903625",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://www.abyssianhaircare.com/cdn/shop/files/Youth_Bloom_Hair_Mist_Infographics_10FEB2025_Page_6.jpg?v=1759903625",
+        "https://www.abyssianhaircare.com/cdn/shop/products/50ml_revitalizing-rinsing-mist.jpg?v=1759903625",
+        "https://www.abyssianhaircare.com/cdn/shop/files/3-Youth_Bloom_Hair_Mist_225ml_-_19AUG2025_-_Benefits.jpg?v=1759903625",
+        "https://www.abyssianhaircare.com/cdn/shop/files/4-Youth_Bloom_Hair_Mist_225ml_-_08AUG2025_-_Key_benefit_1.jpg?v=1759903625",
+        "https://www.abyssianhaircare.com/cdn/shop/files/Youth_Bloom_Hair_Mist_225ml_-_29JUL2025_-_Key_Benefit_2.jpg?v=1759903625",
+        "https://www.abyssianhaircare.com/cdn/shop/files/Youth_Bloom_Hair_Mist_Ingredients_Infographics_10FEB2025.png?v=1759903625",
+        "https://www.abyssianhaircare.com/cdn/shop/files/Youth_Bloom_Hair_Mist_Infographics_10FEB2025_texture.jpg?v=1759903625"
+      ],
+      "price_min": 10,
+      "price_max": 10,
+      "default_offer_id": "external_seed:ext_ac6c6e795d7f3efe5cc22f7c",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "An Abyssian skincare product listed on the brand source page as Youth Bloom Hair Mist.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Abyssian",
+        "Hair Care",
+        "Hair Mist"
+      ],
+      "sort_keys": {
+        "price_min": 10,
+        "price_max": 10,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_ac6c6e795d7f3efe5cc22f7c"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_107c46d79853152fe6da7505",
+      "sellable_item_group_id": "sig_107c46d79853152fe6da7505",
+      "product_line_id": "pl_317fda34dfb1d46a54b66fc7",
+      "review_family_id": "rf_317fda34dfb1d46a54b66fc7",
+      "brand_name": "Abyssian",
+      "category_paths": [
+        "Hair Care",
+        "Hair Mask"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Protein Shake Hair Mask",
+      "subtitle": "Protein Shake Hair Mask is an Abyssian hair mask for hair care routines, with a complete ingredient list and clear use directions. Key listed ingredients include Aqua (Water)*, Glycerin**, Cetyl Alcohol**, Stearyl Alcohol**, Ricinus Communis(Castor) Seed Oil**.",
+      "variant_axes": {
+        "size": "8 45 fl oz 250 ml",
+        "volume": "45floz",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://www.abyssianhaircare.com/cdn/shop/products/withoutbg_250ml_protienshakehairmask_Packshot_2000px.jpg?v=1684902483",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://www.abyssianhaircare.com/cdn/shop/products/withoutbg_250ml_protienshakehairmask_Packshot_2000px.jpg?v=1684902483",
+        "https://www.abyssianhaircare.com/cdn/shop/files/withoutbg_50ml_revitalizing-rinsing-mist-packshot_website.jpg?v=1764227041",
+        "https://www.abyssianhaircare.com/cdn/shop/files/3770017896077_5_1050x1050_22JAN2025-edit.jpg?v=1737625093",
+        "https://www.abyssianhaircare.com/cdn/shop/products/Artboard10-100_d427ea55-1977-4a6f-bb52-baffed332a6c.jpg?v=1737625542",
+        "https://www.abyssianhaircare.com/cdn/shop/products/Artboard16-100_b1c14ac0-b9c8-4aac-b718-8164fd4f5306.jpg?v=1737625542"
+      ],
+      "price_min": 20,
+      "price_max": 20,
+      "default_offer_id": "external_seed:ext_d8737399fc72ef06c147bd0c",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "An Abyssian hair mask listed on the brand source page as Protein Shake Hair Mask.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Abyssian",
+        "Hair Care",
+        "Hair Mask"
+      ],
+      "sort_keys": {
+        "price_min": 20,
+        "price_max": 20,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_d8737399fc72ef06c147bd0c"
+      ]
+    }
+  ]
+}

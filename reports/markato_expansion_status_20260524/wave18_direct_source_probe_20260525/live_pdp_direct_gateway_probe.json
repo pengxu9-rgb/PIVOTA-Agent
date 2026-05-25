@@ -1,0 +1,915 @@
+{
+  "summary": {
+    "generated_at": "2026-05-25T14:57:38.246Z",
+    "gateway_url": "https://agent.pivota.cc/api/gateway",
+    "scanned": 6,
+    "ready": 6,
+    "failed": 0,
+    "failure_reason_counts": {},
+    "warning_reason_counts": {
+      "direct_similar_underfill": 5
+    },
+    "similar_status_counts": {
+      "deferred": 6
+    },
+    "direct_similar_status_counts": {
+      "unavailable": 5,
+      "ready": 1
+    }
+  },
+  "results": [
+    {
+      "external_product_id": "ext_3916e5e378df1e75041a1b68",
+      "http_status": 200,
+      "pdp_status": "success",
+      "request_id": "fb050903-45a0-4926-9bb9-ac68fcfcdd7e",
+      "build_id": "a91bf947028b",
+      "title": "Daily Shield Superfood Conditioner",
+      "canonical_subject_id": "sig_a3ce87e8437b7828b5e2b0fbb9ab88b6",
+      "product_group_id": "sig_e97a58be6023ed10e4830305",
+      "price": {
+        "current": {
+          "amount": 26,
+          "currency": "USD"
+        },
+        "amount": 26,
+        "currency": "USD"
+      },
+      "variants": [
+        {
+          "variant_id": "39398974488730",
+          "title": "8.45 fl oz / 250 mL",
+          "price": {
+            "current": {
+              "amount": 26,
+              "currency": "USD"
+            }
+          },
+          "image_url": "https://www.abyssianhaircare.com/cdn/shop/files/withoutbg_250ml_Daily-Shield.jpg?v=1764227123"
+        },
+        {
+          "variant_id": "39398974455962",
+          "title": "16.91 fl oz / 500 mL",
+          "price": {
+            "current": {
+              "amount": 44,
+              "currency": "USD"
+            }
+          },
+          "image_url": "https://www.abyssianhaircare.com/cdn/shop/products/conditioner500.jpg?v=1750211161"
+        }
+      ],
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "module_counts": {
+        "media_gallery_items": 1,
+        "variants": 2,
+        "offers": 1,
+        "ingredients_inci": 39,
+        "how_to_steps": 3,
+        "overview_sections": 1,
+        "detail_sections": 3
+      },
+      "product_intel": {
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "shopping_card_title": "Daily Shield Superfood Conditioner",
+        "shopping_card_highlight": "Conditioner format detail",
+        "search_card_highlight": "Conditioner format detail"
+      },
+      "similar": {
+        "status": "deferred",
+        "reason_code": "SIMILAR_DEFERRED_FIRST_PAINT",
+        "item_count": 0,
+        "metadata": {
+          "similar_status": "deferred",
+          "reason_code": "SIMILAR_DEFERRED_FIRST_PAINT",
+          "timeout_reason_code": "SIMILAR_STAGE_BUDGET_EXCEEDED",
+          "request_mode": "first_paint",
+          "sync_budget_ms": 1200,
+          "similar_cache_bypass": true,
+          "similar_request_mode": "first_paint",
+          "similar_sync_budget_ms": 1200
+        }
+      },
+      "direct_similar": {
+        "http_status": 200,
+        "status": "success",
+        "strategy": "related_products",
+        "similar_status": "unavailable",
+        "item_count": 0,
+        "underfill": 6,
+        "retrieval_mix": {
+          "internal": 0,
+          "external": 0
+        },
+        "error": null
+      },
+      "missing": [
+        {
+          "type": "active_ingredients",
+          "reason": "unavailable"
+        },
+        {
+          "type": "product_facts",
+          "reason": "unavailable"
+        }
+      ],
+      "module_health": {
+        "severity": "warning",
+        "applied": false,
+        "items": [
+          {
+            "type": "active_ingredients",
+            "reason": "unavailable",
+            "required": false,
+            "severity": "warning"
+          },
+          {
+            "type": "product_facts",
+            "reason": "unavailable",
+            "required": false,
+            "severity": "warning"
+          }
+        ],
+        "degraded": [],
+        "warnings": [
+          {
+            "type": "active_ingredients",
+            "reason": "unavailable",
+            "required": false,
+            "severity": "warning"
+          },
+          {
+            "type": "product_facts",
+            "reason": "unavailable",
+            "required": false,
+            "severity": "warning"
+          }
+        ],
+        "info": []
+      },
+      "public_text_pollution": [],
+      "status": "ready",
+      "warning_reasons": [
+        "direct_similar_underfill"
+      ],
+      "failure_reasons": []
+    },
+    {
+      "external_product_id": "ext_3508560cf76c6d564d97f6d0",
+      "http_status": 200,
+      "pdp_status": "success",
+      "request_id": "974ade66-2831-4d62-b7b1-24b1838c2fe2",
+      "build_id": "a91bf947028b",
+      "title": "Dream Bonds Bio Emulsion",
+      "canonical_subject_id": "sig_8042cf8061b0b322a4a901a09c14902b",
+      "product_group_id": "sig_0deebd19cd647845b38cf064",
+      "price": {
+        "current": {
+          "amount": 20,
+          "currency": "USD"
+        },
+        "amount": 20,
+        "currency": "USD"
+      },
+      "variants": [
+        {
+          "variant_id": "45668436377754",
+          "title": "1.52 fl oz / 45 mL",
+          "price": {
+            "current": {
+              "amount": 50,
+              "currency": "USD"
+            }
+          },
+          "image_url": "https://www.abyssianhaircare.com/cdn/shop/files/DreamBondsBioEmulsion_Infographics_5FEB2025_45mlpackshot.jpg?v=1748832578"
+        },
+        {
+          "variant_id": "45668436410522",
+          "title": "0.41 fl oz / 12 mL",
+          "price": {
+            "current": {
+              "amount": 20,
+              "currency": "USD"
+            }
+          },
+          "image_url": "https://www.abyssianhaircare.com/cdn/shop/files/DreamBondsBioEmulsion_Infographics_5FEB2025_12mlpackshot.jpg?v=1748832557"
+        }
+      ],
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "module_counts": {
+        "media_gallery_items": 2,
+        "variants": 2,
+        "offers": 1,
+        "ingredients_inci": 27,
+        "how_to_steps": 6,
+        "overview_sections": 1,
+        "detail_sections": 3
+      },
+      "product_intel": {
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "shopping_card_title": "Dream Bonds Bio Emulsion",
+        "shopping_card_highlight": "Hair mask format detail",
+        "search_card_highlight": "Hair mask format detail"
+      },
+      "similar": {
+        "status": "deferred",
+        "reason_code": "SIMILAR_DEFERRED_FIRST_PAINT",
+        "item_count": 0,
+        "metadata": {
+          "similar_status": "deferred",
+          "reason_code": "SIMILAR_DEFERRED_FIRST_PAINT",
+          "timeout_reason_code": "SIMILAR_STAGE_BUDGET_EXCEEDED",
+          "request_mode": "first_paint",
+          "sync_budget_ms": 1200,
+          "similar_cache_bypass": true,
+          "similar_request_mode": "first_paint",
+          "similar_sync_budget_ms": 1200
+        }
+      },
+      "direct_similar": {
+        "http_status": 200,
+        "status": "success",
+        "strategy": "related_products",
+        "similar_status": "unavailable",
+        "item_count": 0,
+        "underfill": 6,
+        "retrieval_mix": {
+          "internal": 0,
+          "external": 0
+        },
+        "error": null
+      },
+      "missing": [
+        {
+          "type": "active_ingredients",
+          "reason": "unavailable"
+        },
+        {
+          "type": "product_facts",
+          "reason": "unavailable"
+        }
+      ],
+      "module_health": {
+        "severity": "warning",
+        "applied": false,
+        "items": [
+          {
+            "type": "active_ingredients",
+            "reason": "unavailable",
+            "required": false,
+            "severity": "warning"
+          },
+          {
+            "type": "product_facts",
+            "reason": "unavailable",
+            "required": false,
+            "severity": "warning"
+          }
+        ],
+        "degraded": [],
+        "warnings": [
+          {
+            "type": "active_ingredients",
+            "reason": "unavailable",
+            "required": false,
+            "severity": "warning"
+          },
+          {
+            "type": "product_facts",
+            "reason": "unavailable",
+            "required": false,
+            "severity": "warning"
+          }
+        ],
+        "info": []
+      },
+      "public_text_pollution": [],
+      "status": "ready",
+      "warning_reasons": [
+        "direct_similar_underfill"
+      ],
+      "failure_reasons": []
+    },
+    {
+      "external_product_id": "ext_6cb55d2964fca74dbcade8e7",
+      "http_status": 200,
+      "pdp_status": "success",
+      "request_id": "98a30476-44aa-4825-aa76-97c9fde2481e",
+      "build_id": "a91bf947028b",
+      "title": "Nano Repair Shampoo",
+      "canonical_subject_id": "sig_ccc880427eff8c04a11f3b07d7502488",
+      "product_group_id": "sig_f5bb30e7e80cad4f0ce4f295",
+      "price": {
+        "current": {
+          "amount": 38,
+          "currency": "USD"
+        },
+        "amount": 38,
+        "currency": "USD"
+      },
+      "variants": [
+        {
+          "variant_id": "45659186364570",
+          "title": "11.50 fl oz / 340 mL",
+          "price": {
+            "current": {
+              "amount": 38,
+              "currency": "USD"
+            }
+          },
+          "image_url": "https://www.abyssianhaircare.com/cdn/shop/files/NanoRepairShampoo_Infographics_5FEB2025_NanoRepairConditioner340mlshopify.jpg?v=1759966461"
+        },
+        {
+          "variant_id": "45659186397338",
+          "title": "33.81 fl oz / 1000 mL",
+          "price": {
+            "current": {
+              "amount": 88,
+              "currency": "USD"
+            }
+          },
+          "image_url": "https://www.abyssianhaircare.com/cdn/shop/files/Nano_Repair_Shampoo_Infographics_5FEB2025_Nano_Repair_Conditioner_1000ml_shopify_04712cb0-5d28-49bc-9b64-10e97cd45bc7.png?v=1759970641"
+        }
+      ],
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "module_counts": {
+        "media_gallery_items": 2,
+        "variants": 2,
+        "offers": 1,
+        "ingredients_inci": 34,
+        "how_to_steps": 4,
+        "overview_sections": 1,
+        "detail_sections": 3
+      },
+      "product_intel": {
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "shopping_card_title": "Nano Repair Shampoo",
+        "shopping_card_highlight": "Shampoo format detail",
+        "search_card_highlight": "Shampoo format detail"
+      },
+      "similar": {
+        "status": "deferred",
+        "reason_code": "SIMILAR_DEFERRED_FIRST_PAINT",
+        "item_count": 0,
+        "metadata": {
+          "similar_status": "deferred",
+          "reason_code": "SIMILAR_DEFERRED_FIRST_PAINT",
+          "timeout_reason_code": "SIMILAR_STAGE_BUDGET_EXCEEDED",
+          "request_mode": "first_paint",
+          "sync_budget_ms": 1200,
+          "similar_cache_bypass": true,
+          "similar_request_mode": "first_paint",
+          "similar_sync_budget_ms": 1200
+        }
+      },
+      "direct_similar": {
+        "http_status": 200,
+        "status": "success",
+        "strategy": "related_products",
+        "similar_status": "ready",
+        "item_count": 6,
+        "underfill": 0,
+        "retrieval_mix": {
+          "internal": 6,
+          "external": 0
+        },
+        "error": null
+      },
+      "missing": [
+        {
+          "type": "active_ingredients",
+          "reason": "unavailable"
+        },
+        {
+          "type": "product_facts",
+          "reason": "unavailable"
+        }
+      ],
+      "module_health": {
+        "severity": "warning",
+        "applied": false,
+        "items": [
+          {
+            "type": "active_ingredients",
+            "reason": "unavailable",
+            "required": false,
+            "severity": "warning"
+          },
+          {
+            "type": "product_facts",
+            "reason": "unavailable",
+            "required": false,
+            "severity": "warning"
+          }
+        ],
+        "degraded": [],
+        "warnings": [
+          {
+            "type": "active_ingredients",
+            "reason": "unavailable",
+            "required": false,
+            "severity": "warning"
+          },
+          {
+            "type": "product_facts",
+            "reason": "unavailable",
+            "required": false,
+            "severity": "warning"
+          }
+        ],
+        "info": []
+      },
+      "public_text_pollution": [],
+      "status": "ready",
+      "warning_reasons": [],
+      "failure_reasons": []
+    },
+    {
+      "external_product_id": "ext_d8737399fc72ef06c147bd0c",
+      "http_status": 200,
+      "pdp_status": "success",
+      "request_id": "239b1a45-f01b-4644-b05e-a9dbafd86add",
+      "build_id": "a91bf947028b",
+      "title": "Protein Shake Hair Mask",
+      "canonical_subject_id": "sig_3aab8f2b9cc42c0a22886fa598146cbb",
+      "product_group_id": "sig_107c46d79853152fe6da7505",
+      "price": {
+        "current": {
+          "amount": 20,
+          "currency": "USD"
+        },
+        "amount": 20,
+        "currency": "USD"
+      },
+      "variants": [
+        {
+          "variant_id": "39398983368858",
+          "title": "8.45 fl oz / 250 mL",
+          "price": {
+            "current": {
+              "amount": 38,
+              "currency": "USD"
+            }
+          },
+          "image_url": "https://www.abyssianhaircare.com/cdn/shop/products/withoutbg_250ml_protienshakehairmask_Packshot_2000px.jpg?v=1684902483"
+        },
+        {
+          "variant_id": "43592500117658",
+          "title": "2.71 fl oz / 80 mL",
+          "price": {
+            "current": {
+              "amount": 20,
+              "currency": "USD"
+            }
+          },
+          "image_url": "https://www.abyssianhaircare.com/cdn/shop/files/withoutbg_50ml_revitalizing-rinsing-mist-packshot_website.jpg?v=1764227041"
+        }
+      ],
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "module_counts": {
+        "media_gallery_items": 1,
+        "variants": 2,
+        "offers": 1,
+        "ingredients_inci": 30,
+        "how_to_steps": 3,
+        "overview_sections": 1,
+        "detail_sections": 3
+      },
+      "product_intel": {
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "shopping_card_title": "Protein Shake Hair Mask",
+        "shopping_card_highlight": "Hair mask format detail",
+        "search_card_highlight": "Hair mask format detail"
+      },
+      "similar": {
+        "status": "deferred",
+        "reason_code": "SIMILAR_DEFERRED_FIRST_PAINT",
+        "item_count": 0,
+        "metadata": {
+          "similar_status": "deferred",
+          "reason_code": "SIMILAR_DEFERRED_FIRST_PAINT",
+          "timeout_reason_code": "SIMILAR_STAGE_BUDGET_EXCEEDED",
+          "request_mode": "first_paint",
+          "sync_budget_ms": 1200,
+          "similar_cache_bypass": true,
+          "similar_request_mode": "first_paint",
+          "similar_sync_budget_ms": 1200
+        }
+      },
+      "direct_similar": {
+        "http_status": 200,
+        "status": "success",
+        "strategy": "related_products",
+        "similar_status": "unavailable",
+        "item_count": 0,
+        "underfill": 6,
+        "retrieval_mix": {
+          "internal": 0,
+          "external": 0
+        },
+        "error": null
+      },
+      "missing": [
+        {
+          "type": "active_ingredients",
+          "reason": "unavailable"
+        },
+        {
+          "type": "product_facts",
+          "reason": "unavailable"
+        }
+      ],
+      "module_health": {
+        "severity": "warning",
+        "applied": false,
+        "items": [
+          {
+            "type": "active_ingredients",
+            "reason": "unavailable",
+            "required": false,
+            "severity": "warning"
+          },
+          {
+            "type": "product_facts",
+            "reason": "unavailable",
+            "required": false,
+            "severity": "warning"
+          }
+        ],
+        "degraded": [],
+        "warnings": [
+          {
+            "type": "active_ingredients",
+            "reason": "unavailable",
+            "required": false,
+            "severity": "warning"
+          },
+          {
+            "type": "product_facts",
+            "reason": "unavailable",
+            "required": false,
+            "severity": "warning"
+          }
+        ],
+        "info": []
+      },
+      "public_text_pollution": [],
+      "status": "ready",
+      "warning_reasons": [
+        "direct_similar_underfill"
+      ],
+      "failure_reasons": []
+    },
+    {
+      "external_product_id": "ext_443039d2322b0af440c1ce9a",
+      "http_status": 200,
+      "pdp_status": "success",
+      "request_id": "78863fe1-6a20-4c74-b90f-9568ab09c478",
+      "build_id": "a91bf947028b",
+      "title": "Solar Glow Dry Shampoo",
+      "canonical_subject_id": "sig_634c3aad8f9a6fd01b9fea92fad9ab56",
+      "product_group_id": "sig_16f99136045edae6b1d333be",
+      "price": {
+        "current": {
+          "amount": 26,
+          "currency": "USD"
+        },
+        "amount": 26,
+        "currency": "USD"
+      },
+      "variants": [
+        {
+          "variant_id": "44699444314266",
+          "title": "28 g",
+          "price": {
+            "current": {
+              "amount": 26,
+              "currency": "USD"
+            }
+          },
+          "image_url": "https://www.abyssianhaircare.com/cdn/shop/files/solar_glow_dry_shampoo_28g_packshot_with_box.jpg?v=1724063710"
+        }
+      ],
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "module_counts": {
+        "media_gallery_items": 4,
+        "variants": 1,
+        "offers": 1,
+        "ingredients_inci": 13,
+        "how_to_steps": 1,
+        "overview_sections": 1,
+        "detail_sections": 3
+      },
+      "product_intel": {
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "shopping_card_title": "Solar Glow Dry Shampoo",
+        "shopping_card_highlight": "Post-workout dry shampoo",
+        "search_card_highlight": "Post-workout dry shampoo"
+      },
+      "similar": {
+        "status": "deferred",
+        "reason_code": "SIMILAR_DEFERRED_FIRST_PAINT",
+        "item_count": 0,
+        "metadata": {
+          "similar_status": "deferred",
+          "reason_code": "SIMILAR_DEFERRED_FIRST_PAINT",
+          "timeout_reason_code": "SIMILAR_STAGE_BUDGET_EXCEEDED",
+          "request_mode": "first_paint",
+          "sync_budget_ms": 1200,
+          "similar_cache_bypass": true,
+          "similar_request_mode": "first_paint",
+          "similar_sync_budget_ms": 1200
+        }
+      },
+      "direct_similar": {
+        "http_status": 200,
+        "status": "success",
+        "strategy": "related_products",
+        "similar_status": "unavailable",
+        "item_count": 0,
+        "underfill": 6,
+        "retrieval_mix": {
+          "internal": 0,
+          "external": 0
+        },
+        "error": null
+      },
+      "missing": [
+        {
+          "type": "active_ingredients",
+          "reason": "unavailable"
+        },
+        {
+          "type": "product_facts",
+          "reason": "unavailable"
+        }
+      ],
+      "module_health": {
+        "severity": "warning",
+        "applied": false,
+        "items": [
+          {
+            "type": "active_ingredients",
+            "reason": "unavailable",
+            "required": false,
+            "severity": "warning"
+          },
+          {
+            "type": "product_facts",
+            "reason": "unavailable",
+            "required": false,
+            "severity": "warning"
+          }
+        ],
+        "degraded": [],
+        "warnings": [
+          {
+            "type": "active_ingredients",
+            "reason": "unavailable",
+            "required": false,
+            "severity": "warning"
+          },
+          {
+            "type": "product_facts",
+            "reason": "unavailable",
+            "required": false,
+            "severity": "warning"
+          }
+        ],
+        "info": []
+      },
+      "public_text_pollution": [],
+      "status": "ready",
+      "warning_reasons": [
+        "direct_similar_underfill"
+      ],
+      "failure_reasons": []
+    },
+    {
+      "external_product_id": "ext_ac6c6e795d7f3efe5cc22f7c",
+      "http_status": 200,
+      "pdp_status": "success",
+      "request_id": "6e70c30f-6ba0-41fc-b7fb-a8e754f1c668",
+      "build_id": "a91bf947028b",
+      "title": "Youth Bloom Hair Mist",
+      "canonical_subject_id": "sig_f1a11b1a9f03a9a24b170eb9736d3439",
+      "product_group_id": "sig_a998605f90ecd49a8f45928e",
+      "price": {
+        "current": {
+          "amount": 10,
+          "currency": "USD"
+        },
+        "amount": 10,
+        "currency": "USD"
+      },
+      "variants": [
+        {
+          "variant_id": "39399125778586",
+          "title": "7.61 fl oz / 225 mL",
+          "price": {
+            "current": {
+              "amount": 31,
+              "currency": "USD"
+            }
+          },
+          "image_url": "https://www.abyssianhaircare.com/cdn/shop/files/Youth_Bloom_Hair_Mist_Infographics_10FEB2025_Page_6.jpg?v=1759903625"
+        },
+        {
+          "variant_id": "40329421979802",
+          "title": "1.69 fl oz / 50 mL",
+          "price": {
+            "current": {
+              "amount": 10,
+              "currency": "USD"
+            }
+          },
+          "image_url": "https://www.abyssianhaircare.com/cdn/shop/products/50ml_revitalizing-rinsing-mist.jpg?v=1759903625"
+        }
+      ],
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "module_counts": {
+        "media_gallery_items": 1,
+        "variants": 2,
+        "offers": 1,
+        "ingredients_inci": 30,
+        "how_to_steps": 4,
+        "overview_sections": 1,
+        "detail_sections": 3
+      },
+      "product_intel": {
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "shopping_card_title": "Youth Bloom Hair Mist",
+        "shopping_card_highlight": "Mist hydration detail",
+        "search_card_highlight": "Mist hydration detail"
+      },
+      "similar": {
+        "status": "deferred",
+        "reason_code": "SIMILAR_DEFERRED_FIRST_PAINT",
+        "item_count": 0,
+        "metadata": {
+          "similar_status": "deferred",
+          "reason_code": "SIMILAR_DEFERRED_FIRST_PAINT",
+          "timeout_reason_code": "SIMILAR_STAGE_BUDGET_EXCEEDED",
+          "request_mode": "first_paint",
+          "sync_budget_ms": 1200,
+          "similar_cache_bypass": true,
+          "similar_request_mode": "first_paint",
+          "similar_sync_budget_ms": 1200
+        }
+      },
+      "direct_similar": {
+        "http_status": 200,
+        "status": "success",
+        "strategy": "related_products",
+        "similar_status": "unavailable",
+        "item_count": 0,
+        "underfill": 6,
+        "retrieval_mix": {
+          "internal": 0,
+          "external": 0
+        },
+        "error": null
+      },
+      "missing": [
+        {
+          "type": "active_ingredients",
+          "reason": "unavailable"
+        },
+        {
+          "type": "product_facts",
+          "reason": "unavailable"
+        }
+      ],
+      "module_health": {
+        "severity": "warning",
+        "applied": false,
+        "items": [
+          {
+            "type": "active_ingredients",
+            "reason": "unavailable",
+            "required": false,
+            "severity": "warning"
+          },
+          {
+            "type": "product_facts",
+            "reason": "unavailable",
+            "required": false,
+            "severity": "warning"
+          }
+        ],
+        "degraded": [],
+        "warnings": [
+          {
+            "type": "active_ingredients",
+            "reason": "unavailable",
+            "required": false,
+            "severity": "warning"
+          },
+          {
+            "type": "product_facts",
+            "reason": "unavailable",
+            "required": false,
+            "severity": "warning"
+          }
+        ],
+        "info": []
+      },
+      "public_text_pollution": [],
+      "status": "ready",
+      "warning_reasons": [
+        "direct_similar_underfill"
+      ],
+      "failure_reasons": []
+    }
+  ]
+}

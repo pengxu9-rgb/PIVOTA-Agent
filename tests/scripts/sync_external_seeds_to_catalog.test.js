@@ -131,6 +131,59 @@ describe('sync-external-seeds-to-catalog signature preservation', () => {
   });
 });
 
+describe('sync-external-seeds-to-catalog variant prices', () => {
+  test('preserves reviewed multi-size variant prices when top-level price is the minimum price', () => {
+    const mirror = buildMirror({
+      id: 'eps_multisize',
+      external_product_id: 'ext_multisize_mist',
+      market: 'US',
+      domain: 'abyssianhaircare.com',
+      title: 'Youth Bloom Hair Mist',
+      image_url: 'https://cdn.example.com/mist.jpg',
+      price_amount: 10,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      canonical_url: 'https://www.abyssianhaircare.com/products/revitalizing-rinsing-mist',
+      status: 'active',
+      identity_listing: {
+        identity_status: 'approved',
+        live_read_enabled: true,
+        review_required: false,
+        sellable_item_group_id: 'sig_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+        source_tier: 'brand',
+      },
+      seed_data: {
+        brand: 'Abyssian',
+        description:
+          'A reviewed hair mist with official ingredients, use directions, image, price, and availability.',
+        variants: [
+          {
+            variant_id: '225ml',
+            sku: '50QY22',
+            title: '225 ml / 7.61 fl oz',
+            price: '31',
+            currency: 'USD',
+            image_url: 'https://cdn.example.com/mist-225.jpg',
+          },
+          {
+            variant_id: '50ml',
+            sku: '50QY5',
+            title: '50ml / 1.69 fl oz',
+            price: '10',
+            currency: 'USD',
+            image_url: 'https://cdn.example.com/mist-50.jpg',
+          },
+        ],
+      },
+    });
+
+    expect(mirror.skus.map((item) => [item.sku.sku, item.offer.list_price])).toEqual([
+      ['50QY22', 31],
+      ['50QY5', 10],
+    ]);
+  });
+});
+
 describe('sync-external-seeds-to-catalog serving bootstrap', () => {
   function buildReadyMirror(identityListing) {
     return buildMirror({

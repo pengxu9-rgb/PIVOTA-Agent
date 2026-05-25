@@ -462,7 +462,7 @@ function hasSuspiciousVariantPriceDrift(rawVariantPrice, reviewedRegionalPrice) 
   if (rawVariantPrice <= 0 || reviewedRegionalPrice <= 0) return false;
   const high = Math.max(rawVariantPrice, reviewedRegionalPrice);
   const low = Math.min(rawVariantPrice, reviewedRegionalPrice);
-  return high / low >= 3;
+  return high / low >= 50;
 }
 
 function isReviewedBrandIdentityForLiveBootstrap(identity) {
