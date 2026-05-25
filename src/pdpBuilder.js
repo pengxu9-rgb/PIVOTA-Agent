@@ -1991,11 +1991,12 @@ function buildVariants(product) {
     ]);
 
     let filteredOptions = filterBuilderDisplayableVariantOptions(options);
+    const normalizedTitle = asNonEmptyString(title);
     const hasReviewedSingleSkuSpecFallback =
       rawVariants.length === 1 &&
       singleSkuSizeOption &&
       !filteredOptions.length &&
-      /^(default|default title|variant \d+|single item)$/i.test(asNonEmptyString(title));
+      (!normalizedTitle || /^(default|default title|variant \d+|single item)$/i.test(normalizedTitle));
     if (hasReviewedSingleSkuSpecFallback) {
       filteredOptions = [singleSkuSizeOption];
     }
@@ -2010,7 +2011,7 @@ function buildVariants(product) {
     return {
       variant_id: String(variantId),
       sku_id: attrs.sku || v.sku_id || v.sku || v.sku_code,
-      title: hasReviewedSingleSkuSpecFallback ? singleSkuSizeOption.value : String(title),
+      title: hasReviewedSingleSkuSpecFallback ? singleSkuSizeOption.value : normalizedTitle,
       options: filteredOptions,
       swatch: swatchHex ? { hex: swatchHex } : undefined,
       ...(variantPrice ? { price: variantPrice } : {}),
