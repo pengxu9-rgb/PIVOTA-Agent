@@ -14,7 +14,9 @@ const SNAPSHOT_CONTRACT_VERSION = 'external_seed.snapshot_contract.v1';
 const TRUSTED_SOURCE_HOSTS = new Set([
   'guerlain.com',
   'fentybeauty.com',
+  'beautyofjoseon.com',
   'roundlab.com',
+  'skin1004.com',
   'tirtir.global',
   'kyliecosmetics.com',
   'rarebeauty.com',
@@ -387,6 +389,7 @@ function buildServingPayloadPatch(seedData) {
     if (seedData[key] !== undefined) patch[key] = seedData[key];
     else if (snapshot[key] !== undefined) patch[key] = snapshot[key];
   };
+  patch.snapshot = snapshot;
   [
     'variants',
     'variant_detail_label',
@@ -484,6 +487,7 @@ async function syncServingMirrors(externalProductId, seedData, mapping) {
 async function main() {
   const mappings = readMappings();
   const dryRun = hasFlag('dry-run') || hasFlag('dryRun') || !hasFlag('apply');
+  const resyncServingMirrors = hasFlag('resync-serving-mirrors') || hasFlag('resyncServingMirrors');
   const market = normalizeText(argValue('market') || 'US').toUpperCase();
   const outDir = normalizeText(argValue('out-dir') || argValue('outDir'));
   const rows = await fetchRows(Array.from(new Set(mappings.map((item) => item.target_id))), market);
@@ -517,6 +521,23 @@ async function main() {
     result.patch_keys = patch.patchKeys || [];
     result.before_hash = beforeHash;
     if (!patch.patchKeys?.length) {
+      if (resyncServingMirrors && patch.reason === 'blocked_protect_high_quality_variant') {
+        const currentSeedData = ensureObject(row.seed_data);
+        const currentVariants = asArray(currentSeedData.variants);
+        result.reason = 'resync_serving_mirror_from_current_seed_snapshot';
+        result.patch_keys = ['serving_mirror_snapshot'];
+        result.after_hash = beforeHash;
+        result.variant_count = currentVariants.length;
+        result.variant_labels = currentVariants
+          .map((variant) => normalizeText(variant?.display_label || variant?.title || variant?.option_value))
+          .filter(Boolean);
+        result.status = dryRun ? 'dry_run' : 'updated';
+        if (!dryRun) {
+          result.serving_mirror_sync = await syncServingMirrors(row.external_product_id, currentSeedData, mapping);
+        } else {
+          result.serving_mirror_sync = { planned: true };
+        }
+      }
       results.push(result);
       continue;
     }

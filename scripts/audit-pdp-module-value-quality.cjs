@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { closePool, query } = require('../src/db');
+const { normalizePdpImageUrls } = require('../src/utils/pdpImageUrls');
 
 function argValue(name) {
   const index = process.argv.indexOf(`--${name}`);
@@ -88,7 +89,8 @@ function collectImageUrls(...sources) {
       if (asString(variant.image_url)) out.push(asString(variant.image_url));
     }
   }
-  return unique(out);
+  const normalized = normalizePdpImageUrls(out);
+  return normalized.length ? normalized : unique(out);
 }
 
 function collectVariants(...sources) {
