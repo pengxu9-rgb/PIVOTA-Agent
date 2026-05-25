@@ -1941,6 +1941,40 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     expect(payload.product.price).toBeUndefined();
   });
 
+  test('repairs object-shaped captured single variant labels from reviewed single-SKU spec', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_tirtir_keyring',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Waterism Glow Melting Balm Heart Keyring',
+        category: 'Lip Balm',
+        image_url: 'https://example.com/tirtir-keyring.png',
+        size_detail_label: '1 piece',
+        variants: [
+          {
+            variant_id: 'tirtir_keyring_1pc',
+            title: { value: '1 piece' },
+            options: [{ name: 'Format', value: { value: '1 piece' }, axis_kind: 'format' }],
+            source_quality_status: 'captured',
+          },
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const variantSelector = payload.modules.find((module) => module.type === 'variant_selector');
+    expect(variantSelector?.data?.variants?.[0]).toEqual(
+      expect.objectContaining({
+        title: '1 piece',
+        display_label: 'Size: 1 piece',
+        options: [{ name: 'Size', value: '1 piece', axis_kind: 'size' }],
+      }),
+    );
+    expect(JSON.stringify(variantSelector)).not.toContain('[object Object]');
+  });
+
   test('preserves structured ingredient items without re-splitting numeric INCI commas', () => {
     const payload = buildPdpPayload({
       product: {
