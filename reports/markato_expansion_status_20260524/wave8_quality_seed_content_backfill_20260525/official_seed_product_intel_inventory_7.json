@@ -1,0 +1,464 @@
+[
+  {
+    "external_product_id": "ext_df8aac07d6c970d4c213b43f",
+    "market": "US",
+    "domain": "seresilk.com.au",
+    "title": "Silk Night Cream",
+    "canonical_url": "https://seresilk.com.au/products/silk-night-cream",
+    "brand": "seresilk",
+    "sellable_item_group_id": "sig_5ed6980f0c3661f7d528c543",
+    "recommended_lane": "lane_3_kb_rewrite_review",
+    "seed_missing_fields": "",
+    "identity_status": "approved",
+    "identity_live_read_enabled": true,
+    "kb_direct_high_quality_ready": false,
+    "kb_direct_human_reviewed": false,
+    "kb_direct_quality_state": "missing",
+    "kb_direct_evidence_profile": "missing",
+    "kb_direct_blocking_issues": "missing_kb",
+    "main_blocker": "kb_missing",
+    "catalog_attached": true,
+    "index_serving_eligible": true,
+    "commerce_doc_public": true,
+    "terminal_hold": false,
+    "coverage": {
+      "details_sections_count": 10,
+      "faq_count": 0,
+      "how_to_chars": 145,
+      "inci_chars": 274,
+      "active_ingredients_chars": 41,
+      "inci_applicability_status": "",
+      "ingredient_review_status": "",
+      "ingredient_remediation_action": "",
+      "bundle_component_refs_count": 0,
+      "effective_inci_chars": 274,
+      "inci_borrowed_from_product_id": ""
+    },
+    "pivota_insights": {
+      "direct": {
+        "product_id": "ext_df8aac07d6c970d4c213b43f",
+        "kb_key": null,
+        "status": "missing_kb",
+        "kb_exists": false,
+        "displayable": false,
+        "high_quality_ready": false,
+        "issues": [
+          "missing_kb"
+        ],
+        "quality_state": "missing",
+        "evidence_profile": "missing"
+      },
+      "effective": {
+        "product_id": "ext_df8aac07d6c970d4c213b43f",
+        "kb_key": null,
+        "status": "missing_kb",
+        "kb_exists": false,
+        "displayable": false,
+        "high_quality_ready": false,
+        "issues": [
+          "missing_kb"
+        ],
+        "quality_state": "missing",
+        "evidence_profile": "missing"
+      },
+      "product_line_id": "pl_3848a244785f1d7480dd8b86",
+      "borrowed_from_sibling": false
+    }
+  },
+  {
+    "external_product_id": "ext_438058253d57a2c8d75f5906",
+    "market": "US",
+    "domain": "seresilk.com.au",
+    "title": "Silk Night Serum",
+    "canonical_url": "https://seresilk.com.au/products/silk-night-serum",
+    "brand": "seresilk",
+    "sellable_item_group_id": "sig_8fbb9cb81b61f69a55fbb5aa",
+    "recommended_lane": "lane_3_kb_rewrite_review",
+    "seed_missing_fields": "",
+    "identity_status": "approved",
+    "identity_live_read_enabled": true,
+    "kb_direct_high_quality_ready": false,
+    "kb_direct_human_reviewed": false,
+    "kb_direct_quality_state": "missing",
+    "kb_direct_evidence_profile": "missing",
+    "kb_direct_blocking_issues": "missing_kb",
+    "main_blocker": "kb_missing",
+    "catalog_attached": true,
+    "index_serving_eligible": true,
+    "commerce_doc_public": true,
+    "terminal_hold": false,
+    "coverage": {
+      "details_sections_count": 10,
+      "faq_count": 0,
+      "how_to_chars": 196,
+      "inci_chars": 211,
+      "active_ingredients_chars": 50,
+      "inci_applicability_status": "",
+      "ingredient_review_status": "",
+      "ingredient_remediation_action": "",
+      "bundle_component_refs_count": 0,
+      "effective_inci_chars": 211,
+      "inci_borrowed_from_product_id": ""
+    },
+    "pivota_insights": {
+      "direct": {
+        "product_id": "ext_438058253d57a2c8d75f5906",
+        "kb_key": null,
+        "status": "missing_kb",
+        "kb_exists": false,
+        "displayable": false,
+        "high_quality_ready": false,
+        "issues": [
+          "missing_kb"
+        ],
+        "quality_state": "missing",
+        "evidence_profile": "missing"
+      },
+      "effective": {
+        "product_id": "ext_438058253d57a2c8d75f5906",
+        "kb_key": null,
+        "status": "missing_kb",
+        "kb_exists": false,
+        "displayable": false,
+        "high_quality_ready": false,
+        "issues": [
+          "missing_kb"
+        ],
+        "quality_state": "missing",
+        "evidence_profile": "missing"
+      },
+      "product_line_id": "pl_fd2dca750575313eed751d69",
+      "borrowed_from_sibling": false
+    }
+  },
+  {
+    "external_product_id": "ext_0d4ffd13b899460cabb1f392",
+    "market": "US",
+    "domain": "seresilk.com.au",
+    "title": "Gentle Silk Cleanser",
+    "canonical_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+    "brand": "seresilk",
+    "sellable_item_group_id": "sig_2104c12c38d9c5ae898514d4",
+    "recommended_lane": "lane_3_kb_rewrite_review",
+    "seed_missing_fields": "",
+    "identity_status": "approved",
+    "identity_live_read_enabled": true,
+    "kb_direct_high_quality_ready": false,
+    "kb_direct_human_reviewed": false,
+    "kb_direct_quality_state": "missing",
+    "kb_direct_evidence_profile": "missing",
+    "kb_direct_blocking_issues": "missing_kb",
+    "main_blocker": "kb_missing",
+    "catalog_attached": true,
+    "index_serving_eligible": true,
+    "commerce_doc_public": true,
+    "terminal_hold": false,
+    "coverage": {
+      "details_sections_count": 10,
+      "faq_count": 0,
+      "how_to_chars": 230,
+      "inci_chars": 243,
+      "active_ingredients_chars": 0,
+      "inci_applicability_status": "",
+      "ingredient_review_status": "",
+      "ingredient_remediation_action": "",
+      "bundle_component_refs_count": 0,
+      "effective_inci_chars": 243,
+      "inci_borrowed_from_product_id": ""
+    },
+    "pivota_insights": {
+      "direct": {
+        "product_id": "ext_0d4ffd13b899460cabb1f392",
+        "kb_key": null,
+        "status": "missing_kb",
+        "kb_exists": false,
+        "displayable": false,
+        "high_quality_ready": false,
+        "issues": [
+          "missing_kb"
+        ],
+        "quality_state": "missing",
+        "evidence_profile": "missing"
+      },
+      "effective": {
+        "product_id": "ext_0d4ffd13b899460cabb1f392",
+        "kb_key": null,
+        "status": "missing_kb",
+        "kb_exists": false,
+        "displayable": false,
+        "high_quality_ready": false,
+        "issues": [
+          "missing_kb"
+        ],
+        "quality_state": "missing",
+        "evidence_profile": "missing"
+      },
+      "product_line_id": "pl_71d6c0803adae11e2875f0e2",
+      "borrowed_from_sibling": false
+    }
+  },
+  {
+    "external_product_id": "ext_065337312a937f0f26d50865",
+    "market": "US",
+    "domain": "lucamarskincare.com",
+    "title": "Lucamar Baalm 50g  UNSCENTED",
+    "canonical_url": "https://lucamarskincare.com/products/lucamar-baalm-50g-unscented",
+    "brand": "lucamarskincare",
+    "sellable_item_group_id": "sig_e825833b6e340b7210071ff8",
+    "recommended_lane": "lane_3_kb_rewrite_review",
+    "seed_missing_fields": "",
+    "identity_status": "approved",
+    "identity_live_read_enabled": true,
+    "kb_direct_high_quality_ready": false,
+    "kb_direct_human_reviewed": false,
+    "kb_direct_quality_state": "missing",
+    "kb_direct_evidence_profile": "missing",
+    "kb_direct_blocking_issues": "missing_kb",
+    "main_blocker": "kb_missing",
+    "catalog_attached": true,
+    "index_serving_eligible": true,
+    "commerce_doc_public": true,
+    "terminal_hold": false,
+    "coverage": {
+      "details_sections_count": 4,
+      "faq_count": 0,
+      "how_to_chars": 106,
+      "inci_chars": 0,
+      "active_ingredients_chars": 0,
+      "inci_applicability_status": "",
+      "ingredient_review_status": "",
+      "ingredient_remediation_action": "",
+      "bundle_component_refs_count": 0,
+      "effective_inci_chars": 0,
+      "inci_borrowed_from_product_id": ""
+    },
+    "pivota_insights": {
+      "direct": {
+        "product_id": "ext_065337312a937f0f26d50865",
+        "kb_key": null,
+        "status": "missing_kb",
+        "kb_exists": false,
+        "displayable": false,
+        "high_quality_ready": false,
+        "issues": [
+          "missing_kb"
+        ],
+        "quality_state": "missing",
+        "evidence_profile": "missing"
+      },
+      "effective": {
+        "product_id": "ext_065337312a937f0f26d50865",
+        "kb_key": null,
+        "status": "missing_kb",
+        "kb_exists": false,
+        "displayable": false,
+        "high_quality_ready": false,
+        "issues": [
+          "missing_kb"
+        ],
+        "quality_state": "missing",
+        "evidence_profile": "missing"
+      },
+      "product_line_id": "pl_e08bdd03d2b62acb3d0bb282",
+      "borrowed_from_sibling": false
+    }
+  },
+  {
+    "external_product_id": "ext_05c5a41a67fb37dcf352853e",
+    "market": "US",
+    "domain": "lucamarskincare.com",
+    "title": "Lucamar Baalm 50g",
+    "canonical_url": "https://lucamarskincare.com/products/lucamar-baalm",
+    "brand": "lucamarskincare",
+    "sellable_item_group_id": "sig_c7353ea70d680561ef4b188a",
+    "recommended_lane": "lane_3_kb_rewrite_review",
+    "seed_missing_fields": "",
+    "identity_status": "approved",
+    "identity_live_read_enabled": true,
+    "kb_direct_high_quality_ready": false,
+    "kb_direct_human_reviewed": false,
+    "kb_direct_quality_state": "missing",
+    "kb_direct_evidence_profile": "missing",
+    "kb_direct_blocking_issues": "missing_kb",
+    "main_blocker": "kb_missing",
+    "catalog_attached": true,
+    "index_serving_eligible": true,
+    "commerce_doc_public": true,
+    "terminal_hold": false,
+    "coverage": {
+      "details_sections_count": 4,
+      "faq_count": 0,
+      "how_to_chars": 106,
+      "inci_chars": 205,
+      "active_ingredients_chars": 0,
+      "inci_applicability_status": "",
+      "ingredient_review_status": "",
+      "ingredient_remediation_action": "",
+      "bundle_component_refs_count": 0,
+      "effective_inci_chars": 205,
+      "inci_borrowed_from_product_id": ""
+    },
+    "pivota_insights": {
+      "direct": {
+        "product_id": "ext_05c5a41a67fb37dcf352853e",
+        "kb_key": null,
+        "status": "missing_kb",
+        "kb_exists": false,
+        "displayable": false,
+        "high_quality_ready": false,
+        "issues": [
+          "missing_kb"
+        ],
+        "quality_state": "missing",
+        "evidence_profile": "missing"
+      },
+      "effective": {
+        "product_id": "ext_05c5a41a67fb37dcf352853e",
+        "kb_key": null,
+        "status": "missing_kb",
+        "kb_exists": false,
+        "displayable": false,
+        "high_quality_ready": false,
+        "issues": [
+          "missing_kb"
+        ],
+        "quality_state": "missing",
+        "evidence_profile": "missing"
+      },
+      "product_line_id": "pl_38253a7d696f809e58b62a12",
+      "borrowed_from_sibling": false
+    }
+  },
+  {
+    "external_product_id": "ext_c463dcd674e1138b1284ff37",
+    "market": "US",
+    "domain": "rohrremedy.com",
+    "title": "Kakadu Plum Super Serum with Vit C",
+    "canonical_url": "https://rohrremedy.com/products/kakadu-plum-face-serum-with-vit-c",
+    "brand": "rohrremedy",
+    "sellable_item_group_id": "sig_a4b96c9f4fca74da54ac4cde",
+    "recommended_lane": "lane_3_kb_rewrite_review",
+    "seed_missing_fields": "",
+    "identity_status": "approved",
+    "identity_live_read_enabled": true,
+    "kb_direct_high_quality_ready": false,
+    "kb_direct_human_reviewed": false,
+    "kb_direct_quality_state": "missing",
+    "kb_direct_evidence_profile": "missing",
+    "kb_direct_blocking_issues": "missing_kb",
+    "main_blocker": "kb_missing",
+    "catalog_attached": true,
+    "index_serving_eligible": true,
+    "commerce_doc_public": true,
+    "terminal_hold": false,
+    "coverage": {
+      "details_sections_count": 6,
+      "faq_count": 0,
+      "how_to_chars": 202,
+      "inci_chars": 316,
+      "active_ingredients_chars": 0,
+      "inci_applicability_status": "",
+      "ingredient_review_status": "",
+      "ingredient_remediation_action": "",
+      "bundle_component_refs_count": 0,
+      "effective_inci_chars": 316,
+      "inci_borrowed_from_product_id": ""
+    },
+    "pivota_insights": {
+      "direct": {
+        "product_id": "ext_c463dcd674e1138b1284ff37",
+        "kb_key": null,
+        "status": "missing_kb",
+        "kb_exists": false,
+        "displayable": false,
+        "high_quality_ready": false,
+        "issues": [
+          "missing_kb"
+        ],
+        "quality_state": "missing",
+        "evidence_profile": "missing"
+      },
+      "effective": {
+        "product_id": "ext_c463dcd674e1138b1284ff37",
+        "kb_key": null,
+        "status": "missing_kb",
+        "kb_exists": false,
+        "displayable": false,
+        "high_quality_ready": false,
+        "issues": [
+          "missing_kb"
+        ],
+        "quality_state": "missing",
+        "evidence_profile": "missing"
+      },
+      "product_line_id": "pl_320ec787aafb5786f962aebe",
+      "borrowed_from_sibling": false
+    }
+  },
+  {
+    "external_product_id": "ext_1b95875bc9bdeee751d0cee1",
+    "market": "US",
+    "domain": "rohrremedy.com",
+    "title": "Lilly Pilly Face Moisturiser with Omega-3",
+    "canonical_url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser",
+    "brand": "rohrremedy",
+    "sellable_item_group_id": "sig_36920dabe218886c3dd32627",
+    "recommended_lane": "lane_3_kb_rewrite_review",
+    "seed_missing_fields": "",
+    "identity_status": "approved",
+    "identity_live_read_enabled": true,
+    "kb_direct_high_quality_ready": false,
+    "kb_direct_human_reviewed": false,
+    "kb_direct_quality_state": "missing",
+    "kb_direct_evidence_profile": "missing",
+    "kb_direct_blocking_issues": "missing_kb",
+    "main_blocker": "kb_missing",
+    "catalog_attached": true,
+    "index_serving_eligible": true,
+    "commerce_doc_public": true,
+    "terminal_hold": false,
+    "coverage": {
+      "details_sections_count": 6,
+      "faq_count": 0,
+      "how_to_chars": 98,
+      "inci_chars": 560,
+      "active_ingredients_chars": 0,
+      "inci_applicability_status": "",
+      "ingredient_review_status": "",
+      "ingredient_remediation_action": "",
+      "bundle_component_refs_count": 0,
+      "effective_inci_chars": 560,
+      "inci_borrowed_from_product_id": ""
+    },
+    "pivota_insights": {
+      "direct": {
+        "product_id": "ext_1b95875bc9bdeee751d0cee1",
+        "kb_key": null,
+        "status": "missing_kb",
+        "kb_exists": false,
+        "displayable": false,
+        "high_quality_ready": false,
+        "issues": [
+          "missing_kb"
+        ],
+        "quality_state": "missing",
+        "evidence_profile": "missing"
+      },
+      "effective": {
+        "product_id": "ext_1b95875bc9bdeee751d0cee1",
+        "kb_key": null,
+        "status": "missing_kb",
+        "kb_exists": false,
+        "displayable": false,
+        "high_quality_ready": false,
+        "issues": [
+          "missing_kb"
+        ],
+        "quality_state": "missing",
+        "evidence_profile": "missing"
+      },
+      "product_line_id": "pl_b369a4bf6e36c7a1d8f34a17",
+      "borrowed_from_sibling": false
+    }
+  }
+]

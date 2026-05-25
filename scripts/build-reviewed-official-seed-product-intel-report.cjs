@@ -987,7 +987,21 @@ function ingredientSignals(seedData) {
     }
     return '';
   }
+  function countIngredientParts(value) {
+    const cleaned = text(value).replace(/^(?:ingredients?|inci|full ingredients?)\s*[:：-]\s*/i, '');
+    if (!cleaned) return 0;
+    const parts = cleaned
+      .split(/\s*,\s*/)
+      .map((item) => item.trim())
+      .filter((item) => item.length > 1 && !/^(?:and|or)$/i.test(item));
+    if (parts.length >= 2) return parts.length;
+    return ingredientLikePattern.test(cleaned) ? 1 : 0;
+  }
   const candidates = [
+    seedData.pdp_ingredients_raw,
+    snapshot.pdp_ingredients_raw,
+    seedData.pdp_active_ingredients_raw,
+    snapshot.pdp_active_ingredients_raw,
     seedData.raw_ingredient_text_clean,
     snapshot.raw_ingredient_text_clean,
     seedData.ingredients_inci,
@@ -1005,7 +1019,9 @@ function ingredientSignals(seedData) {
     .map((item) => formulaCandidate(ingredientTextFromValue(item)))
     .filter(Boolean);
   const joined = sanitizeFormulaSummary(text(flattened.join(' ')));
-  const ingredientCount = asArray(seedData.ingredient_tokens || snapshot.ingredient_tokens).length;
+  const tokenCount = asArray(seedData.ingredient_tokens || snapshot.ingredient_tokens).length;
+  const derivedCount = flattened.reduce((max, item) => Math.max(max, countIngredientParts(item)), 0);
+  const ingredientCount = tokenCount || derivedCount;
   return {
     available: joined.length > 20,
     ingredient_count: ingredientCount,
@@ -1539,12 +1555,18 @@ function isConservativeRewriteCandidate(row, options = {}) {
   );
   if (row.terminal_hold) return false;
   if (row.kb_direct_high_quality_ready) return false;
-  if (!SAFE_REWRITE_EVIDENCE_PROFILES.has(evidenceProfile)) return false;
-  if (!SAFE_REWRITE_BLOCKERS.has(text(row.main_blocker))) return false;
   const reviewedSellerOnlyAllowed =
     options.includeReviewedSellerOnly === true &&
     qualityState === 'reviewed' &&
     evidenceProfile === 'seller_only';
+  const missingOfficialSourceAllowed =
+    options.includeMissingOfficialSource === true &&
+    qualityState === 'missing' &&
+    evidenceProfile === 'missing' &&
+    text(row.main_blocker) === 'kb_missing' &&
+    row.catalog_attached === true &&
+    row.index_serving_eligible === true &&
+    row.commerce_doc_public === true;
   const notReviewedOfficialSourceAllowed =
     options.includeNotReviewedOfficialSource === true &&
     row.kb_direct_human_reviewed !== true &&
@@ -1558,8 +1580,12 @@ function isConservativeRewriteCandidate(row, options = {}) {
     Array.from(blockingIssues).every((issue) =>
       issue === 'not_reviewed' || issue === 'not_displayable_gate',
     );
-  if (row.kb_direct_human_reviewed !== true && !notReviewedOfficialSourceAllowed) return false;
-  if (!SAFE_REWRITE_QUALITY_STATES.has(qualityState) && !reviewedSellerOnlyAllowed) return false;
+  if (!missingOfficialSourceAllowed) {
+    if (!SAFE_REWRITE_EVIDENCE_PROFILES.has(evidenceProfile)) return false;
+    if (!SAFE_REWRITE_BLOCKERS.has(text(row.main_blocker))) return false;
+    if (row.kb_direct_human_reviewed !== true && !notReviewedOfficialSourceAllowed) return false;
+    if (!SAFE_REWRITE_QUALITY_STATES.has(qualityState) && !reviewedSellerOnlyAllowed) return false;
+  }
   if (NON_CORE_PUBLIC_REWRITE_TITLE_RE.test(text(row.title))) return false;
   if (options.singleItemOnly && MULTI_ITEM_PUBLIC_REWRITE_TITLE_RE.test(text(row.title))) return false;
   if (options.requirePublicCommerceDoc) {
@@ -1580,6 +1606,7 @@ function selectInventoryRows(rows, options) {
   const singleItemOnly = options.singleItemOnly === true;
   const includeReviewedSellerOnly = options.includeReviewedSellerOnly === true;
   const includeNotReviewedOfficialSource = options.includeNotReviewedOfficialSource === true;
+  const includeMissingOfficialSource = options.includeMissingOfficialSource === true;
   return rows
     .filter((row) => !domain || text(row.domain).toLowerCase() === domain)
     .filter((row) => text(row.recommended_lane) === lane)
@@ -1593,6 +1620,7 @@ function selectInventoryRows(rows, options) {
         singleItemOnly,
         includeReviewedSellerOnly,
         includeNotReviewedOfficialSource,
+        includeMissingOfficialSource,
       }),
     )
     .filter((row) => (requireDescription ? true : true))
@@ -1669,6 +1697,7 @@ async function main() {
     singleItemOnly: hasFlag('single-item-only'),
     includeReviewedSellerOnly: hasFlag('include-reviewed-seller-only'),
     includeNotReviewedOfficialSource: hasFlag('include-not-reviewed-official-source'),
+    includeMissingOfficialSource: hasFlag('include-missing-official-source'),
   });
   const productIds = selectedInventory.map((row) => normalizeId(row.external_product_id)).filter(Boolean);
   const seeds = await fetchSeeds(productIds);

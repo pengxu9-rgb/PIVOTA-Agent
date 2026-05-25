@@ -1,0 +1,217 @@
+{
+  "generated_at": "2026-05-25T00:45:52.148Z",
+  "dry_run": true,
+  "market": "US",
+  "summary": {
+    "scanned": 7,
+    "dry_run": 7,
+    "updated": 0,
+    "skipped": 0,
+    "failed": 0,
+    "by_field": {
+      "pdp_ingredients_raw": 6,
+      "pdp_active_ingredients_raw": 2,
+      "pdp_how_to_use_raw": 7,
+      "pdp_details_sections": 7
+    }
+  },
+  "results": [
+    {
+      "external_product_id": "ext_df8aac07d6c970d4c213b43f",
+      "title": "Silk Night Cream",
+      "domain": "seresilk.com.au",
+      "url": "https://seresilk.com.au/products/silk-night-cream",
+      "host": "seresilk.com.au",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_active_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://seresilk.com.au/products/silk-night-cream",
+      "extracted_summary": {
+        "ingredients_chars": 274,
+        "how_to_chars": 146,
+        "details_sections_count": 5,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    },
+    {
+      "external_product_id": "ext_438058253d57a2c8d75f5906",
+      "title": "Silk Night Serum",
+      "domain": "seresilk.com.au",
+      "url": "https://seresilk.com.au/products/silk-night-serum",
+      "host": "seresilk.com.au",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_active_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://seresilk.com.au/products/silk-night-serum",
+      "extracted_summary": {
+        "ingredients_chars": 211,
+        "how_to_chars": 198,
+        "details_sections_count": 5,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    },
+    {
+      "external_product_id": "ext_0d4ffd13b899460cabb1f392",
+      "title": "Gentle Silk Cleanser",
+      "domain": "seresilk.com.au",
+      "url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+      "host": "seresilk.com.au",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+      "extracted_summary": {
+        "ingredients_chars": 243,
+        "how_to_chars": 232,
+        "details_sections_count": 5,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    },
+    {
+      "external_product_id": "ext_065337312a937f0f26d50865",
+      "title": "Lucamar Baalm 50g  UNSCENTED",
+      "domain": "lucamarskincare.com",
+      "url": "https://lucamarskincare.com/products/lucamar-baalm-50g-unscented",
+      "host": "lucamarskincare.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://lucamarskincare.com/products/lucamar-baalm-50g-unscented",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 106,
+        "details_sections_count": 2,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    },
+    {
+      "external_product_id": "ext_05c5a41a67fb37dcf352853e",
+      "title": "Lucamar Baalm 50g",
+      "domain": "lucamarskincare.com",
+      "url": "https://lucamarskincare.com/products/lucamar-baalm",
+      "host": "lucamarskincare.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://lucamarskincare.com/products/lucamar-baalm",
+      "extracted_summary": {
+        "ingredients_chars": 205,
+        "how_to_chars": 106,
+        "details_sections_count": 2,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    },
+    {
+      "external_product_id": "ext_c463dcd674e1138b1284ff37",
+      "title": "Kakadu Plum Super Serum with Vit C",
+      "domain": "rohrremedy.com",
+      "url": "https://rohrremedy.com/products/kakadu-plum-face-serum-with-vit-c",
+      "host": "rohrremedy.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://www.rohrremedy.com/products/kakadu-plum-face-serum-with-vit-c",
+      "extracted_summary": {
+        "ingredients_chars": 316,
+        "how_to_chars": 202,
+        "details_sections_count": 3,
+        "variant_count": 1,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    },
+    {
+      "external_product_id": "ext_1b95875bc9bdeee751d0cee1",
+      "title": "Lilly Pilly Face Moisturiser with Omega-3",
+      "domain": "rohrremedy.com",
+      "url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser",
+      "host": "rohrremedy.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://www.rohrremedy.com/products/lilly-pilly-face-moisturiser",
+      "extracted_summary": {
+        "ingredients_chars": 560,
+        "how_to_chars": 98,
+        "details_sections_count": 3,
+        "variant_count": 1,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    }
+  ]
+}

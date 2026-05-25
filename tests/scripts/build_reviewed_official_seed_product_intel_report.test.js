@@ -2603,6 +2603,32 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     expect(bundle.product_intel_core.what_it_is.body).not.toContain('Tom Ford');
   });
 
+  test('counts source-backed PDP ingredient fields in product intel provenance', () => {
+    const bundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_fixture',
+        title: 'Silk Night Cream',
+        canonical_url: 'https://seresilk.com.au/products/silk-night-cream',
+        seed_data: {
+          brand: 'Seresilk',
+          description: 'A night cream described by the official source for overnight skin care.',
+          pdp_ingredients_raw: 'Water, Glycerin, Squalane, Tocopherol',
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_fixture',
+        sellable_item_group_id: 'sig_fixture',
+      },
+      generatedAt: '2026-05-22T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+
+    expect(bundle.evidence_profile).toBe('seller_plus_formula');
+    expect(bundle.source_coverage.formula.ingredient_count).toBe(4);
+    expect(bundle.provenance.official_source_ingredient_count).toBe(4);
+  });
+
   test('conservative rewrite selection skips protected or non-public Pixi rows', () => {
     const base = {
       domain: 'pixibeauty.com',
@@ -2731,6 +2757,26 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
         { includeNotReviewedOfficialSource: true },
       ),
     ).toBe(false);
+    const missingOfficialSource = {
+      ...base,
+      title: 'Vitamin-C Serum',
+      kb_direct_human_reviewed: false,
+      kb_direct_quality_state: 'missing',
+      kb_direct_evidence_profile: 'missing',
+      main_blocker: 'kb_missing',
+    };
+    expect(isConservativeRewriteCandidate(missingOfficialSource)).toBe(false);
+    expect(
+      isConservativeRewriteCandidate(missingOfficialSource, {
+        includeMissingOfficialSource: true,
+      }),
+    ).toBe(true);
+    expect(
+      isConservativeRewriteCandidate(
+        { ...missingOfficialSource, commerce_doc_public: false },
+        { includeMissingOfficialSource: true },
+      ),
+    ).toBe(false);
   });
 
   test('selectInventoryRows keeps only safe public candidates when requested', () => {
@@ -2809,6 +2855,24 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
         terminal_hold: false,
       },
       {
+        external_product_id: 'missing_official_source',
+        domain: 'pixibeauty.com',
+        title: 'Vitamin-C Serum',
+        recommended_lane: 'lane_3_kb_rewrite_review',
+        seed_missing_fields: '',
+        identity_status: 'approved',
+        identity_live_read_enabled: true,
+        kb_direct_high_quality_ready: false,
+        kb_direct_human_reviewed: false,
+        kb_direct_quality_state: 'missing',
+        kb_direct_evidence_profile: 'missing',
+        main_blocker: 'kb_missing',
+        catalog_attached: true,
+        index_serving_eligible: true,
+        commerce_doc_public: true,
+        terminal_hold: false,
+      },
+      {
         external_product_id: 'shadow',
         domain: 'pixibeauty.com',
         title: 'Rose Body Cleanser',
@@ -2859,5 +2923,16 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
         includeNotReviewedOfficialSource: true,
       }).map((row) => row.external_product_id),
     ).toEqual(['safe', 'not_reviewed_official_source']);
+
+    expect(
+      selectInventoryRows(rows, {
+        domain: 'pixibeauty.com',
+        lane: 'lane_3_kb_rewrite_review',
+        limit: 10,
+        requirePublicCommerceDoc: true,
+        singleItemOnly: true,
+        includeMissingOfficialSource: true,
+      }).map((row) => row.external_product_id),
+    ).toEqual(['safe', 'missing_official_source']);
   });
 });
