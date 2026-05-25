@@ -2851,6 +2851,17 @@ const PDP_SIMILAR_EXTERNAL_FETCH_BUDGET_MS = Math.min(
     parseTimeoutMs(process.env.PDP_SIMILAR_EXTERNAL_FETCH_BUDGET_MS, 1500),
   ),
 );
+const PDP_SIMILAR_BACKGROUND_EXTERNAL_FETCH_BUDGET_MS = Math.min(
+  PDP_SIMILAR_BACKGROUND_SYNC_BUDGET_MS,
+  Math.max(
+    PDP_SIMILAR_EXTERNAL_FETCH_BUDGET_MS,
+    parseTimeoutMs(
+      process.env.PDP_SIMILAR_BACKGROUND_EXTERNAL_FETCH_BUDGET_MS ||
+        process.env.PDP_SIMILAR_POST_CORE_EXTERNAL_FETCH_BUDGET_MS,
+      5000,
+    ),
+  ),
+);
 const PDP_PRODUCT_INTEL_SYNC_BUDGET_MS = Math.max(
   250,
   parseTimeoutMs(process.env.PDP_PRODUCT_INTEL_SYNC_BUDGET_MS, 1500),
@@ -3931,6 +3942,7 @@ function buildPdpSimilarFetchArgs({
   bypassCache = false,
   debug = false,
   candidateLimit = null,
+  requestMode = 'first_paint',
 } = {}) {
   const limit = resolvePdpSimilarDisplayLimit(payload);
   const resolvedCandidateLimit =
@@ -3940,6 +3952,11 @@ function buildPdpSimilarFetchArgs({
     canonicalProductRef,
     canonicalProduct,
   });
+  const normalizedRequestMode = String(requestMode || '').trim().toLowerCase();
+  const externalFetchBudgetMs =
+    normalizedRequestMode === 'background' || normalizedRequestMode === 'post_core'
+      ? PDP_SIMILAR_BACKGROUND_EXTERNAL_FETCH_BUDGET_MS
+      : PDP_SIMILAR_EXTERNAL_FETCH_BUDGET_MS;
   return {
     displayLimit: limit,
     candidateLimit: resolvedCandidateLimit,
@@ -3963,7 +3980,7 @@ function buildPdpSimilarFetchArgs({
         no_cache: bypassCache,
         cache_bypass: bypassCache,
         bypass_cache: bypassCache,
-        external_fetch_timeout_ms: PDP_SIMILAR_EXTERNAL_FETCH_BUDGET_MS,
+        external_fetch_timeout_ms: externalFetchBudgetMs,
         hydrate_product_intel_cards: false,
       },
     },
@@ -35283,6 +35300,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 canonicalProduct,
                 bypassCache: similarCacheBypass,
                 debug,
+                requestMode: similarRequestMode,
               });
               return await resolvePdpSimilarWithBudget(
                 fetchSimilarProductsDeduped(fetchArgs),
@@ -40012,7 +40030,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   no_cache: bypassCache,
                   cache_bypass: bypassCache,
                   bypass_cache: bypassCache,
-                  external_fetch_timeout_ms: PDP_SIMILAR_EXTERNAL_FETCH_BUDGET_MS,
+                  external_fetch_timeout_ms: PDP_SIMILAR_BACKGROUND_EXTERNAL_FETCH_BUDGET_MS,
                   exclude_items: excludeItems,
                   recent_views: recentViews,
                 },

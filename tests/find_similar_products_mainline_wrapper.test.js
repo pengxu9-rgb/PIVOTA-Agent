@@ -76,6 +76,7 @@ describe('find_similar_products mainline wrapper', () => {
         }),
       }),
     );
+    expect(recommendMock.mock.calls[0][0].options.external_fetch_timeout_ms).toBeGreaterThan(1800);
     expect(res.body.products).toEqual([
       expect.objectContaining({
         product_id: 'sim_1',
