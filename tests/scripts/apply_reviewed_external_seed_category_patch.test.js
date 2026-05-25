@@ -114,6 +114,50 @@ describe('apply-reviewed-external-seed-category-patch', () => {
     expect(plan.blocking_reasons.join('|')).toContain('existing_category_conflict');
   });
 
+  test('allows reviewed overwrite when explicitly requested', () => {
+    const [entry] = readManifestEntries({
+      entries: [
+        {
+          external_product_id: 'ext_fixture',
+          title: 'Ginseng Essence Water',
+          category: 'Toner / Essence',
+          category_path: 'beauty/skincare/treat/toner',
+          source_url: 'https://beautyofjoseon.com/products/ginseng-essence-water',
+          evidence: 'Official product title and product page identify this as an essence water toner, not a serum.',
+          confidence: 0.95,
+        },
+      ],
+    });
+    const plan = buildCategoryPatchPlanForRow(
+      {
+        external_product_id: 'ext_fixture',
+        title: 'Ginseng Essence Water',
+        seed_data: {
+          category: 'Serum',
+          category_path: 'beauty/skincare/treat/serum',
+          snapshot: {
+            category: 'Serum',
+            category_path: 'beauty/skincare/treat/serum',
+          },
+        },
+      },
+      entry,
+      { allowOverwrite: true, now: '2026-05-25T00:00:00.000Z' },
+    );
+
+    expect(plan.status).toBe('planned');
+    expect(plan.before.category_path).toBe('beauty/skincare/treat/serum');
+    expect(plan.after.category_path).toBe('beauty/skincare/treat/toner');
+    expect(plan.next_seed_data.reviewed_category_patch_v1).toEqual(
+      expect.objectContaining({
+        review_state: 'assistant_reviewed',
+        previous_values: expect.objectContaining({
+          category_path: 'beauty/skincare/treat/serum',
+        }),
+      }),
+    );
+  });
+
   test('is idempotent when reviewed category fields already exist', () => {
     const [entry] = readManifestEntries({
       entries: [

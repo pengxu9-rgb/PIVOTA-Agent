@@ -421,12 +421,13 @@ async function fetchRows(entries, market) {
   return new Map((res.rows || []).map((row) => [row.external_product_id, row]));
 }
 
-async function applyPlan(plan) {
+async function applyPlan(plan, options = {}) {
   const servingPatch = buildServingPatch(plan.next_seed_data, plan.patch_keys);
   const category = plan.next_seed_data.category || null;
   const productType = plan.next_seed_data.product_type || category;
   const categoryPath = plan.next_seed_data.category_path || null;
   const patchJson = sanitizeJson(servingPatch);
+  const allowOverwrite = options.allowOverwrite === true;
   return withClient(async (client) => {
     await client.query('BEGIN');
     try {
@@ -443,15 +444,15 @@ async function applyPlan(plan) {
         `
           UPDATE catalog_products
           SET category = CASE
-                WHEN coalesce(category, '') = '' OR lower(category) = lower($2::text) THEN $2
+                WHEN $6::boolean OR coalesce(category, '') = '' OR lower(category) = lower($2::text) THEN $2
                 ELSE category
               END,
               product_type = CASE
-                WHEN coalesce(product_type, '') = '' OR lower(product_type) = lower($3::text) THEN $3
+                WHEN $6::boolean OR coalesce(product_type, '') = '' OR lower(product_type) = lower($3::text) THEN $3
                 ELSE product_type
               END,
               category_path = CASE
-                WHEN coalesce(category_path, '') = '' OR lower(category_path) = lower($4::text) THEN $4
+                WHEN $6::boolean OR coalesce(category_path, '') = '' OR lower(category_path) = lower($4::text) THEN $4
                 ELSE category_path
               END,
               product_payload = COALESCE(product_payload, '{}'::jsonb) || $5::jsonb,
@@ -460,7 +461,7 @@ async function applyPlan(plan) {
             AND platform = 'external_seed'
             AND source_product_id = $1
         `,
-        [plan.external_product_id, category, productType, categoryPath, patchJson],
+        [plan.external_product_id, category, productType, categoryPath, patchJson, allowOverwrite],
       );
       const identity = await client.query(
         `
@@ -539,7 +540,7 @@ async function main() {
     for (const plan of plans) {
       if (plan.status !== 'planned' || !plan.changed) continue;
       // eslint-disable-next-line no-await-in-loop
-      applyResults.push(await applyPlan(plan));
+      applyResults.push(await applyPlan(plan, { allowOverwrite }));
     }
   }
   const summary = summarizePlans(plans);
