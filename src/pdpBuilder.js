@@ -790,6 +790,14 @@ function pickElectronicsMeta(meta) {
 }
 
 function asNonEmptyString(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    for (const key of ['value', 'label', 'title', 'name', 'text', 'display_label', 'displayLabel', 'option_value', 'optionValue']) {
+      const normalized = asNonEmptyString(value[key]);
+      if (normalized) return normalized;
+    }
+    return '';
+  }
   if (typeof value !== 'string') return '';
   const normalized = stripHtml(value);
   return normalized;
