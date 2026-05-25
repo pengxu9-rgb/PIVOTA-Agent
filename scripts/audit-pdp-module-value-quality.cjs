@@ -171,6 +171,19 @@ function isSkuLikeSizeLabel(label, skuTokens) {
   if (!text) return false;
   if (/(?:denomination|amount|value)\s*:|\$\s*\d/i.test(text)) return false;
   const value = text.includes(':') ? text.split(':').pop().trim() : text;
+  // Some official color cosmetics use a repeated numeric shade name, e.g.
+  // Tom Ford "100 100"; that is a shade label, not a SKU suffix.
+  if (
+    /^(?:shade|color|colour)\s*:/i.test(text) &&
+    /^(\d{2,4})\s+\1$/i.test(value)
+  ) {
+    return false;
+  }
+  if (
+    /^(\d{2,4})\s+\1\s*\/\s*\d+(?:\.\d+)?\s*(?:ml|mL|g|oz|fl\.?\s*oz\.?)$/i.test(value)
+  ) {
+    return false;
+  }
   const compactValue = normalizeCompact(value);
   if (/^\d{5,}(?:cm|mm|ml|g|oz|floz)?$/i.test(compactValue)) return true;
   if (/^\d{5,}[a-z]{1,5}$/i.test(compactValue)) return true;
