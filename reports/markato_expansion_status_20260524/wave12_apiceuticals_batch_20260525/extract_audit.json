@@ -1,0 +1,276 @@
+{
+  "generated_at": "2026-05-25T03:56:56.394Z",
+  "market": "US",
+  "source": "wave12_apiceuticals_direct_pdp_batch",
+  "scanned": 5,
+  "ready_count": 4,
+  "held_count": 1,
+  "audit_rows": [
+    {
+      "file": "conditioner.extract.json",
+      "target_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-conditioner/",
+      "canonical_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-conditioner/",
+      "title": "Antioxidant Conditioner - Apiceuticals",
+      "price": 35,
+      "currency": "USD",
+      "availability": "In Stock",
+      "image_count": 12,
+      "ingredients_count": 25,
+      "ingredients_raw_len": 541,
+      "how_to_len": 305,
+      "field_quality": {
+        "ingredients_source_quality": "medium",
+        "how_to_source_quality": "medium",
+        "ingredients_ready": true,
+        "how_to_ready": true
+      },
+      "diagnostics": {
+        "requested_domain": "www.apiceuticals.com",
+        "resolved_base_url": "https://www.apiceuticals.com",
+        "discovery_strategy": "seed_page",
+        "failure_category": null,
+        "block_provider": null,
+        "http_trace": [
+          {
+            "url": "https://www.apiceuticals.com/products.json?limit=1",
+            "status": 404
+          },
+          {
+            "url": "https://www.apiceuticals.com/shop/propowax-antioxidant-conditioner/",
+            "status": 200
+          },
+          {
+            "url": "https://www.apiceuticals.com/shop/propowax-antioxidant-conditioner/",
+            "status": 200
+          }
+        ]
+      },
+      "status": "ready",
+      "reasons": []
+    },
+    {
+      "file": "shower_gel.extract.json",
+      "target_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-shower-gel/",
+      "canonical_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-shower-gel/",
+      "title": "Antioxidant Shower Gel - Apiceuticals",
+      "price": 29,
+      "currency": "USD",
+      "availability": "In Stock",
+      "image_count": 12,
+      "ingredients_count": 16,
+      "ingredients_raw_len": 317,
+      "how_to_len": 373,
+      "field_quality": {
+        "ingredients_source_quality": "medium",
+        "how_to_source_quality": "medium",
+        "ingredients_ready": true,
+        "how_to_ready": true
+      },
+      "diagnostics": {
+        "requested_domain": "www.apiceuticals.com",
+        "resolved_base_url": "https://www.apiceuticals.com",
+        "discovery_strategy": "seed_page",
+        "failure_category": null,
+        "block_provider": null,
+        "http_trace": [
+          {
+            "url": "https://www.apiceuticals.com/products.json?limit=1",
+            "status": 404
+          },
+          {
+            "url": "https://www.apiceuticals.com/shop/propowax-antioxidant-shower-gel/",
+            "status": 200
+          },
+          {
+            "url": "https://www.apiceuticals.com/shop/propowax-antioxidant-shower-gel/",
+            "status": 200
+          }
+        ]
+      },
+      "status": "ready",
+      "reasons": []
+    },
+    {
+      "file": "body_lotion.extract.json",
+      "target_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-body-lotion/",
+      "canonical_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-body-lotion/",
+      "title": "Antioxidant Body Lotion - Apiceuticals",
+      "price": 32,
+      "currency": "USD",
+      "availability": "In Stock",
+      "image_count": 12,
+      "ingredients_count": 37,
+      "ingredients_raw_len": 780,
+      "how_to_len": 288,
+      "field_quality": {
+        "ingredients_source_quality": "medium",
+        "how_to_source_quality": "medium",
+        "ingredients_ready": true,
+        "how_to_ready": true
+      },
+      "diagnostics": {
+        "requested_domain": "www.apiceuticals.com",
+        "resolved_base_url": "https://www.apiceuticals.com",
+        "discovery_strategy": "seed_page",
+        "failure_category": null,
+        "block_provider": null,
+        "http_trace": [
+          {
+            "url": "https://www.apiceuticals.com/products.json?limit=1",
+            "status": 404
+          },
+          {
+            "url": "https://www.apiceuticals.com/shop/propowax-antioxidant-body-lotion/",
+            "status": 200
+          },
+          {
+            "url": "https://www.apiceuticals.com/shop/propowax-antioxidant-body-lotion/",
+            "status": 200
+          }
+        ]
+      },
+      "status": "ready",
+      "reasons": []
+    },
+    {
+      "file": "dry_oil.extract.json",
+      "target_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-dry-oil/",
+      "canonical_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-dry-oil/",
+      "title": "Antioxidant Dry Oil - Apiceuticals",
+      "price": 89,
+      "currency": "USD",
+      "availability": "In Stock",
+      "image_count": 12,
+      "ingredients_count": 17,
+      "ingredients_raw_len": 462,
+      "how_to_len": 1229,
+      "field_quality": {
+        "ingredients_source_quality": "medium",
+        "how_to_source_quality": "medium",
+        "ingredients_ready": true,
+        "how_to_ready": true
+      },
+      "diagnostics": {
+        "requested_domain": "www.apiceuticals.com",
+        "resolved_base_url": "https://www.apiceuticals.com",
+        "discovery_strategy": "seed_page",
+        "failure_category": null,
+        "block_provider": null,
+        "http_trace": [
+          {
+            "url": "https://www.apiceuticals.com/products.json?limit=1",
+            "status": 404
+          },
+          {
+            "url": "https://www.apiceuticals.com/shop/propowax-antioxidant-dry-oil/",
+            "status": 200
+          },
+          {
+            "url": "https://www.apiceuticals.com/shop/propowax-antioxidant-dry-oil/",
+            "status": 200
+          }
+        ]
+      },
+      "status": "ready",
+      "reasons": []
+    }
+  ],
+  "held_items": [
+    {
+      "file": "honey_balm.extract.json",
+      "target_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-honey-balm/",
+      "hold_reason": "target_url_404_extractor_fell_back_to_blog",
+      "canonical_url": "https://www.apiceuticals.com/your-must-have-face-care-checklist-for-radiant-skin/",
+      "title": "Your Must-Have Face Care Checklist for Radiant Skin",
+      "price": 0,
+      "currency": "USD",
+      "availability": "In Stock",
+      "image_count": 12,
+      "ingredients_count": 4,
+      "ingredients_raw_len": 393,
+      "how_to_len": 1365,
+      "field_quality": {
+        "ingredients_source_quality": "medium",
+        "how_to_source_quality": "medium",
+        "ingredients_ready": true,
+        "how_to_ready": true
+      },
+      "diagnostics": {
+        "requested_domain": "www.apiceuticals.com",
+        "resolved_base_url": "https://www.apiceuticals.com",
+        "discovery_strategy": "sitemap",
+        "failure_category": null,
+        "block_provider": null,
+        "http_trace": [
+          {
+            "url": "https://www.apiceuticals.com/products.json?limit=1",
+            "status": 404
+          },
+          {
+            "url": "https://www.apiceuticals.com/shop/propowax-antioxidant-honey-balm/",
+            "status": 404
+          },
+          {
+            "url": "https://www.apiceuticals.com/robots.txt",
+            "status": 200
+          },
+          {
+            "url": "https://www.apiceuticals.com/sitemap_index.xml",
+            "status": 200
+          },
+          {
+            "url": "https://www.apiceuticals.com/sitemap_index.xml",
+            "status": 200
+          },
+          {
+            "url": "https://www.apiceuticals.com/post-sitemap.xml",
+            "status": 200
+          },
+          {
+            "url": "https://www.apiceuticals.com/your-must-have-face-care-checklist-for-radiant-skin/",
+            "status": 200
+          },
+          {
+            "url": "https://www.apiceuticals.com/antioxidants-for-hair-3/",
+            "status": 200
+          },
+          {
+            "url": "https://www.apiceuticals.com/antioxidant-body-lotion-benefits/",
+            "status": 200
+          },
+          {
+            "url": "https://www.apiceuticals.com/antioxidant-shower-gel-benefits/",
+            "status": 200
+          },
+          {
+            "url": "https://www.apiceuticals.com/antioxidant-body-lotion-benefits/",
+            "status": 200
+          },
+          {
+            "url": "https://www.apiceuticals.com/antioxidants-for-hair-3/",
+            "status": 200
+          },
+          {
+            "url": "https://www.apiceuticals.com/antioxidant-shower-gel-benefits/",
+            "status": 200
+          },
+          {
+            "url": "https://www.apiceuticals.com/why-use-natural-haircare-a-science-backed-guide/",
+            "status": 200
+          },
+          {
+            "url": "https://www.apiceuticals.com/why-use-natural-haircare-a-science-backed-guide/",
+            "status": 200
+          }
+        ]
+      },
+      "status": "hold",
+      "reasons": [
+        "target_url_404_extractor_fell_back_to_blog",
+        "canonical_url_drift",
+        "missing_usd_price",
+        "missing_source_backed_full_inci"
+      ]
+    }
+  ]
+}

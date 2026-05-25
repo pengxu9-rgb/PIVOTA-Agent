@@ -1,0 +1,240 @@
+{
+  "generated_at": "2026-05-25T04:40:20.249Z",
+  "dry_run": false,
+  "scanned": 5,
+  "blocked": 0,
+  "planned": 5,
+  "unchanged": 0,
+  "updated": 5,
+  "seed_data_change_count": 5,
+  "catalog_product_change_count": 5,
+  "identity_payload_change_count": 5,
+  "blockers": [],
+  "plans": [
+    {
+      "target": {
+        "external_product_id": "ext_1e27467ab07ddb83ad74c213",
+        "title": "PROPOWAX Antioxidant Shampoo 300ml",
+        "category": "Shampoo",
+        "product_type": "Shampoo",
+        "category_path": "beauty/haircare/shampoo",
+        "catalog_category_path": "beauty/haircare/shampoo",
+        "recall_vertical": "haircare",
+        "source_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-shampoo/"
+      },
+      "seed_id": "eps_d7bbe1c523ff1a28e9fc0feb",
+      "product_key": "prod::external_seed::external_seed::ext_1e27467ab07ddb83ad74c213",
+      "source_listing_ref": "external_seed:ext_1e27467ab07ddb83ad74c213",
+      "status": "planned",
+      "blockers": [],
+      "before": {
+        "seed_category": "Haircare",
+        "seed_product_type": "Shampoo",
+        "seed_category_path": [
+          "beauty",
+          "haircare",
+          "shampoo"
+        ],
+        "seed_catalog_category_path": "beauty/haircare/shampoo",
+        "recall_category": "Shampoo",
+        "recall_vertical": "haircare",
+        "catalog_category": "Haircare",
+        "catalog_product_type": "Haircare",
+        "catalog_category_path": "beauty/haircare"
+      },
+      "after": {
+        "category": "Shampoo",
+        "product_type": "Shampoo",
+        "category_path": "beauty/haircare/shampoo",
+        "catalog_category_path": "beauty/haircare/shampoo",
+        "recall_category": "Shampoo",
+        "recall_vertical": "haircare"
+      },
+      "changes": {
+        "seed_data": true,
+        "catalog_product": true,
+        "identity_payload": true
+      }
+    },
+    {
+      "target": {
+        "external_product_id": "ext_4e95b920b4c6a5295d55aa46",
+        "title": "PROPOWAX Antioxidant Conditioner 300ml",
+        "category": "Conditioner",
+        "product_type": "Conditioner",
+        "category_path": "beauty/haircare/conditioner",
+        "catalog_category_path": "beauty/haircare/conditioner",
+        "recall_vertical": "haircare",
+        "source_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-conditioner/"
+      },
+      "seed_id": "eps_392eec0063f18198755a2dc6",
+      "product_key": "prod::external_seed::external_seed::ext_4e95b920b4c6a5295d55aa46",
+      "source_listing_ref": "external_seed:ext_4e95b920b4c6a5295d55aa46",
+      "status": "planned",
+      "blockers": [],
+      "before": {
+        "seed_category": "Haircare",
+        "seed_product_type": "Conditioner",
+        "seed_category_path": [
+          "beauty",
+          "haircare",
+          "conditioner"
+        ],
+        "seed_catalog_category_path": "beauty/haircare/conditioner",
+        "recall_category": "Conditioner",
+        "recall_vertical": "haircare",
+        "catalog_category": "Haircare",
+        "catalog_product_type": "Haircare",
+        "catalog_category_path": "beauty/haircare"
+      },
+      "after": {
+        "category": "Conditioner",
+        "product_type": "Conditioner",
+        "category_path": "beauty/haircare/conditioner",
+        "catalog_category_path": "beauty/haircare/conditioner",
+        "recall_category": "Conditioner",
+        "recall_vertical": "haircare"
+      },
+      "changes": {
+        "seed_data": true,
+        "catalog_product": true,
+        "identity_payload": true
+      }
+    },
+    {
+      "target": {
+        "external_product_id": "ext_d17dfc05f98d0400d5129f1c",
+        "title": "PROPOWAX Antioxidant Shower Gel 300ml",
+        "category": "Body Wash",
+        "product_type": "Body Wash",
+        "category_path": "beauty/bodycare/body-wash",
+        "catalog_category_path": "beauty/bodycare/body-wash",
+        "recall_vertical": "bodycare",
+        "source_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-shower-gel/"
+      },
+      "seed_id": "eps_233fb6937fe8094b020b5a16",
+      "product_key": "prod::external_seed::external_seed::ext_d17dfc05f98d0400d5129f1c",
+      "source_listing_ref": "external_seed:ext_d17dfc05f98d0400d5129f1c",
+      "status": "planned",
+      "blockers": [],
+      "before": {
+        "seed_category": "Bodycare",
+        "seed_product_type": "Body Wash",
+        "seed_category_path": [
+          "beauty",
+          "bodycare",
+          "body wash"
+        ],
+        "seed_catalog_category_path": "beauty/bodycare/body-wash",
+        "recall_category": "Body Wash",
+        "recall_vertical": "bodycare",
+        "catalog_category": "Body Wash",
+        "catalog_product_type": "Body Wash",
+        "catalog_category_path": "beauty,bodycare,body wash"
+      },
+      "after": {
+        "category": "Body Wash",
+        "product_type": "Body Wash",
+        "category_path": "beauty/bodycare/body-wash",
+        "catalog_category_path": "beauty/bodycare/body-wash",
+        "recall_category": "Body Wash",
+        "recall_vertical": "bodycare"
+      },
+      "changes": {
+        "seed_data": true,
+        "catalog_product": true,
+        "identity_payload": true
+      }
+    },
+    {
+      "target": {
+        "external_product_id": "ext_c0e5209513c083e2c649c1a1",
+        "title": "PROPOWAX Antioxidant Body Lotion 300ml",
+        "category": "Body Lotion",
+        "product_type": "Body Lotion",
+        "category_path": "beauty/bodycare/body-lotion",
+        "catalog_category_path": "beauty/bodycare/body-lotion",
+        "recall_vertical": "bodycare",
+        "source_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-body-lotion/"
+      },
+      "seed_id": "eps_a1dfe4e0954933aef1121656",
+      "product_key": "prod::external_seed::external_seed::ext_c0e5209513c083e2c649c1a1",
+      "source_listing_ref": "external_seed:ext_c0e5209513c083e2c649c1a1",
+      "status": "planned",
+      "blockers": [],
+      "before": {
+        "seed_category": "Bodycare",
+        "seed_product_type": "Body Lotion",
+        "seed_category_path": [
+          "beauty",
+          "bodycare",
+          "body lotion"
+        ],
+        "seed_catalog_category_path": "beauty/bodycare/body-lotion",
+        "recall_category": "Body Lotion",
+        "recall_vertical": "bodycare",
+        "catalog_category": "Body Lotion",
+        "catalog_product_type": "Body Lotion",
+        "catalog_category_path": "beauty,bodycare,body lotion"
+      },
+      "after": {
+        "category": "Body Lotion",
+        "product_type": "Body Lotion",
+        "category_path": "beauty/bodycare/body-lotion",
+        "catalog_category_path": "beauty/bodycare/body-lotion",
+        "recall_category": "Body Lotion",
+        "recall_vertical": "bodycare"
+      },
+      "changes": {
+        "seed_data": true,
+        "catalog_product": true,
+        "identity_payload": true
+      }
+    },
+    {
+      "target": {
+        "external_product_id": "ext_d3d708f481903ba2a6f9b732",
+        "title": "PROPOWAX Antioxidant Dry Oil 100ml",
+        "category": "Body Oil",
+        "product_type": "Body Oil",
+        "category_path": "beauty/bodycare/body-oil",
+        "catalog_category_path": "beauty/bodycare/body-oil",
+        "recall_vertical": "bodycare",
+        "source_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-dry-oil/"
+      },
+      "seed_id": "eps_8b28f12a815d856a4c1c81e7",
+      "product_key": "prod::external_seed::external_seed::ext_d3d708f481903ba2a6f9b732",
+      "source_listing_ref": "external_seed:ext_d3d708f481903ba2a6f9b732",
+      "status": "planned",
+      "blockers": [],
+      "before": {
+        "seed_category": "Bodycare",
+        "seed_product_type": "Dry Oil",
+        "seed_category_path": [
+          "beauty",
+          "bodycare",
+          "body oil"
+        ],
+        "seed_catalog_category_path": "beauty/bodycare/body-oil",
+        "recall_category": "Body Oil",
+        "recall_vertical": "bodycare",
+        "catalog_category": "Dry Oil",
+        "catalog_product_type": "Dry Oil",
+        "catalog_category_path": "beauty,bodycare,body oil"
+      },
+      "after": {
+        "category": "Body Oil",
+        "product_type": "Body Oil",
+        "category_path": "beauty/bodycare/body-oil",
+        "catalog_category_path": "beauty/bodycare/body-oil",
+        "recall_category": "Body Oil",
+        "recall_vertical": "bodycare"
+      },
+      "changes": {
+        "seed_data": true,
+        "catalog_product": true,
+        "identity_payload": true
+      }
+    }
+  ]
+}

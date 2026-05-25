@@ -1,0 +1,314 @@
+{
+  "generated_at": "2026-05-25T04:17:35.942Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 5,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_3986f474bf585056885f6125",
+      "sellable_item_group_id": "sig_3986f474bf585056885f6125",
+      "product_line_id": "pl_c0bad4679095d97a8e48c5b6",
+      "review_family_id": "rf_c0bad4679095d97a8e48c5b6",
+      "brand_name": "Apiceuticals",
+      "category_paths": [
+        "Haircare",
+        "Shampoo"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "PROPOWAX™ Antioxidant Shampoo 300ml",
+      "subtitle": "PROPOWAX™ SERIES\nANTIOXIDANT • ANTIPOLLUTION\n\n100% Clean, Sustainable, Cruelty-free Beauty\n10.1 fl. oz. / 300 ml\n\nThe PROPOWAX™ Antioxidant Shampoo is the world’s first honeycomb shampoo powered by the patented Living Honeycomb — clinically proven to deliver the highest antioxidant activity worldwide. Detoxifies and restores scalp & hair from pollution, UV, styling tools, and harsh products. Rebalances, soothes, and strengthens hair from the roots. Leaves hair radiant, nourished, and infused with a luxurious fine fragrance.",
+      "variant_axes": {
+        "volume": "300ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://www.apiceuticals.com/wp-content/uploads/2018/07/Shampoo_2-1.webp",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://www.apiceuticals.com/wp-content/uploads/2018/07/Shampoo_2-1.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2018/07/Shampoo_4.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2018/07/Shampoo_7.jpg",
+        "https://www.apiceuticals.com/wp-content/uploads/2018/07/Shampoo_8.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2018/07/Shampoo_3-1.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2018/07/Shampoo_6.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2018/07/Shampoo_9.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2018/07/Shampoo_2-1-600x800.webp"
+      ],
+      "price_min": 33,
+      "price_max": 33,
+      "default_offer_id": "external_seed:ext_1e27467ab07ddb83ad74c213",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "An Apiceuticals shampoo listed on the official source page as PROPOWAX™ Antioxidant Shampoo 300ml. The official description identifies: The PROPOWAX Antioxidant Shampoo is positioned as a honeycomb shampoo with Living Honeycomb referenced on the official page.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Apiceuticals",
+        "Haircare",
+        "Shampoo"
+      ],
+      "sort_keys": {
+        "price_min": 33,
+        "price_max": 33,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_1e27467ab07ddb83ad74c213"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_745fb0840bc78619eb4bca2b",
+      "sellable_item_group_id": "sig_745fb0840bc78619eb4bca2b",
+      "product_line_id": "pl_5e143094126625e7b6a05a24",
+      "review_family_id": "rf_5e143094126625e7b6a05a24",
+      "brand_name": "Apiceuticals",
+      "category_paths": [
+        "Haircare",
+        "Conditioner"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "PROPOWAX™ Antioxidant Conditioner 300ml",
+      "subtitle": "PROPOWAX™ SERIES\nANTIOXIDANT • ANTIPOLLUTION\n\n100% Clean, Sustainable, Cruelty-free Beauty\n10.1 fl. oz. / 300 ml\n\nThe PROPOWAX™ Antioxidant Conditioner nourishes, detangles, and restores hair while soothing and balancing the scalp. Powered by the patented Living Honeycomb, proven to deliver the highest antioxidant activity worldwide, this formula protects against oxidative stress while moisturizing and smoothing split ends. Leaves hair silky, frizz-free, and enveloped in Apiceuticals’ signature ultra-luxury fragrance.",
+      "variant_axes": {
+        "volume": "300ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://www.apiceuticals.com/wp-content/uploads/2021/11/Conditioner_2-1.webp",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://www.apiceuticals.com/wp-content/uploads/2021/11/Conditioner_2-1.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/11/Conditioner_4.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/11/Conditioner_3-1.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/11/Conditioner_7.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/11/Conditioner_8.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/11/Conditioner_6.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/11/Conditioner_9.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/11/Conditioner_2-1-600x800.webp"
+      ],
+      "price_min": 35,
+      "price_max": 35,
+      "default_offer_id": "external_seed:ext_4e95b920b4c6a5295d55aa46",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "An Apiceuticals hair conditioner listed on the official source page as PROPOWAX™ Antioxidant Conditioner 300ml. The official description identifies: The PROPOWAX™ Antioxidant Conditioner nourishes, detangles, and restores hair while soothing and balancing the scalp.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Apiceuticals",
+        "Haircare",
+        "Conditioner"
+      ],
+      "sort_keys": {
+        "price_min": 35,
+        "price_max": 35,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_4e95b920b4c6a5295d55aa46"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_1587d8b1843fa059eb641ef4",
+      "sellable_item_group_id": "sig_1587d8b1843fa059eb641ef4",
+      "product_line_id": "pl_1bf0bf9e89d29a0aa5a7c424",
+      "review_family_id": "rf_1bf0bf9e89d29a0aa5a7c424",
+      "brand_name": "Apiceuticals",
+      "category_paths": [
+        "Bodycare",
+        "Body Lotion"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "PROPOWAX™ Antioxidant Body Lotion 300ml",
+      "subtitle": "PROPOWAX™ SERIES\nANTIOXIDANT • ANTIPOLLUTION\n\n100% Clean, Sustainable, Cruelty-free Beauty\n10.1 fl. oz. / 300 ml\n\nThe PROPOWAX™ Antioxidant Body Lotion envelops the skin in silky hydration while fortifying it with advanced antioxidant protection. Powered by the patented Living Honeycomb, clinically proven to deliver the highest antioxidant activity worldwide, it locks in moisture, restores the skin barrier, and protects against pollution and oxidative stress. With its lightweight, non-greasy texture, it leaves skin velvety soft, supple, and wrapped in Apiceuticals’ signature ultra-luxury fragrance.",
+      "variant_axes": {
+        "volume": "300ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://www.apiceuticals.com/wp-content/uploads/2021/12/Body-Lotion_2.webp",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://www.apiceuticals.com/wp-content/uploads/2021/12/Body-Lotion_2.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/12/Body-Lotion_3-1.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/12/Body-Lotion_4.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/12/Body-Lotion_7.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/12/Body-Lotion_8.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/12/Body-Lotion_6.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/12/Body-Lotion_9.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/12/Body-Lotion_2-600x800.webp"
+      ],
+      "price_min": 32,
+      "price_max": 32,
+      "default_offer_id": "external_seed:ext_c0e5209513c083e2c649c1a1",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "An Apiceuticals moisturizer listed on the official source page as PROPOWAX™ Antioxidant Body Lotion 300ml. The official description identifies: The PROPOWAX™ Antioxidant Body Lotion envelops the skin in silky hydration while fortifying it with advanced antioxidant protection.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Apiceuticals",
+        "Bodycare",
+        "Body Lotion"
+      ],
+      "sort_keys": {
+        "price_min": 32,
+        "price_max": 32,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_c0e5209513c083e2c649c1a1"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_9d47a2dd2caf5d7bbe4e9bbd",
+      "sellable_item_group_id": "sig_9d47a2dd2caf5d7bbe4e9bbd",
+      "product_line_id": "pl_317ddc081dfcb3f09bacd511",
+      "review_family_id": "rf_317ddc081dfcb3f09bacd511",
+      "brand_name": "Apiceuticals",
+      "category_paths": [
+        "Bodycare",
+        "Body Wash"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "PROPOWAX™ Antioxidant Shower Gel 300ml",
+      "subtitle": "PROPOWAX™ SERIES\nANTIOXIDANT • ANTIPOLLUTION\n\n100% Clean, Sustainable, Cruelty-free Beauty\n10.1 fl. oz. / 300 ml\n\nThe PROPOWAX™ Antioxidant Shower Gel transforms daily cleansing into a protective ritual. With its unique honey-like texture, it cocoons the skin in silky softness while cleansing gently. Powered by the patented Living Honeycomb, proven to deliver the highest antioxidant activity worldwide, it shields against pollution, slows skin aging, and maintains long-lasting hydration. Leaves skin soft, radiant, and enveloped in Apiceuticals’ ultra-luxury fragrance.",
+      "variant_axes": {
+        "volume": "300ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://www.apiceuticals.com/wp-content/uploads/2021/11/Shower-Gel_2.webp",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://www.apiceuticals.com/wp-content/uploads/2021/11/Shower-Gel_2.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/11/Shower-Gel_3-1.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/11/Shower-Gel_4.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2018/07/Shower-Gel_7.jpg",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/11/Shower-Gel_8.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/11/Shower-Gel_6.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/11/Shower-Gel_9.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/11/Shower-Gel_2-600x800.webp"
+      ],
+      "price_min": 29,
+      "price_max": 29,
+      "default_offer_id": "external_seed:ext_d17dfc05f98d0400d5129f1c",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "An Apiceuticals body wash listed on the official source page as PROPOWAX™ Antioxidant Shower Gel 300ml. The official description identifies: The PROPOWAX™ Antioxidant Shower Gel transforms daily cleansing into a protective ritual.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Apiceuticals",
+        "Bodycare",
+        "Body Wash"
+      ],
+      "sort_keys": {
+        "price_min": 29,
+        "price_max": 29,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_d17dfc05f98d0400d5129f1c"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_c5c41c0851763b2481798bcf",
+      "sellable_item_group_id": "sig_c5c41c0851763b2481798bcf",
+      "product_line_id": "pl_34d1d21f92dcb93bd0c24821",
+      "review_family_id": "rf_34d1d21f92dcb93bd0c24821",
+      "brand_name": "Apiceuticals",
+      "category_paths": [
+        "Bodycare",
+        "Dry Oil"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "PROPOWAX™ Antioxidant Dry Oil 100ml",
+      "subtitle": "PROPOWAX™ SERIES\nANTIOXIDANT • ANTIPOLLUTION\n\n100% Clean, Sustainable, Cruelty-free Beauty\n3.8 fl. oz. / 100 ml\n\nThe PROPOWAX™ Antioxidant Dry Oil is a multi-purpose elixir for face, body, and hair. A luxurious blend of 7 precious oils, it delivers powerful antioxidant protection while restoring softness and radiance. Truly “dry”, it absorbs in seconds, nourishing deeply without leaving any oily residue. Your skin feels velvety soft, supple, and wrapped in Apiceuticals’ signature ultra-luxury fragrance “Woods of Arcadia”.",
+      "variant_axes": {
+        "volume": "100ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://www.apiceuticals.com/wp-content/uploads/2021/12/Dry-Oil_2-1.webp",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://www.apiceuticals.com/wp-content/uploads/2021/12/Dry-Oil_2-1.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/12/Dry-Oil_4.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/12/Dry-Oil_7.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2018/07/Dry-Oil_8.jpg",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/12/Dry-Oil_3.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/12/Dry-Oil_6.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/12/Dry-Oil_9.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/12/Dry-Oil_2-1-600x800.webp"
+      ],
+      "price_min": 89,
+      "price_max": 89,
+      "default_offer_id": "external_seed:ext_d3d708f481903ba2a6f9b732",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "An Apiceuticals body oil listed on the official source page as PROPOWAX™ Antioxidant Dry Oil 100ml. The official description identifies: The PROPOWAX™ Antioxidant Dry Oil is a multi-purpose elixir for face, body, and hair.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Apiceuticals",
+        "Bodycare",
+        "Dry Oil"
+      ],
+      "sort_keys": {
+        "price_min": 89,
+        "price_max": 89,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_d3d708f481903ba2a6f9b732"
+      ]
+    }
+  ]
+}

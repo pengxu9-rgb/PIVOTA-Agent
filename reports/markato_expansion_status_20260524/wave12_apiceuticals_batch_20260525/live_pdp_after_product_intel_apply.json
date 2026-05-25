@@ -1,0 +1,649 @@
+[
+  {
+    "status": "failed",
+    "seed_id": "eps_392eec0063f18198755a2dc6",
+    "external_product_id": "ext_4e95b920b4c6a5295d55aa46",
+    "market": "US",
+    "domain": "apiceuticals.com",
+    "canonical_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-conditioner/",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 1,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 35,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "passed",
+      "product_group_id": "sig_745fb0840bc78619eb4bca2b",
+      "product_line_id": "pl_5e143094126625e7b6a05a24",
+      "sellable_item_group_id": "sig_745fb0840bc78619eb4bca2b",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "passed",
+      "has_product_intel": true,
+      "product_intel_status": "ready",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "failed",
+      "price_amount": 35,
+      "has_overview": true,
+      "live_modules": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "reviews_preview",
+        "similar",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "media_gallery",
+        "price_promo"
+      ],
+      "details_status": {
+        "section_count": 3,
+        "section_soup_count": 0,
+        "has_product_facts": false,
+        "seed_section_count": 3,
+        "compressed_structured_sections": false
+      },
+      "questions_status": {
+        "seed_faq_count": 0,
+        "live_question_count": 0
+      },
+      "active_ingredients_status": {
+        "expected": false,
+        "live_item_count": 0,
+        "suppressed_for_product_family": null
+      },
+      "image_health": {
+        "scanned_count": 12,
+        "total_url_count": 12,
+        "broken_count": 0,
+        "broken_urls": [],
+        "transient_error_count": 0,
+        "transient_error_urls": [],
+        "skipped": false,
+        "truncated": false
+      },
+      "gallery_status": {
+        "image_count": 12,
+        "duplicate_count": 0,
+        "content_leak_count": 0,
+        "seed_content_image_count": 0
+      },
+      "snapshot_contract": null,
+      "image_url_identity_stripped_count": 0,
+      "image_url_identity_stripped_examples": [],
+      "failure_reasons": [
+        "legacy_snapshot_not_quarantined"
+      ]
+    },
+    "similar_gate": {
+      "status": "failed",
+      "similar_count": 0,
+      "card_highlight_missing_count": 0,
+      "card_seller_only_fallback_count": 0,
+      "exempt": false,
+      "failure_reasons": [
+        "similar_underfill"
+      ]
+    },
+    "variant_gate": {
+      "status": "passed",
+      "visible_variant_row_count": 1,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": []
+    },
+    "root_cause_classification": [
+      "snapshot_contract_gap",
+      "similar_issue"
+    ],
+    "failure_reasons": [
+      "legacy_snapshot_not_quarantined",
+      "similar_underfill"
+    ]
+  },
+  {
+    "status": "failed",
+    "seed_id": "eps_233fb6937fe8094b020b5a16",
+    "external_product_id": "ext_d17dfc05f98d0400d5129f1c",
+    "market": "US",
+    "domain": "apiceuticals.com",
+    "canonical_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-shower-gel/",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 1,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 29,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "passed",
+      "product_group_id": "sig_9d47a2dd2caf5d7bbe4e9bbd",
+      "product_line_id": "pl_317ddc081dfcb3f09bacd511",
+      "sellable_item_group_id": "sig_9d47a2dd2caf5d7bbe4e9bbd",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "passed",
+      "has_product_intel": true,
+      "product_intel_status": "ready",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "failed",
+      "price_amount": 29,
+      "has_overview": true,
+      "live_modules": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "reviews_preview",
+        "similar",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "media_gallery",
+        "price_promo"
+      ],
+      "details_status": {
+        "section_count": 3,
+        "section_soup_count": 0,
+        "has_product_facts": false,
+        "seed_section_count": 3,
+        "compressed_structured_sections": false
+      },
+      "questions_status": {
+        "seed_faq_count": 0,
+        "live_question_count": 0
+      },
+      "active_ingredients_status": {
+        "expected": false,
+        "live_item_count": 0,
+        "suppressed_for_product_family": null
+      },
+      "image_health": {
+        "scanned_count": 12,
+        "total_url_count": 12,
+        "broken_count": 0,
+        "broken_urls": [],
+        "transient_error_count": 0,
+        "transient_error_urls": [],
+        "skipped": false,
+        "truncated": false
+      },
+      "gallery_status": {
+        "image_count": 12,
+        "duplicate_count": 0,
+        "content_leak_count": 0,
+        "seed_content_image_count": 0
+      },
+      "snapshot_contract": null,
+      "image_url_identity_stripped_count": 0,
+      "image_url_identity_stripped_examples": [],
+      "failure_reasons": [
+        "legacy_snapshot_not_quarantined"
+      ]
+    },
+    "similar_gate": {
+      "status": "failed",
+      "similar_count": 6,
+      "card_highlight_missing_count": 1,
+      "card_seller_only_fallback_count": 1,
+      "exempt": false,
+      "failure_reasons": [
+        "similar_card_missing_highlight",
+        "similar_card_seller_only_fallback"
+      ]
+    },
+    "variant_gate": {
+      "status": "passed",
+      "visible_variant_row_count": 1,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": []
+    },
+    "root_cause_classification": [
+      "snapshot_contract_gap",
+      "similar_issue"
+    ],
+    "failure_reasons": [
+      "legacy_snapshot_not_quarantined",
+      "similar_card_missing_highlight",
+      "similar_card_seller_only_fallback"
+    ]
+  },
+  {
+    "status": "failed",
+    "seed_id": "eps_a1dfe4e0954933aef1121656",
+    "external_product_id": "ext_c0e5209513c083e2c649c1a1",
+    "market": "US",
+    "domain": "apiceuticals.com",
+    "canonical_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-body-lotion/",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 1,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 32,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "passed",
+      "product_group_id": "sig_1587d8b1843fa059eb641ef4",
+      "product_line_id": "pl_1bf0bf9e89d29a0aa5a7c424",
+      "sellable_item_group_id": "sig_1587d8b1843fa059eb641ef4",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "passed",
+      "has_product_intel": true,
+      "product_intel_status": "ready",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "failed",
+      "price_amount": 32,
+      "has_overview": true,
+      "live_modules": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "reviews_preview",
+        "similar",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "media_gallery",
+        "price_promo"
+      ],
+      "details_status": {
+        "section_count": 3,
+        "section_soup_count": 0,
+        "has_product_facts": false,
+        "seed_section_count": 3,
+        "compressed_structured_sections": false
+      },
+      "questions_status": {
+        "seed_faq_count": 0,
+        "live_question_count": 0
+      },
+      "active_ingredients_status": {
+        "expected": false,
+        "live_item_count": 0,
+        "suppressed_for_product_family": null
+      },
+      "image_health": {
+        "scanned_count": 12,
+        "total_url_count": 12,
+        "broken_count": 0,
+        "broken_urls": [],
+        "transient_error_count": 0,
+        "transient_error_urls": [],
+        "skipped": false,
+        "truncated": false
+      },
+      "gallery_status": {
+        "image_count": 12,
+        "duplicate_count": 0,
+        "content_leak_count": 0,
+        "seed_content_image_count": 0
+      },
+      "snapshot_contract": null,
+      "image_url_identity_stripped_count": 0,
+      "image_url_identity_stripped_examples": [],
+      "failure_reasons": [
+        "legacy_snapshot_not_quarantined"
+      ]
+    },
+    "similar_gate": {
+      "status": "failed",
+      "similar_count": 0,
+      "card_highlight_missing_count": 0,
+      "card_seller_only_fallback_count": 0,
+      "exempt": false,
+      "failure_reasons": [
+        "similar_underfill"
+      ]
+    },
+    "variant_gate": {
+      "status": "passed",
+      "visible_variant_row_count": 1,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": []
+    },
+    "root_cause_classification": [
+      "snapshot_contract_gap",
+      "similar_issue"
+    ],
+    "failure_reasons": [
+      "legacy_snapshot_not_quarantined",
+      "similar_underfill"
+    ]
+  },
+  {
+    "status": "failed",
+    "seed_id": "eps_8b28f12a815d856a4c1c81e7",
+    "external_product_id": "ext_d3d708f481903ba2a6f9b732",
+    "market": "US",
+    "domain": "apiceuticals.com",
+    "canonical_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-dry-oil/",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 1,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 89,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "passed",
+      "product_group_id": "sig_c5c41c0851763b2481798bcf",
+      "product_line_id": "pl_34d1d21f92dcb93bd0c24821",
+      "sellable_item_group_id": "sig_c5c41c0851763b2481798bcf",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "passed",
+      "has_product_intel": true,
+      "product_intel_status": "ready",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "failed",
+      "price_amount": 89,
+      "has_overview": true,
+      "live_modules": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "reviews_preview",
+        "similar",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "media_gallery",
+        "price_promo"
+      ],
+      "details_status": {
+        "section_count": 3,
+        "section_soup_count": 0,
+        "has_product_facts": false,
+        "seed_section_count": 3,
+        "compressed_structured_sections": false
+      },
+      "questions_status": {
+        "seed_faq_count": 0,
+        "live_question_count": 0
+      },
+      "active_ingredients_status": {
+        "expected": false,
+        "live_item_count": 0,
+        "suppressed_for_product_family": null
+      },
+      "image_health": {
+        "scanned_count": 12,
+        "total_url_count": 12,
+        "broken_count": 0,
+        "broken_urls": [],
+        "transient_error_count": 0,
+        "transient_error_urls": [],
+        "skipped": false,
+        "truncated": false
+      },
+      "gallery_status": {
+        "image_count": 12,
+        "duplicate_count": 0,
+        "content_leak_count": 0,
+        "seed_content_image_count": 0
+      },
+      "snapshot_contract": null,
+      "image_url_identity_stripped_count": 0,
+      "image_url_identity_stripped_examples": [],
+      "failure_reasons": [
+        "legacy_snapshot_not_quarantined"
+      ]
+    },
+    "similar_gate": {
+      "status": "failed",
+      "similar_count": 0,
+      "card_highlight_missing_count": 0,
+      "card_seller_only_fallback_count": 0,
+      "exempt": false,
+      "failure_reasons": [
+        "similar_underfill"
+      ]
+    },
+    "variant_gate": {
+      "status": "passed",
+      "visible_variant_row_count": 1,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": []
+    },
+    "root_cause_classification": [
+      "snapshot_contract_gap",
+      "similar_issue"
+    ],
+    "failure_reasons": [
+      "legacy_snapshot_not_quarantined",
+      "similar_underfill"
+    ]
+  },
+  {
+    "status": "failed",
+    "seed_id": "eps_d7bbe1c523ff1a28e9fc0feb",
+    "external_product_id": "ext_1e27467ab07ddb83ad74c213",
+    "market": "US",
+    "domain": "apiceuticals.com",
+    "canonical_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-shampoo/",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 1,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 33,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "passed",
+      "product_group_id": "sig_3986f474bf585056885f6125",
+      "product_line_id": "pl_c0bad4679095d97a8e48c5b6",
+      "sellable_item_group_id": "sig_3986f474bf585056885f6125",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "passed",
+      "has_product_intel": true,
+      "product_intel_status": "ready",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "failed",
+      "price_amount": 33,
+      "has_overview": true,
+      "live_modules": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "reviews_preview",
+        "similar",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "media_gallery",
+        "price_promo"
+      ],
+      "details_status": {
+        "section_count": 4,
+        "section_soup_count": 0,
+        "has_product_facts": false,
+        "seed_section_count": 5,
+        "compressed_structured_sections": false
+      },
+      "questions_status": {
+        "seed_faq_count": 0,
+        "live_question_count": 5
+      },
+      "active_ingredients_status": {
+        "expected": false,
+        "live_item_count": 0,
+        "suppressed_for_product_family": null
+      },
+      "image_health": {
+        "scanned_count": 12,
+        "total_url_count": 12,
+        "broken_count": 0,
+        "broken_urls": [],
+        "transient_error_count": 0,
+        "transient_error_urls": [],
+        "skipped": false,
+        "truncated": false
+      },
+      "gallery_status": {
+        "image_count": 12,
+        "duplicate_count": 0,
+        "content_leak_count": 0,
+        "seed_content_image_count": 0
+      },
+      "snapshot_contract": null,
+      "image_url_identity_stripped_count": 0,
+      "image_url_identity_stripped_examples": [],
+      "failure_reasons": [
+        "legacy_snapshot_not_quarantined"
+      ]
+    },
+    "similar_gate": {
+      "status": "failed",
+      "similar_count": 0,
+      "card_highlight_missing_count": 0,
+      "card_seller_only_fallback_count": 0,
+      "exempt": false,
+      "failure_reasons": [
+        "similar_underfill"
+      ]
+    },
+    "variant_gate": {
+      "status": "passed",
+      "visible_variant_row_count": 1,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": []
+    },
+    "root_cause_classification": [
+      "snapshot_contract_gap",
+      "similar_issue"
+    ],
+    "failure_reasons": [
+      "legacy_snapshot_not_quarantined",
+      "similar_underfill"
+    ]
+  }
+]

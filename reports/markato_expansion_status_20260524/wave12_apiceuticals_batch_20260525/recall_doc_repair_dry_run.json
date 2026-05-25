@@ -1,0 +1,178 @@
+{
+  "generated_at": "2026-05-25T04:30:05.714Z",
+  "dry_run": true,
+  "target_count": 5,
+  "scanned_rows": 5,
+  "blocked_count": 0,
+  "would_update_count": 5,
+  "updated_count": 0,
+  "unchanged_count": 0,
+  "all_next_have_recall_surface": true,
+  "results": [
+    {
+      "seed_id": "eps_d7bbe1c523ff1a28e9fc0feb",
+      "external_product_id": "ext_1e27467ab07ddb83ad74c213",
+      "title": "PROPOWAX Antioxidant Shampoo 300ml",
+      "recall_category": "Shampoo",
+      "recall_vertical": "haircare",
+      "status": "would_update",
+      "attached_product_key": "prod::external_seed::external_seed::ext_1e27467ab07ddb83ad74c213",
+      "had_recall_surface": false,
+      "next_has_recall_surface": true,
+      "previous_recall": {
+        "category": null,
+        "vertical": null,
+        "retrieval_title": null,
+        "retrieval_summary_length": 0,
+        "retrieval_body_length": 0,
+        "alias_token_count": 0,
+        "exclusion_flags": {}
+      },
+      "next_recall": {
+        "category": "Shampoo",
+        "vertical": "haircare",
+        "retrieval_title": "PROPOWAX™ Antioxidant Shampoo 300ml",
+        "retrieval_summary_length": 320,
+        "retrieval_body_length": 477,
+        "alias_token_count": 24,
+        "exclusion_flags": {
+          "gift_card": false,
+          "donation_bundle": false,
+          "non_merchandise": false
+        }
+      }
+    },
+    {
+      "seed_id": "eps_392eec0063f18198755a2dc6",
+      "external_product_id": "ext_4e95b920b4c6a5295d55aa46",
+      "title": "PROPOWAX Antioxidant Conditioner 300ml",
+      "recall_category": "Conditioner",
+      "recall_vertical": "haircare",
+      "status": "would_update",
+      "attached_product_key": "prod::external_seed::external_seed::ext_4e95b920b4c6a5295d55aa46",
+      "had_recall_surface": false,
+      "next_has_recall_surface": true,
+      "previous_recall": {
+        "category": null,
+        "vertical": null,
+        "retrieval_title": null,
+        "retrieval_summary_length": 0,
+        "retrieval_body_length": 0,
+        "alias_token_count": 0,
+        "exclusion_flags": {}
+      },
+      "next_recall": {
+        "category": "Conditioner",
+        "vertical": "haircare",
+        "retrieval_title": "PROPOWAX™ Antioxidant Conditioner 300ml",
+        "retrieval_summary_length": 320,
+        "retrieval_body_length": 471,
+        "alias_token_count": 28,
+        "exclusion_flags": {
+          "gift_card": false,
+          "donation_bundle": false,
+          "non_merchandise": false
+        }
+      }
+    },
+    {
+      "seed_id": "eps_233fb6937fe8094b020b5a16",
+      "external_product_id": "ext_d17dfc05f98d0400d5129f1c",
+      "title": "PROPOWAX Antioxidant Shower Gel 300ml",
+      "recall_category": "Body Wash",
+      "recall_vertical": "bodycare",
+      "status": "would_update",
+      "attached_product_key": "prod::external_seed::external_seed::ext_d17dfc05f98d0400d5129f1c",
+      "had_recall_surface": false,
+      "next_has_recall_surface": true,
+      "previous_recall": {
+        "category": null,
+        "vertical": null,
+        "retrieval_title": null,
+        "retrieval_summary_length": 0,
+        "retrieval_body_length": 0,
+        "alias_token_count": 0,
+        "exclusion_flags": {}
+      },
+      "next_recall": {
+        "category": "Body Wash",
+        "vertical": "bodycare",
+        "retrieval_title": "PROPOWAX™ Antioxidant Shower Gel 300ml",
+        "retrieval_summary_length": 249,
+        "retrieval_body_length": 521,
+        "alias_token_count": 32,
+        "exclusion_flags": {
+          "gift_card": false,
+          "donation_bundle": false,
+          "non_merchandise": false
+        }
+      }
+    },
+    {
+      "seed_id": "eps_a1dfe4e0954933aef1121656",
+      "external_product_id": "ext_c0e5209513c083e2c649c1a1",
+      "title": "PROPOWAX Antioxidant Body Lotion 300ml",
+      "recall_category": "Body Lotion",
+      "recall_vertical": "bodycare",
+      "status": "would_update",
+      "attached_product_key": "prod::external_seed::external_seed::ext_c0e5209513c083e2c649c1a1",
+      "had_recall_surface": false,
+      "next_has_recall_surface": true,
+      "previous_recall": {
+        "category": null,
+        "vertical": null,
+        "retrieval_title": null,
+        "retrieval_summary_length": 0,
+        "retrieval_body_length": 0,
+        "alias_token_count": 0,
+        "exclusion_flags": {}
+      },
+      "next_recall": {
+        "category": "Body Lotion",
+        "vertical": "bodycare",
+        "retrieval_title": "PROPOWAX™ Antioxidant Body Lotion 300ml",
+        "retrieval_summary_length": 319,
+        "retrieval_body_length": 553,
+        "alias_token_count": 32,
+        "exclusion_flags": {
+          "gift_card": false,
+          "donation_bundle": false,
+          "non_merchandise": false
+        }
+      }
+    },
+    {
+      "seed_id": "eps_8b28f12a815d856a4c1c81e7",
+      "external_product_id": "ext_d3d708f481903ba2a6f9b732",
+      "title": "PROPOWAX Antioxidant Dry Oil 100ml",
+      "recall_category": "Body Oil",
+      "recall_vertical": "bodycare",
+      "status": "would_update",
+      "attached_product_key": "prod::external_seed::external_seed::ext_d3d708f481903ba2a6f9b732",
+      "had_recall_surface": false,
+      "next_has_recall_surface": true,
+      "previous_recall": {
+        "category": null,
+        "vertical": null,
+        "retrieval_title": null,
+        "retrieval_summary_length": 0,
+        "retrieval_body_length": 0,
+        "alias_token_count": 0,
+        "exclusion_flags": {}
+      },
+      "next_recall": {
+        "category": "Body Oil",
+        "vertical": "bodycare",
+        "retrieval_title": "PROPOWAX™ Antioxidant Dry Oil 100ml",
+        "retrieval_summary_length": 267,
+        "retrieval_body_length": 475,
+        "alias_token_count": 32,
+        "exclusion_flags": {
+          "gift_card": false,
+          "donation_bundle": false,
+          "non_merchandise": false
+        }
+      }
+    }
+  ]
+}

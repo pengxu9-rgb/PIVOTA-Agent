@@ -1,0 +1,70 @@
+[
+  {
+    "product_id": "ext_4e95b920b4c6a5295d55aa46",
+    "status": 404,
+    "ok": false,
+    "error": "PRODUCT_NOT_SERVABLE",
+    "keys": [
+      "error",
+      "message",
+      "reason_code",
+      "gateway_request_id",
+      "details",
+      "metadata"
+    ],
+    "product_title": null,
+    "modules": null,
+    "preview": "{\"error\":\"PRODUCT_NOT_SERVABLE\",\"message\":\"Product not found\",\"reason_code\":\"PRODUCT_NOT_SERVABLE\",\"gateway_request_id\":\"155bd54b-40ce-49d7-a13f-a2714a8528ae\",\"details\":{\"reason\":\"low_quality\",\"serving_eligible\":false,\"index_row_found\":true,\"content_key\":\"ck_c78a9e0a603044b799d5ec01ce91703e\",\"pivota_signature_id\":\"sig_745fb0840bc78619eb4bca2b\",\"pipeline_stage\":\"extracted\",\"blocker_code\":\"low_quality\",\"blocker_detail\":\"no quality snapshot found\",\"content_quality_score\":0,\"pdp_lifecycle_stage\":\"published\",\"sync_status\":\"live\"},\"metadata\":{\"identity_resolution\":{\"requested_product_id\":\"ext_4e95b920b4c6a5295d55aa46\",\"requested_merchant_id\":\"external_seed\",\"resolved_product_id\":\"ext_4e95b920b4c6a5295d55aa46\",\"resolved_merchant_id\":\"external_seed\",\"canonicalization_applied\":false,\"canonicalization_reason_code\":null,\"entry_precheck_missing\":false,\"resolution_source\":\"canonical_catalog_product_group\"},\"route_health\":{\"total_latency_ms\":1381,\"phases\":{\"parse_request\":0,\"external_seed_status_precheck\":251,\"resolve_variant_to_product\":0,\"resolve_subject_group\":0,\"resolve_offer_group\":0,\"resolve_canonical_catalog_group\":754,\"precheck_entry_product\":218,\"resolve_group_cached\":0,\"serving_eligibi"
+  },
+  {
+    "product_id": "sig_745fb0840bc78619eb4bca2b",
+    "status": 404,
+    "ok": false,
+    "error": "PRODUCT_NOT_SERVABLE",
+    "keys": [
+      "error",
+      "message",
+      "reason_code",
+      "gateway_request_id",
+      "details",
+      "metadata"
+    ],
+    "product_title": null,
+    "modules": null,
+    "preview": "{\"error\":\"PRODUCT_NOT_SERVABLE\",\"message\":\"Product not found\",\"reason_code\":\"PRODUCT_NOT_SERVABLE\",\"gateway_request_id\":\"c995a647-a729-4157-a802-5f1529601e8a\",\"details\":{\"reason\":\"low_quality\",\"serving_eligible\":false,\"index_row_found\":true,\"content_key\":\"ck_c78a9e0a603044b799d5ec01ce91703e\",\"pivota_signature_id\":\"sig_745fb0840bc78619eb4bca2b\",\"pipeline_stage\":\"extracted\",\"blocker_code\":\"low_quality\",\"blocker_detail\":\"no quality snapshot found\",\"content_quality_score\":0,\"pdp_lifecycle_stage\":\"published\",\"sync_status\":\"live\"},\"metadata\":{\"identity_resolution\":{\"requested_product_id\":\"sig_745fb0840bc78619eb4bca2b\",\"requested_merchant_id\":\"external_seed\",\"resolved_product_id\":\"ext_4e95b920b4c6a5295d55aa46\",\"resolved_merchant_id\":\"external_seed\",\"canonicalization_applied\":true,\"canonicalization_reason_code\":\"PIVOTA_SIGNATURE_ID\",\"entry_precheck_missing\":false,\"resolution_source\":\"catalog_products_signature_exact\"},\"route_health\":{\"total_latency_ms\":1738,\"phases\":{\"parse_request\":0,\"resolve_catalog_signature\":1356,\"external_seed_status_precheck\":0,\"resolve_variant_to_product\":0,\"resolve_subject_group\":0,\"resolve_offer_group\":0,\"resolve_canonical_catalog_group\":0,\"precheck_entry_product\""
+  },
+  {
+    "product_id": "ext_d17dfc05f98d0400d5129f1c",
+    "status": 404,
+    "ok": false,
+    "error": "PRODUCT_NOT_SERVABLE",
+    "keys": [
+      "error",
+      "message",
+      "reason_code",
+      "gateway_request_id",
+      "details",
+      "metadata"
+    ],
+    "product_title": null,
+    "modules": null,
+    "preview": "{\"error\":\"PRODUCT_NOT_SERVABLE\",\"message\":\"Product not found\",\"reason_code\":\"PRODUCT_NOT_SERVABLE\",\"gateway_request_id\":\"d0e6f819-41fe-45e7-9360-a348337ff42e\",\"details\":{\"reason\":\"low_quality\",\"serving_eligible\":false,\"index_row_found\":true,\"content_key\":\"ck_3976dee47da02f71bc7b67416aeb5cc1\",\"pivota_signature_id\":\"sig_9d47a2dd2caf5d7bbe4e9bbd\",\"pipeline_stage\":\"extracted\",\"blocker_code\":\"low_quality\",\"blocker_detail\":\"no quality snapshot found\",\"content_quality_score\":0,\"pdp_lifecycle_stage\":\"published\",\"sync_status\":\"live\"},\"metadata\":{\"identity_resolution\":{\"requested_product_id\":\"ext_d17dfc05f98d0400d5129f1c\",\"requested_merchant_id\":\"external_seed\",\"resolved_product_id\":\"ext_d17dfc05f98d0400d5129f1c\",\"resolved_merchant_id\":\"external_seed\",\"canonicalization_applied\":false,\"canonicalization_reason_code\":null,\"entry_precheck_missing\":false,\"resolution_source\":\"canonical_catalog_product_group\"},\"route_health\":{\"total_latency_ms\":1245,\"phases\":{\"parse_request\":0,\"external_seed_status_precheck\":169,\"resolve_variant_to_product\":0,\"resolve_subject_group\":0,\"resolve_offer_group\":0,\"resolve_canonical_catalog_group\":676,\"precheck_entry_product\":237,\"resolve_group_cached\":0,\"serving_eligibi"
+  },
+  {
+    "product_id": "ext_1e27467ab07ddb83ad74c213",
+    "status": 404,
+    "ok": false,
+    "error": "PRODUCT_NOT_SERVABLE",
+    "keys": [
+      "error",
+      "message",
+      "reason_code",
+      "gateway_request_id",
+      "details",
+      "metadata"
+    ],
+    "product_title": null,
+    "modules": null,
+    "preview": "{\"error\":\"PRODUCT_NOT_SERVABLE\",\"message\":\"Product not found\",\"reason_code\":\"PRODUCT_NOT_SERVABLE\",\"gateway_request_id\":\"b7c07c51-42a9-4a8c-8bef-48bdb95076dc\",\"details\":{\"reason\":\"low_quality\",\"serving_eligible\":false,\"index_row_found\":true,\"content_key\":\"ck_7c90b069d3123d57340ca3f4cce05093\",\"pivota_signature_id\":\"sig_ccd26fbd0425a9591fbe7a981b2cec97\",\"pipeline_stage\":\"extracted\",\"blocker_code\":\"low_quality\",\"blocker_detail\":\"no quality snapshot found\",\"content_quality_score\":0,\"pdp_lifecycle_stage\":\"published\",\"sync_status\":\"live\"},\"metadata\":{\"identity_resolution\":{\"requested_product_id\":\"ext_1e27467ab07ddb83ad74c213\",\"requested_merchant_id\":\"external_seed\",\"resolved_product_id\":\"ext_1e27467ab07ddb83ad74c213\",\"resolved_merchant_id\":\"external_seed\",\"canonicalization_applied\":false,\"canonicalization_reason_code\":null,\"entry_precheck_missing\":false,\"resolution_source\":\"canonical_catalog_product_group\"},\"route_health\":{\"total_latency_ms\":1151,\"phases\":{\"parse_request\":0,\"external_seed_status_precheck\":154,\"resolve_variant_to_product\":0,\"resolve_subject_group\":0,\"resolve_offer_group\":0,\"resolve_canonical_catalog_group\":559,\"precheck_entry_product\":279,\"resolve_group_cached\":0,\"serving"
+  }
+]

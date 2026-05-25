@@ -1,0 +1,143 @@
+{
+  "generated_at": "2026-05-25T04:14:13.274Z",
+  "dry_run": false,
+  "missing": [],
+  "summary": {
+    "scanned": 5,
+    "missing": 0,
+    "would_insert_quality_snapshots": 0,
+    "inserted_quality_snapshots": 5,
+    "would_update_index_state": 0,
+    "updated_index_state": 5,
+    "serving_eligible_plans": 5
+  },
+  "plans": [
+    {
+      "external_product_id": "ext_1e27467ab07ddb83ad74c213",
+      "title": "PROPOWAX™ Antioxidant Shampoo 300ml",
+      "content_key": "ck_7c90b069d3123d57340ca3f4cce05093",
+      "pivota_signature_id": "sig_ccd26fbd0425a9591fbe7a981b2cec97",
+      "has_in_stock_offer": true,
+      "image_count": 12,
+      "price_amount": 33,
+      "description_length": 527,
+      "content_quality_score": 71.4,
+      "rules_version": "v1-lite-direct-pdp",
+      "problems": [],
+      "would_be_serving_eligible": true
+    },
+    {
+      "external_product_id": "ext_4e95b920b4c6a5295d55aa46",
+      "title": "PROPOWAX™ Antioxidant Conditioner 300ml",
+      "content_key": "ck_c78a9e0a603044b799d5ec01ce91703e",
+      "pivota_signature_id": "sig_745fb0840bc78619eb4bca2b",
+      "has_in_stock_offer": true,
+      "image_count": 12,
+      "price_amount": 35,
+      "description_length": 521,
+      "content_quality_score": 71.4,
+      "rules_version": "v1-lite-direct-pdp",
+      "problems": [],
+      "would_be_serving_eligible": true
+    },
+    {
+      "external_product_id": "ext_d17dfc05f98d0400d5129f1c",
+      "title": "PROPOWAX™ Antioxidant Shower Gel 300ml",
+      "content_key": "ck_3976dee47da02f71bc7b67416aeb5cc1",
+      "pivota_signature_id": "sig_9d47a2dd2caf5d7bbe4e9bbd",
+      "has_in_stock_offer": true,
+      "image_count": 12,
+      "price_amount": 29,
+      "description_length": 571,
+      "content_quality_score": 71.4,
+      "rules_version": "v1-lite-direct-pdp",
+      "problems": [],
+      "would_be_serving_eligible": true
+    },
+    {
+      "external_product_id": "ext_c0e5209513c083e2c649c1a1",
+      "title": "PROPOWAX™ Antioxidant Body Lotion 300ml",
+      "content_key": "ck_58c2ec3831b58d5296cf056104670bf6",
+      "pivota_signature_id": "sig_1587d8b1843fa059eb641ef4",
+      "has_in_stock_offer": true,
+      "image_count": 12,
+      "price_amount": 32,
+      "description_length": 603,
+      "content_quality_score": 71.4,
+      "rules_version": "v1-lite-direct-pdp",
+      "problems": [],
+      "would_be_serving_eligible": true
+    },
+    {
+      "external_product_id": "ext_d3d708f481903ba2a6f9b732",
+      "title": "PROPOWAX™ Antioxidant Dry Oil 100ml",
+      "content_key": "ck_54746dfeb8b8b02d8d4192706d449f16",
+      "pivota_signature_id": "sig_c5c41c0851763b2481798bcf",
+      "has_in_stock_offer": true,
+      "image_count": 12,
+      "price_amount": 89,
+      "description_length": 525,
+      "content_quality_score": 71.4,
+      "rules_version": "v1-lite-direct-pdp",
+      "problems": [],
+      "would_be_serving_eligible": true
+    }
+  ],
+  "apply_results": [
+    {
+      "external_product_id": "ext_1e27467ab07ddb83ad74c213",
+      "content_key": "ck_7c90b069d3123d57340ca3f4cce05093",
+      "pivota_signature_id": "sig_ccd26fbd0425a9591fbe7a981b2cec97",
+      "serving_eligible": true,
+      "content_quality_score": 71.4,
+      "blocker_code": "none",
+      "blocker_detail": null,
+      "inserted_quality_snapshot": true,
+      "updated_index_state": true
+    },
+    {
+      "external_product_id": "ext_4e95b920b4c6a5295d55aa46",
+      "content_key": "ck_c78a9e0a603044b799d5ec01ce91703e",
+      "pivota_signature_id": "sig_745fb0840bc78619eb4bca2b",
+      "serving_eligible": true,
+      "content_quality_score": 71.4,
+      "blocker_code": "none",
+      "blocker_detail": null,
+      "inserted_quality_snapshot": true,
+      "updated_index_state": true
+    },
+    {
+      "external_product_id": "ext_d17dfc05f98d0400d5129f1c",
+      "content_key": "ck_3976dee47da02f71bc7b67416aeb5cc1",
+      "pivota_signature_id": "sig_9d47a2dd2caf5d7bbe4e9bbd",
+      "serving_eligible": true,
+      "content_quality_score": 71.4,
+      "blocker_code": "none",
+      "blocker_detail": null,
+      "inserted_quality_snapshot": true,
+      "updated_index_state": true
+    },
+    {
+      "external_product_id": "ext_c0e5209513c083e2c649c1a1",
+      "content_key": "ck_58c2ec3831b58d5296cf056104670bf6",
+      "pivota_signature_id": "sig_1587d8b1843fa059eb641ef4",
+      "serving_eligible": true,
+      "content_quality_score": 71.4,
+      "blocker_code": "none",
+      "blocker_detail": null,
+      "inserted_quality_snapshot": true,
+      "updated_index_state": true
+    },
+    {
+      "external_product_id": "ext_d3d708f481903ba2a6f9b732",
+      "content_key": "ck_54746dfeb8b8b02d8d4192706d449f16",
+      "pivota_signature_id": "sig_c5c41c0851763b2481798bcf",
+      "serving_eligible": true,
+      "content_quality_score": 71.4,
+      "blocker_code": "none",
+      "blocker_detail": null,
+      "inserted_quality_snapshot": true,
+      "updated_index_state": true
+    }
+  ]
+}

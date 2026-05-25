@@ -1,0 +1,852 @@
+{
+  "generated_at": "2026-05-25T04:41:14.649Z",
+  "expected_external_product_ids": [
+    "ext_1e27467ab07ddb83ad74c213",
+    "ext_4e95b920b4c6a5295d55aa46",
+    "ext_d17dfc05f98d0400d5129f1c",
+    "ext_c0e5209513c083e2c649c1a1",
+    "ext_d3d708f481903ba2a6f9b732"
+  ],
+  "row_count": 5,
+  "recall_rows": [
+    {
+      "seed_id": "eps_d7bbe1c523ff1a28e9fc0feb",
+      "external_product_id": "ext_1e27467ab07ddb83ad74c213",
+      "title": "PROPOWAX™ Antioxidant Shampoo 300ml",
+      "attached_product_key": "prod::external_seed::external_seed::ext_1e27467ab07ddb83ad74c213",
+      "catalog_product_key": "prod::external_seed::external_seed::ext_1e27467ab07ddb83ad74c213",
+      "catalog_category_path": "beauty/haircare/shampoo",
+      "recall_category": "Shampoo",
+      "recall_vertical": "haircare",
+      "retrieval_title": "PROPOWAX™ Antioxidant Shampoo 300ml",
+      "retrieval_summary_length": 320,
+      "retrieval_body_length": 477,
+      "alias_tokens": [
+        "PROPOWAX™ Antioxidant Shampoo 300ml",
+        "propowaxtm antioxidant shampoo 300ml",
+        "propowaxtmantioxidantshampoo300ml",
+        "antioxidant shampoo 300ml",
+        "shampoo 300ml",
+        "propowaxtm antioxidant",
+        "antioxidant shampoo",
+        "Shampoo",
+        "available market US",
+        "availablemarketus",
+        "market us",
+        "available market",
+        "local purchase US",
+        "localpurchaseus",
+        "purchase us",
+        "local purchase",
+        "propowaxtm",
+        "antioxidant",
+        "300ml",
+        "available",
+        "market",
+        "us",
+        "local",
+        "purchase"
+      ]
+    },
+    {
+      "seed_id": "eps_392eec0063f18198755a2dc6",
+      "external_product_id": "ext_4e95b920b4c6a5295d55aa46",
+      "title": "PROPOWAX™ Antioxidant Conditioner 300ml",
+      "attached_product_key": "prod::external_seed::external_seed::ext_4e95b920b4c6a5295d55aa46",
+      "catalog_product_key": "prod::external_seed::external_seed::ext_4e95b920b4c6a5295d55aa46",
+      "catalog_category_path": "beauty/haircare/conditioner",
+      "recall_category": "Conditioner",
+      "recall_vertical": "haircare",
+      "retrieval_title": "PROPOWAX™ Antioxidant Conditioner 300ml",
+      "retrieval_summary_length": 320,
+      "retrieval_body_length": 471,
+      "alias_tokens": [
+        "PROPOWAX™ Antioxidant Conditioner 300ml",
+        "propowaxtm antioxidant conditioner 300ml",
+        "propowaxtmantioxidantconditioner300ml",
+        "antioxidant conditioner 300ml",
+        "conditioner 300ml",
+        "propowaxtm antioxidant",
+        "antioxidant conditioner",
+        "Conditioner",
+        "Antioxidant Conditioner - Apiceuticals",
+        "antioxidant conditioner apiceuticals",
+        "antioxidantconditionerapiceuticals",
+        "conditioner apiceuticals",
+        "available market US",
+        "availablemarketus",
+        "market us",
+        "available market",
+        "local purchase US",
+        "localpurchaseus",
+        "purchase us",
+        "local purchase",
+        "propowaxtm",
+        "antioxidant",
+        "300ml",
+        "available",
+        "market",
+        "us",
+        "local",
+        "purchase"
+      ]
+    },
+    {
+      "seed_id": "eps_233fb6937fe8094b020b5a16",
+      "external_product_id": "ext_d17dfc05f98d0400d5129f1c",
+      "title": "PROPOWAX™ Antioxidant Shower Gel 300ml",
+      "attached_product_key": "prod::external_seed::external_seed::ext_d17dfc05f98d0400d5129f1c",
+      "catalog_product_key": "prod::external_seed::external_seed::ext_d17dfc05f98d0400d5129f1c",
+      "catalog_category_path": "beauty/bodycare/body-wash",
+      "recall_category": "Body Wash",
+      "recall_vertical": "bodycare",
+      "retrieval_title": "PROPOWAX™ Antioxidant Shower Gel 300ml",
+      "retrieval_summary_length": 249,
+      "retrieval_body_length": 521,
+      "alias_tokens": [
+        "PROPOWAX™ Antioxidant Shower Gel 300ml",
+        "propowaxtm antioxidant shower gel 300ml",
+        "propowaxtmantioxidantshowergel300ml",
+        "antioxidant shower gel 300ml",
+        "shower gel 300ml",
+        "gel 300ml",
+        "propowaxtm antioxidant",
+        "antioxidant shower",
+        "shower gel",
+        "Body Wash",
+        "bodywash",
+        "Antioxidant Shower Gel - Apiceuticals",
+        "antioxidant shower gel apiceuticals",
+        "antioxidantshowergelapiceuticals",
+        "shower gel apiceuticals",
+        "gel apiceuticals",
+        "available market US",
+        "availablemarketus",
+        "market us",
+        "available market",
+        "local purchase US",
+        "localpurchaseus",
+        "purchase us",
+        "local purchase",
+        "propowaxtm",
+        "antioxidant",
+        "shower",
+        "gel",
+        "300ml",
+        "body"
+      ]
+    },
+    {
+      "seed_id": "eps_a1dfe4e0954933aef1121656",
+      "external_product_id": "ext_c0e5209513c083e2c649c1a1",
+      "title": "PROPOWAX™ Antioxidant Body Lotion 300ml",
+      "attached_product_key": "prod::external_seed::external_seed::ext_c0e5209513c083e2c649c1a1",
+      "catalog_product_key": "prod::external_seed::external_seed::ext_c0e5209513c083e2c649c1a1",
+      "catalog_category_path": "beauty/bodycare/body-lotion",
+      "recall_category": "Body Lotion",
+      "recall_vertical": "bodycare",
+      "retrieval_title": "PROPOWAX™ Antioxidant Body Lotion 300ml",
+      "retrieval_summary_length": 319,
+      "retrieval_body_length": 553,
+      "alias_tokens": [
+        "PROPOWAX™ Antioxidant Body Lotion 300ml",
+        "propowaxtm antioxidant body lotion 300ml",
+        "propowaxtmantioxidantbodylotion300ml",
+        "antioxidant body lotion 300ml",
+        "body lotion 300ml",
+        "lotion 300ml",
+        "propowaxtm antioxidant",
+        "antioxidant body",
+        "body lotion",
+        "Moisturizer",
+        "Antioxidant Body Lotion - Apiceuticals",
+        "antioxidant body lotion apiceuticals",
+        "antioxidantbodylotionapiceuticals",
+        "body lotion apiceuticals",
+        "lotion apiceuticals",
+        "available market US",
+        "availablemarketus",
+        "market us",
+        "available market",
+        "local purchase US",
+        "localpurchaseus",
+        "purchase us",
+        "local purchase",
+        "propowaxtm",
+        "antioxidant",
+        "body",
+        "lotion",
+        "300ml",
+        "available",
+        "market"
+      ]
+    },
+    {
+      "seed_id": "eps_8b28f12a815d856a4c1c81e7",
+      "external_product_id": "ext_d3d708f481903ba2a6f9b732",
+      "title": "PROPOWAX™ Antioxidant Dry Oil 100ml",
+      "attached_product_key": "prod::external_seed::external_seed::ext_d3d708f481903ba2a6f9b732",
+      "catalog_product_key": "prod::external_seed::external_seed::ext_d3d708f481903ba2a6f9b732",
+      "catalog_category_path": "beauty/bodycare/body-oil",
+      "recall_category": "Body Oil",
+      "recall_vertical": "bodycare",
+      "retrieval_title": "PROPOWAX™ Antioxidant Dry Oil 100ml",
+      "retrieval_summary_length": 267,
+      "retrieval_body_length": 475,
+      "alias_tokens": [
+        "PROPOWAX™ Antioxidant Dry Oil 100ml",
+        "propowaxtm antioxidant dry oil 100ml",
+        "propowaxtmantioxidantdryoil100ml",
+        "antioxidant dry oil 100ml",
+        "dry oil 100ml",
+        "oil 100ml",
+        "propowaxtm antioxidant",
+        "antioxidant dry",
+        "dry oil",
+        "dryoil",
+        "Antioxidant Dry Oil - Apiceuticals",
+        "antioxidant dry oil apiceuticals",
+        "antioxidantdryoilapiceuticals",
+        "dry oil apiceuticals",
+        "oil apiceuticals",
+        "available market US",
+        "availablemarketus",
+        "market us",
+        "available market",
+        "local purchase US",
+        "localpurchaseus",
+        "purchase us",
+        "local purchase",
+        "propowaxtm",
+        "antioxidant",
+        "dry",
+        "oil",
+        "100ml",
+        "available",
+        "market"
+      ]
+    }
+  ],
+  "recommendation_debug": [
+    {
+      "seed_id": "eps_d7bbe1c523ff1a28e9fc0feb",
+      "external_product_id": "ext_1e27467ab07ddb83ad74c213",
+      "title": "PROPOWAX™ Antioxidant Shampoo 300ml",
+      "base": {
+        "product_id": "ext_1e27467ab07ddb83ad74c213",
+        "merchant_id": "external_seed",
+        "brand": "apiceuticals",
+        "leaf_category": "shampoo",
+        "parent_category": "haircare",
+        "price_amount": 33,
+        "currency": "USD",
+        "is_external": true,
+        "vertical": "haircare"
+      },
+      "base_semantic": {
+        "vertical": "haircare",
+        "vertical_inferred": false,
+        "signal_strength": 3,
+        "rescue_applied": false,
+        "rescue_fields": []
+      },
+      "metadata": {
+        "similar_confidence": "medium",
+        "low_confidence": true,
+        "low_confidence_reason_codes": [
+          "UNDERFILL_FOR_QUALITY",
+          "UNDERFILL_MAINLINE_RECALL"
+        ],
+        "similar_status": "underfilled",
+        "retrieval_mix": {
+          "internal": 0,
+          "external": 4
+        },
+        "fallback_policy": {
+          "visible_fallbacks_enabled": false,
+          "broad_title_layer_enabled": false,
+          "blocked_visible_fallbacks": [
+            "external_recent",
+            "recent_views_history_fallback",
+            "title_token_overlap",
+            "category_title_like",
+            "global_recent_internal"
+          ]
+        },
+        "base_semantic": {
+          "brand": "apiceuticals",
+          "vertical": "haircare",
+          "inferred": false,
+          "signal_strength": 3,
+          "ready_min_count": 6
+        },
+        "underfill": 2,
+        "identity_dedupe": {
+          "applied": true,
+          "matched_candidates": 0,
+          "duplicate_candidates_dropped": 0,
+          "semantic_duplicates_dropped": 0,
+          "base_identity_excluded": 0,
+          "same_product_line_shade_alternatives_kept": 0,
+          "rows_loaded": 1
+        },
+        "product_intel_card_hydration": {
+          "attempted_count": 4,
+          "hydrated_count": 3,
+          "skipped_unreviewed_count": 0,
+          "failed": false,
+          "db_fallback_attempted_count": 1,
+          "db_fallback_hit_count": 0
+        }
+      },
+      "fetch_strategy": {
+        "internal_count": 0,
+        "external_count": 6,
+        "internal_timed_out": false,
+        "external_timed_out": false,
+        "external_skipped": false,
+        "external_skip_min_candidates": 15,
+        "external_skip_internal_quality_count": 0,
+        "base_semantic_strong": true,
+        "base_product_is_external": true,
+        "base_intent_family": null,
+        "external_fetch_timeout_ms": 5000,
+        "external_fetch_limit": 48,
+        "external_focused_recall_target": 6,
+        "external_recall_debug": {
+          "market": "US",
+          "tool": "creator_agents",
+          "deep_domain_recall": true,
+          "focused_target_count": 6,
+          "min_focused_candidates": 6,
+          "safe_limit": 48,
+          "return_cap": 48,
+          "brand_hint": "apiceuticals",
+          "category_hint": "shampoo",
+          "category_path_hint": "beauty/haircare/shampoo",
+          "vertical_hint": "haircare",
+          "intent_family_hint": null,
+          "domain_hint_count": 2,
+          "include_attached_seed_rows": true,
+          "stages": [
+            {
+              "name": "external_title_category",
+              "elapsed_ms": 1383,
+              "returned_count": 6,
+              "timed_out": false,
+              "timeout_ms": 2000
+            }
+          ],
+          "total_returned_count": 6,
+          "total_elapsed_ms": 1383,
+          "timed_out_count": 0
+        },
+        "ready_min_count": 6,
+        "requested_count": 6,
+        "candidate_count": 6
+      },
+      "layers": {
+        "L3": 1,
+        "L3E": 3
+      },
+      "filters": {
+        "by_vertical": 0,
+        "by_confidence": 2,
+        "by_external_brand_authority": 0
+      },
+      "candidates_total": 4,
+      "sources": {
+        "internal": 0,
+        "external": 4
+      },
+      "confidence": {
+        "high": 1,
+        "medium": 3,
+        "low": 0
+      },
+      "item_count": 4,
+      "items": [
+        {
+          "product_id": "ext_bdfdd96423eb55d7bdbf6b89",
+          "merchant_id": "external_seed",
+          "title": "Scalp Retreat Regenerating Shampoo",
+          "brand": "Nourwish",
+          "category": "shampoo",
+          "source": "external",
+          "reason": "L3:external:leaf_category+near_price",
+          "x_score": 4.697,
+          "x_confidence": "high",
+          "has_highlight": false
+        },
+        {
+          "product_id": "ext_8d2decaa8a177bd033597c3e",
+          "merchant_id": "external_seed",
+          "title": "Lav Kids Skincare by Miss Nella Gentle Care Shampoo 280ml",
+          "brand": "Miss Nella",
+          "category": "Shampoo",
+          "source": "external",
+          "reason": "L3E:external:external_leaf_category",
+          "x_score": 3.3134,
+          "x_confidence": "medium",
+          "has_highlight": false
+        },
+        {
+          "product_id": "ext_ff8c69e28ff282d362e87bf6",
+          "merchant_id": "external_seed",
+          "title": "Lav Teens Grease Who? Shampoo!",
+          "brand": "Miss Nella",
+          "category": "Shampoo",
+          "source": "external",
+          "reason": "L3E:external:external_leaf_category",
+          "x_score": 3.2977,
+          "x_confidence": "medium",
+          "has_highlight": false
+        },
+        {
+          "product_id": "ext_18c788834195be4e0022a2c3",
+          "merchant_id": "external_seed",
+          "title": "Lav Kids Skincare by Miss Nella Gentle Care Shampoo 215ml",
+          "brand": "Miss Nella",
+          "category": "Shampoo",
+          "source": "external",
+          "reason": "L3E:external:external_leaf_category",
+          "x_score": 3.2043,
+          "x_confidence": "medium",
+          "has_highlight": false
+        }
+      ]
+    },
+    {
+      "seed_id": "eps_392eec0063f18198755a2dc6",
+      "external_product_id": "ext_4e95b920b4c6a5295d55aa46",
+      "title": "PROPOWAX™ Antioxidant Conditioner 300ml",
+      "base": {
+        "product_id": "ext_4e95b920b4c6a5295d55aa46",
+        "merchant_id": "external_seed",
+        "brand": "apiceuticals",
+        "leaf_category": "conditioner",
+        "parent_category": "haircare",
+        "price_amount": 35,
+        "currency": "USD",
+        "is_external": true,
+        "vertical": "haircare"
+      },
+      "base_semantic": {
+        "vertical": "haircare",
+        "vertical_inferred": false,
+        "signal_strength": 3,
+        "rescue_applied": false,
+        "rescue_fields": []
+      },
+      "metadata": {
+        "similar_confidence": "low",
+        "low_confidence": true,
+        "low_confidence_reason_codes": [
+          "UNDERFILL_FOR_QUALITY"
+        ],
+        "similar_status": "unavailable",
+        "retrieval_mix": {
+          "internal": 0,
+          "external": 0
+        },
+        "fallback_policy": {
+          "visible_fallbacks_enabled": false,
+          "broad_title_layer_enabled": false,
+          "blocked_visible_fallbacks": [
+            "external_recent",
+            "recent_views_history_fallback",
+            "title_token_overlap",
+            "category_title_like",
+            "global_recent_internal"
+          ]
+        },
+        "base_semantic": {
+          "brand": "apiceuticals",
+          "vertical": "haircare",
+          "inferred": false,
+          "signal_strength": 3,
+          "ready_min_count": 6
+        },
+        "underfill": 6,
+        "identity_dedupe": {
+          "applied": true,
+          "matched_candidates": 0,
+          "duplicate_candidates_dropped": 0,
+          "semantic_duplicates_dropped": 0,
+          "base_identity_excluded": 0,
+          "same_product_line_shade_alternatives_kept": 0,
+          "rows_loaded": 1
+        },
+        "product_intel_card_hydration": {
+          "attempted_count": 0,
+          "hydrated_count": 0,
+          "skipped_unreviewed_count": 0,
+          "failed": false,
+          "db_fallback_attempted_count": 0,
+          "db_fallback_hit_count": 0
+        }
+      },
+      "fetch_strategy": {
+        "internal_count": 0,
+        "external_count": 0,
+        "internal_timed_out": false,
+        "external_timed_out": true,
+        "external_skipped": false,
+        "external_skip_min_candidates": 15,
+        "external_skip_internal_quality_count": 0,
+        "base_semantic_strong": true,
+        "base_product_is_external": true,
+        "base_intent_family": null,
+        "external_fetch_timeout_ms": 5000,
+        "external_fetch_limit": 48,
+        "external_focused_recall_target": 6,
+        "external_recall_debug": null,
+        "ready_min_count": 6,
+        "requested_count": 6,
+        "candidate_count": 6
+      },
+      "layers": {},
+      "filters": {
+        "by_vertical": 0,
+        "by_confidence": 0,
+        "by_external_brand_authority": 0
+      },
+      "candidates_total": 0,
+      "sources": {
+        "internal": 0,
+        "external": 0
+      },
+      "confidence": {
+        "high": 0,
+        "medium": 0,
+        "low": 0
+      },
+      "item_count": 0,
+      "items": []
+    },
+    {
+      "seed_id": "eps_233fb6937fe8094b020b5a16",
+      "external_product_id": "ext_d17dfc05f98d0400d5129f1c",
+      "title": "PROPOWAX™ Antioxidant Shower Gel 300ml",
+      "base": {
+        "product_id": "ext_d17dfc05f98d0400d5129f1c",
+        "merchant_id": "external_seed",
+        "brand": "apiceuticals",
+        "leaf_category": "body-wash",
+        "parent_category": "bodycare",
+        "price_amount": 29,
+        "currency": "USD",
+        "is_external": true,
+        "vertical": "bodycare"
+      },
+      "base_semantic": {
+        "vertical": "bodycare",
+        "vertical_inferred": false,
+        "signal_strength": 3,
+        "rescue_applied": false,
+        "rescue_fields": []
+      },
+      "metadata": {
+        "similar_confidence": "low",
+        "low_confidence": true,
+        "low_confidence_reason_codes": [
+          "UNDERFILL_FOR_QUALITY"
+        ],
+        "similar_status": "unavailable",
+        "retrieval_mix": {
+          "internal": 0,
+          "external": 0
+        },
+        "fallback_policy": {
+          "visible_fallbacks_enabled": false,
+          "broad_title_layer_enabled": false,
+          "blocked_visible_fallbacks": [
+            "external_recent",
+            "recent_views_history_fallback",
+            "title_token_overlap",
+            "category_title_like",
+            "global_recent_internal"
+          ]
+        },
+        "base_semantic": {
+          "brand": "apiceuticals",
+          "vertical": "bodycare",
+          "inferred": false,
+          "signal_strength": 3,
+          "ready_min_count": 6
+        },
+        "underfill": 6,
+        "identity_dedupe": {
+          "applied": true,
+          "matched_candidates": 0,
+          "duplicate_candidates_dropped": 0,
+          "semantic_duplicates_dropped": 0,
+          "base_identity_excluded": 0,
+          "same_product_line_shade_alternatives_kept": 0,
+          "rows_loaded": 1
+        },
+        "product_intel_card_hydration": {
+          "attempted_count": 0,
+          "hydrated_count": 0,
+          "skipped_unreviewed_count": 0,
+          "failed": false,
+          "db_fallback_attempted_count": 0,
+          "db_fallback_hit_count": 0
+        }
+      },
+      "fetch_strategy": {
+        "internal_count": 0,
+        "external_count": 0,
+        "internal_timed_out": false,
+        "external_timed_out": true,
+        "external_skipped": false,
+        "external_skip_min_candidates": 15,
+        "external_skip_internal_quality_count": 0,
+        "base_semantic_strong": true,
+        "base_product_is_external": true,
+        "base_intent_family": "body_wash",
+        "external_fetch_timeout_ms": 5000,
+        "external_fetch_limit": 48,
+        "external_focused_recall_target": 6,
+        "external_recall_debug": null,
+        "ready_min_count": 6,
+        "requested_count": 6,
+        "candidate_count": 6
+      },
+      "layers": {},
+      "filters": {
+        "by_vertical": 0,
+        "by_confidence": 0,
+        "by_external_brand_authority": 0
+      },
+      "candidates_total": 0,
+      "sources": {
+        "internal": 0,
+        "external": 0
+      },
+      "confidence": {
+        "high": 0,
+        "medium": 0,
+        "low": 0
+      },
+      "item_count": 0,
+      "items": []
+    },
+    {
+      "seed_id": "eps_a1dfe4e0954933aef1121656",
+      "external_product_id": "ext_c0e5209513c083e2c649c1a1",
+      "title": "PROPOWAX™ Antioxidant Body Lotion 300ml",
+      "base": {
+        "product_id": "ext_c0e5209513c083e2c649c1a1",
+        "merchant_id": "external_seed",
+        "brand": "apiceuticals",
+        "leaf_category": "body-lotion",
+        "parent_category": "bodycare",
+        "price_amount": 32,
+        "currency": "USD",
+        "is_external": true,
+        "vertical": "bodycare"
+      },
+      "base_semantic": {
+        "vertical": "bodycare",
+        "vertical_inferred": false,
+        "signal_strength": 3,
+        "rescue_applied": false,
+        "rescue_fields": []
+      },
+      "metadata": {
+        "similar_confidence": "low",
+        "low_confidence": true,
+        "low_confidence_reason_codes": [
+          "UNDERFILL_FOR_QUALITY"
+        ],
+        "similar_status": "unavailable",
+        "retrieval_mix": {
+          "internal": 0,
+          "external": 0
+        },
+        "fallback_policy": {
+          "visible_fallbacks_enabled": false,
+          "broad_title_layer_enabled": false,
+          "blocked_visible_fallbacks": [
+            "external_recent",
+            "recent_views_history_fallback",
+            "title_token_overlap",
+            "category_title_like",
+            "global_recent_internal"
+          ]
+        },
+        "base_semantic": {
+          "brand": "apiceuticals",
+          "vertical": "bodycare",
+          "inferred": false,
+          "signal_strength": 3,
+          "ready_min_count": 6
+        },
+        "underfill": 6,
+        "identity_dedupe": {
+          "applied": true,
+          "matched_candidates": 0,
+          "duplicate_candidates_dropped": 0,
+          "semantic_duplicates_dropped": 0,
+          "base_identity_excluded": 0,
+          "same_product_line_shade_alternatives_kept": 0,
+          "rows_loaded": 1
+        },
+        "product_intel_card_hydration": {
+          "attempted_count": 0,
+          "hydrated_count": 0,
+          "skipped_unreviewed_count": 0,
+          "failed": false,
+          "db_fallback_attempted_count": 0,
+          "db_fallback_hit_count": 0
+        }
+      },
+      "fetch_strategy": {
+        "internal_count": 0,
+        "external_count": 0,
+        "internal_timed_out": false,
+        "external_timed_out": true,
+        "external_skipped": false,
+        "external_skip_min_candidates": 15,
+        "external_skip_internal_quality_count": 0,
+        "base_semantic_strong": true,
+        "base_product_is_external": true,
+        "base_intent_family": "body_oil",
+        "external_fetch_timeout_ms": 5000,
+        "external_fetch_limit": 48,
+        "external_focused_recall_target": 6,
+        "external_recall_debug": null,
+        "ready_min_count": 6,
+        "requested_count": 6,
+        "candidate_count": 6
+      },
+      "layers": {},
+      "filters": {
+        "by_vertical": 0,
+        "by_confidence": 0,
+        "by_external_brand_authority": 0
+      },
+      "candidates_total": 0,
+      "sources": {
+        "internal": 0,
+        "external": 0
+      },
+      "confidence": {
+        "high": 0,
+        "medium": 0,
+        "low": 0
+      },
+      "item_count": 0,
+      "items": []
+    },
+    {
+      "seed_id": "eps_8b28f12a815d856a4c1c81e7",
+      "external_product_id": "ext_d3d708f481903ba2a6f9b732",
+      "title": "PROPOWAX™ Antioxidant Dry Oil 100ml",
+      "base": {
+        "product_id": "ext_d3d708f481903ba2a6f9b732",
+        "merchant_id": "external_seed",
+        "brand": "apiceuticals",
+        "leaf_category": "body-oil",
+        "parent_category": "bodycare",
+        "price_amount": 89,
+        "currency": "USD",
+        "is_external": true,
+        "vertical": "bodycare"
+      },
+      "base_semantic": {
+        "vertical": "bodycare",
+        "vertical_inferred": false,
+        "signal_strength": 3,
+        "rescue_applied": false,
+        "rescue_fields": []
+      },
+      "metadata": {
+        "similar_confidence": "low",
+        "low_confidence": true,
+        "low_confidence_reason_codes": [
+          "UNDERFILL_FOR_QUALITY"
+        ],
+        "similar_status": "unavailable",
+        "retrieval_mix": {
+          "internal": 0,
+          "external": 0
+        },
+        "fallback_policy": {
+          "visible_fallbacks_enabled": false,
+          "broad_title_layer_enabled": false,
+          "blocked_visible_fallbacks": [
+            "external_recent",
+            "recent_views_history_fallback",
+            "title_token_overlap",
+            "category_title_like",
+            "global_recent_internal"
+          ]
+        },
+        "base_semantic": {
+          "brand": "apiceuticals",
+          "vertical": "bodycare",
+          "inferred": false,
+          "signal_strength": 3,
+          "ready_min_count": 6
+        },
+        "underfill": 6,
+        "identity_dedupe": {
+          "applied": true,
+          "matched_candidates": 0,
+          "duplicate_candidates_dropped": 0,
+          "semantic_duplicates_dropped": 0,
+          "base_identity_excluded": 0,
+          "same_product_line_shade_alternatives_kept": 0,
+          "rows_loaded": 1
+        },
+        "product_intel_card_hydration": {
+          "attempted_count": 0,
+          "hydrated_count": 0,
+          "skipped_unreviewed_count": 0,
+          "failed": false,
+          "db_fallback_attempted_count": 0,
+          "db_fallback_hit_count": 0
+        }
+      },
+      "fetch_strategy": {
+        "internal_count": 0,
+        "external_count": 0,
+        "internal_timed_out": false,
+        "external_timed_out": true,
+        "external_skipped": false,
+        "external_skip_min_candidates": 15,
+        "external_skip_internal_quality_count": 0,
+        "base_semantic_strong": true,
+        "base_product_is_external": true,
+        "base_intent_family": "body_oil",
+        "external_fetch_timeout_ms": 5000,
+        "external_fetch_limit": 48,
+        "external_focused_recall_target": 6,
+        "external_recall_debug": null,
+        "ready_min_count": 6,
+        "requested_count": 6,
+        "candidate_count": 6
+      },
+      "layers": {},
+      "filters": {
+        "by_vertical": 0,
+        "by_confidence": 0,
+        "by_external_brand_authority": 0
+      },
+      "candidates_total": 0,
+      "sources": {
+        "internal": 0,
+        "external": 0
+      },
+      "confidence": {
+        "high": 0,
+        "medium": 0,
+        "low": 0
+      },
+      "item_count": 0,
+      "items": []
+    }
+  ]
+}

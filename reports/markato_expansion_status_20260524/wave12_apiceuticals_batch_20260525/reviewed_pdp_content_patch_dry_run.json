@@ -1,0 +1,187 @@
+{
+  "generated_at": "2026-05-25T04:20:26.029Z",
+  "dry_run": true,
+  "manifest": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/wave12_apiceuticals_batch_20260525/reviewed_pdp_content_patch_manifest.json",
+  "summary": {
+    "scanned_rows": 5,
+    "missing_rows": 0,
+    "blocked_rows": 0,
+    "change_candidates": 5,
+    "updated_rows": 0,
+    "catalog_product_updates": 0,
+    "identity_updates": 0
+  },
+  "apply_results": [],
+  "plans": [
+    {
+      "external_product_id": "ext_1e27467ab07ddb83ad74c213",
+      "seed_id": "eps_d7bbe1c523ff1a28e9fc0feb",
+      "title": "PROPOWAX™ Antioxidant Shampoo 300ml",
+      "canonical_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-shampoo/",
+      "status": "ready",
+      "changed": true,
+      "blockers": [],
+      "skipped_fields": [
+        "no_change_same_value",
+        "no_change_same_value",
+        "no_change_same_value"
+      ],
+      "patched_fields": [
+        "pdp_details_sections"
+      ],
+      "before": {
+        "description": "PROPOWAX™ SERIES ANTIOXIDANT • ANTIPOLLUTION 100% Clean, Sustainable, Cruelty-free Beauty 10.1 fl. oz. / 300 ml The PROPOWAX™ Antioxidant Shampoo is the world’s first honeycomb shampoo powered by the patented Living Honeycomb — clinically proven to deliver the highest antioxidant activity worldwide. Detoxifies and restores scalp & hair from pollution, UV, styling tools, and harsh products. Rebalances, soothes, and strengthens hair from the roots. Leaves hair radiant, nourished, and infused with a luxurious fine fragrance.",
+        "pdp_description_raw": "PROPOWAX™ SERIES ANTIOXIDANT • ANTIPOLLUTION 100% Clean, Sustainable, Cruelty-free Beauty 10.1 fl. oz. / 300 ml The PROPOWAX™ Antioxidant Shampoo is the world’s first honeycomb shampoo powered by the patented Living Honeycomb — clinically proven to deliver the highest antioxidant activity worldwide. Detoxifies and restores scalp & hair from pollution, UV, styling tools, and harsh products. Rebalances, soothes, and strengthens hair from the roots. Leaves hair radiant, nourished, and infused with a luxurious fine fragrance.",
+        "pdp_ingredients_raw": "Aqua (Water), Ammonium Lauryl Sulfate, Disodium Laureth Sulfosuccinate, Cocamidopropyl Betaine, Sodium Lauroyl Sarcosinate, Polysorbate-20, PEG-120 Methyl Glucose Dioleate, Parfum (Fragrance), Glycerin, Honey/mel, Melissa Officinalis Flower Extract, Disodium EDTA, Glyceryl Oleate, Coco Glucoside, Lactic acid, Starch hydroxypropyltrimonium chloride, Sodium Lactate, Sodium Benzoate, Potassium Sorbate, Phenoxyethanol, Ethylhexylglycerin, Caramel, Hexyl Cinnamal.",
+        "pdp_how_to_use_raw": "Apply a small amount to the scalp and massage gently until it lathers. Healthy hair starts with a healthy scalp, so take your time. Rinse thoroughly with lukewarm water (avoid hot water as it weakens roots and dries hair). For best results, follow with Antioxidant Conditioner PROPOWAX™ Series.",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "PROPOWAX™ SERIES\nANTIOXIDANT • ANTIPOLLUTION\n\n100% Clean, Sustainable, Cruelty-free Beauty\n10.1 fl. oz. / 300 ml\n\nThe PROPOWAX™ Antioxidant Shampoo is the world’s first honeycomb shampoo powered by the patented Living Honeycomb — clinically proven to deliver the highest antioxidant activity worldwide. Detoxifies and restores scalp & hair from pollution, UV, styling tools, and harsh products. Rebalances, soothes, and strengthens hair from the roots. Leaves hair radiant, nourished, and infused with a luxurious fine fragrance.",
+        "pdp_description_raw": "PROPOWAX™ SERIES\nANTIOXIDANT • ANTIPOLLUTION\n\n100% Clean, Sustainable, Cruelty-free Beauty\n10.1 fl. oz. / 300 ml\n\nThe PROPOWAX™ Antioxidant Shampoo is the world’s first honeycomb shampoo powered by the patented Living Honeycomb — clinically proven to deliver the highest antioxidant activity worldwide. Detoxifies and restores scalp & hair from pollution, UV, styling tools, and harsh products. Rebalances, soothes, and strengthens hair from the roots. Leaves hair radiant, nourished, and infused with a luxurious fine fragrance.",
+        "pdp_how_to_use_raw": "Apply a small amount to the scalp and massage gently until it lathers. Healthy hair starts with a healthy scalp, so take your time. Rinse thoroughly with lukewarm water (avoid hot water as it weakens roots and dries hair). For best results, follow with Antioxidant Conditioner PROPOWAX™ Series.",
+        "pdp_ingredients_raw": "Aqua (Water), Ammonium Lauryl Sulfate, Disodium Laureth Sulfosuccinate, Cocamidopropyl Betaine, Sodium Lauroyl Sarcosinate, Polysorbate-20, PEG-120 Methyl Glucose Dioleate, Parfum (Fragrance), Glycerin, Honey/mel, Melissa Officinalis Flower Extract, Disodium EDTA, Glyceryl Oleate, Coco Glucoside, Lactic acid, Starch hydroxypropyltrimonium chloride, Sodium Lactate, Sodium Benzoate, Potassium Sorbate, Phenoxyethanol, Ethylhexylglycerin, Caramel, Hexyl Cinnamal.",
+        "ingredients_polluted": false,
+        "detail_section_count": 6,
+        "polluted_detail_section_count": 0
+      }
+    },
+    {
+      "external_product_id": "ext_4e95b920b4c6a5295d55aa46",
+      "seed_id": "eps_392eec0063f18198755a2dc6",
+      "title": "PROPOWAX™ Antioxidant Conditioner 300ml",
+      "canonical_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-conditioner/",
+      "status": "ready",
+      "changed": true,
+      "blockers": [],
+      "skipped_fields": [
+        "no_change_same_value",
+        "no_change_same_value",
+        "no_change_same_value"
+      ],
+      "patched_fields": [
+        "pdp_details_sections"
+      ],
+      "before": {
+        "description": "PROPOWAX™ SERIES ANTIOXIDANT • ANTIPOLLUTION 100% Clean, Sustainable, Cruelty-free Beauty 10.1 fl. oz. / 300 ml The PROPOWAX™ Antioxidant Conditioner nourishes, detangles, and restores hair while soothing and balancing the scalp. Powered by the patented Living Honeycomb, proven to deliver the highest antioxidant activity worldwide, this formula protects against oxidative stress while moisturizing and smoothing split ends. Leaves hair silky, frizz-free, and enveloped in Apiceuticals’ signature ultra-luxury fragrance.",
+        "pdp_description_raw": "PROPOWAX™ SERIES ANTIOXIDANT • ANTIPOLLUTION 100% Clean, Sustainable, Cruelty-free Beauty 10.1 fl. oz. / 300 ml The PROPOWAX™ Antioxidant Conditioner nourishes, detangles, and restores hair while soothing and balancing the scalp. Powered by the patented Living Honeycomb, proven to deliver the highest antioxidant activity worldwide, this formula protects against oxidative stress while moisturizing and smoothing split ends. Leaves hair silky, frizz-free, and enveloped in Apiceuticals’ signature ultra-luxury fragrance.",
+        "pdp_ingredients_raw": "Aqua (Water), Cetearyl Alcohol, Behentrimonium Chloride, Betaine, Glycerin, Olea Europaea (Olive) Fruit Oil, Honey/mel, Melissa Officinalis Flower Extract, Helianthus Annuus (Sunflower) Seed Oil, Propolis Cera, Propolis Extract, Beeswax (Cera alba), Chamomilla Recutita (Chamomile) Flower Extract, Crambe Abyssinica Seed Oil, Passiflora Edulis Seed Oil, Phytosterols, Aloe Barbadensis Leaf Extract, Sodium Gluconate, Sodium Benzoate, Potassium Sorbate, Sodium Levulinate, Oleyl Alcohol, Isopropyl Alcohol, Parfum (Fragrance), Hexyl Cinnamal.",
+        "pdp_how_to_use_raw": "After cleansing (preferably with Antioxidant Shampoo PROPOWAX™ Series), apply a small amount to scalp and hair. Massage gently to allow antioxidants and oils to penetrate. Leave it for 3-5 mins. Rinse thoroughly with lukewarm water. For a spa-like ritual, follow with Antioxidant Dry Oil PROPOWAX™ Series.",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "PROPOWAX™ SERIES\nANTIOXIDANT • ANTIPOLLUTION\n\n100% Clean, Sustainable, Cruelty-free Beauty\n10.1 fl. oz. / 300 ml\n\nThe PROPOWAX™ Antioxidant Conditioner nourishes, detangles, and restores hair while soothing and balancing the scalp. Powered by the patented Living Honeycomb, proven to deliver the highest antioxidant activity worldwide, this formula protects against oxidative stress while moisturizing and smoothing split ends. Leaves hair silky, frizz-free, and enveloped in Apiceuticals’ signature ultra-luxury fragrance.",
+        "pdp_description_raw": "PROPOWAX™ SERIES\nANTIOXIDANT • ANTIPOLLUTION\n\n100% Clean, Sustainable, Cruelty-free Beauty\n10.1 fl. oz. / 300 ml\n\nThe PROPOWAX™ Antioxidant Conditioner nourishes, detangles, and restores hair while soothing and balancing the scalp. Powered by the patented Living Honeycomb, proven to deliver the highest antioxidant activity worldwide, this formula protects against oxidative stress while moisturizing and smoothing split ends. Leaves hair silky, frizz-free, and enveloped in Apiceuticals’ signature ultra-luxury fragrance.",
+        "pdp_how_to_use_raw": "After cleansing (preferably with Antioxidant Shampoo PROPOWAX™ Series), apply a small amount to scalp and hair. Massage gently to allow antioxidants and oils to penetrate. Leave it for 3-5 mins. Rinse thoroughly with lukewarm water. For a spa-like ritual, follow with Antioxidant Dry Oil PROPOWAX™ Series.",
+        "pdp_ingredients_raw": "Aqua (Water), Cetearyl Alcohol, Behentrimonium Chloride, Betaine, Glycerin, Olea Europaea (Olive) Fruit Oil, Honey/mel, Melissa Officinalis Flower Extract, Helianthus Annuus (Sunflower) Seed Oil, Propolis Cera, Propolis Extract, Beeswax (Cera alba), Chamomilla Recutita (Chamomile) Flower Extract, Crambe Abyssinica Seed Oil, Passiflora Edulis Seed Oil, Phytosterols, Aloe Barbadensis Leaf Extract, Sodium Gluconate, Sodium Benzoate, Potassium Sorbate, Sodium Levulinate, Oleyl Alcohol, Isopropyl Alcohol, Parfum (Fragrance), Hexyl Cinnamal.",
+        "ingredients_polluted": false,
+        "detail_section_count": 3,
+        "polluted_detail_section_count": 0
+      }
+    },
+    {
+      "external_product_id": "ext_d17dfc05f98d0400d5129f1c",
+      "seed_id": "eps_233fb6937fe8094b020b5a16",
+      "title": "PROPOWAX™ Antioxidant Shower Gel 300ml",
+      "canonical_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-shower-gel/",
+      "status": "ready",
+      "changed": true,
+      "blockers": [],
+      "skipped_fields": [
+        "no_change_same_value",
+        "no_change_same_value",
+        "no_change_same_value"
+      ],
+      "patched_fields": [
+        "pdp_details_sections"
+      ],
+      "before": {
+        "description": "PROPOWAX™ SERIES ANTIOXIDANT • ANTIPOLLUTION 100% Clean, Sustainable, Cruelty-free Beauty 10.1 fl. oz. / 300 ml The PROPOWAX™ Antioxidant Shower Gel transforms daily cleansing into a protective ritual. With its unique honey-like texture, it cocoons the skin in silky softness while cleansing gently. Powered by the patented Living Honeycomb, proven to deliver the highest antioxidant activity worldwide, it shields against pollution, slows skin aging, and maintains long-lasting hydration. Leaves skin soft, radiant, and enveloped in Apiceuticals’ ultra-luxury fragrance.",
+        "pdp_description_raw": "PROPOWAX™ SERIES ANTIOXIDANT • ANTIPOLLUTION 100% Clean, Sustainable, Cruelty-free Beauty 10.1 fl. oz. / 300 ml The PROPOWAX™ Antioxidant Shower Gel transforms daily cleansing into a protective ritual. With its unique honey-like texture, it cocoons the skin in silky softness while cleansing gently. Powered by the patented Living Honeycomb, proven to deliver the highest antioxidant activity worldwide, it shields against pollution, slows skin aging, and maintains long-lasting hydration. Leaves skin soft, radiant, and enveloped in Apiceuticals’ ultra-luxury fragrance.",
+        "pdp_ingredients_raw": "Aqua (Water), Ammonium Laureth Sulfate, Cocamidopropyl Betaine, Parfum (Fragrance), Glycerin, Honey/mel, Melissa Officinalis Flower Extract, PEG-120 Methyl Glucose Dioleate, PEG-40 Hydrogenated Castor Oil, Sodium Benzoate, Potassium Sorbate, Disodium EDTA, Phenoxyethanol, Ethylhexylglycerin, Caramel, Hexyl Cinnamal.",
+        "pdp_how_to_use_raw": "Apply 2–3 teaspoons of shower gel to wet skin. Create a rich lather and massage gently in circular motions from top to bottom, letting its honey-like texture cocoon your body. Rinse thoroughly with warm (not hot) water and pat skin dry, leaving some moisture. Complete the ritual with PROPOWAX™ Antioxidant Body Lotion or PROPOWAX™ Antioxidant Dry Oil to lock in hydration.",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "PROPOWAX™ SERIES\nANTIOXIDANT • ANTIPOLLUTION\n\n100% Clean, Sustainable, Cruelty-free Beauty\n10.1 fl. oz. / 300 ml\n\nThe PROPOWAX™ Antioxidant Shower Gel transforms daily cleansing into a protective ritual. With its unique honey-like texture, it cocoons the skin in silky softness while cleansing gently. Powered by the patented Living Honeycomb, proven to deliver the highest antioxidant activity worldwide, it shields against pollution, slows skin aging, and maintains long-lasting hydration. Leaves skin soft, radiant, and enveloped in Apiceuticals’ ultra-luxury fragrance.",
+        "pdp_description_raw": "PROPOWAX™ SERIES\nANTIOXIDANT • ANTIPOLLUTION\n\n100% Clean, Sustainable, Cruelty-free Beauty\n10.1 fl. oz. / 300 ml\n\nThe PROPOWAX™ Antioxidant Shower Gel transforms daily cleansing into a protective ritual. With its unique honey-like texture, it cocoons the skin in silky softness while cleansing gently. Powered by the patented Living Honeycomb, proven to deliver the highest antioxidant activity worldwide, it shields against pollution, slows skin aging, and maintains long-lasting hydration. Leaves skin soft, radiant, and enveloped in Apiceuticals’ ultra-luxury fragrance.",
+        "pdp_how_to_use_raw": "Apply 2–3 teaspoons of shower gel to wet skin. Create a rich lather and massage gently in circular motions from top to bottom, letting its honey-like texture cocoon your body. Rinse thoroughly with warm (not hot) water and pat skin dry, leaving some moisture.\n\nComplete the ritual with PROPOWAX™ Antioxidant Body Lotion or PROPOWAX™ Antioxidant Dry Oil to lock in hydration.",
+        "pdp_ingredients_raw": "Aqua (Water), Ammonium Laureth Sulfate, Cocamidopropyl Betaine, Parfum (Fragrance), Glycerin, Honey/mel, Melissa Officinalis Flower Extract, PEG-120 Methyl Glucose Dioleate, PEG-40 Hydrogenated Castor Oil, Sodium Benzoate, Potassium Sorbate, Disodium EDTA, Phenoxyethanol, Ethylhexylglycerin, Caramel, Hexyl Cinnamal.",
+        "ingredients_polluted": false,
+        "detail_section_count": 3,
+        "polluted_detail_section_count": 0
+      }
+    },
+    {
+      "external_product_id": "ext_c0e5209513c083e2c649c1a1",
+      "seed_id": "eps_a1dfe4e0954933aef1121656",
+      "title": "PROPOWAX™ Antioxidant Body Lotion 300ml",
+      "canonical_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-body-lotion/",
+      "status": "ready",
+      "changed": true,
+      "blockers": [],
+      "skipped_fields": [
+        "no_change_same_value",
+        "no_change_same_value",
+        "no_change_same_value"
+      ],
+      "patched_fields": [
+        "pdp_details_sections"
+      ],
+      "before": {
+        "description": "PROPOWAX™ SERIES ANTIOXIDANT • ANTIPOLLUTION 100% Clean, Sustainable, Cruelty-free Beauty 10.1 fl. oz. / 300 ml The PROPOWAX™ Antioxidant Body Lotion envelops the skin in silky hydration while fortifying it with advanced antioxidant protection. Powered by the patented Living Honeycomb, clinically proven to deliver the highest antioxidant activity worldwide, it locks in moisture, restores the skin barrier, and protects against pollution and oxidative stress. With its lightweight, non-greasy texture, it leaves skin velvety soft, supple, and wrapped in Apiceuticals’ signature ultra-luxury fragrance.",
+        "pdp_description_raw": "PROPOWAX™ SERIES ANTIOXIDANT • ANTIPOLLUTION 100% Clean, Sustainable, Cruelty-free Beauty 10.1 fl. oz. / 300 ml The PROPOWAX™ Antioxidant Body Lotion envelops the skin in silky hydration while fortifying it with advanced antioxidant protection. Powered by the patented Living Honeycomb, clinically proven to deliver the highest antioxidant activity worldwide, it locks in moisture, restores the skin barrier, and protects against pollution and oxidative stress. With its lightweight, non-greasy texture, it leaves skin velvety soft, supple, and wrapped in Apiceuticals’ signature ultra-luxury fragrance.",
+        "pdp_ingredients_raw": "Aqua (Water), Glycerin, Ethylhexyl Palmitate, Cetearyl Isonanoate, Prunus Amygdalus Dulcis (Sweet Almond) Oil, Olus Oil, Polyglyceryl-2 Dipolyhydroxystearate, Parfum (Fragrance), Passiflora Edulis Seed Oil, Lauryl Glucoside, Melissa Officinalis Flower Extract, Olea Europaea (Olive) Fruit Oil, Butyrospermum Parkii (Shea) Butter, Aloe Barbadensis Leaf Extract, Helianthus Annuus (Sunflower) Seed Oil, Sesamum Indicum (Sesame) Seed Oil, Vitis Vinifera (Grape) Seed Oil, Propolis Cera, Propolis Extract, Beeswax (Cera alba), Glyceryl Oleate, Dicaprylyl Carbonate, Carbomer, Sodium Stearoyl Glutamate, BHT, Sodium Benzoate, Potassium Sorbate, Honey/mel, Disodium EDTA, Benzyl Alcohol, Phenoxyethanol, Ethylhexylglycerin, Sodium Hydroxide, Hexyl Cinnamal, Limonene, Geraniol, Eugenol.",
+        "pdp_how_to_use_raw": "Warm a coin-sized amount of lotion between your palms. Massage onto the body in gentle, circular motions, preferably after showering with PROPOWAX™ Antioxidant Shower Gel, while skin is still slightly damp. For ultimate nourishment, complete the ritual with PROPOWAX™ Antioxidant Dry Oil.",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "PROPOWAX™ SERIES\nANTIOXIDANT • ANTIPOLLUTION\n\n100% Clean, Sustainable, Cruelty-free Beauty\n10.1 fl. oz. / 300 ml\n\nThe PROPOWAX™ Antioxidant Body Lotion envelops the skin in silky hydration while fortifying it with advanced antioxidant protection. Powered by the patented Living Honeycomb, clinically proven to deliver the highest antioxidant activity worldwide, it locks in moisture, restores the skin barrier, and protects against pollution and oxidative stress. With its lightweight, non-greasy texture, it leaves skin velvety soft, supple, and wrapped in Apiceuticals’ signature ultra-luxury fragrance.",
+        "pdp_description_raw": "PROPOWAX™ SERIES\nANTIOXIDANT • ANTIPOLLUTION\n\n100% Clean, Sustainable, Cruelty-free Beauty\n10.1 fl. oz. / 300 ml\n\nThe PROPOWAX™ Antioxidant Body Lotion envelops the skin in silky hydration while fortifying it with advanced antioxidant protection. Powered by the patented Living Honeycomb, clinically proven to deliver the highest antioxidant activity worldwide, it locks in moisture, restores the skin barrier, and protects against pollution and oxidative stress. With its lightweight, non-greasy texture, it leaves skin velvety soft, supple, and wrapped in Apiceuticals’ signature ultra-luxury fragrance.",
+        "pdp_how_to_use_raw": "Warm a coin-sized amount of lotion between your palms. Massage onto the body in gentle, circular motions, preferably after showering with PROPOWAX™ Antioxidant Shower Gel, while skin is still slightly damp.\n\nFor ultimate nourishment, complete the ritual with PROPOWAX™ Antioxidant Dry Oil.",
+        "pdp_ingredients_raw": "Aqua (Water), Glycerin, Ethylhexyl Palmitate, Cetearyl Isonanoate, Prunus Amygdalus Dulcis (Sweet Almond) Oil, Olus Oil, Polyglyceryl-2 Dipolyhydroxystearate, Parfum (Fragrance), Passiflora Edulis Seed Oil, Lauryl Glucoside, Melissa Officinalis Flower Extract, Olea Europaea (Olive) Fruit Oil, Butyrospermum Parkii (Shea) Butter, Aloe Barbadensis Leaf Extract, Helianthus Annuus (Sunflower) Seed Oil, Sesamum Indicum (Sesame) Seed Oil, Vitis Vinifera (Grape) Seed Oil, Propolis Cera, Propolis Extract, Beeswax (Cera alba), Glyceryl Oleate, Dicaprylyl Carbonate, Carbomer, Sodium Stearoyl Glutamate, BHT, Sodium Benzoate, Potassium Sorbate, Honey/mel, Disodium EDTA, Benzyl Alcohol, Phenoxyethanol, Ethylhexylglycerin, Sodium Hydroxide, Hexyl Cinnamal, Limonene, Geraniol, Eugenol.",
+        "ingredients_polluted": false,
+        "detail_section_count": 3,
+        "polluted_detail_section_count": 0
+      }
+    },
+    {
+      "external_product_id": "ext_d3d708f481903ba2a6f9b732",
+      "seed_id": "eps_8b28f12a815d856a4c1c81e7",
+      "title": "PROPOWAX™ Antioxidant Dry Oil 100ml",
+      "canonical_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-dry-oil/",
+      "status": "ready",
+      "changed": true,
+      "blockers": [],
+      "skipped_fields": [
+        "no_change_same_value",
+        "no_change_same_value",
+        "no_change_same_value"
+      ],
+      "patched_fields": [
+        "pdp_details_sections"
+      ],
+      "before": {
+        "description": "PROPOWAX™ SERIES ANTIOXIDANT • ANTIPOLLUTION 100% Clean, Sustainable, Cruelty-free Beauty 3.8 fl. oz. / 100 ml The PROPOWAX™ Antioxidant Dry Oil is a multi-purpose elixir for face, body, and hair. A luxurious blend of 7 precious oils, it delivers powerful antioxidant protection while restoring softness and radiance. Truly “dry”, it absorbs in seconds, nourishing deeply without leaving any oily residue. Your skin feels velvety soft, supple, and wrapped in Apiceuticals’ signature ultra-luxury fragrance “Woods of Arcadia”.",
+        "pdp_description_raw": "PROPOWAX™ SERIES ANTIOXIDANT • ANTIPOLLUTION 100% Clean, Sustainable, Cruelty-free Beauty 3.8 fl. oz. / 100 ml The PROPOWAX™ Antioxidant Dry Oil is a multi-purpose elixir for face, body, and hair. A luxurious blend of 7 precious oils, it delivers powerful antioxidant protection while restoring softness and radiance. Truly “dry”, it absorbs in seconds, nourishing deeply without leaving any oily residue. Your skin feels velvety soft, supple, and wrapped in Apiceuticals’ signature ultra-luxury fragrance “Woods of Arcadia”.",
+        "pdp_ingredients_raw": "Simmondsia Chinensis (jojoba) Seed Oil, Vitis Vinifera (grape) Seed Oil Pseudozyma Epicola/Olive Fruit Oil Ferment Filtrate, Isoamyl Laurate, C 13-15 Alkane, Sclerocarya Birrea (marula) Seed Oil, Passiflora Edulis (maracuja) Seed Oil, Isoamyl Cocoate, Plukenetia Volubilus (inca inchi) Seed Oil, Parfum, Helianthus Annuus (sunflower) Seed Oil, Propolis Cera, Hippophae Rhamnoides (seabuckthorn) Fruit Oil, Tocopherol, Eugenol, Geraniol, Hexyl Cinnamal, Linalool.",
+        "pdp_how_to_use_raw": "FACE: As a stand-alone facial oil: Apply a few drops to clean, damp skin for deep nourishment and antioxidant protection. As a primer: Smooth a light layer before makeup for a radiant, even finish. Blended with skincare: Add 1–2 drops to your daily cream or sunscreen to boost hydration and antioxidant defense. Night repair ritual: Massage in before bed for overnight regeneration and a morning glow. BODY: Post-shower ritual: Massage onto damp skin after using PROPOWAX™ Shower Gel and Body Lotion. Locks in moisture, leaving skin satin-soft and perfectly dry to the touch. Targeted care: Focus on dry areas such as elbows, knees, or décolleté for instant softness and luminosity. Evening indulgence: Apply before bed as a full-body treatment — wake up with supple, nourished skin enveloped in fragrance. HAIR: For dry or damaged hair: Use as an intensive hair & scalp mask. Massage generously, leave on for 2–3 hours, then wash with PROPOWAX™ Antioxidant Shampoo. After rinsing, apply a few drops as a leave-on for lasting smoothness and shine. For normal or oily hair: Use as a pre-shampoo mask. Apply to scalp and strands, leave for a few hours, then rinse. Restores balance, smoothness, and natural shine without heaviness.",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "PROPOWAX™ SERIES\nANTIOXIDANT • ANTIPOLLUTION\n\n100% Clean, Sustainable, Cruelty-free Beauty\n3.8 fl. oz. / 100 ml\n\nThe PROPOWAX™ Antioxidant Dry Oil is a multi-purpose elixir for face, body, and hair. A luxurious blend of 7 precious oils, it delivers powerful antioxidant protection while restoring softness and radiance. Truly “dry”, it absorbs in seconds, nourishing deeply without leaving any oily residue. Your skin feels velvety soft, supple, and wrapped in Apiceuticals’ signature ultra-luxury fragrance “Woods of Arcadia”.",
+        "pdp_description_raw": "PROPOWAX™ SERIES\nANTIOXIDANT • ANTIPOLLUTION\n\n100% Clean, Sustainable, Cruelty-free Beauty\n3.8 fl. oz. / 100 ml\n\nThe PROPOWAX™ Antioxidant Dry Oil is a multi-purpose elixir for face, body, and hair. A luxurious blend of 7 precious oils, it delivers powerful antioxidant protection while restoring softness and radiance. Truly “dry”, it absorbs in seconds, nourishing deeply without leaving any oily residue. Your skin feels velvety soft, supple, and wrapped in Apiceuticals’ signature ultra-luxury fragrance “Woods of Arcadia”.",
+        "pdp_how_to_use_raw": "FACE:\n\nAs a stand-alone facial oil: Apply a few drops to clean, damp skin for deep nourishment and antioxidant protection.\nAs a primer: Smooth a light layer before makeup for a radiant, even finish.\nBlended with skincare: Add 1–2 drops to your daily cream or sunscreen to boost hydration and antioxidant defense.\nNight repair ritual: Massage in before bed for overnight regeneration and a morning glow.\n\nBODY:\n\nPost-shower ritual: Massage onto damp skin after using PROPOWAX™ Shower Gel and Body Lotion. Locks in moisture, leaving skin satin-soft and perfectly dry to the touch.\nTargeted care: Focus on dry areas such as elbows, knees, or décolleté for instant softness and luminosity.\nEvening indulgence: Apply before bed as a full-body treatment — wake up with supple, nourished skin enveloped in fragrance.\n\nHAIR:\n\nFor dry or damaged hair: Use as an intensive hair & scalp mask. Massage generously, leave on for 2–3 hours, then wash with PROPOWAX™ Antioxidant Shampoo. After rinsing, apply a few drops as a leave-on for lasting smoothness and shine.\nFor normal or oily hair: Use as a pre-shampoo mask. Apply to scalp and strands, leave for a few hours, then rinse. Restores balance, smoothness, and natural shine without heaviness.",
+        "pdp_ingredients_raw": "Simmondsia Chinensis (jojoba) Seed Oil, Vitis Vinifera (grape) Seed Oil Pseudozyma Epicola/Olive Fruit Oil Ferment Filtrate, Isoamyl Laurate, C 13-15 Alkane, Sclerocarya Birrea (marula) Seed Oil, Passiflora Edulis (maracuja) Seed Oil, Isoamyl Cocoate, Plukenetia Volubilus (inca inchi) Seed Oil, Parfum, Helianthus Annuus (sunflower) Seed Oil, Propolis Cera, Hippophae Rhamnoides (seabuckthorn) Fruit Oil, Tocopherol, Eugenol, Geraniol, Hexyl Cinnamal, Linalool.",
+        "ingredients_polluted": false,
+        "detail_section_count": 3,
+        "polluted_detail_section_count": 0
+      }
+    }
+  ]
+}

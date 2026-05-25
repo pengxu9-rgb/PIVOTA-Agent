@@ -1,0 +1,1044 @@
+{
+  "meta": {
+    "generated_at": "2026-05-25T04:15:10.922Z",
+    "source": "reviewed_official_seed_product_intel_report",
+    "batch_name": "markato_wave12_apiceuticals_product_intel_20260525",
+    "inventory": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/wave12_apiceuticals_batch_20260525/readiness_after_quality_snapshot_repair/commerce_index_kb_readiness_inventory.json",
+    "selected_cases": 4,
+    "reviewer": "codex_quality_reviewer_owner_delegated",
+    "reviewer_kind": "assistant",
+    "candidate_quality_summary": {
+      "public_ready": 4,
+      "high_quality_ready": 4,
+      "evidence_profile": {
+        "seller_plus_formula": 4
+      }
+    }
+  },
+  "rows": [
+    {
+      "case_id": "live_ext_4e95b920b4c6a5295d55aa46",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-25T04:15:10.922Z",
+      "notes": "Approved official-PDP-seed rewrite for PROPOWAX™ Antioxidant Conditioner 300ml; evidence_profile=seller_plus_formula; source_url=https://www.apiceuticals.com/shop/propowax-antioxidant-conditioner/",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_4e95b920b4c6a5295d55aa46",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_4e95b920b4c6a5295d55aa46",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_745fb0840bc78619eb4bca2b",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Hair conditioner identity",
+              "body": "An Apiceuticals hair conditioner listed on the official source page as PROPOWAX™ Antioxidant Conditioner 300ml. The official description identifies: The PROPOWAX™ Antioxidant Conditioner nourishes, detangles, and restores hair while soothing and balancing the scalp."
+            },
+            "best_for": [
+              {
+                "tag": "conditioner_shoppers",
+                "label": "Hair conditioner shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Official product detail",
+                "body": "The official page describes PROPOWAX™ Antioxidant Conditioner 300ml with product-specific detail: The PROPOWAX™ Antioxidant Conditioner nourishes, detangles, and restores hair while soothing and balancing the scalp.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Aqua (Water), Cetearyl Alcohol, Behentrimonium Chloride, Betaine, Glycerin, Olea Europaea (Olive) Fruit Oil, Honey/mel, Melissa Officinalis Flower Extract. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "hair_care",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the hair conditioner context; avoid inferring benefits not present in the official source."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-25T04:15:10.922Z",
+              "source_version": "markato_wave12_apiceuticals_product_intel_20260525"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-conditioner/"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 25,
+                "source_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-conditioner/"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "hair conditioner",
+            "texture": "conditioner",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-conditioner/"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 25,
+              "source_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-conditioner/"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-25T04:15:10.922Z",
+            "source_version": "markato_wave12_apiceuticals_product_intel_20260525"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-25T04:15:10.922Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "markato_wave12_apiceuticals_product_intel_20260525",
+            "official_source_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-conditioner/",
+            "official_source_ingredient_count": 25,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "PROPOWAX™ Antioxidant Conditioner 300ml",
+            "subtitle": "Conditioner",
+            "highlight": "Conditioner format detail",
+            "intro": "An Apiceuticals hair conditioner listed on the official source page as PROPOWAX™ Antioxidant Conditioner 300ml. The official description identifies: The PROPOWAX™ Antioxidant Conditioner nourishes, detangles, and restores hair while soothing and balancing the scalp.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "PROPOWAX™ Antioxidant Conditioner 300ml",
+            "compact_candidate": "Conditioner",
+            "highlight_candidate": "Conditioner format detail",
+            "intro_candidate": "An Apiceuticals hair conditioner listed on the official source page as PROPOWAX™ Antioxidant Conditioner 300ml. The official description identifies: The PROPOWAX™ Antioxidant Conditioner nourishes, detangles, and restores hair while soothing and balancing the scalp.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_c0e5209513c083e2c649c1a1",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-25T04:15:10.922Z",
+      "notes": "Approved official-PDP-seed rewrite for PROPOWAX™ Antioxidant Body Lotion 300ml; evidence_profile=seller_plus_formula; source_url=https://www.apiceuticals.com/shop/propowax-antioxidant-body-lotion/",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_c0e5209513c083e2c649c1a1",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_c0e5209513c083e2c649c1a1",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_1587d8b1843fa059eb641ef4",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Moisturizer identity",
+              "body": "An Apiceuticals moisturizer listed on the official source page as PROPOWAX™ Antioxidant Body Lotion 300ml. The official description identifies: The PROPOWAX™ Antioxidant Body Lotion envelops the skin in silky hydration while fortifying it with advanced antioxidant protection."
+            },
+            "best_for": [
+              {
+                "tag": "moisturizer_shoppers",
+                "label": "Moisturizer shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Official product detail",
+                "body": "The official page describes PROPOWAX™ Antioxidant Body Lotion 300ml with product-specific detail: The PROPOWAX™ Antioxidant Body Lotion envelops the skin in silky hydration while fortifying it with advanced antioxidant protection.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Aqua (Water), Glycerin, Ethylhexyl Palmitate, Cetearyl Isonanoate, Prunus Amygdalus Dulcis (Sweet Almond) Oil, Olus Oil, Polyglyceryl-2 Dipolyhydroxystearate. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "skin_care",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the moisturizer context; avoid inferring benefits not present in the official source."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-25T04:15:10.922Z",
+              "source_version": "markato_wave12_apiceuticals_product_intel_20260525"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-body-lotion/"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 37,
+                "source_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-body-lotion/"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "moisturizer",
+            "texture": "moisturizer",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-body-lotion/"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 37,
+              "source_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-body-lotion/"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-25T04:15:10.922Z",
+            "source_version": "markato_wave12_apiceuticals_product_intel_20260525"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-25T04:15:10.922Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "markato_wave12_apiceuticals_product_intel_20260525",
+            "official_source_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-body-lotion/",
+            "official_source_ingredient_count": 37,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "PROPOWAX™ Antioxidant Body Lotion 300ml",
+            "subtitle": "Moisturizer",
+            "highlight": "Body moisturizer detail",
+            "intro": "An Apiceuticals moisturizer listed on the official source page as PROPOWAX™ Antioxidant Body Lotion 300ml. The official description identifies: The PROPOWAX™ Antioxidant Body Lotion envelops the skin in silky hydration while fortifying it with advanced antioxidant protection.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "PROPOWAX™ Antioxidant Body Lotion 300ml",
+            "compact_candidate": "Moisturizer",
+            "highlight_candidate": "Body moisturizer detail",
+            "intro_candidate": "An Apiceuticals moisturizer listed on the official source page as PROPOWAX™ Antioxidant Body Lotion 300ml. The official description identifies: The PROPOWAX™ Antioxidant Body Lotion envelops the skin in silky hydration while fortifying it with advanced antioxidant protection.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_d17dfc05f98d0400d5129f1c",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-25T04:15:10.922Z",
+      "notes": "Approved official-PDP-seed rewrite for PROPOWAX™ Antioxidant Shower Gel 300ml; evidence_profile=seller_plus_formula; source_url=https://www.apiceuticals.com/shop/propowax-antioxidant-shower-gel/",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_d17dfc05f98d0400d5129f1c",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_d17dfc05f98d0400d5129f1c",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_9d47a2dd2caf5d7bbe4e9bbd",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Body wash identity",
+              "body": "An Apiceuticals body wash listed on the official source page as PROPOWAX™ Antioxidant Shower Gel 300ml. The official description identifies: The PROPOWAX™ Antioxidant Shower Gel transforms daily cleansing into a protective ritual."
+            },
+            "best_for": [
+              {
+                "tag": "body_wash_shoppers",
+                "label": "Body wash shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Official product detail",
+                "body": "The official page describes PROPOWAX™ Antioxidant Shower Gel 300ml with product-specific detail: The PROPOWAX™ Antioxidant Shower Gel transforms daily cleansing into a protective ritual.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Aqua (Water), Ammonium Laureth Sulfate, Cocamidopropyl Betaine, Parfum (Fragrance), Glycerin, Honey/mel, Melissa Officinalis Flower Extract, PEG-120 Methyl. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "body_cleanse",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the body wash context; avoid inferring benefits not present in the official source."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-25T04:15:10.922Z",
+              "source_version": "markato_wave12_apiceuticals_product_intel_20260525"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-shower-gel/"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 16,
+                "source_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-shower-gel/"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "body wash",
+            "texture": "body_wash",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-shower-gel/"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 16,
+              "source_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-shower-gel/"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-25T04:15:10.922Z",
+            "source_version": "markato_wave12_apiceuticals_product_intel_20260525"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-25T04:15:10.922Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "markato_wave12_apiceuticals_product_intel_20260525",
+            "official_source_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-shower-gel/",
+            "official_source_ingredient_count": 16,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "PROPOWAX™ Antioxidant Shower Gel 300ml",
+            "subtitle": "Body Wash",
+            "highlight": "Shower gel format detail",
+            "intro": "An Apiceuticals body wash listed on the official source page as PROPOWAX™ Antioxidant Shower Gel 300ml. The official description identifies: The PROPOWAX™ Antioxidant Shower Gel transforms daily cleansing into a protective ritual.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "PROPOWAX™ Antioxidant Shower Gel 300ml",
+            "compact_candidate": "Body Wash",
+            "highlight_candidate": "Shower gel format detail",
+            "intro_candidate": "An Apiceuticals body wash listed on the official source page as PROPOWAX™ Antioxidant Shower Gel 300ml. The official description identifies: The PROPOWAX™ Antioxidant Shower Gel transforms daily cleansing into a protective ritual.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_d3d708f481903ba2a6f9b732",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-25T04:15:10.922Z",
+      "notes": "Approved official-PDP-seed rewrite for PROPOWAX™ Antioxidant Dry Oil 100ml; evidence_profile=seller_plus_formula; source_url=https://www.apiceuticals.com/shop/propowax-antioxidant-dry-oil/",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_d3d708f481903ba2a6f9b732",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_d3d708f481903ba2a6f9b732",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_c5c41c0851763b2481798bcf",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Body oil identity",
+              "body": "An Apiceuticals body oil listed on the official source page as PROPOWAX™ Antioxidant Dry Oil 100ml. The official description identifies: The PROPOWAX™ Antioxidant Dry Oil is a multi-purpose elixir for face, body, and hair."
+            },
+            "best_for": [
+              {
+                "tag": "body_oil_shoppers",
+                "label": "Body oil shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Official product detail",
+                "body": "The official page describes PROPOWAX™ Antioxidant Dry Oil 100ml with product-specific detail: The PROPOWAX™ Antioxidant Dry Oil is a multi-purpose elixir for face, body, and hair.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Simmondsia Chinensis (jojoba) Seed Oil, Vitis Vinifera (grape) Seed Oil Pseudozyma Epicola/Olive Fruit Oil Ferment Filtrate, Isoamyl Laurate, C 13-15 Alkane. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "body_care",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the body oil context; avoid inferring benefits not present in the official source."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-25T04:15:10.922Z",
+              "source_version": "markato_wave12_apiceuticals_product_intel_20260525"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-dry-oil/"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 17,
+                "source_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-dry-oil/"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "body oil",
+            "texture": "body_oil",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-dry-oil/"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 17,
+              "source_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-dry-oil/"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-25T04:15:10.922Z",
+            "source_version": "markato_wave12_apiceuticals_product_intel_20260525"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-25T04:15:10.922Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "markato_wave12_apiceuticals_product_intel_20260525",
+            "official_source_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-dry-oil/",
+            "official_source_ingredient_count": 17,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "PROPOWAX™ Antioxidant Dry Oil 100ml",
+            "subtitle": "Body Oil",
+            "highlight": "Body oil formula detail",
+            "intro": "An Apiceuticals body oil listed on the official source page as PROPOWAX™ Antioxidant Dry Oil 100ml. The official description identifies: The PROPOWAX™ Antioxidant Dry Oil is a multi-purpose elixir for face, body, and hair.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "PROPOWAX™ Antioxidant Dry Oil 100ml",
+            "compact_candidate": "Body Oil",
+            "highlight_candidate": "Body oil formula detail",
+            "intro_candidate": "An Apiceuticals body oil listed on the official source page as PROPOWAX™ Antioxidant Dry Oil 100ml. The official description identifies: The PROPOWAX™ Antioxidant Dry Oil is a multi-purpose elixir for face, body, and hair.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    }
+  ]
+}

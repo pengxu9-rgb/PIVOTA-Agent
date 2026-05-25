@@ -1,0 +1,562 @@
+{
+  "generated_at": "2026-05-25T04:47:38.408Z",
+  "gateway_url": "https://pivota-agent-production.up.railway.app/agent/shop/v1/invoke",
+  "results": [
+    {
+      "product_id": "ext_1e27467ab07ddb83ad74c213",
+      "url": "https://pivota-agent-production.up.railway.app/agent/shop/v1/invoke",
+      "http_status": 200,
+      "ok": true,
+      "summary": {
+        "keys": [
+          "cache",
+          "debug",
+          "metadata",
+          "page",
+          "page_size",
+          "products",
+          "status",
+          "strategy",
+          "total"
+        ],
+        "product_count": 0,
+        "metadata": {
+          "route": "find_similar_products_mainline_wrapper",
+          "similar_confidence": "low",
+          "low_confidence": true,
+          "low_confidence_reason_codes": [],
+          "similar_status": "unavailable",
+          "retrieval_mix": {
+            "internal": 0,
+            "external": 0
+          },
+          "fallback_policy": {
+            "visible_fallbacks_enabled": false,
+            "broad_title_layer_enabled": false,
+            "blocked_visible_fallbacks": [
+              "external_recent",
+              "recent_views_history_fallback",
+              "title_token_overlap",
+              "category_title_like",
+              "global_recent_internal"
+            ]
+          },
+          "base_semantic": {
+            "brand": "apiceuticals",
+            "vertical": "haircare",
+            "inferred": false,
+            "signal_strength": 3,
+            "ready_min_count": 6
+          },
+          "underfill": 6,
+          "identity_dedupe": {
+            "applied": true,
+            "matched_candidates": 0,
+            "duplicate_candidates_dropped": 0,
+            "semantic_duplicates_dropped": 0,
+            "base_identity_excluded": 0,
+            "same_product_line_shade_alternatives_kept": 0,
+            "rows_loaded": 1
+          },
+          "product_intel_card_hydration": {
+            "attempted_count": 0,
+            "hydrated_count": 0,
+            "skipped_unreviewed_count": 0,
+            "failed": false,
+            "db_fallback_attempted_count": 0,
+            "db_fallback_hit_count": 0,
+            "budget_ms": 2000,
+            "timeout_count": 0
+          },
+          "raw_underfill": 18,
+          "raw_retrieval_mix": {
+            "internal": 0,
+            "external": 0
+          },
+          "requested_count": 6,
+          "visible_count": 0,
+          "ready_min_visible_count": 5,
+          "direct_base_detail_mode": "external_seed_minimal",
+          "direct_base_detail_budget_ms": 450,
+          "card_enrichment_budget_ms": 900,
+          "card_enrichment_detail_budget_ms": 250,
+          "card_enrichment_official_seed_budget_ms": 900,
+          "card_enrichment_attempted_count": 0,
+          "card_enrichment_official_seed_attempted_count": 0,
+          "card_enrichment_official_seed_hit_count": 0,
+          "card_enrichment_official_seed_timeout_count": 0,
+          "card_enrichment_official_seed_failed_count": 0,
+          "card_enrichment_timeout_count": 0,
+          "card_enrichment_failed_count": 0,
+          "card_enrichment_detail_hydration_enabled": false,
+          "card_enrichment_detail_hydration_skipped_count": 0,
+          "card_enrichment_status": "ready",
+          "card_highlight_missing_count": 0,
+          "card_highlight_filtered_count": 0,
+          "public_external_id_filtered_count": 0,
+          "card_image_missing_count": 0
+        },
+        "products": [],
+        "raw_preview": "{\"status\":\"success\",\"strategy\":\"related_products\",\"products\":[],\"metadata\":{\"route\":\"find_similar_products_mainline_wrapper\",\"similar_confidence\":\"low\",\"low_confidence\":true,\"low_confidence_reason_codes\":[],\"similar_status\":\"unavailable\",\"retrieval_mix\":{\"internal\":0,\"external\":0},\"fallback_policy\":{\"visible_fallbacks_enabled\":false,\"broad_title_layer_enabled\":false,\"blocked_visible_fallbacks\":[\"external_recent\",\"recent_views_history_fallback\",\"title_token_overlap\",\"category_title_like\",\"global_recent_internal\"]},\"base_semantic\":{\"brand\":\"apiceuticals\",\"vertical\":\"haircare\",\"inferred\":false,\"signal_strength\":3,\"ready_min_count\":6},\"underfill\":6,\"identity_dedupe\":{\"applied\":true,\"matched_candidates\":0,\"duplicate_candidates_dropped\":0,\"semantic_duplicates_dropped\":0,\"base_identity_excluded\":0,\"same_product_line_shade_alternatives_kept\":0,\"rows_loaded\":1},\"product_intel_card_hydration\":{\"attempted_count\":0,\"hydrated_count\":0,\"skipped_unreviewed_count\":0,\"failed\":false,\"db_fallback_attempted_count\":0,\"db_fallback_hit_count\":0,\"budget_ms\":2000,\"timeout_count\":0},\"raw_underfill\":18,\"raw_retrieval_mix\":{\"internal\":0,\"external\":0},\"requested_count\":6,\"visible_count\":0,\"ready_min_visible_count\":5,\"direct_base_detail_mode\":\"external_seed_minimal\",\"direct_base_detail_budget_ms\":450,\"card_enrichment_budget_ms\":900,\"card_enrichment_detail_budget_ms\":250,\"card_enrichment_official_seed_budget_ms\":900,\"card_enrichment_attempted_count\":0,\"card_enrichment_official_seed_attempted_count\":0,\"card_enrichment_official_seed_hit_count\":0,\"card_enrichment_official_seed_timeout_count\":0,\"card_enrichment_official_seed_failed_count\":0,\"card_enrichment_timeout_count\":0,\"card_enrichment_failed_count\":0,\"card_enrichment_detail_hydration_enabled\":false,\"card_enrichment_detail_hydration_skipped_count\":0,\"card_enrichment_status\":\"ready\",\"card_highlight_missing_count\":0,\"card_highlight_filtered_count\":0,\"public_external_id_filtered_count\":0,\"card_image_missing_count\":0},\"total\":0,\"page\":1,\"page_size\":0,\"debug\":{\"base\":{\"product_id\":\"ext_1e27467ab07ddb83ad74c213\",\"merchant_id\":\"external_seed\",\"brand\":\"apiceuticals\",\"leaf_category\":\"shampoo\",\"parent_category\":\"haircare\",\"price_amount\":33,\"currency\":\"USD\",\"is_external\":true,\"vertical\":\"haircare\"},\"layers\":{},\"candidates_total\":0,\"sources\":{\"internal\":0,\"external\":0},\"confidence\":{\"high\":0,\"medium\":0,\"low\":0},\"filters\":{\"by_vertical\":0,\"by_confidence\":0,\"by_external_brand_authority\":0},\"fallback_policy\":{\"visible_fallbacks_enabled\":false,\"broad_title_layer_enabled\":false,\"blocked_visible_fallbacks\":[\"external_recent\",\"recent_views_history_fallback\",\"title_token_overlap\",\"category_title_like\",\"global_recent_internal\"]},\"timing_ms\":5941,\"fetch_strategy\":{\"internal_count\":0,\"external_count\":0,\"internal_timed_out\":false,\"external_timed_out\":true,\"external_skipped\":false,\"external_skip_min_candidates\":45,\"external_skip_internal_quality_count\":0,\"base_semantic_strong\":true,\"base_product_is_external\":true,\"base_intent_family\":null,\"external_fetch_timeout_ms\":5000,\"external_fetch_limit\":72,\"external_focused_recall_target\":12,\"external_recall_debug\":null,\"ready_min_count\":6,\"requested_count\":18,\"candidate_count\":18},\"history_fallback\":{\"used\":false,\"anchors_considered\":0,\"anchors_used\":[],\"added_count\":0},\"product_intel_card_hydration\":{\"attempted_count\":0,\"hydrated_count\":0,\"skipped_unreviewed_count\":0,\"failed\":false,\"db_fallback_attempted_count\":0,\"db_fallback_hit_count\":0},\"base_semantic\":{\"vertical\":\"haircare\",\"vertical_inferred\":false,\"signal_strength\":3,\"rescue_applied\":true,\"rescue_fields\":[\"brand\",\"category\",\"category_path\",\"title\",\"description\",\"price\",\"currency\",\"availability\",\"image\",\"canonical_url\",\"destination_url\",\"domain\",\"runtime_class\"]},\"cache_key_hash\":\"865e75dccf25\"},\"cache\":{\"hit\":false,\"age_ms\":0,\"ttl_ms\":600000}}"
+      }
+    },
+    {
+      "product_id": "ext_4e95b920b4c6a5295d55aa46",
+      "url": "https://pivota-agent-production.up.railway.app/agent/shop/v1/invoke",
+      "http_status": 200,
+      "ok": true,
+      "summary": {
+        "keys": [
+          "cache",
+          "debug",
+          "metadata",
+          "page",
+          "page_size",
+          "products",
+          "status",
+          "strategy",
+          "total"
+        ],
+        "product_count": 0,
+        "metadata": {
+          "route": "find_similar_products_mainline_wrapper",
+          "similar_confidence": "low",
+          "low_confidence": true,
+          "low_confidence_reason_codes": [],
+          "similar_status": "unavailable",
+          "retrieval_mix": {
+            "internal": 0,
+            "external": 0
+          },
+          "fallback_policy": {
+            "visible_fallbacks_enabled": false,
+            "broad_title_layer_enabled": false,
+            "blocked_visible_fallbacks": [
+              "external_recent",
+              "recent_views_history_fallback",
+              "title_token_overlap",
+              "category_title_like",
+              "global_recent_internal"
+            ]
+          },
+          "base_semantic": {
+            "brand": "apiceuticals",
+            "vertical": "haircare",
+            "inferred": false,
+            "signal_strength": 3,
+            "ready_min_count": 6
+          },
+          "underfill": 6,
+          "identity_dedupe": {
+            "applied": true,
+            "matched_candidates": 0,
+            "duplicate_candidates_dropped": 0,
+            "semantic_duplicates_dropped": 0,
+            "base_identity_excluded": 0,
+            "same_product_line_shade_alternatives_kept": 0,
+            "rows_loaded": 1
+          },
+          "product_intel_card_hydration": {
+            "attempted_count": 0,
+            "hydrated_count": 0,
+            "skipped_unreviewed_count": 0,
+            "failed": false,
+            "db_fallback_attempted_count": 0,
+            "db_fallback_hit_count": 0,
+            "budget_ms": 2000,
+            "timeout_count": 0
+          },
+          "raw_underfill": 18,
+          "raw_retrieval_mix": {
+            "internal": 0,
+            "external": 0
+          },
+          "requested_count": 6,
+          "visible_count": 0,
+          "ready_min_visible_count": 5,
+          "direct_base_detail_mode": "external_seed_minimal",
+          "direct_base_detail_budget_ms": 450,
+          "card_enrichment_budget_ms": 900,
+          "card_enrichment_detail_budget_ms": 250,
+          "card_enrichment_official_seed_budget_ms": 900,
+          "card_enrichment_attempted_count": 0,
+          "card_enrichment_official_seed_attempted_count": 0,
+          "card_enrichment_official_seed_hit_count": 0,
+          "card_enrichment_official_seed_timeout_count": 0,
+          "card_enrichment_official_seed_failed_count": 0,
+          "card_enrichment_timeout_count": 0,
+          "card_enrichment_failed_count": 0,
+          "card_enrichment_detail_hydration_enabled": false,
+          "card_enrichment_detail_hydration_skipped_count": 0,
+          "card_enrichment_status": "ready",
+          "card_highlight_missing_count": 0,
+          "card_highlight_filtered_count": 0,
+          "public_external_id_filtered_count": 0,
+          "card_image_missing_count": 0
+        },
+        "products": [],
+        "raw_preview": "{\"status\":\"success\",\"strategy\":\"related_products\",\"products\":[],\"metadata\":{\"route\":\"find_similar_products_mainline_wrapper\",\"similar_confidence\":\"low\",\"low_confidence\":true,\"low_confidence_reason_codes\":[],\"similar_status\":\"unavailable\",\"retrieval_mix\":{\"internal\":0,\"external\":0},\"fallback_policy\":{\"visible_fallbacks_enabled\":false,\"broad_title_layer_enabled\":false,\"blocked_visible_fallbacks\":[\"external_recent\",\"recent_views_history_fallback\",\"title_token_overlap\",\"category_title_like\",\"global_recent_internal\"]},\"base_semantic\":{\"brand\":\"apiceuticals\",\"vertical\":\"haircare\",\"inferred\":false,\"signal_strength\":3,\"ready_min_count\":6},\"underfill\":6,\"identity_dedupe\":{\"applied\":true,\"matched_candidates\":0,\"duplicate_candidates_dropped\":0,\"semantic_duplicates_dropped\":0,\"base_identity_excluded\":0,\"same_product_line_shade_alternatives_kept\":0,\"rows_loaded\":1},\"product_intel_card_hydration\":{\"attempted_count\":0,\"hydrated_count\":0,\"skipped_unreviewed_count\":0,\"failed\":false,\"db_fallback_attempted_count\":0,\"db_fallback_hit_count\":0,\"budget_ms\":2000,\"timeout_count\":0},\"raw_underfill\":18,\"raw_retrieval_mix\":{\"internal\":0,\"external\":0},\"requested_count\":6,\"visible_count\":0,\"ready_min_visible_count\":5,\"direct_base_detail_mode\":\"external_seed_minimal\",\"direct_base_detail_budget_ms\":450,\"card_enrichment_budget_ms\":900,\"card_enrichment_detail_budget_ms\":250,\"card_enrichment_official_seed_budget_ms\":900,\"card_enrichment_attempted_count\":0,\"card_enrichment_official_seed_attempted_count\":0,\"card_enrichment_official_seed_hit_count\":0,\"card_enrichment_official_seed_timeout_count\":0,\"card_enrichment_official_seed_failed_count\":0,\"card_enrichment_timeout_count\":0,\"card_enrichment_failed_count\":0,\"card_enrichment_detail_hydration_enabled\":false,\"card_enrichment_detail_hydration_skipped_count\":0,\"card_enrichment_status\":\"ready\",\"card_highlight_missing_count\":0,\"card_highlight_filtered_count\":0,\"public_external_id_filtered_count\":0,\"card_image_missing_count\":0},\"total\":0,\"page\":1,\"page_size\":0,\"debug\":{\"base\":{\"product_id\":\"ext_4e95b920b4c6a5295d55aa46\",\"merchant_id\":\"external_seed\",\"brand\":\"apiceuticals\",\"leaf_category\":\"conditioner\",\"parent_category\":\"haircare\",\"price_amount\":35,\"currency\":\"USD\",\"is_external\":true,\"vertical\":\"haircare\"},\"layers\":{},\"candidates_total\":0,\"sources\":{\"internal\":0,\"external\":0},\"confidence\":{\"high\":0,\"medium\":0,\"low\":0},\"filters\":{\"by_vertical\":0,\"by_confidence\":0,\"by_external_brand_authority\":0},\"fallback_policy\":{\"visible_fallbacks_enabled\":false,\"broad_title_layer_enabled\":false,\"blocked_visible_fallbacks\":[\"external_recent\",\"recent_views_history_fallback\",\"title_token_overlap\",\"category_title_like\",\"global_recent_internal\"]},\"timing_ms\":5937,\"fetch_strategy\":{\"internal_count\":0,\"external_count\":0,\"internal_timed_out\":false,\"external_timed_out\":true,\"external_skipped\":false,\"external_skip_min_candidates\":45,\"external_skip_internal_quality_count\":0,\"base_semantic_strong\":true,\"base_product_is_external\":true,\"base_intent_family\":null,\"external_fetch_timeout_ms\":5000,\"external_fetch_limit\":72,\"external_focused_recall_target\":12,\"external_recall_debug\":null,\"ready_min_count\":6,\"requested_count\":18,\"candidate_count\":18},\"history_fallback\":{\"used\":false,\"anchors_considered\":0,\"anchors_used\":[],\"added_count\":0},\"product_intel_card_hydration\":{\"attempted_count\":0,\"hydrated_count\":0,\"skipped_unreviewed_count\":0,\"failed\":false,\"db_fallback_attempted_count\":0,\"db_fallback_hit_count\":0},\"base_semantic\":{\"vertical\":\"haircare\",\"vertical_inferred\":false,\"signal_strength\":3,\"rescue_applied\":true,\"rescue_fields\":[\"brand\",\"category\",\"category_path\",\"title\",\"description\",\"price\",\"currency\",\"availability\",\"image\",\"canonical_url\",\"destination_url\",\"domain\",\"runtime_class\"]},\"cache_key_hash\":\"eb613806632c\"},\"cache\":{\"hit\":false,\"age_ms\":0,\"ttl_ms\":600000}}"
+      }
+    },
+    {
+      "product_id": "ext_d17dfc05f98d0400d5129f1c",
+      "url": "https://pivota-agent-production.up.railway.app/agent/shop/v1/invoke",
+      "http_status": 200,
+      "ok": true,
+      "summary": {
+        "keys": [
+          "cache",
+          "debug",
+          "metadata",
+          "page",
+          "page_size",
+          "products",
+          "status",
+          "strategy",
+          "total"
+        ],
+        "product_count": 6,
+        "metadata": {
+          "route": "find_similar_products_mainline_wrapper",
+          "similar_confidence": "medium",
+          "low_confidence": false,
+          "low_confidence_reason_codes": [],
+          "similar_status": "ready",
+          "retrieval_mix": {
+            "internal": 6,
+            "external": 0
+          },
+          "fallback_policy": {
+            "visible_fallbacks_enabled": false,
+            "broad_title_layer_enabled": false,
+            "blocked_visible_fallbacks": [
+              "external_recent",
+              "recent_views_history_fallback",
+              "title_token_overlap",
+              "category_title_like",
+              "global_recent_internal"
+            ]
+          },
+          "base_semantic": {
+            "brand": "apiceuticals",
+            "vertical": "bodycare",
+            "inferred": false,
+            "signal_strength": 3,
+            "ready_min_count": 6
+          },
+          "underfill": 0,
+          "identity_dedupe": {
+            "applied": true,
+            "matched_candidates": 52,
+            "duplicate_candidates_dropped": 3,
+            "semantic_duplicates_dropped": 0,
+            "base_identity_excluded": 0,
+            "same_product_line_shade_alternatives_kept": 0,
+            "rows_loaded": 53
+          },
+          "product_intel_card_hydration": {
+            "attempted_count": 18,
+            "hydrated_count": 16,
+            "skipped_unreviewed_count": 0,
+            "failed": false,
+            "db_fallback_attempted_count": 2,
+            "db_fallback_hit_count": 0,
+            "budget_ms": 2000,
+            "timeout_count": 0
+          },
+          "raw_retrieval_mix": {
+            "internal": 0,
+            "external": 18
+          },
+          "requested_count": 6,
+          "visible_count": 6,
+          "ready_min_visible_count": 5,
+          "direct_base_detail_mode": "external_seed_minimal",
+          "direct_base_detail_budget_ms": 450,
+          "card_enrichment_budget_ms": 900,
+          "card_enrichment_detail_budget_ms": 250,
+          "card_enrichment_official_seed_budget_ms": 900,
+          "card_enrichment_attempted_count": 0,
+          "card_enrichment_official_seed_attempted_count": 0,
+          "card_enrichment_official_seed_hit_count": 0,
+          "card_enrichment_official_seed_timeout_count": 0,
+          "card_enrichment_official_seed_failed_count": 0,
+          "card_enrichment_timeout_count": 0,
+          "card_enrichment_failed_count": 0,
+          "card_enrichment_detail_hydration_enabled": false,
+          "card_enrichment_detail_hydration_skipped_count": 0,
+          "card_enrichment_status": "ready",
+          "card_highlight_missing_count": 0,
+          "card_highlight_filtered_count": 12,
+          "public_external_id_filtered_count": 0,
+          "card_image_missing_count": 0
+        },
+        "products": [
+          {
+            "product_id": "sig_f5a6f90732c4af20fc4612ac",
+            "merchant_id": null,
+            "title": "Nourishing Probiotic Body Wash Pineapple",
+            "brand": "Delicate Daisys Botanical Beauty",
+            "category": "Body Wash",
+            "reason": "L3E:external:external_leaf_category",
+            "x_confidence": "medium",
+            "card_highlight": "This nourishing shower gel is enhanced with Probiotics and natural extracts to",
+            "evidence_profile": "seller_plus_formula"
+          },
+          {
+            "product_id": "sig_d5f5f744bfb57c404d65405a",
+            "merchant_id": null,
+            "title": "After Workout Shower Gel – Crispy Cucumber 500 ml",
+            "brand": "Moss & Noor",
+            "category": "Body Wash",
+            "reason": "L3E:external:external_leaf_category",
+            "x_confidence": "medium",
+            "card_highlight": "After Workout Shower Gel cools the skin after your workout",
+            "evidence_profile": "official_pdp_seed"
+          },
+          {
+            "product_id": "sig_52c6a00f3349f49fc6706f46",
+            "merchant_id": null,
+            "title": "After Workout Shower Gel – Fresh Grapefruit 500 ml",
+            "brand": "Moss & Noor",
+            "category": "Body Wash",
+            "reason": "L3E:external:external_leaf_category",
+            "x_confidence": "medium",
+            "card_highlight": "After Workout Shower Gel cools the skin after your workout",
+            "evidence_profile": "official_pdp_seed"
+          },
+          {
+            "product_id": "sig_9240e02c74f21efa5cb5ba74",
+            "merchant_id": null,
+            "title": "After Workout Shower Gel – Fresh Grapefruit",
+            "brand": "Moss & Noor",
+            "category": "Body Wash",
+            "reason": "L3E:external:external_leaf_category",
+            "x_confidence": "medium",
+            "card_highlight": "After Workout Shower Gel cools the skin after your workout",
+            "evidence_profile": "official_pdp_seed"
+          },
+          {
+            "product_id": "sig_c24061fe58d0cd07e8511cea",
+            "merchant_id": null,
+            "title": "After Workout Shower Gel – Light Mint",
+            "brand": "Moss & Noor",
+            "category": "Body Wash",
+            "reason": "L3E:external:external_leaf_category",
+            "x_confidence": "medium",
+            "card_highlight": "After Workout Shower Gel cools the skin after your workout",
+            "evidence_profile": "official_pdp_seed"
+          },
+          {
+            "product_id": "sig_f41515bba9c93a18d106523f",
+            "merchant_id": null,
+            "title": "After Workout Shower Gel – Clean Eucalyptus",
+            "brand": "Moss & Noor",
+            "category": "Body Wash",
+            "reason": "L3E:external:external_leaf_category",
+            "x_confidence": "medium",
+            "card_highlight": "After Workout Shower Gel cools the skin after your workout",
+            "evidence_profile": "official_pdp_seed"
+          }
+        ],
+        "raw_preview": "{\"status\":\"success\",\"strategy\":\"related_products\",\"products\":[{\"product_id\":\"sig_f5a6f90732c4af20fc4612ac\",\"title\":\"Nourishing Probiotic Body Wash Pineapple\",\"name\":\"Nourishing Probiotic Body Wash Pineapple\",\"brand\":\"Delicate Daisys Botanical Beauty\",\"vendor\":\"Delicate Daisys Botanical Beauty\",\"category\":\"Body Wash\",\"product_type\":\"Body Wash\",\"category_path\":\"beauty/body-care/body-wash\",\"catalog_category_path\":\"beauty/body-care/body-wash\",\"description\":\"This nourishing shower gel is enhanced with Probiotics and natural extracts to effectively cleanse your skin while imparting a refreshing and fruity Pineapple aroma. It is\",\"card_title\":\"Nourishing Probiotic Body Wash Pineapple\",\"card_subtitle\":\"Body Wash\",\"card_highlight\":\"This nourishing shower gel is enhanced with Probiotics and natural extracts to\",\"card_highlight_source\":\"catalog_product\",\"shopping_card\":{\"intro\":\"A Delicate Daisys Botanical Beauty body wash listed on the official source page as Nourishing Probiotic Body Wash Pineapple. The official description identifies: This nourishing shower gel is enhanced with Probiotics and natural extracts to effectively cleanse your skin while imparting a refreshing and fruity Pineapple aroma.\",\"title\":\"Nourishing Probiotic Body Wash Pineapple\",\"subtitle\":\"Body Wash\",\"highlight\":\"This nourishing shower gel is enhanced with Probiotics and natural extracts to\",\"contract_version\":\"pivota.shopping_card.v1\",\"evidence_profile\":\"catalog_product\",\"highlight_source\":\"catalog_product\"},\"search_card\":{\"intro_candidate\":\"A Delicate Daisys Botanical Beauty body wash listed on the official source page as Nourishing Probiotic Body Wash Pineapple. The official description identifies: This nourishing shower gel is enhanced with Probiotics and natural extracts to effectively cleanse your skin while imparting a refreshing and fruity Pineapple aroma.\",\"title_candidate\":\"Nourishing Probiotic Body Wash Pineapple\",\"compact_candidate\":\"Body Wash\",\"highlight_candidate\":\"This nourishing shower gel is enhanced with Probiotics and natural extracts to\",\"proof_badge_candidate\":\"\",\"evidence_profile\":\"catalog_product\",\"highlight_source\":\"catalog_product\"},\"image_url\":\"https://delicatedaisys.com/cdn/shop/files/IMG-3260.png?v=1779321961\",\"image\":\"https://delicatedaisys.com/cdn/shop/files/IMG-3260.png?v=1779321961\",\"price\":19.99,\"price_amount\":19.99,\"currency\":\"USD\",\"price_currency\":\"USD\",\"canonical_url\":\"https://agent.pivota.cc/products/sig_f5a6f90732c4af20fc4612ac\",\"destination_url\":\"https://delicatedaisys.com/products/nourishing-probiotic-body-wash-pineapple\",\"source_url\":\"https://delicatedaisys.com/products/nourishing-probiotic-body-wash-pineapple\",\"url\":\"https://agent.pivota.cc/products/sig_f5a6f90732c4af20fc4612ac\",\"domain\":\"delicatedaisys.com\",\"availability\":\"in_stock\",\"in_stock\":true,\"status\":\"active\",\"source\":\"catalog_products\",\"semantic_vertical\":\"bodycare\",\"recall_vertical\":\"bodycare\",\"external_seed_runtime_family\":\"body_wash\",\"external_seed_product_family\":\"body_wash\",\"product_family\":\"body_wash\",\"external_seed_runtime_class_reason\":\"external_seed_body_wash_text\",\"reason\":\"L3E:external:external_leaf_category\",\"x_score\":3.4481,\"x_confidence\":\"medium\",\"card_intro\":\"A Delicate Daisys Botanical Beauty body wash listed on the official source page as Nourishing Probiotic Body Wash Pineapple. The official description identifies: This nourishing shower gel is enhanced with Probiotics and natural extracts to effectively cleanse your skin while imparting a refreshing and fruity Pineapple aroma.\",\"card_highlight_status\":\"ready\",\"card_image_status\":\"ready\",\"id\":\"sig_f5a6f90732c4af20fc4612ac\",\"pivota_signature_id\":\"sig_f5a6f90732c4af20fc4612ac\",\"signature_id\":\"sig_f5a6f90732c4af20fc4612ac\",\"entity_source\":\"catalog_products\",\"product_identity_source\":\"catalog_products\",\"product_ref\":{\"product_id\":\"sig_f5a6f90732c4af20fc4612ac\",\"id\":\"sig_f5a6f90732c4af20fc4612ac\",\"pivota_signature_id\":\"sig_f5a6f90732c4af20fc4612ac\",\"source\":\"catalog_products\",\"entity_source\":\"catalog_"
+      }
+    },
+    {
+      "product_id": "ext_c0e5209513c083e2c649c1a1",
+      "url": "https://pivota-agent-production.up.railway.app/agent/shop/v1/invoke",
+      "http_status": 200,
+      "ok": true,
+      "summary": {
+        "keys": [
+          "cache",
+          "debug",
+          "metadata",
+          "page",
+          "page_size",
+          "products",
+          "status",
+          "strategy",
+          "total"
+        ],
+        "product_count": 0,
+        "metadata": {
+          "route": "find_similar_products_mainline_wrapper",
+          "similar_confidence": "low",
+          "low_confidence": true,
+          "low_confidence_reason_codes": [],
+          "similar_status": "unavailable",
+          "retrieval_mix": {
+            "internal": 0,
+            "external": 0
+          },
+          "fallback_policy": {
+            "visible_fallbacks_enabled": false,
+            "broad_title_layer_enabled": false,
+            "blocked_visible_fallbacks": [
+              "external_recent",
+              "recent_views_history_fallback",
+              "title_token_overlap",
+              "category_title_like",
+              "global_recent_internal"
+            ]
+          },
+          "base_semantic": {
+            "brand": "apiceuticals",
+            "vertical": "bodycare",
+            "inferred": false,
+            "signal_strength": 3,
+            "ready_min_count": 6
+          },
+          "underfill": 6,
+          "identity_dedupe": {
+            "applied": true,
+            "matched_candidates": 0,
+            "duplicate_candidates_dropped": 0,
+            "semantic_duplicates_dropped": 0,
+            "base_identity_excluded": 0,
+            "same_product_line_shade_alternatives_kept": 0,
+            "rows_loaded": 1
+          },
+          "product_intel_card_hydration": {
+            "attempted_count": 0,
+            "hydrated_count": 0,
+            "skipped_unreviewed_count": 0,
+            "failed": false,
+            "db_fallback_attempted_count": 0,
+            "db_fallback_hit_count": 0,
+            "budget_ms": 2000,
+            "timeout_count": 0
+          },
+          "raw_underfill": 18,
+          "raw_retrieval_mix": {
+            "internal": 0,
+            "external": 0
+          },
+          "requested_count": 6,
+          "visible_count": 0,
+          "ready_min_visible_count": 5,
+          "direct_base_detail_mode": "external_seed_minimal",
+          "direct_base_detail_budget_ms": 450,
+          "card_enrichment_budget_ms": 900,
+          "card_enrichment_detail_budget_ms": 250,
+          "card_enrichment_official_seed_budget_ms": 900,
+          "card_enrichment_attempted_count": 0,
+          "card_enrichment_official_seed_attempted_count": 0,
+          "card_enrichment_official_seed_hit_count": 0,
+          "card_enrichment_official_seed_timeout_count": 0,
+          "card_enrichment_official_seed_failed_count": 0,
+          "card_enrichment_timeout_count": 0,
+          "card_enrichment_failed_count": 0,
+          "card_enrichment_detail_hydration_enabled": false,
+          "card_enrichment_detail_hydration_skipped_count": 0,
+          "card_enrichment_status": "ready",
+          "card_highlight_missing_count": 0,
+          "card_highlight_filtered_count": 0,
+          "public_external_id_filtered_count": 0,
+          "card_image_missing_count": 0
+        },
+        "products": [],
+        "raw_preview": "{\"status\":\"success\",\"strategy\":\"related_products\",\"products\":[],\"metadata\":{\"route\":\"find_similar_products_mainline_wrapper\",\"similar_confidence\":\"low\",\"low_confidence\":true,\"low_confidence_reason_codes\":[],\"similar_status\":\"unavailable\",\"retrieval_mix\":{\"internal\":0,\"external\":0},\"fallback_policy\":{\"visible_fallbacks_enabled\":false,\"broad_title_layer_enabled\":false,\"blocked_visible_fallbacks\":[\"external_recent\",\"recent_views_history_fallback\",\"title_token_overlap\",\"category_title_like\",\"global_recent_internal\"]},\"base_semantic\":{\"brand\":\"apiceuticals\",\"vertical\":\"bodycare\",\"inferred\":false,\"signal_strength\":3,\"ready_min_count\":6},\"underfill\":6,\"identity_dedupe\":{\"applied\":true,\"matched_candidates\":0,\"duplicate_candidates_dropped\":0,\"semantic_duplicates_dropped\":0,\"base_identity_excluded\":0,\"same_product_line_shade_alternatives_kept\":0,\"rows_loaded\":1},\"product_intel_card_hydration\":{\"attempted_count\":0,\"hydrated_count\":0,\"skipped_unreviewed_count\":0,\"failed\":false,\"db_fallback_attempted_count\":0,\"db_fallback_hit_count\":0,\"budget_ms\":2000,\"timeout_count\":0},\"raw_underfill\":18,\"raw_retrieval_mix\":{\"internal\":0,\"external\":0},\"requested_count\":6,\"visible_count\":0,\"ready_min_visible_count\":5,\"direct_base_detail_mode\":\"external_seed_minimal\",\"direct_base_detail_budget_ms\":450,\"card_enrichment_budget_ms\":900,\"card_enrichment_detail_budget_ms\":250,\"card_enrichment_official_seed_budget_ms\":900,\"card_enrichment_attempted_count\":0,\"card_enrichment_official_seed_attempted_count\":0,\"card_enrichment_official_seed_hit_count\":0,\"card_enrichment_official_seed_timeout_count\":0,\"card_enrichment_official_seed_failed_count\":0,\"card_enrichment_timeout_count\":0,\"card_enrichment_failed_count\":0,\"card_enrichment_detail_hydration_enabled\":false,\"card_enrichment_detail_hydration_skipped_count\":0,\"card_enrichment_status\":\"ready\",\"card_highlight_missing_count\":0,\"card_highlight_filtered_count\":0,\"public_external_id_filtered_count\":0,\"card_image_missing_count\":0},\"total\":0,\"page\":1,\"page_size\":0,\"debug\":{\"base\":{\"product_id\":\"ext_c0e5209513c083e2c649c1a1\",\"merchant_id\":\"external_seed\",\"brand\":\"apiceuticals\",\"leaf_category\":\"body-lotion\",\"parent_category\":\"bodycare\",\"price_amount\":32,\"currency\":\"USD\",\"is_external\":true,\"vertical\":\"bodycare\"},\"layers\":{},\"candidates_total\":0,\"sources\":{\"internal\":0,\"external\":0},\"confidence\":{\"high\":0,\"medium\":0,\"low\":0},\"filters\":{\"by_vertical\":0,\"by_confidence\":0,\"by_external_brand_authority\":0},\"fallback_policy\":{\"visible_fallbacks_enabled\":false,\"broad_title_layer_enabled\":false,\"blocked_visible_fallbacks\":[\"external_recent\",\"recent_views_history_fallback\",\"title_token_overlap\",\"category_title_like\",\"global_recent_internal\"]},\"timing_ms\":5938,\"fetch_strategy\":{\"internal_count\":0,\"external_count\":0,\"internal_timed_out\":false,\"external_timed_out\":true,\"external_skipped\":false,\"external_skip_min_candidates\":45,\"external_skip_internal_quality_count\":0,\"base_semantic_strong\":true,\"base_product_is_external\":true,\"base_intent_family\":\"body_oil\",\"external_fetch_timeout_ms\":5000,\"external_fetch_limit\":72,\"external_focused_recall_target\":12,\"external_recall_debug\":null,\"ready_min_count\":6,\"requested_count\":18,\"candidate_count\":18},\"history_fallback\":{\"used\":false,\"anchors_considered\":0,\"anchors_used\":[],\"added_count\":0},\"product_intel_card_hydration\":{\"attempted_count\":0,\"hydrated_count\":0,\"skipped_unreviewed_count\":0,\"failed\":false,\"db_fallback_attempted_count\":0,\"db_fallback_hit_count\":0},\"base_semantic\":{\"vertical\":\"bodycare\",\"vertical_inferred\":false,\"signal_strength\":3,\"rescue_applied\":true,\"rescue_fields\":[\"brand\",\"category\",\"category_path\",\"title\",\"description\",\"price\",\"currency\",\"availability\",\"image\",\"canonical_url\",\"destination_url\",\"domain\"]},\"cache_key_hash\":\"68a63eba01ff\"},\"cache\":{\"hit\":false,\"age_ms\":0,\"ttl_ms\":600000}}"
+      }
+    },
+    {
+      "product_id": "ext_d3d708f481903ba2a6f9b732",
+      "url": "https://pivota-agent-production.up.railway.app/agent/shop/v1/invoke",
+      "http_status": 200,
+      "ok": true,
+      "summary": {
+        "keys": [
+          "cache",
+          "debug",
+          "metadata",
+          "page",
+          "page_size",
+          "products",
+          "status",
+          "strategy",
+          "total"
+        ],
+        "product_count": 0,
+        "metadata": {
+          "route": "find_similar_products_mainline_wrapper",
+          "similar_confidence": "low",
+          "low_confidence": true,
+          "low_confidence_reason_codes": [],
+          "similar_status": "unavailable",
+          "retrieval_mix": {
+            "internal": 0,
+            "external": 0
+          },
+          "fallback_policy": {
+            "visible_fallbacks_enabled": false,
+            "broad_title_layer_enabled": false,
+            "blocked_visible_fallbacks": [
+              "external_recent",
+              "recent_views_history_fallback",
+              "title_token_overlap",
+              "category_title_like",
+              "global_recent_internal"
+            ]
+          },
+          "base_semantic": {
+            "brand": "apiceuticals",
+            "vertical": "bodycare",
+            "inferred": false,
+            "signal_strength": 3,
+            "ready_min_count": 6
+          },
+          "underfill": 6,
+          "identity_dedupe": {
+            "applied": true,
+            "matched_candidates": 0,
+            "duplicate_candidates_dropped": 0,
+            "semantic_duplicates_dropped": 0,
+            "base_identity_excluded": 0,
+            "same_product_line_shade_alternatives_kept": 0,
+            "rows_loaded": 1
+          },
+          "product_intel_card_hydration": {
+            "attempted_count": 0,
+            "hydrated_count": 0,
+            "skipped_unreviewed_count": 0,
+            "failed": false,
+            "db_fallback_attempted_count": 0,
+            "db_fallback_hit_count": 0,
+            "budget_ms": 2000,
+            "timeout_count": 0
+          },
+          "raw_underfill": 18,
+          "raw_retrieval_mix": {
+            "internal": 0,
+            "external": 0
+          },
+          "requested_count": 6,
+          "visible_count": 0,
+          "ready_min_visible_count": 5,
+          "direct_base_detail_mode": "external_seed_minimal",
+          "direct_base_detail_budget_ms": 450,
+          "card_enrichment_budget_ms": 900,
+          "card_enrichment_detail_budget_ms": 250,
+          "card_enrichment_official_seed_budget_ms": 900,
+          "card_enrichment_attempted_count": 0,
+          "card_enrichment_official_seed_attempted_count": 0,
+          "card_enrichment_official_seed_hit_count": 0,
+          "card_enrichment_official_seed_timeout_count": 0,
+          "card_enrichment_official_seed_failed_count": 0,
+          "card_enrichment_timeout_count": 0,
+          "card_enrichment_failed_count": 0,
+          "card_enrichment_detail_hydration_enabled": false,
+          "card_enrichment_detail_hydration_skipped_count": 0,
+          "card_enrichment_status": "ready",
+          "card_highlight_missing_count": 0,
+          "card_highlight_filtered_count": 0,
+          "public_external_id_filtered_count": 0,
+          "card_image_missing_count": 0
+        },
+        "products": [],
+        "raw_preview": "{\"status\":\"success\",\"strategy\":\"related_products\",\"products\":[],\"metadata\":{\"route\":\"find_similar_products_mainline_wrapper\",\"similar_confidence\":\"low\",\"low_confidence\":true,\"low_confidence_reason_codes\":[],\"similar_status\":\"unavailable\",\"retrieval_mix\":{\"internal\":0,\"external\":0},\"fallback_policy\":{\"visible_fallbacks_enabled\":false,\"broad_title_layer_enabled\":false,\"blocked_visible_fallbacks\":[\"external_recent\",\"recent_views_history_fallback\",\"title_token_overlap\",\"category_title_like\",\"global_recent_internal\"]},\"base_semantic\":{\"brand\":\"apiceuticals\",\"vertical\":\"bodycare\",\"inferred\":false,\"signal_strength\":3,\"ready_min_count\":6},\"underfill\":6,\"identity_dedupe\":{\"applied\":true,\"matched_candidates\":0,\"duplicate_candidates_dropped\":0,\"semantic_duplicates_dropped\":0,\"base_identity_excluded\":0,\"same_product_line_shade_alternatives_kept\":0,\"rows_loaded\":1},\"product_intel_card_hydration\":{\"attempted_count\":0,\"hydrated_count\":0,\"skipped_unreviewed_count\":0,\"failed\":false,\"db_fallback_attempted_count\":0,\"db_fallback_hit_count\":0,\"budget_ms\":2000,\"timeout_count\":0},\"raw_underfill\":18,\"raw_retrieval_mix\":{\"internal\":0,\"external\":0},\"requested_count\":6,\"visible_count\":0,\"ready_min_visible_count\":5,\"direct_base_detail_mode\":\"external_seed_minimal\",\"direct_base_detail_budget_ms\":450,\"card_enrichment_budget_ms\":900,\"card_enrichment_detail_budget_ms\":250,\"card_enrichment_official_seed_budget_ms\":900,\"card_enrichment_attempted_count\":0,\"card_enrichment_official_seed_attempted_count\":0,\"card_enrichment_official_seed_hit_count\":0,\"card_enrichment_official_seed_timeout_count\":0,\"card_enrichment_official_seed_failed_count\":0,\"card_enrichment_timeout_count\":0,\"card_enrichment_failed_count\":0,\"card_enrichment_detail_hydration_enabled\":false,\"card_enrichment_detail_hydration_skipped_count\":0,\"card_enrichment_status\":\"ready\",\"card_highlight_missing_count\":0,\"card_highlight_filtered_count\":0,\"public_external_id_filtered_count\":0,\"card_image_missing_count\":0},\"total\":0,\"page\":1,\"page_size\":0,\"debug\":{\"base\":{\"product_id\":\"ext_d3d708f481903ba2a6f9b732\",\"merchant_id\":\"external_seed\",\"brand\":\"apiceuticals\",\"leaf_category\":\"body-oil\",\"parent_category\":\"bodycare\",\"price_amount\":89,\"currency\":\"USD\",\"is_external\":true,\"vertical\":\"bodycare\"},\"layers\":{},\"candidates_total\":0,\"sources\":{\"internal\":0,\"external\":0},\"confidence\":{\"high\":0,\"medium\":0,\"low\":0},\"filters\":{\"by_vertical\":0,\"by_confidence\":0,\"by_external_brand_authority\":0},\"fallback_policy\":{\"visible_fallbacks_enabled\":false,\"broad_title_layer_enabled\":false,\"blocked_visible_fallbacks\":[\"external_recent\",\"recent_views_history_fallback\",\"title_token_overlap\",\"category_title_like\",\"global_recent_internal\"]},\"timing_ms\":5943,\"fetch_strategy\":{\"internal_count\":0,\"external_count\":0,\"internal_timed_out\":false,\"external_timed_out\":true,\"external_skipped\":false,\"external_skip_min_candidates\":45,\"external_skip_internal_quality_count\":0,\"base_semantic_strong\":true,\"base_product_is_external\":true,\"base_intent_family\":\"body_oil\",\"external_fetch_timeout_ms\":5000,\"external_fetch_limit\":72,\"external_focused_recall_target\":12,\"external_recall_debug\":null,\"ready_min_count\":6,\"requested_count\":18,\"candidate_count\":18},\"history_fallback\":{\"used\":false,\"anchors_considered\":0,\"anchors_used\":[],\"added_count\":0},\"product_intel_card_hydration\":{\"attempted_count\":0,\"hydrated_count\":0,\"skipped_unreviewed_count\":0,\"failed\":false,\"db_fallback_attempted_count\":0,\"db_fallback_hit_count\":0},\"base_semantic\":{\"vertical\":\"bodycare\",\"vertical_inferred\":false,\"signal_strength\":3,\"rescue_applied\":true,\"rescue_fields\":[\"brand\",\"category\",\"category_path\",\"title\",\"description\",\"price\",\"currency\",\"availability\",\"image\",\"canonical_url\",\"destination_url\",\"domain\"]},\"cache_key_hash\":\"038d9a2f671b\"},\"cache\":{\"hit\":false,\"age_ms\":0,\"ttl_ms\":600000}}"
+      }
+    }
+  ]
+}
