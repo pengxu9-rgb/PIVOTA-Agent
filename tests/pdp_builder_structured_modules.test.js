@@ -1968,8 +1968,8 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     expect(variantSelector?.data?.variants?.[0]).toEqual(
       expect.objectContaining({
         title: '1 piece',
-        display_label: 'Size: 1 piece',
-        options: [{ name: 'Size', value: '1 piece', axis_kind: 'size' }],
+        display_label: 'Format: 1 piece',
+        options: [{ name: 'Format', value: '1 piece', axis_kind: 'format' }],
       }),
     );
     expect(JSON.stringify(variantSelector)).not.toContain('[object Object]');
