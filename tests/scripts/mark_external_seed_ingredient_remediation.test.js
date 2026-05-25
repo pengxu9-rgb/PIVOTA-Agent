@@ -283,6 +283,8 @@ describe('mark-external-seed-ingredient-remediation', () => {
       source_origin: 'pivota_manual_component_repair',
       source_quality_status: 'component_refs_linked',
     });
+    expect(buildServingBlockPatch(plan.nextSeedData).bundle_component_refs).toHaveLength(2);
+    expect(buildServingBlockPatch(plan.nextSeedData).bundle_component_ref_contract).toBeUndefined();
   });
 
   test('clears stale force-fill contract on already-remediated component-linked sets', () => {

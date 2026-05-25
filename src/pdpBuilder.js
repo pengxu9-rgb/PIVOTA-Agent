@@ -912,8 +912,6 @@ function isSyntheticPdpQuestionSource(item) {
 }
 
 function isSyntheticPdpHowToCandidate(candidate, candidateText = '') {
-  const text = asNonEmptyString(candidateText || pickStructuredText(candidate));
-  if (text && PDP_GENERIC_FORCE_FILL_HOW_TO_RE.test(text)) return true;
   if (!candidate || typeof candidate !== 'object') return false;
   const sourceSignals = [
     candidate.source,
@@ -931,7 +929,24 @@ function isSyntheticPdpHowToCandidate(candidate, candidateText = '') {
     .map((value) => asNonEmptyString(value))
     .filter(Boolean)
     .join(' ');
-  return PDP_SYNTHETIC_HOW_TO_SOURCE_RE.test(sourceSignals);
+  const normalizedSourceSignals = sourceSignals.replace(/[_-]+/g, ' ');
+  if (
+    PDP_SYNTHETIC_HOW_TO_SOURCE_RE.test(sourceSignals) ||
+    /\b(?:pivota force fill|force filled|force fill|synthetic|simulation|mock|browser fallback|legacy fallback)\b/i.test(
+      normalizedSourceSignals,
+    )
+  ) {
+    return true;
+  }
+  if (
+    /\b(?:high|authoritative|official authoritative|reviewed|manual reviewed|seller grounded)\b/i.test(normalizedSourceSignals) &&
+    /\b(?:official|reviewed|manual reviewed|merchant|retailer|source backed)\b/i.test(normalizedSourceSignals)
+  ) {
+    return false;
+  }
+  const text = asNonEmptyString(candidateText || pickStructuredText(candidate));
+  if (text && PDP_GENERIC_FORCE_FILL_HOW_TO_RE.test(text)) return true;
+  return false;
 }
 
 function buildContributionPolicy(moduleType) {
@@ -3625,8 +3640,17 @@ function buildActiveIngredients(product, ingredientsInci) {
 function buildHowToUse(product, contentImagePlan = buildStructuredContentImagePlan(product)) {
   const detailSections = collectStructuredDetailSections(product);
   const detailSectionHowToUse = detailSections.find((section) => isHowToDetailHeading(section.heading))?.content || '';
+  const howToQuality = asSafePlainObject(asSafePlainObject(product.pdp_field_quality_summary).how_to_use_raw);
+  const pdpHowToCandidate =
+    product.pdp_how_to_use_raw && Object.keys(howToQuality).length
+      ? {
+          title: 'How to use',
+          raw_text: product.pdp_how_to_use_raw,
+          ...howToQuality,
+        }
+      : product.pdp_how_to_use_raw;
   const candidates = [
-    product.pdp_how_to_use_raw,
+    pdpHowToCandidate,
     detailSectionHowToUse,
   ];
   if (!isExternalSeedLikeProduct(product)) {

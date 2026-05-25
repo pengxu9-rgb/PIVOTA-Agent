@@ -5471,6 +5471,10 @@ function collectCatalogPdpContentSourceProductIds(product = {}, productRef = {},
     const text = String(value || '').trim();
     if (!text || isPivotaSignatureProductId(text)) return '';
     if (isExternalSeedProductId(text)) return text;
+    const externalSeedRefMatch = text.match(/(?:^|[^a-z0-9])((?:ext|eps)_[a-z0-9_]+)(?:$|[^a-z0-9_])/i);
+    if (externalSeedRefMatch?.[1] && isExternalSeedProductId(externalSeedRefMatch[1])) {
+      return externalSeedRefMatch[1];
+    }
     const productKeyMatch = text
       .split('::')
       .map((part) => part.trim())
@@ -5483,6 +5487,14 @@ function collectCatalogPdpContentSourceProductIds(product = {}, productRef = {},
       ref.productId,
       ref.source_product_id,
       ref.sourceProductId,
+      ref.external_product_id,
+      ref.externalProductId,
+      ref.external_seed_external_product_id,
+      ref.externalSeedExternalProductId,
+      ref.external_seed_product_id,
+      ref.externalSeedProductId,
+      ref.platform_product_id,
+      ref.platformProductId,
       ref.product_key,
       ref.productKey,
       ref.source_listing_ref,
@@ -5499,6 +5511,12 @@ function collectCatalogPdpContentSourceProductIds(product = {}, productRef = {},
     product?.sourceListingRef,
     product?.platform_product_id,
     product?.platformProductId,
+    product?.external_product_id,
+    product?.externalProductId,
+    product?.external_seed_external_product_id,
+    product?.externalSeedExternalProductId,
+    product?.external_seed_product_id,
+    product?.externalSeedProductId,
     product?.external_seed_id,
     product?.externalSeedId,
     product?.product_id,
@@ -35493,6 +35511,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               entryProductRef,
               precheckedMerchantProduct,
               canonicalProduct,
+              signatureExternalSeedRouteStatus,
               identityGraphLive?.canonical_product_ref,
               identityGraphLive?.synthetic_product?.canonical_content_ref,
               identityGraphLive?.synthetic_product?.selected_commerce_ref,
