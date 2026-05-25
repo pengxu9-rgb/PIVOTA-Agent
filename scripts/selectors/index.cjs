@@ -441,6 +441,99 @@ WHERE co.list_price IS NULL
 ORDER BY co.updated_at DESC NULLS LAST, co.offer_id
 `.trim(),
   },
+  {
+    name: 'quarantine_active_entries',
+    description: 'Active, non-expired catalog source quarantine overlay rows.',
+    paramSchema: LIMIT_PARAM_SCHEMA,
+    query: `
+SELECT
+  quarantine_id,
+  match_type,
+  match_value,
+  state,
+  reason,
+  expires_at,
+  created_by,
+  created_at,
+  revoked_at,
+  revoked_by,
+  metadata
+FROM catalog_source_quarantine
+WHERE state = 'active'
+  AND (expires_at IS NULL OR expires_at > now())
+ORDER BY created_at DESC NULLS LAST, quarantine_id DESC
+`.trim(),
+  },
+  {
+    name: 'quarantine_impact_summary',
+    description: 'Shadow catalog product, SKU, and offer counts for each active source quarantine row.',
+    paramSchema: LIMIT_PARAM_SCHEMA,
+    query: `
+WITH active_quarantine AS (
+  SELECT
+    quarantine_id,
+    match_type,
+    match_value,
+    reason,
+    expires_at,
+    created_by,
+    created_at
+  FROM catalog_source_quarantine
+  WHERE state = 'active'
+    AND (expires_at IS NULL OR expires_at > now())
+),
+matched_products AS (
+  SELECT
+    q.quarantine_id,
+    p.product_key
+  FROM active_quarantine q
+  JOIN catalog_products p
+    ON (
+      (q.match_type = 'domain' AND lower(q.match_value) = lower(p.source_domain))
+      OR (q.match_type = 'merchant_platform' AND q.match_value = p.merchant_id || ':' || p.platform)
+      OR (q.match_type = 'source_system_ref' AND q.match_value = p.source_system || ':' || p.source_ref)
+    )
+),
+product_counts AS (
+  SELECT quarantine_id, COUNT(DISTINCT product_key)::int AS catalog_products
+  FROM matched_products
+  GROUP BY quarantine_id
+),
+sku_counts AS (
+  SELECT mp.quarantine_id, COUNT(*)::int AS catalog_skus
+  FROM matched_products mp
+  JOIN catalog_skus s
+    ON s.product_key = mp.product_key
+  GROUP BY mp.quarantine_id
+),
+offer_counts AS (
+  SELECT mp.quarantine_id, COUNT(*)::int AS catalog_offers
+  FROM matched_products mp
+  JOIN catalog_offers o
+    ON o.product_key = mp.product_key
+  GROUP BY mp.quarantine_id
+)
+SELECT
+  q.quarantine_id,
+  q.match_type,
+  q.match_value,
+  q.reason,
+  q.expires_at,
+  q.created_by,
+  q.created_at,
+  COALESCE(pc.catalog_products, 0)::int AS catalog_products,
+  COALESCE(sc.catalog_skus, 0)::int AS catalog_skus,
+  COALESCE(oc.catalog_offers, 0)::int AS catalog_offers
+FROM active_quarantine q
+LEFT JOIN product_counts pc
+  ON pc.quarantine_id = q.quarantine_id
+LEFT JOIN sku_counts sc
+  ON sc.quarantine_id = q.quarantine_id
+LEFT JOIN offer_counts oc
+  ON oc.quarantine_id = q.quarantine_id
+ORDER BY q.created_at DESC NULLS LAST, q.quarantine_id DESC
+`.trim(),
+  },
 ];
 
 const selectorRegistry = Object.fromEntries(selectors.map((selector) => [selector.name, selector]));
