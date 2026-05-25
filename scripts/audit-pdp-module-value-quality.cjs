@@ -200,6 +200,65 @@ function collectIngredientTexts(seedData, snapshot, payload) {
   );
 }
 
+function collectIngredientApplicability(seedData, snapshot, payload) {
+  const ingredientIntels = [
+    asObject(seedData.ingredient_intel),
+    asObject(snapshot.ingredient_intel),
+    asObject(payload.ingredient_intel),
+  ];
+  const remediations = [
+    asObject(seedData.ingredient_remediation_v1),
+    asObject(snapshot.ingredient_remediation_v1),
+    asObject(payload.ingredient_remediation_v1),
+  ];
+  const qualityEntries = [
+    asObject(asObject(seedData.pdp_field_quality_summary).ingredients_raw),
+    asObject(asObject(seedData.pdp_field_quality_summary).ingredients_inci),
+    asObject(asObject(snapshot.pdp_field_quality_summary).ingredients_raw),
+    asObject(asObject(snapshot.pdp_field_quality_summary).ingredients_inci),
+    asObject(asObject(payload.pdp_field_quality_summary).ingredients_raw),
+    asObject(asObject(payload.pdp_field_quality_summary).ingredients_inci),
+  ];
+  const evidence = [];
+  for (const intel of ingredientIntels) {
+    const applicability = asObject(intel.inci_applicability);
+    if (intel.not_applicable === true || /not_applicable/i.test(asString(applicability.status))) {
+      evidence.push({
+        source: 'ingredient_intel',
+        status: applicability.status || 'not_applicable',
+        reason: applicability.reason || null,
+        source_quality_status: applicability.source_quality_status || null,
+      });
+    }
+  }
+  for (const remediation of remediations) {
+    if (/mark_inci_not_applicable|not_applicable/i.test(`${remediation.action || ''} ${remediation.source_quality_status || ''}`)) {
+      evidence.push({
+        source: 'ingredient_remediation_v1',
+        status: remediation.action || 'not_applicable',
+        reason: remediation.reason || null,
+        source_quality_status: remediation.source_quality_status || null,
+      });
+    }
+  }
+  for (const quality of qualityEntries) {
+    if (/not_applicable|reviewed_not_applicable/i.test(`${quality.source_quality_status || ''} ${quality.reason_codes || ''}`)) {
+      evidence.push({
+        source: 'pdp_field_quality_summary',
+        status: quality.source_quality_status || 'reviewed_not_applicable',
+        reason: Array.isArray(quality.reason_codes) ? quality.reason_codes.join(',') : quality.reason_codes || null,
+        source_quality_status: quality.source_quality_status || null,
+      });
+    }
+  }
+  return evidence.length
+    ? {
+        status: 'reviewed_not_applicable',
+        evidence,
+      }
+    : null;
+}
+
 function collectHowToTexts(seedData, snapshot, payload) {
   return unique(
     compact([
@@ -288,6 +347,7 @@ function analyzeRow(row) {
   const skuTokens = skuValues(variants, row);
   const images = collectImageUrls(seedData, snapshot, payload);
   const ingredients = collectIngredientTexts(seedData, snapshot, payload);
+  const ingredientApplicability = collectIngredientApplicability(seedData, snapshot, payload);
   const howToTexts = collectHowToTexts(seedData, snapshot, payload);
   const detailSections = collectDetailSections(seedData, snapshot, payload);
   const intel = findIntel(row);
@@ -336,7 +396,7 @@ function analyzeRow(row) {
     add('gallery', 'gallery_cross_product_sku_ids', 'critical', extraUltaIds.slice(0, 12), 'filter retailer recommendation/product-card images by source SKU or product PDP image set');
   }
 
-  if (!ingredients.length) {
+  if (!ingredients.length && !ingredientApplicability) {
     add('ingredients', 'ingredients_missing_source_backed_inci', 'high', [], 'fill from official INCI or verified retailer ingredient panel');
   } else {
     const badIngredientTexts = ingredients.filter((text) =>
@@ -445,6 +505,8 @@ function analyzeRow(row) {
           return '';
         }
       })).slice(0, 8),
+      ingredient_applicability_status: ingredientApplicability?.status || '',
+      ingredient_applicability_evidence: ingredientApplicability?.evidence?.slice(0, 5) || [],
       ingredient_texts_sample: ingredients.slice(0, 5),
       how_to_texts_sample: howToTexts.slice(0, 5),
       detail_section_count: detailSections.length,
@@ -618,9 +680,17 @@ async function main() {
   console.log(JSON.stringify(output.summary, null, 2));
 }
 
-main()
-  .catch((err) => {
-    console.error(err);
-    process.exitCode = 1;
-  })
-  .finally(() => closePool());
+if (require.main === module) {
+  main()
+    .catch((err) => {
+      console.error(err);
+      process.exitCode = 1;
+    })
+    .finally(() => closePool());
+} else {
+  module.exports = {
+    analyzeRow,
+    collectIngredientApplicability,
+    collectIngredientTexts,
+  };
+}
