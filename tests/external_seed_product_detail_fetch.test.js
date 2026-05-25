@@ -1004,6 +1004,118 @@ describe('external seed product detail hydration', () => {
     );
   });
 
+  test('get_pdp_v2 allows published live sig_* PDPs blocked only by a missing quality snapshot', async () => {
+    const { app, db } = loadServerWithDb({
+      PIVOTA_API_BASE: 'https://backend.test',
+      PIVOTA_API_KEY: 'test-token',
+    });
+
+    const signatureRow = {
+      merchant_id: 'external_seed',
+      platform: 'external_seed',
+      source_product_id: 'ext_live_missing_quality_snapshot',
+      product_key: 'prod::external_seed::external_seed::ext_live_missing_quality_snapshot',
+      external_seed_id: 'eps_live_missing_quality_snapshot',
+      external_seed_external_product_id: 'ext_live_missing_quality_snapshot',
+      external_seed_status: 'active',
+    };
+    const statusRow = {
+      id: 'eps_live_missing_quality_snapshot',
+      external_product_id: 'ext_live_missing_quality_snapshot',
+      status: 'active',
+    };
+    const detailRow = {
+      ...statusRow,
+      canonical_url: 'https://example.com/products/live-published-serum',
+      destination_url: 'https://example.com/products/live-published-serum',
+      title: 'Live Published Serum',
+      image_url: 'https://cdn.example.com/live-published-serum.jpg',
+      price_amount: '13.99',
+      price_currency: 'USD',
+      availability: 'In Stock',
+      seed_data: {
+        brand: 'Example',
+        description: 'A live published serum with source-backed product detail.',
+        snapshot: {
+          canonical_url: 'https://example.com/products/live-published-serum',
+          product_id: 'ext_live_missing_quality_snapshot',
+          image_urls: ['https://cdn.example.com/live-published-serum.jpg'],
+          variants: [
+            {
+              variant_id: 'live-published-serum-default',
+              title: 'Default',
+              price: '13.99',
+              currency: 'USD',
+              stock: 'In Stock',
+            },
+          ],
+        },
+      },
+    };
+    const servingEligibilityRow = eligibleServingRow({
+      content_key: 'ck_live_missing_quality_snapshot',
+      product_key: signatureRow.product_key,
+      pivota_signature_id: 'sig_live_missing_quality_snapshot',
+      pdp_lifecycle_stage: 'published',
+      serving_eligible: false,
+      pipeline_stage: 'extracted',
+      blocker_code: 'low_quality',
+      blocker_detail: 'no quality snapshot found',
+      content_quality_score: 0,
+      active_external_seed_source_match: true,
+    });
+
+    db.query.mockImplementation((sql) => {
+      const text = String(sql || '');
+      if (text.includes('FROM catalog_products cp') && text.includes('LEFT JOIN index_pipeline_state ips')) {
+        return Promise.resolve({ rows: [servingEligibilityRow] });
+      }
+      if (text.includes('FROM catalog_products') && text.includes('pivota_signature_id = $1')) {
+        return Promise.resolve({ rows: [signatureRow] });
+      }
+      if (text.includes('FROM pdp_identity_listing pil') && text.includes('source_listing_ref = $1')) {
+        return Promise.resolve({ rows: [] });
+      }
+      if (text.includes('FROM external_product_seeds') && text.includes('destination_url')) {
+        return Promise.resolve({ rows: [detailRow] });
+      }
+      if (text.includes('FROM external_product_seeds') && text.includes('status')) {
+        return Promise.resolve({ rows: [statusRow] });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+
+    nock('https://backend.test')
+      .get('/agent/v1/product-groups/resolve-by-product-id')
+      .query((query) => query && query.product_id === 'ext_live_missing_quality_snapshot')
+      .reply(404, { error: 'PRODUCT_NOT_FOUND', message: 'No product group' });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'get_pdp_v2',
+        payload: {
+          product_ref: {
+            merchant_id: 'external_seed',
+            product_id: 'sig_live_missing_quality_snapshot',
+          },
+          include: ['canonical', 'product_overview', 'offers'],
+          options: {
+            serving_eligible_only: true,
+          },
+        },
+      })
+      .expect(200);
+
+    const canonicalModule = res.body.modules?.find((module) => module?.type === 'canonical');
+    expect(canonicalModule?.data?.pdp_payload?.product).toEqual(
+      expect.objectContaining({
+        product_id: 'ext_live_missing_quality_snapshot',
+        title: 'Live Published Serum',
+      }),
+    );
+  });
+
   test('get_pdp_v2 treats reviewed external seed accessories as not-applicable for formula modules', async () => {
     const { app, db } = loadServerWithDb({
       PIVOTA_API_BASE: 'https://backend.test',

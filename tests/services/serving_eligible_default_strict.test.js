@@ -51,6 +51,35 @@ describe('serving eligibility default-strict behavior', () => {
     expect(shouldRequirePdpServingEligible({}, { allowIneligible: 'yes' })).toBe(true);
   });
 
+  test('published live PDPs can bypass only stale missing quality snapshot blockers', () => {
+    const app = require('../../src/server');
+    const { shouldAllowPublishedPdpMissingQualitySnapshot } = app._debug;
+    const staleMissingSnapshot = {
+      serving_eligible: false,
+      sync_status: 'live',
+      pdp_lifecycle_stage: 'published',
+      blocker_code: 'low_quality',
+      blocker_detail: 'no quality snapshot found',
+      content_quality_score: 0,
+      active_external_seed_source_match: true,
+    };
+
+    expect(shouldAllowPublishedPdpMissingQualitySnapshot(staleMissingSnapshot)).toBe(true);
+    expect(shouldAllowPublishedPdpMissingQualitySnapshot({
+      ...staleMissingSnapshot,
+      blocker_code: 'missing_price',
+      blocker_detail: 'missing_price',
+    })).toBe(false);
+    expect(shouldAllowPublishedPdpMissingQualitySnapshot({
+      ...staleMissingSnapshot,
+      pdp_lifecycle_stage: 'candidate',
+    })).toBe(false);
+    expect(shouldAllowPublishedPdpMissingQualitySnapshot({
+      ...staleMissingSnapshot,
+      active_external_seed_source_match: false,
+    })).toBe(false);
+  });
+
   test('catalog serving gateway auto mode resolves to serving_eligible_only', async () => {
     const { searchCatalogServingGateway } = require('../../src/services/catalogServingGateway');
     const searchCatalogServingIndexFn = jest.fn(async () => ({

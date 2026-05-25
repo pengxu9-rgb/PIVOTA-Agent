@@ -6003,6 +6003,27 @@ function normalizePdpServingEligibilityRow(row) {
   };
 }
 
+function shouldAllowPublishedPdpMissingQualitySnapshot(servingEligibility) {
+  if (!servingEligibility || typeof servingEligibility !== 'object') return false;
+  if (servingEligibility.serving_eligible === true) return false;
+  const blockerCode = String(servingEligibility.blocker_code || '').trim().toLowerCase();
+  const blockerDetail = String(servingEligibility.blocker_detail || '').trim().toLowerCase();
+  const syncStatus = String(servingEligibility.sync_status || '').trim().toLowerCase();
+  const lifecycleStage = String(servingEligibility.pdp_lifecycle_stage || '').trim().toLowerCase();
+  const qualityScore = Number(servingEligibility.content_quality_score);
+  const hasMissingQualitySnapshot =
+    blockerCode === 'low_quality' &&
+    blockerDetail.includes('no quality snapshot found') &&
+    (!Number.isFinite(qualityScore) || qualityScore <= 0);
+
+  return Boolean(
+    syncStatus === 'live' &&
+      lifecycleStage === 'published' &&
+      servingEligibility.active_external_seed_source_match === true &&
+      hasMissingQualitySnapshot,
+  );
+}
+
 async function fetchPdpServingEligibilityFromDb(args = {}) {
   if (!process.env.DATABASE_URL) return null;
   const contentKey = String(args.contentKey || '').trim();
@@ -6137,6 +6158,8 @@ function buildPdpServingEligibilityDetails(eligibility, fallbackReason = 'servin
     content_quality_score: eligibility.content_quality_score,
     pdp_lifecycle_stage: eligibility.pdp_lifecycle_stage || null,
     sync_status: eligibility.sync_status || null,
+    active_external_seed_source_match: eligibility.active_external_seed_source_match === true,
+    eligibility_override_reason: eligibility.eligibility_override_reason || null,
   };
 }
 
@@ -35071,9 +35094,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               requestedPivotaSignatureId,
               canonicalProductRef,
             });
+            const servingEligibilityOverrideReason =
+              shouldAllowPublishedPdpMissingQualitySnapshot(servingEligibility)
+                ? 'published_missing_quality_snapshot'
+                : null;
+            if (servingEligibility && servingEligibilityOverrideReason) {
+              servingEligibility.eligibility_override_reason = servingEligibilityOverrideReason;
+            }
             const isBlocked =
               servingEligibility
-                ? servingEligibility.serving_eligible !== true
+                ? servingEligibility.serving_eligible !== true && !servingEligibilityOverrideReason
                 : failClosedForMissingEligibility;
             if (isBlocked) {
               const details = buildPdpServingEligibilityDetails(
@@ -43991,6 +44021,7 @@ module.exports._debug = {
   filterSearchServingEligibleProducts,
   getSearchProductServingEligibility,
   shouldRequirePdpServingEligible,
+  shouldAllowPublishedPdpMissingQualitySnapshot,
   getSearchQualityContractHardConstraintResult,
   buildSearchQualityTierCounts,
   projectSearchQualityContractForMetadata,
