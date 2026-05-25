@@ -1561,15 +1561,24 @@ const SEED_IMAGE_RELEVANCE_FAMILY_STOP_TOKENS = new Set([
   'bestsellers',
   'body',
   'care',
+  'capsule',
   'closed',
   'closelid',
+  'collection',
   'comfort',
+  'edition',
+  'editorial',
+  'fall',
   'find',
   'for',
   'full',
+  'global',
   'hair',
+  'holiday',
   'http',
   'https',
+  'le',
+  'limited',
   'new',
   'of',
   'openlid',
@@ -1580,11 +1589,16 @@ const SEED_IMAGE_RELEVANCE_FAMILY_STOP_TOKENS = new Set([
   'primary',
   'pump',
   'regular',
+  'restock',
   'secondary',
   'set',
+  'shade',
+  'shades',
   'size',
   'skin',
+  'spring',
   'sku',
+  'smr',
   'the',
   'to',
   'tools',
@@ -1753,6 +1767,22 @@ function extractSeedImageCanonicalProductTypes(tokens) {
   return out;
 }
 
+function extractSeedImageSpecialProductTypes(value) {
+  const filename = extractSeedImageFilenameText(value);
+  const out = [];
+  if (/(?:^|[-_ ])diamond[-_ ]?bomb(?:[-_ ]|$)/i.test(filename)) {
+    out.push('highlighter');
+  }
+  return out;
+}
+
+function extractSeedImageProductTypes(tokens, value) {
+  return Array.from(new Set([
+    ...extractSeedImageCanonicalProductTypes(tokens),
+    ...extractSeedImageSpecialProductTypes(value),
+  ]));
+}
+
 function extractSeedImageFamilyTokens(tokens, productTypes = []) {
   const out = [];
   for (const token of Array.isArray(tokens) ? tokens : []) {
@@ -1842,7 +1872,7 @@ function isRelevantSeedGalleryImageUrl(value, relevanceContext) {
   ) {
     return false;
   }
-  const imageProductTypes = extractSeedImageCanonicalProductTypes(imageTokens);
+  const imageProductTypes = extractSeedImageProductTypes(imageTokens, value);
   if (relevanceContext.productTypes.length === 1 && imageProductTypes.length > 0) {
     if (!imageProductTypes.includes(relevanceContext.productTypes[0])) return false;
   }
@@ -1863,6 +1893,10 @@ function isRelevantSeedContentImageUrl(value, relevanceContext) {
     explicitSiblingTokens.some((token) => relevanceContext.disallowedSiblingTokens.includes(token))
   ) {
     return false;
+  }
+  const imageProductTypes = extractSeedImageProductTypes(imageTokens, value);
+  if (relevanceContext.productTypes.length === 1 && imageProductTypes.length > 0) {
+    if (!imageProductTypes.includes(relevanceContext.productTypes[0])) return false;
   }
   if (hasSeedImageFamilyOverlap(imageTokens, relevanceContext.familyTokens)) return true;
   const imageFamilyTokens = extractSeedImageFamilyTokens(imageTokens, relevanceContext.productTypes || []);

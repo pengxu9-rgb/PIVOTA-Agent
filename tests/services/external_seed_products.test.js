@@ -2194,6 +2194,49 @@ describe('externalSeedProducts helper', () => {
     ]);
   });
 
+  test('filters Fenty sibling product images from strict Shopify file galleries', () => {
+    const correctHero =
+      'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FB_LE-ARCANE_SMR24_T2PRODUCT_GB_RISKY-RULIN_1200X1500_72DPI.jpg?v=1762287627';
+    const correctSmear =
+      'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FB_FALL24_T2PRODUCT_SMEAR_LE-ARCANE_GLOSSBOMB_RISKYRULIN_1200X1500_72DPI_1.jpg?v=1761078871';
+    const siblingDiamondBomb =
+      'https://fentybeauty.com/cdn/shop/files/FB_FALL25_T2PRODUCT_ECOMM_LE-DIAMOND-COLLECTION_DIAMOND-BOMB_LAVENDER-LUVR_1200X1500_72DPI_472x562.jpg?v=1753918003';
+    const siblingDiamondInfographic =
+      'https://fentybeauty.com/cdn/shop/files/FB898554GLOBAL_LEDIAMONDCAPSULECOLLECTION_INFOGRAPHICS_1200x1500_Diamond-Bomb_Model_Smear__LAVENDERLUV_R_MEDIUM_1b6a84dc-e2de-4d31-97cb-f180f5aa6101_472x562.jpg?v=1753918003';
+
+    const product = buildExternalSeedProduct({
+      id: 'eps_fenty_risky_rulin',
+      external_product_id: 'fenty-beauty:risky-rulin',
+      canonical_url: 'https://fentybeauty.com/products/gloss-bomb-universal-lip-luminizer-arcane-risky-rulin',
+      destination_url: 'https://fentybeauty.com/products/gloss-bomb-universal-lip-luminizer-arcane-risky-rulin',
+      domain: 'fentybeauty.com',
+      title: 'Gloss Bomb Universal Lip Luminizer: Arcane Collection — Risky Rulin',
+      seed_data: {
+        brand: 'Fenty Beauty',
+        snapshot: {
+          title: 'Gloss Bomb Universal Lip Luminizer: Arcane Collection — Risky Rulin',
+          image_urls: [correctHero, correctSmear, siblingDiamondBomb, siblingDiamondInfographic],
+          content_image_urls: [siblingDiamondInfographic],
+          variants: [
+            {
+              variant_id: '42904345837613',
+              option_name: 'Shade',
+              option_value: 'Risky Rulin',
+              image_url: correctHero,
+              image_urls: [correctHero],
+              price: '23.00',
+              currency: 'USD',
+            },
+          ],
+        },
+      },
+    });
+
+    expect(product.images).toEqual([correctHero, correctSmear]);
+    expect(product.images).not.toContain(siblingDiamondBomb);
+    expect(product.content_image_urls || []).not.toContain(siblingDiamondInfographic);
+  });
+
   test('drops page-body soup from variant descriptions while preserving commerce fields', () => {
     const row = {
       id: 'eps_medicube_variant_soup',
