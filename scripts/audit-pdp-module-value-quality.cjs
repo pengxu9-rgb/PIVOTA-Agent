@@ -93,6 +93,30 @@ function collectImageUrls(...sources) {
   return normalized.length ? normalized : unique(out);
 }
 
+function collectRootImageUrls(...sources) {
+  const out = [];
+  for (const source of sources) {
+    const obj = asObject(source);
+    out.push(...compact(asArray(obj.image_urls)));
+    out.push(...compact(asArray(obj.images)));
+    if (asString(obj.image_url)) out.push(asString(obj.image_url));
+  }
+  const normalized = normalizePdpImageUrls(out);
+  return normalized.length ? normalized : unique(out);
+}
+
+function collectVariantImageUrls(variants) {
+  const out = [];
+  for (const variant of variants || []) {
+    const obj = asObject(variant);
+    out.push(...compact(asArray(obj.image_urls)));
+    out.push(...compact(asArray(obj.images)));
+    if (asString(obj.image_url)) out.push(asString(obj.image_url));
+  }
+  const normalized = normalizePdpImageUrls(out);
+  return normalized.length ? normalized : unique(out);
+}
+
 function collectVariants(...sources) {
   const out = [];
   for (const source of sources) {
@@ -172,6 +196,23 @@ function extractUltaSkuIds(urls) {
       const matches = [...asString(url).matchAll(/\/(?:i|images?)\/ulta\/(\d{5,})/gi)];
       return matches.map((match) => match[1]);
     }),
+  );
+}
+
+function isColorCosmeticGalleryRow(row) {
+  const category = asString(row.category_path || row.product_type || '').toLowerCase();
+  const title = asString(row.title || row.product_name || '').toLowerCase();
+  if (!/beauty\/makeup\/(?:face|lip|lips|eye|eyes)\//.test(category)) return false;
+  return /shade|tint|balm|blush|cushion|foundation|concealer|lip|color|glow|mesh|stick|tone up|highlighter|bronzer|powder/i.test(
+    `${category} ${title}`,
+  );
+}
+
+function suspiciousGalleryRootUrls(urls) {
+  return unique(urls).filter((url) =>
+    /(?:\?crop=center|\/black(?:_1)?\.png|0000_Layer_Comp_1|0001_Layer_Comp_2|Virtual-try-on|ProductCard|recommend|related|also[_-]?like|\$ProductCard)/i.test(
+      asString(url),
+    ),
   );
 }
 
@@ -255,6 +296,60 @@ function collectIngredientApplicability(seedData, snapshot, payload) {
     ? {
         status: 'reviewed_not_applicable',
         evidence,
+      }
+    : null;
+}
+
+function collectIngredientComponentRefs(seedData, snapshot, payload) {
+  const refs = [
+    ...asArray(seedData.bundle_component_refs),
+    ...asArray(snapshot.bundle_component_refs),
+    ...asArray(payload.bundle_component_refs),
+  ].filter((ref) => ref && typeof ref === 'object');
+  const uniqueRefs = [];
+  const seen = new Set();
+  for (const ref of refs) {
+    const id = asString(ref.external_product_id || ref.product_id || ref.product_key || ref.title);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    uniqueRefs.push(ref);
+  }
+  const remediations = [
+    asObject(seedData.ingredient_remediation_v1),
+    asObject(snapshot.ingredient_remediation_v1),
+    asObject(payload.ingredient_remediation_v1),
+  ];
+  const queues = [
+    asObject(asObject(seedData.ingredient_intel).source_review_queue),
+    asObject(asObject(snapshot.ingredient_intel).source_review_queue),
+    asObject(asObject(payload.ingredient_intel).source_review_queue),
+  ];
+  const qualityEntries = [
+    asObject(asObject(seedData.pdp_field_quality_summary).ingredients_raw),
+    asObject(asObject(seedData.pdp_field_quality_summary).ingredients_inci),
+    asObject(asObject(snapshot.pdp_field_quality_summary).ingredients_raw),
+    asObject(asObject(snapshot.pdp_field_quality_summary).ingredients_inci),
+    asObject(asObject(payload.pdp_field_quality_summary).ingredients_raw),
+    asObject(asObject(payload.pdp_field_quality_summary).ingredients_inci),
+  ];
+  const hasLinkedMarker =
+    remediations.some((item) => /component_refs_linked/i.test(asString(item.action))) ||
+    queues.some((item) => /component_refs_linked/i.test(asString(item.status))) ||
+    qualityEntries.some((item) =>
+      /component_refs_linked|reviewed_bundle_component_refs/i.test(
+        `${item.source_quality_status || ''} ${item.source_kinds || ''} ${item.reason_codes || ''}`,
+      ),
+    );
+  return uniqueRefs.length && hasLinkedMarker
+    ? {
+        status: 'component_refs_linked',
+        count: uniqueRefs.length,
+        refs: uniqueRefs.slice(0, 8).map((ref) => ({
+          external_product_id: asString(ref.external_product_id || ref.product_id),
+          title: asString(ref.title),
+          inheritance_scope: asArray(ref.inheritance_scope).map(asString).filter(Boolean),
+          review_state: asString(ref.review_state),
+        })),
       }
     : null;
 }
@@ -346,8 +441,11 @@ function analyzeRow(row) {
   ]);
   const skuTokens = skuValues(variants, row);
   const images = collectImageUrls(seedData, snapshot, payload);
+  const rootImages = collectRootImageUrls(seedData, snapshot, payload);
+  const variantImages = collectVariantImageUrls(variants);
   const ingredients = collectIngredientTexts(seedData, snapshot, payload);
   const ingredientApplicability = collectIngredientApplicability(seedData, snapshot, payload);
+  const ingredientComponentRefs = collectIngredientComponentRefs(seedData, snapshot, payload);
   const howToTexts = collectHowToTexts(seedData, snapshot, payload);
   const detailSections = collectDetailSections(seedData, snapshot, payload);
   const intel = findIntel(row);
@@ -385,8 +483,21 @@ function analyzeRow(row) {
   if (images.length === 0) {
     add('gallery', 'gallery_missing', 'critical', [], 'recover source-backed image or quarantine row until image is available');
   }
-  if (images.length > 16) {
-    add('gallery', 'gallery_excessive_image_count', 'medium', { count: images.length }, 'trim gallery to product-specific images only');
+  const suspiciousRootUrls = suspiciousGalleryRootUrls(rootImages);
+  if (rootImages.length > 16 && (!isColorCosmeticGalleryRow(row) || suspiciousRootUrls.length)) {
+    add(
+      'gallery',
+      'gallery_excessive_image_count',
+      'medium',
+      {
+        count: rootImages.length,
+        total_image_count: images.length,
+        variant_image_count: variantImages.length,
+        suspicious_root_count: suspiciousRootUrls.length,
+        suspicious_root_sample: suspiciousRootUrls.slice(0, 8),
+      },
+      'trim gallery to product-specific images only',
+    );
   }
   const relatedCardUrls = images.filter((url) => /\$ProductCard|ProductCardNeutral|recommend|related|also[_-]?like/i.test(url));
   if (relatedCardUrls.length) {
@@ -396,7 +507,7 @@ function analyzeRow(row) {
     add('gallery', 'gallery_cross_product_sku_ids', 'critical', extraUltaIds.slice(0, 12), 'filter retailer recommendation/product-card images by source SKU or product PDP image set');
   }
 
-  if (!ingredients.length && !ingredientApplicability) {
+  if (!ingredients.length && !ingredientApplicability && !ingredientComponentRefs) {
     add('ingredients', 'ingredients_missing_source_backed_inci', 'high', [], 'fill from official INCI or verified retailer ingredient panel');
   } else {
     const badIngredientTexts = ingredients.filter((text) =>
@@ -498,6 +609,8 @@ function analyzeRow(row) {
       variant_labels_sample: labels.slice(0, 12),
       variant_count: variants.length,
       image_count: images.length,
+      root_image_count: rootImages.length,
+      variant_image_count: variantImages.length,
       image_hosts_sample: unique(images.map((url) => {
         try {
           return new URL(url).hostname;
@@ -507,6 +620,9 @@ function analyzeRow(row) {
       })).slice(0, 8),
       ingredient_applicability_status: ingredientApplicability?.status || '',
       ingredient_applicability_evidence: ingredientApplicability?.evidence?.slice(0, 5) || [],
+      ingredient_component_refs_status: ingredientComponentRefs?.status || '',
+      ingredient_component_refs_count: ingredientComponentRefs?.count || 0,
+      ingredient_component_refs_sample: ingredientComponentRefs?.refs || [],
       ingredient_texts_sample: ingredients.slice(0, 5),
       how_to_texts_sample: howToTexts.slice(0, 5),
       detail_section_count: detailSections.length,
@@ -691,6 +807,7 @@ if (require.main === module) {
   module.exports = {
     analyzeRow,
     collectIngredientApplicability,
+    collectIngredientComponentRefs,
     collectIngredientTexts,
   };
 }

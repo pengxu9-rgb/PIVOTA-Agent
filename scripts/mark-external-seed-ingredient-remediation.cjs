@@ -554,6 +554,8 @@ function buildServingBlockPatch(seedData, options = {}) {
     'pdp_field_quality_summary',
     'ingredient_intel',
     'ingredient_remediation_v1',
+    'bundle_component_refs',
+    'bundle_component_ref_contract',
     'external_seed_snapshot_contract',
     'strict_pdp_source_blocker_v1',
   ]) {

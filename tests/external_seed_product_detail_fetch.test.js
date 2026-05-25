@@ -66,10 +66,17 @@ describe('external seed product detail hydration', () => {
       { product_id: 'ext_entry_ref' },
       [
         { product_id: 'ext_identity_canonical' },
-        { source_product_id: 'ext_catalog_identity', source_listing_ref: 'prod::external_seed::external_seed::ext_listing_ref' },
+        {
+          source_product_id: 'ext_catalog_identity',
+          source_listing_ref: 'prod::external_seed::external_seed::ext_listing_ref',
+          external_product_id: 'ext_external_product_ref',
+        },
+        { source_listing_ref: 'external_seed:ext_colon_listing_ref' },
+        { external_seed_external_product_id: 'ext_route_status_ref' },
         'sig_def456',
         'ext_string_ref',
         'prod::external_seed::external_seed::ext_string_product_key_ref',
+        'external_seed:ext_string_colon_ref',
       ],
     );
 
@@ -85,8 +92,12 @@ describe('external seed product detail hydration', () => {
         'ext_payload_product',
         'ext_product_key_ref',
         'ext_listing_ref',
+        'ext_external_product_ref',
+        'ext_colon_listing_ref',
+        'ext_route_status_ref',
         'ext_string_ref',
         'ext_string_product_key_ref',
+        'ext_string_colon_ref',
       ]),
     );
     expect(refs).not.toEqual(expect.arrayContaining(['sig_abc123', 'sig_def456']));
@@ -2743,11 +2754,11 @@ describe('external seed product detail hydration', () => {
     expect(detail?.product?.variants).toEqual([
       expect.objectContaining({
         variant_id: '51191889887448',
-        title: '150 mL',
+        title: '5.07 fl oz / 150 mL',
         option_name: 'Size',
-        option_value: '150 mL',
+        option_value: '5.07 fl oz / 150 mL',
         axis_kind: 'volume',
-        display_label: 'Size: 150 mL',
+        display_label: 'Size: 5.07 fl oz / 150 mL',
         source_quality_status: 'captured',
       }),
     ]);

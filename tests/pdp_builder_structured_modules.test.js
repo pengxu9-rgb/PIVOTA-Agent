@@ -649,6 +649,34 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     expect(payload.modules.find((module) => module.type === 'how_to_use')).toBeFalsy();
   });
 
+  test('keeps source-reviewed makeup how-to even when it includes removal guidance', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_reviewed_makeup_how_to',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Mask Fit AI Filter Cushion',
+        category_path: ['beauty', 'makeup', 'face', 'foundation'],
+        image_url: 'https://example.com/cushion.png',
+        price: { amount: 26, currency: 'USD' },
+        pdp_how_to_use_raw:
+          'Press the puff into the cushion, then tap a thin layer over the face from the center outward. Build coverage in light layers over redness, pores, or uneven tone; close the compact after use and remove thoroughly at the end of the day.',
+        pdp_field_quality_summary: {
+          how_to_use_raw: {
+            source_origin: 'official_pdp_reviewed',
+            source_quality_status: 'high',
+          },
+        },
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const howTo = payload.modules.find((module) => module.type === 'how_to_use');
+    expect(howTo?.data?.raw_text).toContain('Press the puff into the cushion');
+    expect(howTo?.data?.source_origin).toBe('official_pdp_reviewed');
+  });
+
   test('surfaces force-filled ingredient status as a reviewed note without fake INCI items', () => {
     const payload = buildPdpPayload({
       product: {
