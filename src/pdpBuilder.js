@@ -800,6 +800,7 @@ function asNonEmptyString(value) {
   }
   if (typeof value !== 'string') return '';
   const normalized = stripHtml(value);
+  if (/^\[object Object\]$/i.test(normalized)) return '';
   return normalized;
 }
 
@@ -1933,7 +1934,13 @@ function buildVariants(product) {
       : Array.isArray(attrs.selected_options)
         ? attrs.selected_options
         : typeof v.options === 'object' && v.options
-          ? Object.entries(v.options).map(([name, value]) => ({ name, value: String(value) }))
+          ? Object.entries(v.options)
+              .map(([name, value]) => ({
+                name,
+                value: asNonEmptyString(value),
+                axis_kind: asNonEmptyString(value?.axis_kind || value?.axisKind) || undefined,
+              }))
+              .filter((option) => option.value)
           : [];
 
     if (!options.length) {

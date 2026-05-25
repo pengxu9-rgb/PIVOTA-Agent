@@ -1955,7 +1955,7 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
           {
             variant_id: 'tirtir_keyring_1pc',
             title: { value: '1 piece' },
-            options: [{ name: 'Format', value: { value: '1 piece' }, axis_kind: 'format' }],
+            options: { Format: { value: '1 piece', axis_kind: 'format' } },
             source_quality_status: 'captured',
           },
         ],
