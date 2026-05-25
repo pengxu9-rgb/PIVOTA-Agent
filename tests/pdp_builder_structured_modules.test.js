@@ -623,6 +623,32 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     expect(payload.modules.find((module) => module.type === 'how_to_use')).toBeFalsy();
   });
 
+  test('suppresses force-fill template how-to copy for external seeds', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_force_fill_how_to',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Matte Liquid Lip Color',
+        category_path: ['beauty', 'makeup', 'lip', 'lipstick'],
+        image_url: 'https://example.com/lip-color.png',
+        price: { amount: 29, currency: 'USD' },
+        pdp_how_to_use_raw:
+          'Apply to the target area and build as needed. Remove thoroughly at the end of the day.',
+        pdp_field_quality_summary: {
+          how_to_use_raw: {
+            source_origin: 'pivota_force_fill',
+            source_quality_status: 'force_filled_reviewed_pattern',
+          },
+        },
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    expect(payload.modules.find((module) => module.type === 'how_to_use')).toBeFalsy();
+  });
+
   test('surfaces force-filled ingredient status as a reviewed note without fake INCI items', () => {
     const payload = buildPdpPayload({
       product: {
@@ -2072,6 +2098,31 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
       'Sodium Hyaluronate',
       'Glycerin',
     ]);
+  });
+
+  test('does not infer cosmetic makeup ingredients as active ingredients without explicit active evidence', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_gloss_peptide_noise',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Gloss Bomb Lip Luminizer',
+        pdp_schema_profile: 'beauty_formula',
+        category_path: ['beauty', 'makeup', 'lip', 'lip-gloss'],
+        image_url: 'https://example.com/gloss.png',
+        price: { amount: 23, currency: 'USD' },
+        pdp_ingredients_raw:
+          'Polybutene, Octyldodecanol, Bis-Diglyceryl Polyacyladipate-2, Tricaprylin, Palmitoyl Tripeptide-1, Silica Dimethyl Silylate, Mica, Titanium Dioxide, Iron Oxides, Red 7 Lake',
+        active_ingredients: ['Peptides'],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    expect(payload.modules.find((module) => module.type === 'ingredients_inci')?.data?.items).toEqual(
+      expect.arrayContaining(['Palmitoyl Tripeptide-1']),
+    );
+    expect(payload.modules.find((module) => module.type === 'active_ingredients')).toBeFalsy();
   });
 
   test('keeps structured content assets out of product image and live gallery', () => {

@@ -39930,11 +39930,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               (!merchantId || merchantId === EXTERNAL_SEED_MERCHANT_ID)
             ) {
               resolvedSignatureRef = await resolveCatalogProductRefFromPivotaSignature(productId).catch(() => null);
-              if (
+              const resolvedExternalSeedProductId =
                 resolvedSignatureRef?.merchant_id === EXTERNAL_SEED_MERCHANT_ID &&
-                isExternalSeedProductId(resolvedSignatureRef.product_id)
+                resolvedSignatureRef?.product_id &&
+                !isPivotaSignatureProductId(resolvedSignatureRef.product_id)
+                  ? String(resolvedSignatureRef.product_id).trim()
+                  : '';
+              if (
+                resolvedExternalSeedProductId
               ) {
-                effectiveProductId = resolvedSignatureRef.product_id;
+                effectiveProductId = resolvedExternalSeedProductId;
                 effectiveMerchantId = EXTERNAL_SEED_MERCHANT_ID;
               }
             }
@@ -39943,8 +39948,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               Math.min(PDP_SIMILAR_MAX_CANDIDATE_LIMIT, Math.max(limit + 12, limit * 3)),
             );
             const isExternalSeedDirectBase =
-              isExternalSeedProductId(effectiveProductId) &&
-              (!effectiveMerchantId || effectiveMerchantId === EXTERNAL_SEED_MERCHANT_ID);
+              Boolean(effectiveProductId) &&
+              !isPivotaSignatureProductId(effectiveProductId) &&
+              (
+                effectiveMerchantId === EXTERNAL_SEED_MERCHANT_ID ||
+                (!effectiveMerchantId && isExternalSeedProductId(effectiveProductId))
+              );
             const baseProduct =
               (isExternalSeedDirectBase
                 ? {

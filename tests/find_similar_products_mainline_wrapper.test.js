@@ -177,6 +177,85 @@ describe('find_similar_products mainline wrapper', () => {
     );
   });
 
+  it('resolves sig bases whose external seed id is not ext-prefixed', async () => {
+    process.env.DATABASE_URL = 'postgres://test';
+    const dbQueryMock = jest.fn().mockResolvedValue({
+      rows: [
+        {
+          merchant_id: 'external_seed',
+          platform: 'external_seed',
+          source_product_id: 'fenty-beauty:a8883fdd3f7bfcc5',
+          product_key: 'prod::external_seed::external_seed::fenty-beauty:a8883fdd3f7bfcc5',
+          pivota_signature_id: 'sig_fenty1',
+          content_key: 'fenty:test-content-key',
+        },
+      ],
+    });
+    jest.doMock('../src/db', () => ({
+      query: dbQueryMock,
+    }));
+
+    const recommendMock = jest.fn().mockResolvedValue({
+      items: [
+        {
+          product_id: 'ext_sim_1',
+          merchant_id: 'external_seed',
+          pivota_signature_id: 'sig_sim1',
+          title: 'Similar Product 1',
+          image_url: 'https://cdn.example.test/sim-1.jpg',
+          card_highlight: 'Same lip category with a comparable finish.',
+        },
+      ],
+      metadata: {
+        low_confidence: false,
+        retrieval_mix: { internal: 0, external: 1 },
+      },
+    });
+    jest.doMock('../src/services/RecommendationEngine', () => ({
+      ...jest.requireActual('../src/services/RecommendationEngine'),
+      recommend: recommendMock,
+      getCacheStats: jest.fn(() => ({})),
+    }));
+
+    const app = require('../src/server');
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_similar_products',
+        payload: {
+          product_id: 'sig_fenty1',
+          merchant_id: 'external_seed',
+          limit: 4,
+          options: { debug: true },
+        },
+      })
+      .expect(200);
+
+    expect(recommendMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pdp_product: expect.objectContaining({
+          merchant_id: 'external_seed',
+          product_id: 'fenty-beauty:a8883fdd3f7bfcc5',
+          external_product_id: 'fenty-beauty:a8883fdd3f7bfcc5',
+          pivota_signature_id: 'sig_fenty1',
+          requested_product_id: 'sig_fenty1',
+          source: 'external_seed',
+        }),
+      }),
+    );
+    expect(res.body.metadata).toEqual(
+      expect.objectContaining({
+        direct_base_detail_mode: 'external_seed_minimal',
+        similar_base_ref_resolution: expect.objectContaining({
+          requested_product_id: 'sig_fenty1',
+          resolved_product_id: 'fenty-beauty:a8883fdd3f7bfcc5',
+          resolved: true,
+        }),
+      }),
+    );
+  });
+
   it('does not spend card detail budget on highlight-only gaps', async () => {
     const app = require('../src/server');
 
