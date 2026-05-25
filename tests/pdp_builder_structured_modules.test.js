@@ -2225,6 +2225,57 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     expect(liveGate.failure_reasons).not.toContain('content_media_leaked_into_gallery');
   });
 
+  test('filters Ulta cross-sell thumbnails out of external seed PDP media gallery', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'sig_75692c6df4d6ba6ce7daf0453e35cf4e',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Soothing & Barrier Support Serum for Sensitive Skin & Hydration',
+        brand: 'The Ordinary',
+        image_url: 'https://media.ultainc.com/i/ulta/2615437?w=500&h=500',
+        images: [
+          'https://media.ultainc.com/i/ulta/2615437?w=500&h=500',
+          'https://media.ulta.com/i/ulta/2615437?w=400&h=400&fmt=auto',
+          'https://media.ulta.com/i/ulta/2615437_alt01?w=400&h=400&fmt=auto',
+          'https://media.ulta.com/i/ulta/2615437_alt02?w=400&h=400&fmt=auto',
+          'https://media.ultainc.com/i/ulta/2650610?w=400&$ProductCardNeutralBGLight$&h=400&fmt=auto',
+          'https://media.ultainc.com/i/ulta/2632648?w=400&$ProductCardNeutralBGLight$&h=400&fmt=auto',
+        ],
+        price: { amount: 17, currency: 'USD' },
+        description:
+          "The Ordinary's Soothing & Barrier Support Serum is a multi-active, skin support serum.",
+        variants: [
+          {
+            variant_id: 'fe328535f49a',
+            sku_id: '2615437',
+            title: 'Default',
+            price: { current: { amount: 17, currency: 'USD' } },
+            availability: { in_stock: true },
+            image_url: 'https://media.ultainc.com/i/ulta/2615437?w=500&h=500',
+            images: [
+              'https://media.ultainc.com/i/ulta/2615437?w=500&h=500',
+              'https://media.ulta.com/i/ulta/2615437?w=400&h=400&fmt=auto',
+            ],
+          },
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const galleryUrls =
+      payload.modules.find((module) => module.type === 'media_gallery')?.data?.items?.map((item) => item.url) || [];
+
+    expect(payload.product.image_url).toBe('https://media.ultainc.com/i/ulta/2615437?w=1000&h=1000');
+    expect(galleryUrls).toEqual([
+      'https://media.ultainc.com/i/ulta/2615437?w=1000&h=1000',
+      'https://media.ulta.com/i/ulta/2615437_alt01?w=1000&h=1000&fmt=auto',
+      'https://media.ulta.com/i/ulta/2615437_alt02?w=1000&h=1000&fmt=auto',
+    ]);
+    expect(galleryUrls.join('\n')).not.toMatch(/(?:2650610|2632648)/);
+  });
+
   test('suppresses active ingredient module for external seed skincare sets with formula category path', () => {
     const payload = buildPdpPayload({
       product: {

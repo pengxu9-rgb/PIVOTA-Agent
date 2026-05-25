@@ -2156,6 +2156,100 @@ function isDecorativePdpMediaUrl(url) {
   );
 }
 
+const PDP_DISPLAY_IMAGE_MIN_DIMENSION = 1000;
+const ULTA_MEDIA_HOST_RE = /^(?:media\.)?ulta(?:inc)?\.com$/i;
+const ULTA_IMAGE_PATH_RE = /\/i\/ulta\/([^/?#]+)$/i;
+
+function readUltaImageAssetId(value) {
+  const normalized = normalizePdpImageUrl(value);
+  if (!normalized) return '';
+  try {
+    const parsed = new URL(normalized);
+    if (!ULTA_MEDIA_HOST_RE.test(parsed.hostname)) return '';
+    const match = parsed.pathname.match(ULTA_IMAGE_PATH_RE);
+    if (!match) return '';
+    return decodeURIComponent(match[1] || '').trim();
+  } catch {
+    return '';
+  }
+}
+
+function readUltaImageBaseId(value) {
+  const assetId = readUltaImageAssetId(value);
+  if (!assetId) return '';
+  return assetId.replace(/_alt\d+$/i, '').trim();
+}
+
+function normalizePdpDisplayImageUrl(value) {
+  const normalized = normalizePdpImageUrl(value);
+  if (!normalized) return '';
+  try {
+    const parsed = new URL(normalized);
+    if (!ULTA_MEDIA_HOST_RE.test(parsed.hostname) || !ULTA_IMAGE_PATH_RE.test(parsed.pathname)) {
+      return normalized;
+    }
+    const hasDimensionParam =
+      parsed.searchParams.has('w') ||
+      parsed.searchParams.has('width') ||
+      parsed.searchParams.has('h') ||
+      parsed.searchParams.has('height');
+    if (!hasDimensionParam) return normalized;
+
+    const setAtLeast = (key) => {
+      if (!parsed.searchParams.has(key)) return;
+      const current = Number(parsed.searchParams.get(key));
+      if (!Number.isFinite(current) || current < PDP_DISPLAY_IMAGE_MIN_DIMENSION) {
+        parsed.searchParams.set(key, String(PDP_DISPLAY_IMAGE_MIN_DIMENSION));
+      }
+    };
+    setAtLeast('w');
+    setAtLeast('width');
+    setAtLeast('h');
+    setAtLeast('height');
+    return parsed.toString();
+  } catch {
+    return normalized;
+  }
+}
+
+function buildMediaImageDedupeKey(value) {
+  const url = normalizePdpDisplayImageUrl(value);
+  const ultaAssetId = readUltaImageAssetId(url);
+  if (ultaAssetId) return `ulta:${ultaAssetId.toLowerCase()}`;
+  return buildPdpImageDedupeKey(url) || url;
+}
+
+function collectTrustedUltaImageBaseIds(product, variants) {
+  const trusted = new Set();
+  const pushId = (value) => {
+    const normalized = asNonEmptyString(value);
+    if (/^\d{5,}$/.test(normalized)) trusted.add(normalized);
+  };
+  const pushUrl = (value) => {
+    const baseId = readUltaImageBaseId(value);
+    if (baseId) trusted.add(baseId);
+  };
+
+  pushId(product?.sku);
+  pushId(product?.sku_id);
+  pushId(product?.default_sku_id);
+  pushUrl(product?.image_url || product?.image);
+  (Array.isArray(variants) ? variants : []).forEach((variant) => {
+    pushId(variant?.sku_id);
+    pushId(variant?.sku);
+    pushUrl(variant?.image_url || variant?.image);
+    pushUrl(variant?.label_image_url);
+    pushUrl(variant?.swatch_image_url);
+    const variantImages = [
+      ...(Array.isArray(variant?.images) ? variant.images : []),
+      ...(Array.isArray(variant?.image_urls) ? variant.image_urls : []),
+    ];
+    variantImages.forEach(pushUrl);
+  });
+
+  return trusted;
+}
+
 function buildMediaItems(product, variants) {
   const items = [];
   const seenMediaKeys = new Set();
@@ -2167,18 +2261,51 @@ function buildMediaItems(product, variants) {
       : [];
   const structuredContentImageKeys = new Set(
     collectStructuredContentImageUrls(product)
-      .map((url) => buildPdpImageDedupeKey(url) || normalizePdpImageUrl(url))
+      .flatMap((url) => [
+        buildPdpImageDedupeKey(url) || normalizePdpImageUrl(url),
+        buildMediaImageDedupeKey(url),
+      ])
       .filter(Boolean),
   );
   const primaryVariant =
     Array.isArray(variants) && variants.length > 0 && variants[0] && typeof variants[0] === 'object'
       ? variants[0]
       : null;
+  const trustedUltaImageBaseIds = collectTrustedUltaImageBaseIds(product, variants);
+  const candidateUltaImageBaseIds = [
+    product.image_url,
+    product.image,
+    ...media.map((m) => (typeof m === 'string' ? m : m?.url || m?.image_url || m?.src)),
+    ...images.map((img) => (typeof img === 'string' ? img : img?.url || img?.image_url || img?.src)),
+    ...(Array.isArray(variants)
+      ? variants.flatMap((variant) => [
+          variant?.image_url,
+          variant?.image,
+          ...(Array.isArray(variant?.images) ? variant.images : []),
+          ...(Array.isArray(variant?.image_urls) ? variant.image_urls : []),
+        ])
+      : []),
+  ]
+    .map((url) => readUltaImageBaseId(url))
+    .filter(Boolean);
+  const shouldFilterUltaGallery =
+    isExternalSeedLikeProduct(product) &&
+    trustedUltaImageBaseIds.size > 0 &&
+    candidateUltaImageBaseIds.some((baseId) => trustedUltaImageBaseIds.has(baseId)) &&
+    candidateUltaImageBaseIds.some((baseId) => !trustedUltaImageBaseIds.has(baseId));
 
   const pushImageItem = (rawUrl, extra = {}) => {
-    const url = normalizePdpImageUrl(rawUrl);
-    const key = buildPdpImageDedupeKey(url);
-    if (!url || !key || structuredContentImageKeys.has(key) || isDecorativePdpMediaUrl(url) || seenMediaKeys.has(key)) return;
+    const url = normalizePdpDisplayImageUrl(rawUrl);
+    const key = buildMediaImageDedupeKey(url);
+    const ultaBaseId = readUltaImageBaseId(url);
+    if (
+      !url ||
+      !key ||
+      structuredContentImageKeys.has(key) ||
+      isDecorativePdpMediaUrl(url) ||
+      seenMediaKeys.has(key) ||
+      (shouldFilterUltaGallery && ultaBaseId && !trustedUltaImageBaseIds.has(ultaBaseId))
+    ) return;
     seenMediaKeys.add(key);
     items.push({
       type: 'image',
@@ -2250,7 +2377,7 @@ function buildMediaItems(product, variants) {
 
   media.forEach((m) => {
     if (typeof m === 'object' && m && !isPublicContributionVisible(m)) return;
-    const url = normalizePdpImageUrl(m.url || m.image_url || m.src);
+    const url = normalizePdpDisplayImageUrl(m.url || m.image_url || m.src);
     if (!url) return;
     const mediaType = m.type || m.media_type || 'image';
     if (String(mediaType).trim().toLowerCase() !== 'image') {
@@ -2290,7 +2417,7 @@ function buildMediaItems(product, variants) {
 
   images.forEach((img) => {
     if (typeof img === 'object' && img && !isPublicContributionVisible(img)) return;
-    const url = normalizePdpImageUrl(typeof img === 'string' ? img : img.url || img.image_url);
+    const url = normalizePdpDisplayImageUrl(typeof img === 'string' ? img : img.url || img.image_url);
     if (!url) return;
     pushImageItem(url, {
       url,
@@ -2313,7 +2440,7 @@ function buildMediaItems(product, variants) {
           : [];
 
     variantImages.forEach((variantImage) => {
-      const url = normalizePdpImageUrl(
+      const url = normalizePdpDisplayImageUrl(
         typeof variantImage === 'string' ? variantImage : variantImage?.url || variantImage?.src || variantImage?.image_url,
       );
       if (!url) return;
@@ -2323,7 +2450,7 @@ function buildMediaItems(product, variants) {
       });
     });
 
-    const variantImageUrl = normalizePdpImageUrl(v.image_url);
+    const variantImageUrl = normalizePdpDisplayImageUrl(v.image_url);
     if (variantImageUrl) {
       pushImageItem(variantImageUrl, {
         url: variantImageUrl,
@@ -2332,7 +2459,7 @@ function buildMediaItems(product, variants) {
     }
   });
 
-  const fallbackProductImage = normalizePdpImageUrl(product.image_url);
+  const fallbackProductImage = normalizePdpDisplayImageUrl(product.image_url);
   if (!items.length && fallbackProductImage) {
     pushImageItem(fallbackProductImage, {
       url: fallbackProductImage,
@@ -4653,7 +4780,7 @@ function buildPdpPayload(args) {
       .filter((item) => String(item?.type || 'image').trim().toLowerCase() === 'image')
       .map((item) => item?.url),
   );
-  const rawProductImageUrl = normalizePdpImageUrl(product.image_url || product.image);
+  const rawProductImageUrl = normalizePdpDisplayImageUrl(product.image_url || product.image);
   const structuredContentImageKeys = new Set(
     collectStructuredContentImageUrls(product)
       .map((url) => buildPdpImageDedupeKey(url) || normalizePdpImageUrl(url))
