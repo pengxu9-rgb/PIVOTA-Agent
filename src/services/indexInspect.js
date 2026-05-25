@@ -221,6 +221,8 @@ async function inspectIndexPipeline(
        FROM catalog_offers co
        JOIN catalog_products cp ON cp.product_key = co.product_key
        WHERE cp.content_key = $1
+         AND co.suppressed_at IS NULL
+         AND COALESCE(co.list_price, 0) > 0
        LIMIT 10`,
       [resolvedContentKey],
     ),

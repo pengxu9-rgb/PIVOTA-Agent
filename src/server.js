@@ -4928,7 +4928,10 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
                   o.source_system,
                   o.source_ref
                 FROM catalog_skus s
-                JOIN catalog_offers o ON o.sku_key = s.sku_key
+                JOIN catalog_offers o
+                  ON o.sku_key = s.sku_key
+                 AND o.suppressed_at IS NULL
+                 AND COALESCE(o.list_price, 0) > 0
                 WHERE s.product_key = cp_offer.product_key
                 ORDER BY
                   CASE WHEN o.availability ILIKE 'in%stock%' THEN 0 ELSE 1 END,
