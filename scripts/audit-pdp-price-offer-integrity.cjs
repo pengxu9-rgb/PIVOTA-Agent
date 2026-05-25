@@ -226,7 +226,7 @@ async function fetchRows(client, options) {
     where.push(`lower(coalesce(cp.brand, cp.product_payload->>'brand', eps.seed_data->>'brand', eps.seed_data#>>'{snapshot,brand}', '')) = lower(${bind(options.brand)})`);
   }
   if (options.domain) {
-    where.push(`lower(coalesce(eps.domain, cp.domain, cp.product_payload->>'domain', eps.seed_data->>'domain', eps.seed_data#>>'{snapshot,domain}', '')) LIKE lower(${bind(`%${options.domain}%`)})`);
+    where.push(`lower(coalesce(eps.domain, cp.product_payload->>'domain', eps.seed_data->>'domain', eps.seed_data#>>'{snapshot,domain}', '')) LIKE lower(${bind(`%${options.domain}%`)})`);
   }
   if (options.externalProductId) where.push(`cp.source_product_id = ${bind(options.externalProductId)}`);
   if (options.categoryPrefix) where.push(`cp.category_path LIKE ${bind(`${options.categoryPrefix}%`)}`);
