@@ -1,0 +1,23 @@
+{
+  "ok": true,
+  "generated_at": "2026-05-25T05:20:13.883Z",
+  "input": {
+    "brand": null,
+    "limit": 4,
+    "external_product_ids": [
+      "ext_96a7ecc1003f0f94e5b6805c",
+      "ext_a1bb997d38b6823e83f23948",
+      "ext_53cf4f0ee46873d280f632db",
+      "ext_fe9ef8f2a6343901489fe63e"
+    ],
+    "dry_run": true
+  },
+  "result": {
+    "dry_run": true,
+    "source_rows_scanned": 4,
+    "identity_rows_built": 4,
+    "review_queue_rows_built": 0,
+    "written_rows": 0,
+    "review_queue_rows": 0
+  }
+}

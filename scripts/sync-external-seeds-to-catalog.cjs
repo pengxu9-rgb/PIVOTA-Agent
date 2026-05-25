@@ -257,7 +257,63 @@ function normalizeCategoryToken(value) {
     .trim();
 }
 
+function normalizeCategoryPath(value) {
+  const raw = Array.isArray(value) ? value.join('/') : asString(value);
+  return raw
+    .toLowerCase()
+    .replace(/\\/g, '/')
+    .replace(/>/g, '/')
+    .replace(/[_\s]+/g, '-')
+    .replace(/-*\/-*/g, '/')
+    .replace(/[^a-z0-9/-]+/g, '')
+    .replace(/\/{2,}/g, '/')
+    .replace(/^\/+|\/+$/g, '');
+}
+
+function titleizeCategory(value) {
+  return (
+    asString(value)
+      .replace(/[_/-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/\b\w/g, (char) => char.toUpperCase()) || 'Beauty Product'
+  );
+}
+
+function explicitCategoryShape(row) {
+  const seedData = pickSeedData(row);
+  const snapshot = pickSnapshot(row);
+  const categoryPath = normalizeCategoryPath(
+    seedData.catalog_category_path ||
+      snapshot.catalog_category_path ||
+      seedData.category_path ||
+      snapshot.category_path,
+  );
+  if (!categoryPath || categoryPath.split('/').length < 3) return null;
+  const productType = asString(
+    seedData.product_type ||
+      seedData.leaf_category ||
+      snapshot.product_type ||
+      snapshot.leaf_category ||
+      seedData.category ||
+      snapshot.category,
+  );
+  const normalizedType = normalizeCategoryToken(productType);
+  if (!normalizedType || ['beauty', 'haircare', 'skincare', 'bodycare', 'makeup'].includes(normalizedType)) {
+    return null;
+  }
+  const title = titleizeCategory(productType);
+  return {
+    productType: title,
+    category: title,
+    categoryPath,
+  };
+}
+
 function inferCatalogMirrorCategory(row) {
+  const explicitShape = explicitCategoryShape(row);
+  if (explicitShape) return explicitShape;
+
   const seedData = pickSeedData(row);
   const snapshot = pickSnapshot(row);
   const explicitCategory = normalizeCategoryToken(
@@ -337,7 +393,7 @@ function inferCatalogMirrorCategory(row) {
   return {
     productType: explicitTitle,
     category: explicitTitle,
-    categoryPath: asString(seedData.category_path || snapshot.category_path) || 'beauty',
+    categoryPath: normalizeCategoryPath(seedData.category_path || snapshot.category_path) || 'beauty',
   };
 }
 

@@ -1,0 +1,187 @@
+{
+  "generated_at": "2026-05-25T05:40:52.747Z",
+  "gateway_url": "https://pivota-agent-production.up.railway.app/agent/shop/v1/invoke",
+  "rows": [
+    {
+      "product_id": "ext_96a7ecc1003f0f94e5b6805c",
+      "http_status": 200,
+      "root_keys": [
+        "build_id",
+        "capabilities",
+        "generated_at",
+        "metadata",
+        "missing",
+        "modules",
+        "pdp_version",
+        "request_id",
+        "status",
+        "subject",
+        "warnings"
+      ],
+      "root_status": "success",
+      "root_error": null,
+      "response_keys": [],
+      "result_keys": [],
+      "unwrapped_module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "unwrapped_missing_modules": [
+        "variant_selector",
+        "active_ingredients",
+        "product_facts"
+      ],
+      "unwrapped_status": "success",
+      "product_image_url": "",
+      "media_gallery_urls": [],
+      "product_intel_status": "reviewed",
+      "raw_preview": "{\"status\":\"success\",\"pdp_version\":\"2.0\",\"request_id\":\"6e0797aa-d313-4324-b294-ac5fada6b50d\",\"build_id\":\"54ee1ce8aba5\",\"generated_at\":\"2026-05-25T05:40:41.998Z\",\"subject\":{\"type\":\"product_group\",\"id\":\"sig_0ab1781be3e500ce2ddfa6b3\",\"canonical_product_ref\":{\"merchant_id\":\"external_seed\",\"product_id\":\"ext_96a7ecc1003f0f94e5b6805c\",\"platform\":\"external_seed\",\"product_key\":\"prod::external_seed::external_seed::ext_96a7ecc1003f0f94e5b6805c\",\"pivota_signature_id\":\"sig_0ab1781be3e500ce2ddfa6b3\"}},\"capabilities\":{\"client\":\"shopping-agent-ui\",\"client_version\":null},\"modules\":[{\"type\":\"canonical\",\"required\":true,\"data\":{\"product_group_id\":\"sig_0ab1781be3e500ce2ddfa6b3\",\"sellable_item_group_id\":\"sig_0ab1781be3e500ce2ddfa6b3\",\"product_line_id\":\"pl_fc865156266a63bae1e9384f\",\"review_family_id\":\"rf_fc865156266a63bae1e9384f\",\"identity_confidence\":0.92,\"match_basis\":[\"official_url:https://lovemasami.com/products/mekabu-shampoo\"],\"canonical_scope\":null,\"pdp_schema_profile\":\"beauty_formula\",\"pdp_content_source\":\"self\",\"offer_source\":\"group_fused\",\"commerce_source\":\"selected_seller_store\",\"content_review_state\":\"not_needed\",\"canonical_product_ref\":{\"merchant_id\":\"external_seed\",\"product_id\":\"ext_96a7ecc1"
+    },
+    {
+      "product_id": "ext_a1bb997d38b6823e83f23948",
+      "http_status": 200,
+      "root_keys": [
+        "build_id",
+        "capabilities",
+        "generated_at",
+        "metadata",
+        "missing",
+        "modules",
+        "pdp_version",
+        "request_id",
+        "status",
+        "subject",
+        "warnings"
+      ],
+      "root_status": "success",
+      "root_error": null,
+      "response_keys": [],
+      "result_keys": [],
+      "unwrapped_module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "unwrapped_missing_modules": [
+        "variant_selector",
+        "product_facts"
+      ],
+      "unwrapped_status": "success",
+      "product_image_url": "",
+      "media_gallery_urls": [],
+      "product_intel_status": "reviewed",
+      "raw_preview": "{\"status\":\"success\",\"pdp_version\":\"2.0\",\"request_id\":\"d6104358-6f5d-4c09-b0d6-118d5f70558e\",\"build_id\":\"54ee1ce8aba5\",\"generated_at\":\"2026-05-25T05:40:45.747Z\",\"subject\":{\"type\":\"product_group\",\"id\":\"sig_137493920cc718428f38809c\",\"canonical_product_ref\":{\"merchant_id\":\"external_seed\",\"product_id\":\"ext_a1bb997d38b6823e83f23948\",\"platform\":\"external_seed\",\"product_key\":\"prod::external_seed::external_seed::ext_a1bb997d38b6823e83f23948\",\"pivota_signature_id\":\"sig_137493920cc718428f38809c\"}},\"capabilities\":{\"client\":\"shopping-agent-ui\",\"client_version\":null},\"modules\":[{\"type\":\"canonical\",\"required\":true,\"data\":{\"product_group_id\":\"sig_137493920cc718428f38809c\",\"sellable_item_group_id\":\"sig_137493920cc718428f38809c\",\"product_line_id\":\"pl_275de677d9aab9757933fad8\",\"review_family_id\":\"rf_275de677d9aab9757933fad8\",\"identity_confidence\":0.92,\"match_basis\":[\"official_url:https://lovemasami.com/products/mekabu-conditioner\"],\"canonical_scope\":null,\"pdp_schema_profile\":\"beauty_formula\",\"pdp_content_source\":\"self\",\"offer_source\":\"group_fused\",\"commerce_source\":\"selected_seller_store\",\"content_review_state\":\"not_needed\",\"canonical_product_ref\":{\"merchant_id\":\"external_seed\",\"product_id\":\"ext_a1bb"
+    },
+    {
+      "product_id": "ext_53cf4f0ee46873d280f632db",
+      "http_status": 200,
+      "root_keys": [
+        "build_id",
+        "capabilities",
+        "generated_at",
+        "metadata",
+        "missing",
+        "modules",
+        "pdp_version",
+        "request_id",
+        "status",
+        "subject",
+        "warnings"
+      ],
+      "root_status": "success",
+      "root_error": null,
+      "response_keys": [],
+      "result_keys": [],
+      "unwrapped_module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "unwrapped_missing_modules": [
+        "active_ingredients",
+        "product_facts"
+      ],
+      "unwrapped_status": "success",
+      "product_image_url": "",
+      "media_gallery_urls": [],
+      "product_intel_status": "reviewed",
+      "raw_preview": "{\"status\":\"success\",\"pdp_version\":\"2.0\",\"request_id\":\"a108a5ba-a7fe-41d2-b2b1-1fb127c99ff7\",\"build_id\":\"54ee1ce8aba5\",\"generated_at\":\"2026-05-25T05:40:49.340Z\",\"subject\":{\"type\":\"product_group\",\"id\":\"sig_2b5d9b4dc9941fef121d2f6a\",\"canonical_product_ref\":{\"merchant_id\":\"external_seed\",\"product_id\":\"ext_53cf4f0ee46873d280f632db\",\"platform\":\"external_seed\",\"product_key\":\"prod::external_seed::external_seed::ext_53cf4f0ee46873d280f632db\",\"pivota_signature_id\":\"sig_2b5d9b4dc9941fef121d2f6a\"}},\"capabilities\":{\"client\":\"shopping-agent-ui\",\"client_version\":null},\"modules\":[{\"type\":\"canonical\",\"required\":true,\"data\":{\"product_group_id\":\"sig_2b5d9b4dc9941fef121d2f6a\",\"sellable_item_group_id\":\"sig_2b5d9b4dc9941fef121d2f6a\",\"product_line_id\":\"pl_8545bc9a1c1b1abad3155b16\",\"review_family_id\":\"rf_8545bc9a1c1b1abad3155b16\",\"identity_confidence\":0.98,\"match_basis\":[\"official_url:https://lovemasami.com/products/mekabu-serum\",\"variant_axes:volume:7oz\"],\"canonical_scope\":null,\"pdp_schema_profile\":\"beauty_formula\",\"pdp_content_source\":\"self\",\"offer_source\":\"group_fused\",\"commerce_source\":\"selected_seller_store\",\"content_review_state\":\"not_needed\",\"canonical_product_ref\":{\"merchant_id\":\"external_seed\",\"p"
+    },
+    {
+      "product_id": "ext_fe9ef8f2a6343901489fe63e",
+      "http_status": 200,
+      "root_keys": [
+        "build_id",
+        "capabilities",
+        "generated_at",
+        "metadata",
+        "missing",
+        "modules",
+        "pdp_version",
+        "request_id",
+        "status",
+        "subject",
+        "warnings"
+      ],
+      "root_status": "success",
+      "root_error": null,
+      "response_keys": [],
+      "result_keys": [],
+      "unwrapped_module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "unwrapped_missing_modules": [
+        "variant_selector",
+        "product_facts"
+      ],
+      "unwrapped_status": "success",
+      "product_image_url": "",
+      "media_gallery_urls": [],
+      "product_intel_status": "reviewed",
+      "raw_preview": "{\"status\":\"success\",\"pdp_version\":\"2.0\",\"request_id\":\"d54dd90a-c779-4a3d-b50b-bc0e7350751a\",\"build_id\":\"54ee1ce8aba5\",\"generated_at\":\"2026-05-25T05:40:53.260Z\",\"subject\":{\"type\":\"product_group\",\"id\":\"sig_e959cbde356524d37aa4e7f7\",\"canonical_product_ref\":{\"merchant_id\":\"external_seed\",\"product_id\":\"ext_fe9ef8f2a6343901489fe63e\",\"platform\":\"external_seed\",\"product_key\":\"prod::external_seed::external_seed::ext_fe9ef8f2a6343901489fe63e\",\"pivota_signature_id\":\"sig_e959cbde356524d37aa4e7f7\"}},\"capabilities\":{\"client\":\"shopping-agent-ui\",\"client_version\":null},\"modules\":[{\"type\":\"canonical\",\"required\":true,\"data\":{\"product_group_id\":\"sig_e959cbde356524d37aa4e7f7\",\"sellable_item_group_id\":\"sig_e959cbde356524d37aa4e7f7\",\"product_line_id\":\"pl_f5957ad76070223e9eb58f7e\",\"review_family_id\":\"rf_f5957ad76070223e9eb58f7e\",\"identity_confidence\":0.92,\"match_basis\":[\"official_url:https://lovemasami.com/products/mekabu-cream\"],\"canonical_scope\":null,\"pdp_schema_profile\":\"beauty_formula\",\"pdp_content_source\":\"self\",\"offer_source\":\"group_fused\",\"commerce_source\":\"selected_seller_store\",\"content_review_state\":\"not_needed\",\"canonical_product_ref\":{\"merchant_id\":\"external_seed\",\"product_id\":\"ext_fe9ef8f2a6"
+    }
+  ]
+}

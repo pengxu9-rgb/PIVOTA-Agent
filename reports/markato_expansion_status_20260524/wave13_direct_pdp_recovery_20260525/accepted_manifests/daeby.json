@@ -1,0 +1,1129 @@
+{
+  "generated_at": "2026-05-25T05:03:59.575Z",
+  "brand": "DAEBY",
+  "domain": "https://daebyskin.com",
+  "fallback_domains": [],
+  "market": "US",
+  "preferred_titles": [
+    "Gentle Scrub",
+    "Facial Moisturiser",
+    "Cleanser"
+  ],
+  "matched_preferred_titles": [
+    "Facial Moisturiser",
+    "Cleanser"
+  ],
+  "extracted_product_count": 7,
+  "excluded_bundle_like_count": 4,
+  "excluded_non_product_page_count": 0,
+  "excluded_incomplete_transaction_count": 0,
+  "excluded_brand_scope_mismatch_count": 0,
+  "matched_preferred_title_count": 2,
+  "item_count": 3,
+  "fallback_used": false,
+  "source_attempts": [
+    {
+      "source_url": "https://daebyskin.com",
+      "source_role": "primary",
+      "extracted_product_count": 7,
+      "item_count": 3,
+      "matched_preferred_title_count": 2,
+      "matched_preferred_titles": [
+        "Facial Moisturiser",
+        "Cleanser"
+      ],
+      "diagnostics_summary": {
+        "discovery_strategy": "shopify_json",
+        "failure_category": null,
+        "block_provider": null
+      },
+      "used_in_manifest": true,
+      "added_item_count": 3,
+      "added_matched_preferred_titles": [
+        "Facial Moisturiser",
+        "Cleanser"
+      ],
+      "skip_reason": null
+    }
+  ],
+  "items": [
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "target_brand": "DAEBY",
+      "target_url": "https://daebyskin.com/products/facial-moisturiser",
+      "extract_status": "brand_catalog_extract",
+      "market": "US",
+      "source_domain": "https://daebyskin.com",
+      "source_role": "primary",
+      "matched_preferred_titles": [
+        "Facial Moisturiser"
+      ],
+      "alias_preferred_titles": [
+        "Facial Moisturiser"
+      ],
+      "seed_row": {
+        "ingredient_id": null,
+        "ingredient_name": null,
+        "seed_id": "eps_f8e71b996d6cd5b213baf303",
+        "brand": "DAEBY",
+        "market": "US",
+        "tool": "creator_agents",
+        "status": "active",
+        "domain": "daebyskin.com",
+        "external_product_id": "ext_fbdbef3b6bd2807cc115c131",
+        "canonical_url": "https://daebyskin.com/products/facial-moisturiser",
+        "destination_url": "https://daebyskin.com/products/facial-moisturiser",
+        "title": "Facial Moisturiser SPF 50+",
+        "image_url": "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/facial-moisturiser-1219868.jpg?v=1767685448",
+        "price_amount": 22,
+        "price_currency": "EUR",
+        "availability": "in_stock",
+        "attached_product_key": null,
+        "requires_seed_correction": false,
+        "seed_data": {
+          "brand": "DAEBY",
+          "title": "Facial Moisturiser SPF 50+",
+          "description": "The urban shield that protects, hydrates, and disappears. Ultra-lightweight with zero grease, zero white cast - just smooth, matte finish.\n\nBroad-spectrum SPF 50+ blocks UVA/UVB rays \n\nAnti-pollutant tech defends against dust and free radicals \n\nHyaluronic acid + niacinamide hydrate and strengthen \n\nInstantly absorbs - no residue, no shine \n\nMatte finish that feels like second skin \n\nApply AM as final step for all-day protection",
+          "external_product_id": "ext_fbdbef3b6bd2807cc115c131",
+          "canonical_url": "https://daebyskin.com/products/facial-moisturiser",
+          "destination_url": "https://daebyskin.com/products/facial-moisturiser",
+          "price_amount": 22,
+          "price_currency": "EUR",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/facial-moisturiser-1219868.jpg?v=1767685448",
+          "image_urls": [
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/facial-moisturiser-1219868.jpg?v=1767685448",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/facial-moisturiser-8220940.png?v=1775565910",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/18_2.svg?v=1775565910",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/19_1.svg?v=1775565910",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/20_1.svg?v=1775565910",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/21.svg?v=1775565910",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/22.svg?v=1775565910",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/23.svg?v=1775565910",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/24.svg?v=1775565910"
+          ],
+          "images": [
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/facial-moisturiser-1219868.jpg?v=1767685448",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/facial-moisturiser-8220940.png?v=1775565910",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/18_2.svg?v=1775565910",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/19_1.svg?v=1775565910",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/20_1.svg?v=1775565910",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/21.svg?v=1775565910",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/22.svg?v=1775565910",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/23.svg?v=1775565910",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/24.svg?v=1775565910"
+          ],
+          "variants": [
+            {
+              "sku": "199284766457",
+              "variant_id": "45409380860070",
+              "url": "https://daebyskin.com/products/facial-moisturiser",
+              "option_name": "Title",
+              "option_value": "Default Title",
+              "price": "22",
+              "currency": "EUR",
+              "stock": "In Stock",
+              "description": "The urban shield that protects, hydrates, and disappears. Ultra-lightweight with zero grease, zero white cast - just smooth, matte finish.\n\nBroad-spectrum SPF 50+ blocks UVA/UVB rays \n\nAnti-pollutant tech defends against dust and free radicals \n\nHyaluronic acid + niacinamide hydrate and strengthen \n\nInstantly absorbs - no residue, no shine \n\nMatte finish that feels like second skin \n\nApply AM as final step for all-day protection",
+              "image_url": "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/facial-moisturiser-1219868.jpg?v=1767685448",
+              "image_urls": [
+                "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/facial-moisturiser-1219868.jpg?v=1767685448",
+                "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/facial-moisturiser-8220940.png?v=1775565910",
+                "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/18_2.svg?v=1775565910",
+                "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/19_1.svg?v=1775565910",
+                "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/20_1.svg?v=1775565910",
+                "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/21.svg?v=1775565910",
+                "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/22.svg?v=1775565910",
+                "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/23.svg?v=1775565910",
+                "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/24.svg?v=1775565910"
+              ]
+            }
+          ],
+          "snapshot": {
+            "source": "catalog_intelligence_seed_creation_manifest",
+            "extracted_at": "2026-05-25T05:02:11.859Z",
+            "canonical_url": "https://daebyskin.com/products/facial-moisturiser",
+            "destination_url": "https://daebyskin.com/products/facial-moisturiser",
+            "title": "Facial Moisturiser SPF 50+",
+            "description": "The urban shield that protects, hydrates, and disappears. Ultra-lightweight with zero grease, zero white cast - just smooth, matte finish.\n\nBroad-spectrum SPF 50+ blocks UVA/UVB rays \n\nAnti-pollutant tech defends against dust and free radicals \n\nHyaluronic acid + niacinamide hydrate and strengthen \n\nInstantly absorbs - no residue, no shine \n\nMatte finish that feels like second skin \n\nApply AM as final step for all-day protection",
+            "image_url": "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/facial-moisturiser-1219868.jpg?v=1767685448",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/facial-moisturiser-1219868.jpg?v=1767685448",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/facial-moisturiser-8220940.png?v=1775565910",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/18_2.svg?v=1775565910",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/19_1.svg?v=1775565910",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/20_1.svg?v=1775565910",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/21.svg?v=1775565910",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/22.svg?v=1775565910",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/23.svg?v=1775565910",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/24.svg?v=1775565910"
+            ],
+            "images": [
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/facial-moisturiser-1219868.jpg?v=1767685448",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/facial-moisturiser-8220940.png?v=1775565910",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/18_2.svg?v=1775565910",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/19_1.svg?v=1775565910",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/20_1.svg?v=1775565910",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/21.svg?v=1775565910",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/22.svg?v=1775565910",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/23.svg?v=1775565910",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/24.svg?v=1775565910"
+            ],
+            "variants": [
+              {
+                "sku": "199284766457",
+                "variant_id": "45409380860070",
+                "url": "https://daebyskin.com/products/facial-moisturiser",
+                "option_name": "Title",
+                "option_value": "Default Title",
+                "price": "22",
+                "currency": "EUR",
+                "stock": "In Stock",
+                "description": "The urban shield that protects, hydrates, and disappears. Ultra-lightweight with zero grease, zero white cast - just smooth, matte finish.\n\nBroad-spectrum SPF 50+ blocks UVA/UVB rays \n\nAnti-pollutant tech defends against dust and free radicals \n\nHyaluronic acid + niacinamide hydrate and strengthen \n\nInstantly absorbs - no residue, no shine \n\nMatte finish that feels like second skin \n\nApply AM as final step for all-day protection",
+                "image_url": "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/facial-moisturiser-1219868.jpg?v=1767685448",
+                "image_urls": [
+                  "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/facial-moisturiser-1219868.jpg?v=1767685448",
+                  "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/facial-moisturiser-8220940.png?v=1775565910",
+                  "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/18_2.svg?v=1775565910",
+                  "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/19_1.svg?v=1775565910",
+                  "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/20_1.svg?v=1775565910",
+                  "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/21.svg?v=1775565910",
+                  "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/22.svg?v=1775565910",
+                  "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/23.svg?v=1775565910",
+                  "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/24.svg?v=1775565910"
+                ]
+              }
+            ],
+            "diagnostics": {
+              "requested_domain": "daebyskin.com",
+              "resolved_base_url": "https://daebyskin.com",
+              "discovery_strategy": "shopify_json",
+              "failure_category": null,
+              "block_provider": null,
+              "http_trace": [
+                {
+                  "url": "https://www.daebyskin.com/",
+                  "status": 200
+                },
+                {
+                  "url": "https://daebyskin.com/products.json?limit=1",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.daebyskin.com/US",
+                  "status": 404
+                },
+                {
+                  "url": "https://daebyskin.com/products.json?limit=250&page=1",
+                  "status": 200
+                }
+              ]
+            },
+            "search_aliases": [
+              "Facial Moisturiser",
+              "Facial Moisturiser SPF 50+"
+            ],
+            "authority_source": {
+              "source_url": "https://daebyskin.com",
+              "source_role": "primary",
+              "matched_preferred_titles": [
+                "Facial Moisturiser"
+              ]
+            },
+            "source_validation": {
+              "source_type": "brand_owned",
+              "requires_multi_offer_merge_validation": false,
+              "source_host": "daebyskin.com"
+            },
+            "commerce_facts_v1": {
+              "contract_version": "commerce_facts.v1",
+              "market_id": "US",
+              "country": "US",
+              "currency_target": "USD",
+              "source_authority": "catalog_extract_v2",
+              "captured_at": "2026-05-25T05:02:12.340Z",
+              "evidence_url": "https://daebyskin.com/products/facial-moisturiser",
+              "sellable_region": {
+                "status": "unknown",
+                "countries": [],
+                "evidence_source": "catalog_extract_v2",
+                "confidence": "medium",
+                "checked_at": "2026-05-25T05:02:12.340Z",
+                "reason_codes": [
+                  "market_currency_observed",
+                  "shipping_destination_not_verified",
+                  "external_checkout_not_queried"
+                ],
+                "evidence_url": "https://daebyskin.com/products/facial-moisturiser"
+              },
+              "regional_price": {
+                "amount": 22,
+                "currency": "USD",
+                "display_raw": "22.00",
+                "price_type": "list",
+                "compare_at_amount": null,
+                "compare_at_currency": null,
+                "compare_at_display_raw": null,
+                "tax_included": "unknown",
+                "confidence": "medium",
+                "market_switch_status": "ok",
+                "observed_currency": "USD",
+                "source_url": "https://daebyskin.com/products/facial-moisturiser",
+                "captured_at": "2026-05-25T05:02:12.340Z"
+              },
+              "availability": {
+                "status": "in_stock",
+                "source": "catalog_extract_v2",
+                "confidence": "medium",
+                "captured_at": "2026-05-25T05:02:12.340Z"
+              },
+              "shipping": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_checkout_not_queried"
+                ],
+                "checked_at": "2026-05-25T05:02:12.340Z"
+              },
+              "promotions": [],
+              "returns": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_returns_not_extracted"
+                ],
+                "checked_at": "2026-05-25T05:02:12.340Z"
+              }
+            },
+            "commerce_facts_gate": {
+              "status": "hold",
+              "market_id": "US",
+              "expected_currency": "USD",
+              "observed_currency": "USD",
+              "market_switch_status": "ok",
+              "sellable_region_status": "unknown",
+              "shipping_status": "unknown",
+              "promotions_status": "unknown",
+              "availability_status": "in_stock",
+              "problems": [
+                "market_currency_mismatch"
+              ]
+            }
+          },
+          "search_aliases": [
+            "Facial Moisturiser",
+            "Facial Moisturiser SPF 50+"
+          ],
+          "authority_source": {
+            "source_url": "https://daebyskin.com",
+            "source_role": "primary",
+            "matched_preferred_titles": [
+              "Facial Moisturiser"
+            ]
+          },
+          "source_validation": {
+            "source_type": "brand_owned",
+            "requires_multi_offer_merge_validation": false,
+            "source_host": "daebyskin.com"
+          },
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-25T05:02:12.340Z",
+            "evidence_url": "https://daebyskin.com/products/facial-moisturiser",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-25T05:02:12.340Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://daebyskin.com/products/facial-moisturiser"
+            },
+            "regional_price": {
+              "amount": 22,
+              "currency": "USD",
+              "display_raw": "22.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://daebyskin.com/products/facial-moisturiser",
+              "captured_at": "2026-05-25T05:02:12.340Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T05:02:12.340Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T05:02:12.340Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T05:02:12.340Z"
+            }
+          },
+          "commerce_facts_gate": {
+            "status": "hold",
+            "market_id": "US",
+            "expected_currency": "USD",
+            "observed_currency": "USD",
+            "market_switch_status": "ok",
+            "sellable_region_status": "unknown",
+            "shipping_status": "unknown",
+            "promotions_status": "unknown",
+            "availability_status": "in_stock",
+            "problems": [
+              "market_currency_mismatch"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "target_brand": "DAEBY",
+      "target_url": "https://daebyskin.com/products/cleanser",
+      "extract_status": "brand_catalog_extract",
+      "market": "US",
+      "source_domain": "https://daebyskin.com",
+      "source_role": "primary",
+      "matched_preferred_titles": [
+        "Cleanser"
+      ],
+      "alias_preferred_titles": [
+        "Cleanser"
+      ],
+      "seed_row": {
+        "ingredient_id": null,
+        "ingredient_name": null,
+        "seed_id": "eps_297e284d662efb525f368a09",
+        "brand": "DAEBY",
+        "market": "US",
+        "tool": "creator_agents",
+        "status": "active",
+        "domain": "daebyskin.com",
+        "external_product_id": "ext_ea90c9e8010722e068f23122",
+        "canonical_url": "https://daebyskin.com/products/cleanser",
+        "destination_url": "https://daebyskin.com/products/cleanser",
+        "title": "Daily Cleanser",
+        "image_url": "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/daily-cleanser-2641825.jpg?v=1767685448",
+        "price_amount": 19,
+        "price_currency": "EUR",
+        "availability": "in_stock",
+        "attached_product_key": null,
+        "requires_seed_correction": false,
+        "seed_data": {
+          "brand": "DAEBY",
+          "title": "Daily Cleanser",
+          "description": "A gel-to-foam cleanser that removes daily grime without stripping your skin's natural barrier. Fresh, soft, and never tight. \n\nDeeply lifts oil, sweat, and pollutants \n\nMaintains essential moisture \n\nBalances skin pH \n\nNon-drying, gentle formula \n\nPreps skin for serums and moisturizers \n\nUse morning and night",
+          "external_product_id": "ext_ea90c9e8010722e068f23122",
+          "canonical_url": "https://daebyskin.com/products/cleanser",
+          "destination_url": "https://daebyskin.com/products/cleanser",
+          "price_amount": 19,
+          "price_currency": "EUR",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/daily-cleanser-2641825.jpg?v=1767685448",
+          "image_urls": [
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/daily-cleanser-2641825.jpg?v=1767685448",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/daily-cleanser-5219868.png?v=1775565862",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/10_2.svg?v=1775565862",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/11_1.svg?v=1775565862",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/12.svg?v=1775565862",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/13.svg?v=1775565862",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/14.svg?v=1775565862",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/15.svg?v=1775565862",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/16.svg?v=1775565862"
+          ],
+          "images": [
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/daily-cleanser-2641825.jpg?v=1767685448",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/daily-cleanser-5219868.png?v=1775565862",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/10_2.svg?v=1775565862",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/11_1.svg?v=1775565862",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/12.svg?v=1775565862",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/13.svg?v=1775565862",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/14.svg?v=1775565862",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/15.svg?v=1775565862",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/16.svg?v=1775565862"
+          ],
+          "variants": [
+            {
+              "sku": "199284610552",
+              "variant_id": "45409374765222",
+              "url": "https://daebyskin.com/products/cleanser",
+              "option_name": "Title",
+              "option_value": "Default Title",
+              "price": "19",
+              "currency": "EUR",
+              "stock": "In Stock",
+              "description": "A gel-to-foam cleanser that removes daily grime without stripping your skin's natural barrier. Fresh, soft, and never tight. \n\nDeeply lifts oil, sweat, and pollutants \n\nMaintains essential moisture \n\nBalances skin pH \n\nNon-drying, gentle formula \n\nPreps skin for serums and moisturizers \n\nUse morning and night",
+              "image_url": "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/daily-cleanser-2641825.jpg?v=1767685448",
+              "image_urls": [
+                "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/daily-cleanser-2641825.jpg?v=1767685448",
+                "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/daily-cleanser-5219868.png?v=1775565862",
+                "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/10_2.svg?v=1775565862",
+                "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/11_1.svg?v=1775565862",
+                "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/12.svg?v=1775565862",
+                "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/13.svg?v=1775565862",
+                "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/14.svg?v=1775565862",
+                "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/15.svg?v=1775565862",
+                "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/16.svg?v=1775565862"
+              ]
+            }
+          ],
+          "snapshot": {
+            "source": "catalog_intelligence_seed_creation_manifest",
+            "extracted_at": "2026-05-25T05:02:11.863Z",
+            "canonical_url": "https://daebyskin.com/products/cleanser",
+            "destination_url": "https://daebyskin.com/products/cleanser",
+            "title": "Daily Cleanser",
+            "description": "A gel-to-foam cleanser that removes daily grime without stripping your skin's natural barrier. Fresh, soft, and never tight. \n\nDeeply lifts oil, sweat, and pollutants \n\nMaintains essential moisture \n\nBalances skin pH \n\nNon-drying, gentle formula \n\nPreps skin for serums and moisturizers \n\nUse morning and night",
+            "image_url": "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/daily-cleanser-2641825.jpg?v=1767685448",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/daily-cleanser-2641825.jpg?v=1767685448",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/daily-cleanser-5219868.png?v=1775565862",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/10_2.svg?v=1775565862",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/11_1.svg?v=1775565862",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/12.svg?v=1775565862",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/13.svg?v=1775565862",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/14.svg?v=1775565862",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/15.svg?v=1775565862",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/16.svg?v=1775565862"
+            ],
+            "images": [
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/daily-cleanser-2641825.jpg?v=1767685448",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/daily-cleanser-5219868.png?v=1775565862",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/10_2.svg?v=1775565862",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/11_1.svg?v=1775565862",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/12.svg?v=1775565862",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/13.svg?v=1775565862",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/14.svg?v=1775565862",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/15.svg?v=1775565862",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/16.svg?v=1775565862"
+            ],
+            "variants": [
+              {
+                "sku": "199284610552",
+                "variant_id": "45409374765222",
+                "url": "https://daebyskin.com/products/cleanser",
+                "option_name": "Title",
+                "option_value": "Default Title",
+                "price": "19",
+                "currency": "EUR",
+                "stock": "In Stock",
+                "description": "A gel-to-foam cleanser that removes daily grime without stripping your skin's natural barrier. Fresh, soft, and never tight. \n\nDeeply lifts oil, sweat, and pollutants \n\nMaintains essential moisture \n\nBalances skin pH \n\nNon-drying, gentle formula \n\nPreps skin for serums and moisturizers \n\nUse morning and night",
+                "image_url": "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/daily-cleanser-2641825.jpg?v=1767685448",
+                "image_urls": [
+                  "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/daily-cleanser-2641825.jpg?v=1767685448",
+                  "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/daily-cleanser-5219868.png?v=1775565862",
+                  "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/10_2.svg?v=1775565862",
+                  "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/11_1.svg?v=1775565862",
+                  "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/12.svg?v=1775565862",
+                  "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/13.svg?v=1775565862",
+                  "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/14.svg?v=1775565862",
+                  "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/15.svg?v=1775565862",
+                  "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/16.svg?v=1775565862"
+                ]
+              }
+            ],
+            "diagnostics": {
+              "requested_domain": "daebyskin.com",
+              "resolved_base_url": "https://daebyskin.com",
+              "discovery_strategy": "shopify_json",
+              "failure_category": null,
+              "block_provider": null,
+              "http_trace": [
+                {
+                  "url": "https://www.daebyskin.com/",
+                  "status": 200
+                },
+                {
+                  "url": "https://daebyskin.com/products.json?limit=1",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.daebyskin.com/US",
+                  "status": 404
+                },
+                {
+                  "url": "https://daebyskin.com/products.json?limit=250&page=1",
+                  "status": 200
+                }
+              ]
+            },
+            "search_aliases": [
+              "Cleanser",
+              "Daily Cleanser"
+            ],
+            "authority_source": {
+              "source_url": "https://daebyskin.com",
+              "source_role": "primary",
+              "matched_preferred_titles": [
+                "Cleanser"
+              ]
+            },
+            "source_validation": {
+              "source_type": "brand_owned",
+              "requires_multi_offer_merge_validation": false,
+              "source_host": "daebyskin.com"
+            },
+            "commerce_facts_v1": {
+              "contract_version": "commerce_facts.v1",
+              "market_id": "US",
+              "country": "US",
+              "currency_target": "USD",
+              "source_authority": "catalog_extract_v2",
+              "captured_at": "2026-05-25T05:02:12.340Z",
+              "evidence_url": "https://daebyskin.com/products/cleanser",
+              "sellable_region": {
+                "status": "unknown",
+                "countries": [],
+                "evidence_source": "catalog_extract_v2",
+                "confidence": "medium",
+                "checked_at": "2026-05-25T05:02:12.340Z",
+                "reason_codes": [
+                  "market_currency_observed",
+                  "shipping_destination_not_verified",
+                  "external_checkout_not_queried"
+                ],
+                "evidence_url": "https://daebyskin.com/products/cleanser"
+              },
+              "regional_price": {
+                "amount": 19,
+                "currency": "USD",
+                "display_raw": "19.00",
+                "price_type": "list",
+                "compare_at_amount": null,
+                "compare_at_currency": null,
+                "compare_at_display_raw": null,
+                "tax_included": "unknown",
+                "confidence": "medium",
+                "market_switch_status": "ok",
+                "observed_currency": "USD",
+                "source_url": "https://daebyskin.com/products/cleanser",
+                "captured_at": "2026-05-25T05:02:12.340Z"
+              },
+              "availability": {
+                "status": "in_stock",
+                "source": "catalog_extract_v2",
+                "confidence": "medium",
+                "captured_at": "2026-05-25T05:02:12.340Z"
+              },
+              "shipping": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_checkout_not_queried"
+                ],
+                "checked_at": "2026-05-25T05:02:12.340Z"
+              },
+              "promotions": [],
+              "returns": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_returns_not_extracted"
+                ],
+                "checked_at": "2026-05-25T05:02:12.340Z"
+              }
+            },
+            "commerce_facts_gate": {
+              "status": "hold",
+              "market_id": "US",
+              "expected_currency": "USD",
+              "observed_currency": "USD",
+              "market_switch_status": "ok",
+              "sellable_region_status": "unknown",
+              "shipping_status": "unknown",
+              "promotions_status": "unknown",
+              "availability_status": "in_stock",
+              "problems": [
+                "market_currency_mismatch"
+              ]
+            }
+          },
+          "search_aliases": [
+            "Cleanser",
+            "Daily Cleanser"
+          ],
+          "authority_source": {
+            "source_url": "https://daebyskin.com",
+            "source_role": "primary",
+            "matched_preferred_titles": [
+              "Cleanser"
+            ]
+          },
+          "source_validation": {
+            "source_type": "brand_owned",
+            "requires_multi_offer_merge_validation": false,
+            "source_host": "daebyskin.com"
+          },
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-25T05:02:12.340Z",
+            "evidence_url": "https://daebyskin.com/products/cleanser",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-25T05:02:12.340Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://daebyskin.com/products/cleanser"
+            },
+            "regional_price": {
+              "amount": 19,
+              "currency": "USD",
+              "display_raw": "19.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://daebyskin.com/products/cleanser",
+              "captured_at": "2026-05-25T05:02:12.340Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T05:02:12.340Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T05:02:12.340Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T05:02:12.340Z"
+            }
+          },
+          "commerce_facts_gate": {
+            "status": "hold",
+            "market_id": "US",
+            "expected_currency": "USD",
+            "observed_currency": "USD",
+            "market_switch_status": "ok",
+            "sellable_region_status": "unknown",
+            "shipping_status": "unknown",
+            "promotions_status": "unknown",
+            "availability_status": "in_stock",
+            "problems": [
+              "market_currency_mismatch"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "target_brand": "DAEBY",
+      "target_url": "https://daebyskin.com/products/gentle-scrub",
+      "extract_status": "brand_catalog_extract",
+      "market": "US",
+      "source_domain": "https://daebyskin.com",
+      "source_role": "primary",
+      "matched_preferred_titles": [],
+      "alias_preferred_titles": [],
+      "seed_row": {
+        "ingredient_id": null,
+        "ingredient_name": null,
+        "seed_id": "eps_fc392be45ce04f8321849c46",
+        "brand": "DAEBY",
+        "market": "US",
+        "tool": "creator_agents",
+        "status": "active",
+        "domain": "daebyskin.com",
+        "external_product_id": "ext_81a4953ded17be5f84748629",
+        "canonical_url": "https://daebyskin.com/products/gentle-scrub",
+        "destination_url": "https://daebyskin.com/products/gentle-scrub",
+        "title": "Exfoliating Facial Scrub",
+        "image_url": "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/gentle-scrub-5952419.jpg?v=1767685448",
+        "price_amount": 18,
+        "price_currency": "EUR",
+        "availability": "in_stock",
+        "attached_product_key": null,
+        "requires_seed_correction": false,
+        "seed_data": {
+          "brand": "DAEBY",
+          "title": "Exfoliating Facial Scrub",
+          "description": "Smooth. Bright. Refined. Skin-friendly particles remove dead cells and boost turnover for next-level clarity. \n\nGently lifts dulling dead skin cells \n\nStimulates natural cell turnover \n\nRefines texture and targets roughness \n\nUncovers smoother, brighter skin \n\nSkin-friendly particles - never harsh \n\nOne essential step for visible results",
+          "external_product_id": "ext_81a4953ded17be5f84748629",
+          "canonical_url": "https://daebyskin.com/products/gentle-scrub",
+          "destination_url": "https://daebyskin.com/products/gentle-scrub",
+          "price_amount": 18,
+          "price_currency": "EUR",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/gentle-scrub-5952419.jpg?v=1767685448",
+          "image_urls": [
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/gentle-scrub-5952419.jpg?v=1767685448",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/gentle-scrub-3535137.png?v=1775565943",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/2_1.svg?v=1775565943",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/3_2.svg?v=1775565943",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/4_1.svg?v=1775565943",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/5_1.svg?v=1775565943",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/6_1.svg?v=1775565943",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/7_1.svg?v=1775565943",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/8_1.svg?v=1775565943"
+          ],
+          "images": [
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/gentle-scrub-5952419.jpg?v=1767685448",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/gentle-scrub-3535137.png?v=1775565943",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/2_1.svg?v=1775565943",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/3_2.svg?v=1775565943",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/4_1.svg?v=1775565943",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/5_1.svg?v=1775565943",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/6_1.svg?v=1775565943",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/7_1.svg?v=1775565943",
+            "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/8_1.svg?v=1775565943"
+          ],
+          "variants": [
+            {
+              "sku": "199284310551",
+              "variant_id": "45409382662310",
+              "url": "https://daebyskin.com/products/gentle-scrub",
+              "option_name": "Title",
+              "option_value": "Default Title",
+              "price": "18",
+              "currency": "EUR",
+              "stock": "In Stock",
+              "description": "Smooth. Bright. Refined. Skin-friendly particles remove dead cells and boost turnover for next-level clarity. \n\nGently lifts dulling dead skin cells \n\nStimulates natural cell turnover \n\nRefines texture and targets roughness \n\nUncovers smoother, brighter skin \n\nSkin-friendly particles - never harsh \n\nOne essential step for visible results",
+              "image_url": "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/gentle-scrub-5952419.jpg?v=1767685448",
+              "image_urls": [
+                "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/gentle-scrub-5952419.jpg?v=1767685448",
+                "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/gentle-scrub-3535137.png?v=1775565943",
+                "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/2_1.svg?v=1775565943",
+                "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/3_2.svg?v=1775565943",
+                "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/4_1.svg?v=1775565943",
+                "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/5_1.svg?v=1775565943",
+                "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/6_1.svg?v=1775565943",
+                "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/7_1.svg?v=1775565943",
+                "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/8_1.svg?v=1775565943"
+              ]
+            }
+          ],
+          "snapshot": {
+            "source": "catalog_intelligence_seed_creation_manifest",
+            "extracted_at": "2026-05-25T05:02:11.864Z",
+            "canonical_url": "https://daebyskin.com/products/gentle-scrub",
+            "destination_url": "https://daebyskin.com/products/gentle-scrub",
+            "title": "Exfoliating Facial Scrub",
+            "description": "Smooth. Bright. Refined. Skin-friendly particles remove dead cells and boost turnover for next-level clarity. \n\nGently lifts dulling dead skin cells \n\nStimulates natural cell turnover \n\nRefines texture and targets roughness \n\nUncovers smoother, brighter skin \n\nSkin-friendly particles - never harsh \n\nOne essential step for visible results",
+            "image_url": "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/gentle-scrub-5952419.jpg?v=1767685448",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/gentle-scrub-5952419.jpg?v=1767685448",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/gentle-scrub-3535137.png?v=1775565943",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/2_1.svg?v=1775565943",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/3_2.svg?v=1775565943",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/4_1.svg?v=1775565943",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/5_1.svg?v=1775565943",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/6_1.svg?v=1775565943",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/7_1.svg?v=1775565943",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/8_1.svg?v=1775565943"
+            ],
+            "images": [
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/gentle-scrub-5952419.jpg?v=1767685448",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/gentle-scrub-3535137.png?v=1775565943",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/2_1.svg?v=1775565943",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/3_2.svg?v=1775565943",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/4_1.svg?v=1775565943",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/5_1.svg?v=1775565943",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/6_1.svg?v=1775565943",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/7_1.svg?v=1775565943",
+              "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/8_1.svg?v=1775565943"
+            ],
+            "variants": [
+              {
+                "sku": "199284310551",
+                "variant_id": "45409382662310",
+                "url": "https://daebyskin.com/products/gentle-scrub",
+                "option_name": "Title",
+                "option_value": "Default Title",
+                "price": "18",
+                "currency": "EUR",
+                "stock": "In Stock",
+                "description": "Smooth. Bright. Refined. Skin-friendly particles remove dead cells and boost turnover for next-level clarity. \n\nGently lifts dulling dead skin cells \n\nStimulates natural cell turnover \n\nRefines texture and targets roughness \n\nUncovers smoother, brighter skin \n\nSkin-friendly particles - never harsh \n\nOne essential step for visible results",
+                "image_url": "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/gentle-scrub-5952419.jpg?v=1767685448",
+                "image_urls": [
+                  "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/gentle-scrub-5952419.jpg?v=1767685448",
+                  "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/gentle-scrub-3535137.png?v=1775565943",
+                  "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/2_1.svg?v=1775565943",
+                  "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/3_2.svg?v=1775565943",
+                  "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/4_1.svg?v=1775565943",
+                  "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/5_1.svg?v=1775565943",
+                  "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/6_1.svg?v=1775565943",
+                  "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/7_1.svg?v=1775565943",
+                  "https://cdn.shopify.com/s/files/1/0647/0752/6822/files/8_1.svg?v=1775565943"
+                ]
+              }
+            ],
+            "diagnostics": {
+              "requested_domain": "daebyskin.com",
+              "resolved_base_url": "https://daebyskin.com",
+              "discovery_strategy": "shopify_json",
+              "failure_category": null,
+              "block_provider": null,
+              "http_trace": [
+                {
+                  "url": "https://www.daebyskin.com/",
+                  "status": 200
+                },
+                {
+                  "url": "https://daebyskin.com/products.json?limit=1",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.daebyskin.com/US",
+                  "status": 404
+                },
+                {
+                  "url": "https://daebyskin.com/products.json?limit=250&page=1",
+                  "status": 200
+                }
+              ]
+            },
+            "search_aliases": [
+              "Exfoliating Facial Scrub"
+            ],
+            "authority_source": {
+              "source_url": "https://daebyskin.com",
+              "source_role": "primary",
+              "matched_preferred_titles": []
+            },
+            "source_validation": {
+              "source_type": "brand_owned",
+              "requires_multi_offer_merge_validation": false,
+              "source_host": "daebyskin.com"
+            },
+            "commerce_facts_v1": {
+              "contract_version": "commerce_facts.v1",
+              "market_id": "US",
+              "country": "US",
+              "currency_target": "USD",
+              "source_authority": "catalog_extract_v2",
+              "captured_at": "2026-05-25T05:02:12.340Z",
+              "evidence_url": "https://daebyskin.com/products/gentle-scrub",
+              "sellable_region": {
+                "status": "unknown",
+                "countries": [],
+                "evidence_source": "catalog_extract_v2",
+                "confidence": "medium",
+                "checked_at": "2026-05-25T05:02:12.340Z",
+                "reason_codes": [
+                  "market_currency_observed",
+                  "shipping_destination_not_verified",
+                  "external_checkout_not_queried"
+                ],
+                "evidence_url": "https://daebyskin.com/products/gentle-scrub"
+              },
+              "regional_price": {
+                "amount": 18,
+                "currency": "USD",
+                "display_raw": "18.00",
+                "price_type": "list",
+                "compare_at_amount": null,
+                "compare_at_currency": null,
+                "compare_at_display_raw": null,
+                "tax_included": "unknown",
+                "confidence": "medium",
+                "market_switch_status": "ok",
+                "observed_currency": "USD",
+                "source_url": "https://daebyskin.com/products/gentle-scrub",
+                "captured_at": "2026-05-25T05:02:12.340Z"
+              },
+              "availability": {
+                "status": "in_stock",
+                "source": "catalog_extract_v2",
+                "confidence": "medium",
+                "captured_at": "2026-05-25T05:02:12.340Z"
+              },
+              "shipping": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_checkout_not_queried"
+                ],
+                "checked_at": "2026-05-25T05:02:12.340Z"
+              },
+              "promotions": [],
+              "returns": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_returns_not_extracted"
+                ],
+                "checked_at": "2026-05-25T05:02:12.340Z"
+              }
+            },
+            "commerce_facts_gate": {
+              "status": "hold",
+              "market_id": "US",
+              "expected_currency": "USD",
+              "observed_currency": "USD",
+              "market_switch_status": "ok",
+              "sellable_region_status": "unknown",
+              "shipping_status": "unknown",
+              "promotions_status": "unknown",
+              "availability_status": "in_stock",
+              "problems": [
+                "market_currency_mismatch"
+              ]
+            }
+          },
+          "search_aliases": [
+            "Exfoliating Facial Scrub"
+          ],
+          "authority_source": {
+            "source_url": "https://daebyskin.com",
+            "source_role": "primary",
+            "matched_preferred_titles": []
+          },
+          "source_validation": {
+            "source_type": "brand_owned",
+            "requires_multi_offer_merge_validation": false,
+            "source_host": "daebyskin.com"
+          },
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-25T05:02:12.340Z",
+            "evidence_url": "https://daebyskin.com/products/gentle-scrub",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-25T05:02:12.340Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://daebyskin.com/products/gentle-scrub"
+            },
+            "regional_price": {
+              "amount": 18,
+              "currency": "USD",
+              "display_raw": "18.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://daebyskin.com/products/gentle-scrub",
+              "captured_at": "2026-05-25T05:02:12.340Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T05:02:12.340Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T05:02:12.340Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T05:02:12.340Z"
+            }
+          },
+          "commerce_facts_gate": {
+            "status": "hold",
+            "market_id": "US",
+            "expected_currency": "USD",
+            "observed_currency": "USD",
+            "market_switch_status": "ok",
+            "sellable_region_status": "unknown",
+            "shipping_status": "unknown",
+            "promotions_status": "unknown",
+            "availability_status": "in_stock",
+            "problems": [
+              "market_currency_mismatch"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "reviewed_from_manifest_generated_at": "2026-05-25T05:02:11.864Z",
+  "review_gate": {
+    "ok_to_continue": true,
+    "blocker_reasons": [],
+    "warning_reasons": [],
+    "accepted_item_count": 3,
+    "blocked_item_count": 0
+  }
+}

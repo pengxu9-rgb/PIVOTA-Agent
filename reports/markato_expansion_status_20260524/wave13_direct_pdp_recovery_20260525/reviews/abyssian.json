@@ -1,0 +1,39 @@
+{
+  "generated_at": "2026-05-25T05:03:59.616Z",
+  "ok_to_continue": false,
+  "blocker_reasons": [
+    "anti_abuse_signal:perimeterx"
+  ],
+  "warning_reasons": [
+    "row_level_blockers_filtered_from_accepted_manifest"
+  ],
+  "item_count": 20,
+  "accepted_item_count": 19,
+  "blocked_item_count": 1,
+  "price_coverage_rate": 1,
+  "availability_coverage_rate": 1,
+  "image_coverage_rate": 1,
+  "diagnostics": [
+    {
+      "discovery_strategy": "shopify_json",
+      "failure_category": null,
+      "block_provider": "perimeterx"
+    }
+  ],
+  "row_findings": [
+    {
+      "severity": "blocker",
+      "reason_codes": [
+        "non_product_or_accessory_title"
+      ],
+      "title": "Scrunchies",
+      "url": "https://www.abyssianhaircare.com/products/scrunchies",
+      "price": 5,
+      "currency": "USD",
+      "availability": "out_of_stock"
+    }
+  ],
+  "blocked_keys": [
+    "ext_404c8e300031dc4b0c03e7b5"
+  ]
+}

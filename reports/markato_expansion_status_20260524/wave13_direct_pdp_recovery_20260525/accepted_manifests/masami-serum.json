@@ -1,0 +1,430 @@
+{
+  "generated_at": "2026-05-25T05:09:57.358Z",
+  "brand": "MASAMI",
+  "domain": "https://lovemasami.com/products/mekabu-serum",
+  "fallback_domains": [],
+  "market": "US",
+  "preferred_titles": [
+    "Mekabu Hydrating Shine Serum"
+  ],
+  "matched_preferred_titles": [
+    "Mekabu Hydrating Shine Serum"
+  ],
+  "extracted_product_count": 1,
+  "excluded_bundle_like_count": 0,
+  "excluded_non_product_page_count": 0,
+  "excluded_incomplete_transaction_count": 0,
+  "excluded_brand_scope_mismatch_count": 0,
+  "matched_preferred_title_count": 1,
+  "item_count": 1,
+  "fallback_used": false,
+  "source_attempts": [
+    {
+      "source_url": "https://lovemasami.com/products/mekabu-serum",
+      "source_role": "primary",
+      "extracted_product_count": 1,
+      "item_count": 1,
+      "matched_preferred_title_count": 1,
+      "matched_preferred_titles": [
+        "Mekabu Hydrating Shine Serum"
+      ],
+      "diagnostics_summary": {
+        "discovery_strategy": "shopify_json",
+        "failure_category": null,
+        "block_provider": null
+      },
+      "used_in_manifest": true,
+      "added_item_count": 1,
+      "added_matched_preferred_titles": [
+        "Mekabu Hydrating Shine Serum"
+      ],
+      "skip_reason": null
+    }
+  ],
+  "items": [
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "target_brand": "MASAMI",
+      "target_url": "https://lovemasami.com/products/mekabu-serum",
+      "extract_status": "brand_catalog_extract",
+      "market": "US",
+      "source_domain": "https://lovemasami.com/products/mekabu-serum",
+      "source_role": "primary",
+      "matched_preferred_titles": [
+        "Mekabu Hydrating Shine Serum"
+      ],
+      "alias_preferred_titles": [
+        "Mekabu Hydrating Shine Serum"
+      ],
+      "seed_row": {
+        "ingredient_id": null,
+        "ingredient_name": null,
+        "seed_id": "eps_07f3261f7a8de9fe306209a1",
+        "brand": "MASAMI",
+        "market": "US",
+        "tool": "creator_agents",
+        "status": "active",
+        "domain": "lovemasami.com",
+        "external_product_id": "ext_53cf4f0ee46873d280f632db",
+        "canonical_url": "https://lovemasami.com/products/mekabu-serum",
+        "destination_url": "https://lovemasami.com/products/mekabu-serum",
+        "title": "Mekabu Hydrating Shine Serum",
+        "image_url": "https://www.lovemasami.com/cdn/shop/files/Awards_600x600_14.png?v=1756936123&width=1920",
+        "price_amount": 36.95,
+        "price_currency": "EUR",
+        "availability": "in_stock",
+        "attached_product_key": null,
+        "requires_seed_correction": false,
+        "seed_data": {
+          "brand": "MASAMI",
+          "title": "Mekabu Hydrating Shine Serum",
+          "description": "MASAMI Shine Serum, enriched with the Japanese ocean botanical Mekabu, gives even unruly, dull, lifeless, over-processed hair a hydrated, smoothed and nourished look. Our Shine Serum works on virtually every hair type and texture to enhance shine while leaving hair soft and silky. It adds vibrancy to hair color while providing the nutrients necessary for long term nourishment and care. Great for any hair type and texture - anyone who wants salon hair every day. \n\nSize: 1.7oz, now in a glass bottle",
+          "external_product_id": "ext_53cf4f0ee46873d280f632db",
+          "canonical_url": "https://lovemasami.com/products/mekabu-serum",
+          "destination_url": "https://lovemasami.com/products/mekabu-serum",
+          "price_amount": 36.95,
+          "price_currency": "EUR",
+          "availability": "in_stock",
+          "image_url": "https://www.lovemasami.com/cdn/shop/files/Awards_600x600_14.png?v=1756936123&width=1920",
+          "image_urls": [
+            "https://www.lovemasami.com/cdn/shop/files/Awards_600x600_14.png?v=1756936123&width=1920",
+            "https://www.lovemasami.com/cdn/shop/files/Long_Hair_Before_and_After_114x144_crop_center.png?v=1756936109",
+            "https://www.lovemasami.com/cdn/shop/files/MASAMI_shine_serum_texture_114x144_crop_center.png?v=1756936109",
+            "https://www.lovemasami.com/cdn/shop/files/Amazon_CVR_Image_114x144_crop_center.png?v=1756936109",
+            "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_girl_applying_shine_serum.png?v=1756936109",
+            "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Shine_Serum_straight_hair.jpg?v=1756936109",
+            "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-serum-mekabu-hydrating-shine-serum-18600012765341-23627648893084.jpg?v=1756936109",
+            "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Shine_Serum_Natural_Curls.jpg?v=1756936109",
+            "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Shine_Serum_Blonde.jpg?v=1756936109",
+            "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/Mekabu_ingredient.jpg?v=1756936109",
+            "https://cdn.shopify.com/s/files/1/0138/7901/7536/files/80554707-a5b6-4b6d-96d9-abaf657b8008.webp?v=1769712300",
+            "https://www.lovemasami.com/cdn/shop/files/Ingredient_Benefits_114x144_crop_center.png?v=1756936109"
+          ],
+          "images": [
+            "https://www.lovemasami.com/cdn/shop/files/Awards_600x600_14.png?v=1756936123&width=1920",
+            "https://www.lovemasami.com/cdn/shop/files/Long_Hair_Before_and_After_114x144_crop_center.png?v=1756936109",
+            "https://www.lovemasami.com/cdn/shop/files/MASAMI_shine_serum_texture_114x144_crop_center.png?v=1756936109",
+            "https://www.lovemasami.com/cdn/shop/files/Amazon_CVR_Image_114x144_crop_center.png?v=1756936109",
+            "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_girl_applying_shine_serum.png?v=1756936109",
+            "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Shine_Serum_straight_hair.jpg?v=1756936109",
+            "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-serum-mekabu-hydrating-shine-serum-18600012765341-23627648893084.jpg?v=1756936109",
+            "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Shine_Serum_Natural_Curls.jpg?v=1756936109",
+            "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Shine_Serum_Blonde.jpg?v=1756936109",
+            "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/Mekabu_ingredient.jpg?v=1756936109",
+            "https://cdn.shopify.com/s/files/1/0138/7901/7536/files/80554707-a5b6-4b6d-96d9-abaf657b8008.webp?v=1769712300",
+            "https://www.lovemasami.com/cdn/shop/files/Ingredient_Benefits_114x144_crop_center.png?v=1756936109"
+          ],
+          "variants": [
+            {
+              "sku": "18600012765341",
+              "variant_id": "19939773513792",
+              "url": "https://lovemasami.com/products/mekabu-serum",
+              "option_name": "Size",
+              "option_value": "1.7oz",
+              "price": "36.95",
+              "currency": "EUR",
+              "stock": "In Stock",
+              "description": "MASAMI Shine Serum, enriched with the Japanese ocean botanical Mekabu, gives even unruly, dull, lifeless, over-processed hair a hydrated, smoothed and nourished look. Our Shine Serum works on virtually every hair type and texture to enhance shine while leaving hair soft and silky. It adds vibrancy to hair color while providing the nutrients necessary for long term nourishment and care. Great for any hair type and texture - anyone who wants salon hair every day. \n\nSize: 1.7oz, now in a glass bottle",
+              "image_url": "https://www.lovemasami.com/cdn/shop/files/Awards_600x600_14.png?v=1756936123&width=1920",
+              "image_urls": [
+                "https://www.lovemasami.com/cdn/shop/files/Awards_600x600_14.png?v=1756936123&width=1920",
+                "https://www.lovemasami.com/cdn/shop/files/Long_Hair_Before_and_After_114x144_crop_center.png?v=1756936109",
+                "https://www.lovemasami.com/cdn/shop/files/MASAMI_shine_serum_texture_114x144_crop_center.png?v=1756936109",
+                "https://www.lovemasami.com/cdn/shop/files/Amazon_CVR_Image_114x144_crop_center.png?v=1756936109",
+                "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_girl_applying_shine_serum.png?v=1756936109",
+                "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Shine_Serum_straight_hair.jpg?v=1756936109",
+                "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-serum-mekabu-hydrating-shine-serum-18600012765341-23627648893084.jpg?v=1756936109",
+                "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Shine_Serum_Natural_Curls.jpg?v=1756936109",
+                "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Shine_Serum_Blonde.jpg?v=1756936109",
+                "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/Mekabu_ingredient.jpg?v=1756936109",
+                "https://cdn.shopify.com/s/files/1/0138/7901/7536/files/80554707-a5b6-4b6d-96d9-abaf657b8008.webp?v=1769712300",
+                "https://www.lovemasami.com/cdn/shop/files/Ingredient_Benefits_114x144_crop_center.png?v=1756936109"
+              ]
+            }
+          ],
+          "snapshot": {
+            "source": "catalog_intelligence_seed_creation_manifest",
+            "extracted_at": "2026-05-25T05:05:27.073Z",
+            "canonical_url": "https://lovemasami.com/products/mekabu-serum",
+            "destination_url": "https://lovemasami.com/products/mekabu-serum",
+            "title": "Mekabu Hydrating Shine Serum",
+            "description": "MASAMI Shine Serum, enriched with the Japanese ocean botanical Mekabu, gives even unruly, dull, lifeless, over-processed hair a hydrated, smoothed and nourished look. Our Shine Serum works on virtually every hair type and texture to enhance shine while leaving hair soft and silky. It adds vibrancy to hair color while providing the nutrients necessary for long term nourishment and care. Great for any hair type and texture - anyone who wants salon hair every day. \n\nSize: 1.7oz, now in a glass bottle",
+            "image_url": "https://www.lovemasami.com/cdn/shop/files/Awards_600x600_14.png?v=1756936123&width=1920",
+            "image_urls": [
+              "https://www.lovemasami.com/cdn/shop/files/Awards_600x600_14.png?v=1756936123&width=1920",
+              "https://www.lovemasami.com/cdn/shop/files/Long_Hair_Before_and_After_114x144_crop_center.png?v=1756936109",
+              "https://www.lovemasami.com/cdn/shop/files/MASAMI_shine_serum_texture_114x144_crop_center.png?v=1756936109",
+              "https://www.lovemasami.com/cdn/shop/files/Amazon_CVR_Image_114x144_crop_center.png?v=1756936109",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_girl_applying_shine_serum.png?v=1756936109",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Shine_Serum_straight_hair.jpg?v=1756936109",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-serum-mekabu-hydrating-shine-serum-18600012765341-23627648893084.jpg?v=1756936109",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Shine_Serum_Natural_Curls.jpg?v=1756936109",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Shine_Serum_Blonde.jpg?v=1756936109",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/Mekabu_ingredient.jpg?v=1756936109",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/files/80554707-a5b6-4b6d-96d9-abaf657b8008.webp?v=1769712300",
+              "https://www.lovemasami.com/cdn/shop/files/Ingredient_Benefits_114x144_crop_center.png?v=1756936109"
+            ],
+            "images": [
+              "https://www.lovemasami.com/cdn/shop/files/Awards_600x600_14.png?v=1756936123&width=1920",
+              "https://www.lovemasami.com/cdn/shop/files/Long_Hair_Before_and_After_114x144_crop_center.png?v=1756936109",
+              "https://www.lovemasami.com/cdn/shop/files/MASAMI_shine_serum_texture_114x144_crop_center.png?v=1756936109",
+              "https://www.lovemasami.com/cdn/shop/files/Amazon_CVR_Image_114x144_crop_center.png?v=1756936109",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_girl_applying_shine_serum.png?v=1756936109",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Shine_Serum_straight_hair.jpg?v=1756936109",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-serum-mekabu-hydrating-shine-serum-18600012765341-23627648893084.jpg?v=1756936109",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Shine_Serum_Natural_Curls.jpg?v=1756936109",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Shine_Serum_Blonde.jpg?v=1756936109",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/Mekabu_ingredient.jpg?v=1756936109",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/files/80554707-a5b6-4b6d-96d9-abaf657b8008.webp?v=1769712300",
+              "https://www.lovemasami.com/cdn/shop/files/Ingredient_Benefits_114x144_crop_center.png?v=1756936109"
+            ],
+            "variants": [
+              {
+                "sku": "18600012765341",
+                "variant_id": "19939773513792",
+                "url": "https://lovemasami.com/products/mekabu-serum",
+                "option_name": "Size",
+                "option_value": "1.7oz",
+                "price": "36.95",
+                "currency": "EUR",
+                "stock": "In Stock",
+                "description": "MASAMI Shine Serum, enriched with the Japanese ocean botanical Mekabu, gives even unruly, dull, lifeless, over-processed hair a hydrated, smoothed and nourished look. Our Shine Serum works on virtually every hair type and texture to enhance shine while leaving hair soft and silky. It adds vibrancy to hair color while providing the nutrients necessary for long term nourishment and care. Great for any hair type and texture - anyone who wants salon hair every day. \n\nSize: 1.7oz, now in a glass bottle",
+                "image_url": "https://www.lovemasami.com/cdn/shop/files/Awards_600x600_14.png?v=1756936123&width=1920",
+                "image_urls": [
+                  "https://www.lovemasami.com/cdn/shop/files/Awards_600x600_14.png?v=1756936123&width=1920",
+                  "https://www.lovemasami.com/cdn/shop/files/Long_Hair_Before_and_After_114x144_crop_center.png?v=1756936109",
+                  "https://www.lovemasami.com/cdn/shop/files/MASAMI_shine_serum_texture_114x144_crop_center.png?v=1756936109",
+                  "https://www.lovemasami.com/cdn/shop/files/Amazon_CVR_Image_114x144_crop_center.png?v=1756936109",
+                  "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_girl_applying_shine_serum.png?v=1756936109",
+                  "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Shine_Serum_straight_hair.jpg?v=1756936109",
+                  "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-serum-mekabu-hydrating-shine-serum-18600012765341-23627648893084.jpg?v=1756936109",
+                  "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Shine_Serum_Natural_Curls.jpg?v=1756936109",
+                  "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Shine_Serum_Blonde.jpg?v=1756936109",
+                  "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/Mekabu_ingredient.jpg?v=1756936109",
+                  "https://cdn.shopify.com/s/files/1/0138/7901/7536/files/80554707-a5b6-4b6d-96d9-abaf657b8008.webp?v=1769712300",
+                  "https://www.lovemasami.com/cdn/shop/files/Ingredient_Benefits_114x144_crop_center.png?v=1756936109"
+                ]
+              }
+            ],
+            "diagnostics": {
+              "requested_domain": "lovemasami.com",
+              "resolved_base_url": "https://lovemasami.com",
+              "discovery_strategy": "shopify_json",
+              "failure_category": null,
+              "block_provider": null,
+              "http_trace": [
+                {
+                  "url": "https://www.lovemasami.com/products/mekabu-serum.js",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.lovemasami.com/products/mekabu-serum",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.lovemasami.com/products/mekabu-serum",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.lovemasami.com/products/mekabu-serum",
+                  "status": 200
+                }
+              ]
+            },
+            "search_aliases": [
+              "Mekabu Hydrating Shine Serum"
+            ],
+            "authority_source": {
+              "source_url": "https://lovemasami.com/products/mekabu-serum",
+              "source_role": "primary",
+              "matched_preferred_titles": [
+                "Mekabu Hydrating Shine Serum"
+              ]
+            },
+            "source_validation": {
+              "source_type": "brand_owned",
+              "requires_multi_offer_merge_validation": false,
+              "source_host": "lovemasami.com"
+            },
+            "commerce_facts_v1": {
+              "contract_version": "commerce_facts.v1",
+              "market_id": "US",
+              "country": "US",
+              "currency_target": "USD",
+              "source_authority": "catalog_extract_v2",
+              "captured_at": "2026-05-25T05:05:27.684Z",
+              "evidence_url": "https://lovemasami.com/products/mekabu-serum",
+              "sellable_region": {
+                "status": "unknown",
+                "countries": [],
+                "evidence_source": "catalog_extract_v2",
+                "confidence": "medium",
+                "checked_at": "2026-05-25T05:05:27.684Z",
+                "reason_codes": [
+                  "market_currency_observed",
+                  "shipping_destination_not_verified",
+                  "external_checkout_not_queried"
+                ],
+                "evidence_url": "https://lovemasami.com/products/mekabu-serum"
+              },
+              "regional_price": {
+                "amount": 34,
+                "currency": "USD",
+                "display_raw": "34.00",
+                "price_type": "list",
+                "compare_at_amount": null,
+                "compare_at_currency": null,
+                "compare_at_display_raw": null,
+                "tax_included": "unknown",
+                "confidence": "medium",
+                "market_switch_status": "ok",
+                "observed_currency": "USD",
+                "source_url": "https://lovemasami.com/products/mekabu-serum",
+                "captured_at": "2026-05-25T05:05:27.684Z"
+              },
+              "availability": {
+                "status": "in_stock",
+                "source": "catalog_extract_v2",
+                "confidence": "medium",
+                "captured_at": "2026-05-25T05:05:27.684Z"
+              },
+              "shipping": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_checkout_not_queried"
+                ],
+                "checked_at": "2026-05-25T05:05:27.684Z"
+              },
+              "promotions": [],
+              "returns": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_returns_not_extracted"
+                ],
+                "checked_at": "2026-05-25T05:05:27.684Z"
+              }
+            },
+            "commerce_facts_gate": {
+              "status": "hold",
+              "market_id": "US",
+              "expected_currency": "USD",
+              "observed_currency": "USD",
+              "market_switch_status": "ok",
+              "sellable_region_status": "unknown",
+              "shipping_status": "unknown",
+              "promotions_status": "unknown",
+              "availability_status": "in_stock",
+              "problems": [
+                "market_currency_mismatch"
+              ]
+            }
+          },
+          "search_aliases": [
+            "Mekabu Hydrating Shine Serum"
+          ],
+          "authority_source": {
+            "source_url": "https://lovemasami.com/products/mekabu-serum",
+            "source_role": "primary",
+            "matched_preferred_titles": [
+              "Mekabu Hydrating Shine Serum"
+            ]
+          },
+          "source_validation": {
+            "source_type": "brand_owned",
+            "requires_multi_offer_merge_validation": false,
+            "source_host": "lovemasami.com"
+          },
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-25T05:05:27.684Z",
+            "evidence_url": "https://lovemasami.com/products/mekabu-serum",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-25T05:05:27.684Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://lovemasami.com/products/mekabu-serum"
+            },
+            "regional_price": {
+              "amount": 34,
+              "currency": "USD",
+              "display_raw": "34.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://lovemasami.com/products/mekabu-serum",
+              "captured_at": "2026-05-25T05:05:27.684Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T05:05:27.684Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T05:05:27.684Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T05:05:27.684Z"
+            }
+          },
+          "commerce_facts_gate": {
+            "status": "hold",
+            "market_id": "US",
+            "expected_currency": "USD",
+            "observed_currency": "USD",
+            "market_switch_status": "ok",
+            "sellable_region_status": "unknown",
+            "shipping_status": "unknown",
+            "promotions_status": "unknown",
+            "availability_status": "in_stock",
+            "problems": [
+              "market_currency_mismatch"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "reviewed_from_manifest_generated_at": "2026-05-25T05:05:27.075Z",
+  "review_gate": {
+    "ok_to_continue": true,
+    "blocker_reasons": [],
+    "warning_reasons": [],
+    "accepted_item_count": 1,
+    "blocked_item_count": 0
+  }
+}

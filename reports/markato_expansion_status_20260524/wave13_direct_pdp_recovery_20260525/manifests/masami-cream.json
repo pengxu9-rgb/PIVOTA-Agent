@@ -1,0 +1,426 @@
+{
+  "generated_at": "2026-05-25T05:05:47.518Z",
+  "brand": "MASAMI",
+  "domain": "https://lovemasami.com/products/mekabu-cream",
+  "fallback_domains": [],
+  "market": "US",
+  "preferred_titles": [
+    "Mekabu Hydrating Styling Cream"
+  ],
+  "matched_preferred_titles": [
+    "Mekabu Hydrating Styling Cream"
+  ],
+  "extracted_product_count": 1,
+  "excluded_bundle_like_count": 0,
+  "excluded_non_product_page_count": 0,
+  "excluded_incomplete_transaction_count": 0,
+  "excluded_brand_scope_mismatch_count": 0,
+  "matched_preferred_title_count": 1,
+  "item_count": 1,
+  "fallback_used": false,
+  "source_attempts": [
+    {
+      "source_url": "https://lovemasami.com/products/mekabu-cream",
+      "source_role": "primary",
+      "extracted_product_count": 1,
+      "item_count": 1,
+      "matched_preferred_title_count": 1,
+      "matched_preferred_titles": [
+        "Mekabu Hydrating Styling Cream"
+      ],
+      "diagnostics_summary": {
+        "discovery_strategy": "shopify_json",
+        "failure_category": null,
+        "block_provider": null
+      },
+      "used_in_manifest": true,
+      "added_item_count": 1,
+      "added_matched_preferred_titles": [
+        "Mekabu Hydrating Styling Cream"
+      ],
+      "skip_reason": null
+    }
+  ],
+  "items": [
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "target_brand": "MASAMI",
+      "target_url": "https://lovemasami.com/products/mekabu-cream",
+      "extract_status": "brand_catalog_extract",
+      "market": "US",
+      "source_domain": "https://lovemasami.com/products/mekabu-cream",
+      "source_role": "primary",
+      "matched_preferred_titles": [
+        "Mekabu Hydrating Styling Cream"
+      ],
+      "alias_preferred_titles": [
+        "Mekabu Hydrating Styling Cream"
+      ],
+      "seed_row": {
+        "ingredient_id": null,
+        "ingredient_name": null,
+        "seed_id": "eps_4a1782147cf6c901a6166f7e",
+        "brand": "MASAMI",
+        "market": "US",
+        "tool": "creator_agents",
+        "status": "active",
+        "domain": "lovemasami.com",
+        "external_product_id": "ext_fe9ef8f2a6343901489fe63e",
+        "canonical_url": "https://lovemasami.com/products/mekabu-cream",
+        "destination_url": "https://lovemasami.com/products/mekabu-cream",
+        "title": "Mekabu Hydrating Styling Cream",
+        "image_url": "https://www.lovemasami.com/cdn/shop/files/MASAMI_Mekabu_Hydrating_Styling_Cream_Award.png?v=1762526423&width=1920",
+        "price_amount": 38.95,
+        "price_currency": "EUR",
+        "availability": "in_stock",
+        "attached_product_key": null,
+        "requires_seed_correction": false,
+        "seed_data": {
+          "brand": "MASAMI",
+          "title": "Mekabu Hydrating Styling Cream",
+          "description": "Mekabu and Aloe Vera add hydration, protection and shine, while Vitamin E, Grapeseed, and Sweet Almond Oils help nourish the hair from root to tip, eliminating frizz for a natural, soft, silky look.\n\nThis curl-defining formula is non-greasy, non-sticky and boasts the benefits of a wax, paste and cream for a flexible, all-day hold, that can be messy, sleek or anything in between. Use on wet or dry hair.",
+          "external_product_id": "ext_fe9ef8f2a6343901489fe63e",
+          "canonical_url": "https://lovemasami.com/products/mekabu-cream",
+          "destination_url": "https://lovemasami.com/products/mekabu-cream",
+          "price_amount": 38.95,
+          "price_currency": "EUR",
+          "availability": "in_stock",
+          "image_url": "https://www.lovemasami.com/cdn/shop/files/MASAMI_Mekabu_Hydrating_Styling_Cream_Award.png?v=1762526423&width=1920",
+          "image_urls": [
+            "https://www.lovemasami.com/cdn/shop/files/MASAMI_Mekabu_Hydrating_Styling_Cream_Award.png?v=1762526423&width=1920",
+            "https://www.lovemasami.com/cdn/shop/files/Amazon_CVR_Image_114x144_crop_center.png?v=1756936109",
+            "https://www.lovemasami.com/cdn/shop/files/Curly_Hair_Before_and_after_114x144_crop_center.png?v=1748114850",
+            "https://www.lovemasami.com/cdn/shop/files/2_aa26e72a-d113-4139-ba6b-0f1bcf36cb1f_114x144_crop_center.png?v=1755657163",
+            "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Mekabu_Hydrating_Styling_Cream_Texture.jpg?v=1755657190",
+            "https://www.lovemasami.com/cdn/shop/files/MASAMI_Hydrating_Styling_Cream_Texture_114x144_crop_center.png?v=1755657233",
+            "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/Man_Holding_MASAMI_Styling_Cream.png?v=1755657253",
+            "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Mekabu_Hydrating_Styling_Cream_Edges.jpg?v=1755657284",
+            "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-treatment-mekabu-hydrating-styling-cream-18600012765271-23627651547292.jpg?v=1755657303",
+            "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Mekabu_Hydrating_Styling_Cream_Outside.jpg?v=1755657342",
+            "https://www.lovemasami.com/cdn/shop/files/Ingredient_Benefits_114x144_crop_center.png?v=1756936109",
+            "https://www.lovemasami.com/cdn/shop/products/MASAMI_Mekabu_Hydrating_Styling_Cream_Texture_114x144_crop_center.jpg?v=1755657190"
+          ],
+          "images": [
+            "https://www.lovemasami.com/cdn/shop/files/MASAMI_Mekabu_Hydrating_Styling_Cream_Award.png?v=1762526423&width=1920",
+            "https://www.lovemasami.com/cdn/shop/files/Amazon_CVR_Image_114x144_crop_center.png?v=1756936109",
+            "https://www.lovemasami.com/cdn/shop/files/Curly_Hair_Before_and_after_114x144_crop_center.png?v=1748114850",
+            "https://www.lovemasami.com/cdn/shop/files/2_aa26e72a-d113-4139-ba6b-0f1bcf36cb1f_114x144_crop_center.png?v=1755657163",
+            "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Mekabu_Hydrating_Styling_Cream_Texture.jpg?v=1755657190",
+            "https://www.lovemasami.com/cdn/shop/files/MASAMI_Hydrating_Styling_Cream_Texture_114x144_crop_center.png?v=1755657233",
+            "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/Man_Holding_MASAMI_Styling_Cream.png?v=1755657253",
+            "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Mekabu_Hydrating_Styling_Cream_Edges.jpg?v=1755657284",
+            "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-treatment-mekabu-hydrating-styling-cream-18600012765271-23627651547292.jpg?v=1755657303",
+            "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Mekabu_Hydrating_Styling_Cream_Outside.jpg?v=1755657342",
+            "https://www.lovemasami.com/cdn/shop/files/Ingredient_Benefits_114x144_crop_center.png?v=1756936109",
+            "https://www.lovemasami.com/cdn/shop/products/MASAMI_Mekabu_Hydrating_Styling_Cream_Texture_114x144_crop_center.jpg?v=1755657190"
+          ],
+          "variants": [
+            {
+              "sku": "18600012765271",
+              "variant_id": "19939837870144",
+              "url": "https://lovemasami.com/products/mekabu-cream",
+              "option_name": "Offer",
+              "option_value": "18600012765271",
+              "price": "38.95",
+              "currency": "EUR",
+              "stock": "In Stock",
+              "description": "Mekabu and Aloe Vera add hydration, protection and shine, while Vitamin E, Grapeseed, and Sweet Almond Oils help nourish the hair from root to tip, eliminating frizz for a natural, soft, silky look.\n\nThis curl-defining formula is non-greasy, non-sticky and boasts the benefits of a wax, paste and cream for a flexible, all-day hold, that can be messy, sleek or anything in between. Use on wet or dry hair.",
+              "image_url": "https://www.lovemasami.com/cdn/shop/files/MASAMI_Mekabu_Hydrating_Styling_Cream_Award.png?v=1762526423&width=1920",
+              "image_urls": [
+                "https://www.lovemasami.com/cdn/shop/files/MASAMI_Mekabu_Hydrating_Styling_Cream_Award.png?v=1762526423&width=1920",
+                "https://www.lovemasami.com/cdn/shop/files/Amazon_CVR_Image_114x144_crop_center.png?v=1756936109",
+                "https://www.lovemasami.com/cdn/shop/files/Curly_Hair_Before_and_after_114x144_crop_center.png?v=1748114850",
+                "https://www.lovemasami.com/cdn/shop/files/2_aa26e72a-d113-4139-ba6b-0f1bcf36cb1f_114x144_crop_center.png?v=1755657163",
+                "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Mekabu_Hydrating_Styling_Cream_Texture.jpg?v=1755657190",
+                "https://www.lovemasami.com/cdn/shop/files/MASAMI_Hydrating_Styling_Cream_Texture_114x144_crop_center.png?v=1755657233",
+                "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/Man_Holding_MASAMI_Styling_Cream.png?v=1755657253",
+                "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Mekabu_Hydrating_Styling_Cream_Edges.jpg?v=1755657284",
+                "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-treatment-mekabu-hydrating-styling-cream-18600012765271-23627651547292.jpg?v=1755657303",
+                "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Mekabu_Hydrating_Styling_Cream_Outside.jpg?v=1755657342",
+                "https://www.lovemasami.com/cdn/shop/files/Ingredient_Benefits_114x144_crop_center.png?v=1756936109",
+                "https://www.lovemasami.com/cdn/shop/products/MASAMI_Mekabu_Hydrating_Styling_Cream_Texture_114x144_crop_center.jpg?v=1755657190"
+              ]
+            }
+          ],
+          "snapshot": {
+            "source": "catalog_intelligence_seed_creation_manifest",
+            "extracted_at": "2026-05-25T05:05:47.515Z",
+            "canonical_url": "https://lovemasami.com/products/mekabu-cream",
+            "destination_url": "https://lovemasami.com/products/mekabu-cream",
+            "title": "Mekabu Hydrating Styling Cream",
+            "description": "Mekabu and Aloe Vera add hydration, protection and shine, while Vitamin E, Grapeseed, and Sweet Almond Oils help nourish the hair from root to tip, eliminating frizz for a natural, soft, silky look.\n\nThis curl-defining formula is non-greasy, non-sticky and boasts the benefits of a wax, paste and cream for a flexible, all-day hold, that can be messy, sleek or anything in between. Use on wet or dry hair.",
+            "image_url": "https://www.lovemasami.com/cdn/shop/files/MASAMI_Mekabu_Hydrating_Styling_Cream_Award.png?v=1762526423&width=1920",
+            "image_urls": [
+              "https://www.lovemasami.com/cdn/shop/files/MASAMI_Mekabu_Hydrating_Styling_Cream_Award.png?v=1762526423&width=1920",
+              "https://www.lovemasami.com/cdn/shop/files/Amazon_CVR_Image_114x144_crop_center.png?v=1756936109",
+              "https://www.lovemasami.com/cdn/shop/files/Curly_Hair_Before_and_after_114x144_crop_center.png?v=1748114850",
+              "https://www.lovemasami.com/cdn/shop/files/2_aa26e72a-d113-4139-ba6b-0f1bcf36cb1f_114x144_crop_center.png?v=1755657163",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Mekabu_Hydrating_Styling_Cream_Texture.jpg?v=1755657190",
+              "https://www.lovemasami.com/cdn/shop/files/MASAMI_Hydrating_Styling_Cream_Texture_114x144_crop_center.png?v=1755657233",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/Man_Holding_MASAMI_Styling_Cream.png?v=1755657253",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Mekabu_Hydrating_Styling_Cream_Edges.jpg?v=1755657284",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-treatment-mekabu-hydrating-styling-cream-18600012765271-23627651547292.jpg?v=1755657303",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Mekabu_Hydrating_Styling_Cream_Outside.jpg?v=1755657342",
+              "https://www.lovemasami.com/cdn/shop/files/Ingredient_Benefits_114x144_crop_center.png?v=1756936109",
+              "https://www.lovemasami.com/cdn/shop/products/MASAMI_Mekabu_Hydrating_Styling_Cream_Texture_114x144_crop_center.jpg?v=1755657190"
+            ],
+            "images": [
+              "https://www.lovemasami.com/cdn/shop/files/MASAMI_Mekabu_Hydrating_Styling_Cream_Award.png?v=1762526423&width=1920",
+              "https://www.lovemasami.com/cdn/shop/files/Amazon_CVR_Image_114x144_crop_center.png?v=1756936109",
+              "https://www.lovemasami.com/cdn/shop/files/Curly_Hair_Before_and_after_114x144_crop_center.png?v=1748114850",
+              "https://www.lovemasami.com/cdn/shop/files/2_aa26e72a-d113-4139-ba6b-0f1bcf36cb1f_114x144_crop_center.png?v=1755657163",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Mekabu_Hydrating_Styling_Cream_Texture.jpg?v=1755657190",
+              "https://www.lovemasami.com/cdn/shop/files/MASAMI_Hydrating_Styling_Cream_Texture_114x144_crop_center.png?v=1755657233",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/Man_Holding_MASAMI_Styling_Cream.png?v=1755657253",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Mekabu_Hydrating_Styling_Cream_Edges.jpg?v=1755657284",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-treatment-mekabu-hydrating-styling-cream-18600012765271-23627651547292.jpg?v=1755657303",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Mekabu_Hydrating_Styling_Cream_Outside.jpg?v=1755657342",
+              "https://www.lovemasami.com/cdn/shop/files/Ingredient_Benefits_114x144_crop_center.png?v=1756936109",
+              "https://www.lovemasami.com/cdn/shop/products/MASAMI_Mekabu_Hydrating_Styling_Cream_Texture_114x144_crop_center.jpg?v=1755657190"
+            ],
+            "variants": [
+              {
+                "sku": "18600012765271",
+                "variant_id": "19939837870144",
+                "url": "https://lovemasami.com/products/mekabu-cream",
+                "option_name": "Offer",
+                "option_value": "18600012765271",
+                "price": "38.95",
+                "currency": "EUR",
+                "stock": "In Stock",
+                "description": "Mekabu and Aloe Vera add hydration, protection and shine, while Vitamin E, Grapeseed, and Sweet Almond Oils help nourish the hair from root to tip, eliminating frizz for a natural, soft, silky look.\n\nThis curl-defining formula is non-greasy, non-sticky and boasts the benefits of a wax, paste and cream for a flexible, all-day hold, that can be messy, sleek or anything in between. Use on wet or dry hair.",
+                "image_url": "https://www.lovemasami.com/cdn/shop/files/MASAMI_Mekabu_Hydrating_Styling_Cream_Award.png?v=1762526423&width=1920",
+                "image_urls": [
+                  "https://www.lovemasami.com/cdn/shop/files/MASAMI_Mekabu_Hydrating_Styling_Cream_Award.png?v=1762526423&width=1920",
+                  "https://www.lovemasami.com/cdn/shop/files/Amazon_CVR_Image_114x144_crop_center.png?v=1756936109",
+                  "https://www.lovemasami.com/cdn/shop/files/Curly_Hair_Before_and_after_114x144_crop_center.png?v=1748114850",
+                  "https://www.lovemasami.com/cdn/shop/files/2_aa26e72a-d113-4139-ba6b-0f1bcf36cb1f_114x144_crop_center.png?v=1755657163",
+                  "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Mekabu_Hydrating_Styling_Cream_Texture.jpg?v=1755657190",
+                  "https://www.lovemasami.com/cdn/shop/files/MASAMI_Hydrating_Styling_Cream_Texture_114x144_crop_center.png?v=1755657233",
+                  "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/Man_Holding_MASAMI_Styling_Cream.png?v=1755657253",
+                  "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Mekabu_Hydrating_Styling_Cream_Edges.jpg?v=1755657284",
+                  "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-treatment-mekabu-hydrating-styling-cream-18600012765271-23627651547292.jpg?v=1755657303",
+                  "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Mekabu_Hydrating_Styling_Cream_Outside.jpg?v=1755657342",
+                  "https://www.lovemasami.com/cdn/shop/files/Ingredient_Benefits_114x144_crop_center.png?v=1756936109",
+                  "https://www.lovemasami.com/cdn/shop/products/MASAMI_Mekabu_Hydrating_Styling_Cream_Texture_114x144_crop_center.jpg?v=1755657190"
+                ]
+              }
+            ],
+            "diagnostics": {
+              "requested_domain": "lovemasami.com",
+              "resolved_base_url": "https://lovemasami.com",
+              "discovery_strategy": "shopify_json",
+              "failure_category": null,
+              "block_provider": null,
+              "http_trace": [
+                {
+                  "url": "https://www.lovemasami.com/products/mekabu-cream.js",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.lovemasami.com/products/mekabu-cream",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.lovemasami.com/products/mekabu-cream",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.lovemasami.com/products/mekabu-cream",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.lovemasami.com/products/mekabu-cream",
+                  "status": 200
+                }
+              ]
+            },
+            "search_aliases": [
+              "Mekabu Hydrating Styling Cream"
+            ],
+            "authority_source": {
+              "source_url": "https://lovemasami.com/products/mekabu-cream",
+              "source_role": "primary",
+              "matched_preferred_titles": [
+                "Mekabu Hydrating Styling Cream"
+              ]
+            },
+            "source_validation": {
+              "source_type": "brand_owned",
+              "requires_multi_offer_merge_validation": false,
+              "source_host": "lovemasami.com"
+            },
+            "commerce_facts_v1": {
+              "contract_version": "commerce_facts.v1",
+              "market_id": "US",
+              "country": "US",
+              "currency_target": "USD",
+              "source_authority": "catalog_extract_v2",
+              "captured_at": "2026-05-25T05:05:48.128Z",
+              "evidence_url": "https://lovemasami.com/products/mekabu-cream",
+              "sellable_region": {
+                "status": "unknown",
+                "countries": [],
+                "evidence_source": "catalog_extract_v2",
+                "confidence": "medium",
+                "checked_at": "2026-05-25T05:05:48.128Z",
+                "reason_codes": [
+                  "market_currency_observed",
+                  "shipping_destination_not_verified",
+                  "external_checkout_not_queried"
+                ],
+                "evidence_url": "https://lovemasami.com/products/mekabu-cream"
+              },
+              "regional_price": {
+                "amount": 36,
+                "currency": "USD",
+                "display_raw": "36.00",
+                "price_type": "list",
+                "compare_at_amount": null,
+                "compare_at_currency": null,
+                "compare_at_display_raw": null,
+                "tax_included": "unknown",
+                "confidence": "medium",
+                "market_switch_status": "ok",
+                "observed_currency": "USD",
+                "source_url": "https://lovemasami.com/products/mekabu-cream",
+                "captured_at": "2026-05-25T05:05:48.128Z"
+              },
+              "availability": {
+                "status": "in_stock",
+                "source": "catalog_extract_v2",
+                "confidence": "medium",
+                "captured_at": "2026-05-25T05:05:48.128Z"
+              },
+              "shipping": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_checkout_not_queried"
+                ],
+                "checked_at": "2026-05-25T05:05:48.128Z"
+              },
+              "promotions": [],
+              "returns": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_returns_not_extracted"
+                ],
+                "checked_at": "2026-05-25T05:05:48.128Z"
+              }
+            },
+            "commerce_facts_gate": {
+              "status": "hold",
+              "market_id": "US",
+              "expected_currency": "USD",
+              "observed_currency": "USD",
+              "market_switch_status": "ok",
+              "sellable_region_status": "unknown",
+              "shipping_status": "unknown",
+              "promotions_status": "unknown",
+              "availability_status": "in_stock",
+              "problems": [
+                "market_currency_mismatch"
+              ]
+            }
+          },
+          "search_aliases": [
+            "Mekabu Hydrating Styling Cream"
+          ],
+          "authority_source": {
+            "source_url": "https://lovemasami.com/products/mekabu-cream",
+            "source_role": "primary",
+            "matched_preferred_titles": [
+              "Mekabu Hydrating Styling Cream"
+            ]
+          },
+          "source_validation": {
+            "source_type": "brand_owned",
+            "requires_multi_offer_merge_validation": false,
+            "source_host": "lovemasami.com"
+          },
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-25T05:05:48.128Z",
+            "evidence_url": "https://lovemasami.com/products/mekabu-cream",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-25T05:05:48.128Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://lovemasami.com/products/mekabu-cream"
+            },
+            "regional_price": {
+              "amount": 36,
+              "currency": "USD",
+              "display_raw": "36.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://lovemasami.com/products/mekabu-cream",
+              "captured_at": "2026-05-25T05:05:48.128Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T05:05:48.128Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T05:05:48.128Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T05:05:48.128Z"
+            }
+          },
+          "commerce_facts_gate": {
+            "status": "hold",
+            "market_id": "US",
+            "expected_currency": "USD",
+            "observed_currency": "USD",
+            "market_switch_status": "ok",
+            "sellable_region_status": "unknown",
+            "shipping_status": "unknown",
+            "promotions_status": "unknown",
+            "availability_status": "in_stock",
+            "problems": [
+              "market_currency_mismatch"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

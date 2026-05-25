@@ -1,0 +1,448 @@
+{
+  "generated_at": "2026-05-25T05:04:05.622Z",
+  "brand": "GinGingers",
+  "domain": "https://gingingers.co.uk",
+  "fallback_domains": [],
+  "market": "US",
+  "preferred_titles": [
+    "Apple Cider Vinegar Gel"
+  ],
+  "matched_preferred_titles": [
+    "Apple Cider Vinegar Gel"
+  ],
+  "extracted_product_count": 3,
+  "excluded_bundle_like_count": 0,
+  "excluded_non_product_page_count": 0,
+  "excluded_incomplete_transaction_count": 2,
+  "excluded_brand_scope_mismatch_count": 0,
+  "matched_preferred_title_count": 1,
+  "item_count": 1,
+  "fallback_used": false,
+  "source_attempts": [
+    {
+      "source_url": "https://gingingers.co.uk",
+      "source_role": "primary",
+      "extracted_product_count": 3,
+      "item_count": 1,
+      "matched_preferred_title_count": 1,
+      "matched_preferred_titles": [
+        "Apple Cider Vinegar Gel"
+      ],
+      "diagnostics_summary": {
+        "discovery_strategy": "seed_page",
+        "failure_category": null,
+        "block_provider": null
+      },
+      "used_in_manifest": true,
+      "added_item_count": 1,
+      "added_matched_preferred_titles": [
+        "Apple Cider Vinegar Gel"
+      ],
+      "skip_reason": null
+    }
+  ],
+  "items": [
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "target_brand": "GinGingers",
+      "target_url": "https://gingingers.co.uk/product/apple-cider-vinegar-gel/",
+      "extract_status": "brand_catalog_extract",
+      "market": "US",
+      "source_domain": "https://gingingers.co.uk",
+      "source_role": "primary",
+      "matched_preferred_titles": [
+        "Apple Cider Vinegar Gel"
+      ],
+      "alias_preferred_titles": [
+        "Apple Cider Vinegar Gel"
+      ],
+      "seed_row": {
+        "ingredient_id": null,
+        "ingredient_name": null,
+        "seed_id": "eps_3bef33b74b633731a04a920a",
+        "brand": "GinGingers",
+        "market": "US",
+        "tool": "creator_agents",
+        "status": "active",
+        "domain": "gingingers.co.uk",
+        "external_product_id": "ext_10fb34a9ba6b7888b92eaf0e",
+        "canonical_url": "https://gingingers.co.uk/product/apple-cider-vinegar-gel/",
+        "destination_url": "https://gingingers.co.uk/product/apple-cider-vinegar-gel/",
+        "title": "Apple Cider Vinegar Gel",
+        "image_url": "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-scaled.jpg",
+        "price_amount": 22.99,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "attached_product_key": null,
+        "requires_seed_correction": false,
+        "seed_data": {
+          "brand": "GinGingers",
+          "title": "Apple Cider Vinegar Gel",
+          "description": "A multi-purpose skin gel made with real Yorkshire Apple Cider Vinegar - with ‘The mother’. No fuss, no filler.Straight-talking skincare that worksThis is our flagship gel.Made using real, raw Apple Cider Vinegar - with ‘The mother’ - and blended cold to protect the natural goodness inside. It’s clean, effective, and versatile enough to tackle everything from spots to stings to smelly feet.No gimmicks. Just proper, natural ingredients that do the job.Scroll down for full description. Test",
+          "external_product_id": "ext_10fb34a9ba6b7888b92eaf0e",
+          "canonical_url": "https://gingingers.co.uk/product/apple-cider-vinegar-gel/",
+          "destination_url": "https://gingingers.co.uk/product/apple-cider-vinegar-gel/",
+          "price_amount": 22.99,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-scaled.jpg",
+          "image_urls": [
+            "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-scaled.jpg",
+            "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-600x750.jpg",
+            "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-240x300.jpg",
+            "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-819x1024.jpg",
+            "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-768x960.jpg",
+            "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-1229x1536.jpg",
+            "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-1638x2048.jpg",
+            "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0066-scaled.jpg",
+            "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0066-600x750.jpg",
+            "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0066-240x300.jpg",
+            "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0066-819x1024.jpg",
+            "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0066-768x960.jpg"
+          ],
+          "images": [
+            "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-scaled.jpg",
+            "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-600x750.jpg",
+            "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-240x300.jpg",
+            "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-819x1024.jpg",
+            "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-768x960.jpg",
+            "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-1229x1536.jpg",
+            "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-1638x2048.jpg",
+            "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0066-scaled.jpg",
+            "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0066-600x750.jpg",
+            "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0066-240x300.jpg",
+            "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0066-819x1024.jpg",
+            "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0066-768x960.jpg"
+          ],
+          "variants": [
+            {
+              "sku": "GG-75MLACVG",
+              "variant_id": "ae6240d607a9",
+              "url": "https://gingingers.co.uk/product/apple-cider-vinegar-gel/",
+              "option_name": "Offer",
+              "option_value": "GG-75MLACVG",
+              "price": "22.99",
+              "currency": "USD",
+              "stock": "In Stock",
+              "description": "A multi-purpose skin gel made with real Yorkshire Apple Cider Vinegar - with ‘The mother’. No fuss, no filler.Straight-talking skincare that worksThis is our flagship gel.Made using real, raw Apple Cider Vinegar - with ‘The mother’ - and blended cold to protect the natural goodness inside. It’s clean, effective, and versatile enough to tackle everything from spots to stings to smelly feet.No gimmicks. Just proper, natural ingredients that do the job.Scroll down for full description. Test",
+              "image_url": "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-scaled.jpg",
+              "image_urls": [
+                "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-scaled.jpg",
+                "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-600x750.jpg",
+                "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-240x300.jpg",
+                "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-819x1024.jpg",
+                "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-768x960.jpg",
+                "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-1229x1536.jpg",
+                "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-1638x2048.jpg",
+                "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0066-scaled.jpg",
+                "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0066-600x750.jpg",
+                "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0066-240x300.jpg",
+                "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0066-819x1024.jpg",
+                "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0066-768x960.jpg"
+              ]
+            }
+          ],
+          "snapshot": {
+            "source": "catalog_intelligence_seed_creation_manifest",
+            "extracted_at": "2026-05-25T05:03:13.075Z",
+            "canonical_url": "https://gingingers.co.uk/product/apple-cider-vinegar-gel/",
+            "destination_url": "https://gingingers.co.uk/product/apple-cider-vinegar-gel/",
+            "title": "Apple Cider Vinegar Gel",
+            "description": "A multi-purpose skin gel made with real Yorkshire Apple Cider Vinegar - with ‘The mother’. No fuss, no filler.Straight-talking skincare that worksThis is our flagship gel.Made using real, raw Apple Cider Vinegar - with ‘The mother’ - and blended cold to protect the natural goodness inside. It’s clean, effective, and versatile enough to tackle everything from spots to stings to smelly feet.No gimmicks. Just proper, natural ingredients that do the job.Scroll down for full description. Test",
+            "image_url": "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-scaled.jpg",
+            "image_urls": [
+              "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-scaled.jpg",
+              "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-600x750.jpg",
+              "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-240x300.jpg",
+              "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-819x1024.jpg",
+              "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-768x960.jpg",
+              "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-1229x1536.jpg",
+              "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-1638x2048.jpg",
+              "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0066-scaled.jpg",
+              "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0066-600x750.jpg",
+              "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0066-240x300.jpg",
+              "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0066-819x1024.jpg",
+              "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0066-768x960.jpg"
+            ],
+            "images": [
+              "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-scaled.jpg",
+              "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-600x750.jpg",
+              "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-240x300.jpg",
+              "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-819x1024.jpg",
+              "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-768x960.jpg",
+              "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-1229x1536.jpg",
+              "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-1638x2048.jpg",
+              "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0066-scaled.jpg",
+              "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0066-600x750.jpg",
+              "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0066-240x300.jpg",
+              "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0066-819x1024.jpg",
+              "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0066-768x960.jpg"
+            ],
+            "variants": [
+              {
+                "sku": "GG-75MLACVG",
+                "variant_id": "ae6240d607a9",
+                "url": "https://gingingers.co.uk/product/apple-cider-vinegar-gel/",
+                "option_name": "Offer",
+                "option_value": "GG-75MLACVG",
+                "price": "22.99",
+                "currency": "USD",
+                "stock": "In Stock",
+                "description": "A multi-purpose skin gel made with real Yorkshire Apple Cider Vinegar - with ‘The mother’. No fuss, no filler.Straight-talking skincare that worksThis is our flagship gel.Made using real, raw Apple Cider Vinegar - with ‘The mother’ - and blended cold to protect the natural goodness inside. It’s clean, effective, and versatile enough to tackle everything from spots to stings to smelly feet.No gimmicks. Just proper, natural ingredients that do the job.Scroll down for full description. Test",
+                "image_url": "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-scaled.jpg",
+                "image_urls": [
+                  "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-scaled.jpg",
+                  "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-600x750.jpg",
+                  "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-240x300.jpg",
+                  "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-819x1024.jpg",
+                  "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-768x960.jpg",
+                  "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-1229x1536.jpg",
+                  "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0224L-1638x2048.jpg",
+                  "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0066-scaled.jpg",
+                  "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0066-600x750.jpg",
+                  "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0066-240x300.jpg",
+                  "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0066-819x1024.jpg",
+                  "https://gingingers.co.uk/wp-content/uploads/2024/01/gingingers0066-768x960.jpg"
+                ]
+              }
+            ],
+            "diagnostics": {
+              "requested_domain": "gingingers.co.uk",
+              "resolved_base_url": "https://gingingers.co.uk",
+              "discovery_strategy": "seed_page",
+              "failure_category": null,
+              "block_provider": null,
+              "http_trace": [
+                {
+                  "url": "https://gingingers.co.uk/",
+                  "status": 200
+                },
+                {
+                  "url": "https://gingingers.co.uk/products.json?limit=1",
+                  "status": 404
+                },
+                {
+                  "url": "https://gingingers.co.uk/gingingers-contact-details/",
+                  "status": 200
+                },
+                {
+                  "url": "https://gingingers.co.uk/the-gingingers-story/",
+                  "status": 200
+                },
+                {
+                  "url": "https://gingingers.co.uk/product/apple-cider-vinegar-gel/",
+                  "status": 200
+                },
+                {
+                  "url": "https://gingingers.co.uk/the-brand/",
+                  "status": 200
+                },
+                {
+                  "url": "https://gingingers.co.uk/the-brand/",
+                  "status": 200
+                },
+                {
+                  "url": "https://gingingers.co.uk/product/apple-cider-vinegar-gel/",
+                  "status": 200
+                }
+              ]
+            },
+            "search_aliases": [
+              "Apple Cider Vinegar Gel"
+            ],
+            "authority_source": {
+              "source_url": "https://gingingers.co.uk",
+              "source_role": "primary",
+              "matched_preferred_titles": [
+                "Apple Cider Vinegar Gel"
+              ]
+            },
+            "source_validation": {
+              "source_type": "brand_owned",
+              "requires_multi_offer_merge_validation": false,
+              "source_host": "gingingers.co.uk"
+            },
+            "commerce_facts_v1": {
+              "contract_version": "commerce_facts.v1",
+              "market_id": "US",
+              "country": "US",
+              "currency_target": "USD",
+              "source_authority": "catalog_extract_v2",
+              "captured_at": "2026-05-25T05:03:05.602Z",
+              "evidence_url": "https://gingingers.co.uk/product/apple-cider-vinegar-gel/",
+              "sellable_region": {
+                "status": "unknown",
+                "countries": [],
+                "evidence_source": "catalog_extract_v2",
+                "confidence": "low",
+                "checked_at": "2026-05-25T05:03:05.602Z",
+                "reason_codes": [
+                  "market_currency_not_verified",
+                  "shipping_destination_not_verified",
+                  "external_checkout_not_queried"
+                ],
+                "evidence_url": "https://gingingers.co.uk/product/apple-cider-vinegar-gel/"
+              },
+              "regional_price": {
+                "amount": 22.99,
+                "currency": "GBP",
+                "display_raw": "£22.99",
+                "price_type": "list",
+                "compare_at_amount": null,
+                "compare_at_currency": null,
+                "compare_at_display_raw": null,
+                "tax_included": "unknown",
+                "confidence": "low",
+                "market_switch_status": "mismatch",
+                "observed_currency": "GBP",
+                "source_url": "https://gingingers.co.uk/product/apple-cider-vinegar-gel/",
+                "captured_at": "2026-05-25T05:03:05.602Z"
+              },
+              "availability": {
+                "status": "in_stock",
+                "source": "catalog_extract_v2",
+                "confidence": "medium",
+                "captured_at": "2026-05-25T05:03:05.602Z"
+              },
+              "shipping": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_checkout_not_queried"
+                ],
+                "checked_at": "2026-05-25T05:03:05.602Z"
+              },
+              "promotions": [],
+              "returns": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_returns_not_extracted"
+                ],
+                "checked_at": "2026-05-25T05:03:05.602Z"
+              }
+            },
+            "commerce_facts_gate": {
+              "status": "hold",
+              "market_id": "US",
+              "expected_currency": "USD",
+              "observed_currency": "GBP",
+              "market_switch_status": "mismatch",
+              "sellable_region_status": "unknown",
+              "shipping_status": "unknown",
+              "promotions_status": "unknown",
+              "availability_status": "in_stock",
+              "problems": [
+                "commerce_facts_currency_mismatch",
+                "commerce_facts_market_switch_not_ok"
+              ]
+            }
+          },
+          "search_aliases": [
+            "Apple Cider Vinegar Gel"
+          ],
+          "authority_source": {
+            "source_url": "https://gingingers.co.uk",
+            "source_role": "primary",
+            "matched_preferred_titles": [
+              "Apple Cider Vinegar Gel"
+            ]
+          },
+          "source_validation": {
+            "source_type": "brand_owned",
+            "requires_multi_offer_merge_validation": false,
+            "source_host": "gingingers.co.uk"
+          },
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-25T05:03:05.602Z",
+            "evidence_url": "https://gingingers.co.uk/product/apple-cider-vinegar-gel/",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "low",
+              "checked_at": "2026-05-25T05:03:05.602Z",
+              "reason_codes": [
+                "market_currency_not_verified",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://gingingers.co.uk/product/apple-cider-vinegar-gel/"
+            },
+            "regional_price": {
+              "amount": 22.99,
+              "currency": "GBP",
+              "display_raw": "£22.99",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "low",
+              "market_switch_status": "mismatch",
+              "observed_currency": "GBP",
+              "source_url": "https://gingingers.co.uk/product/apple-cider-vinegar-gel/",
+              "captured_at": "2026-05-25T05:03:05.602Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T05:03:05.602Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T05:03:05.602Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T05:03:05.602Z"
+            }
+          },
+          "commerce_facts_gate": {
+            "status": "hold",
+            "market_id": "US",
+            "expected_currency": "USD",
+            "observed_currency": "GBP",
+            "market_switch_status": "mismatch",
+            "sellable_region_status": "unknown",
+            "shipping_status": "unknown",
+            "promotions_status": "unknown",
+            "availability_status": "in_stock",
+            "problems": [
+              "commerce_facts_currency_mismatch",
+              "commerce_facts_market_switch_not_ok"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "reviewed_from_manifest_generated_at": "2026-05-25T05:03:13.083Z",
+  "review_gate": {
+    "ok_to_continue": true,
+    "blocker_reasons": [],
+    "warning_reasons": [],
+    "accepted_item_count": 1,
+    "blocked_item_count": 0
+  }
+}

@@ -1,0 +1,180 @@
+{
+  "generated_at": "2026-05-25T05:44:24.109Z",
+  "dry_run": false,
+  "missing": [],
+  "summary": {
+    "scanned": 4,
+    "missing": 0,
+    "blocked": 0,
+    "change_candidates": 4,
+    "updated_rows": 4,
+    "seed_updates": 4,
+    "catalog_updates": 4,
+    "sku_updates": 8,
+    "identity_updates": 4
+  },
+  "apply_results": [
+    {
+      "external_product_id": "ext_96a7ecc1003f0f94e5b6805c",
+      "seed_updates": 1,
+      "catalog_updates": 1,
+      "sku_updates": 2,
+      "identity_updates": 1
+    },
+    {
+      "external_product_id": "ext_a1bb997d38b6823e83f23948",
+      "seed_updates": 1,
+      "catalog_updates": 1,
+      "sku_updates": 2,
+      "identity_updates": 1
+    },
+    {
+      "external_product_id": "ext_53cf4f0ee46873d280f632db",
+      "seed_updates": 1,
+      "catalog_updates": 1,
+      "sku_updates": 2,
+      "identity_updates": 1
+    },
+    {
+      "external_product_id": "ext_fe9ef8f2a6343901489fe63e",
+      "seed_updates": 1,
+      "catalog_updates": 1,
+      "sku_updates": 2,
+      "identity_updates": 1
+    }
+  ],
+  "plans": [
+    {
+      "external_product_id": "ext_96a7ecc1003f0f94e5b6805c",
+      "seed_id": "eps_ccb1ab0f2d6a2b29671e2116",
+      "product_key": "prod::external_seed::external_seed::ext_96a7ecc1003f0f94e5b6805c",
+      "content_key": "ck_cc824c4ac33da2cb2c56743b2369b875",
+      "status": "ready",
+      "blockers": [],
+      "changed": true,
+      "previous_image_url": "https://www.lovemasami.com/cdn/shop/files/Shampoo_Award_Winning_Hero_Bottle.png?v=1762526416&width=1920",
+      "primary_image_url": "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-shampoo-mekabu-shampoo-18600012765031-13418472865856.jpg?v=1755658247",
+      "product_image_count": 7,
+      "content_image_count": 5,
+      "previous_snapshot_contract_authoritative": false,
+      "previous_legacy_fields_quarantined": false,
+      "next_snapshot_contract_authoritative": true,
+      "next_legacy_fields_quarantined": true,
+      "product_image_urls": [
+        "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/Girl_smelling_MASAMI_shampoo.png?v=1755658069",
+        "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_shampoo_underwater.jpg?v=1755658109",
+        "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/justin-chen-J7Cf1Gch49E-unsplashcopy_8a98ee0b-69f0-4c7c-b15b-49f19dcf7b4d.jpg?v=1755658137",
+        "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/Woman_with_curly_hair_holding_shampoo.jpg?v=1755658196",
+        "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_with_girl_in_background.jpg?v=1755658226",
+        "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-shampoo-mekabu-shampoo-18600012765031-13418472865856.jpg?v=1755658247",
+        "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-shampoo-mekabu-shampoo-18600012765031-13418474143808.jpg?v=1755658277"
+      ],
+      "content_image_urls": [
+        "https://www.lovemasami.com/cdn/shop/files/Shampoo_Award_Winning_Hero_Bottle.png?v=1762526416&width=1920",
+        "https://www.lovemasami.com/cdn/shop/files/Wavy_Hair_Before_and_After_114x144_crop_center.png?v=1739912350",
+        "https://www.lovemasami.com/cdn/shop/files/Amazon_CVR_Image_114x144_crop_center.png?v=1756936109",
+        "https://www.lovemasami.com/cdn/shop/files/MASAMI_shampoo_texture_114x144_crop_center.png?v=1755658002",
+        "https://www.lovemasami.com/cdn/shop/files/Blonde_holding_MASAMI_shampoo_conditioner_114x144_crop_center.png?v=1755658033"
+      ]
+    },
+    {
+      "external_product_id": "ext_a1bb997d38b6823e83f23948",
+      "seed_id": "eps_94a899fff76f8e6463ddb8b7",
+      "product_key": "prod::external_seed::external_seed::ext_a1bb997d38b6823e83f23948",
+      "content_key": "ck_2cb3f1ea7a906f8f2e807e5f6f31f8f6",
+      "status": "ready",
+      "blockers": [],
+      "changed": true,
+      "previous_image_url": "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Mekabu_Hydrating_Conditioner_Award_Hero.png?v=1762527201",
+      "primary_image_url": "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Mekabu_Hydrating_Conditioner_Award_Hero.png?v=1762527201",
+      "product_image_count": 9,
+      "content_image_count": 3,
+      "previous_snapshot_contract_authoritative": false,
+      "previous_legacy_fields_quarantined": false,
+      "next_snapshot_contract_authoritative": true,
+      "next_legacy_fields_quarantined": true,
+      "product_image_urls": [
+        "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Mekabu_Hydrating_Conditioner_Award_Hero.png?v=1762527201",
+        "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Mekabu_Conditioner_model.jpg?v=1755656793",
+        "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-conditioner-mekabu-hydrating-conditioner-18600012765101-23627637325980.jpg?v=1755656826",
+        "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/justin-chen-J7Cf1Gch49E-unsplashcopy.jpg?v=1755656860",
+        "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Mekabu_Hydrating_Conditioner.jpg?v=1755656919",
+        "https://www.lovemasami.com/cdn/shop/products/MASAMI_Mekabu_Hydrating_Conditioner_Award_Hero.png?v=1762527201&width=1920",
+        "https://www.lovemasami.com/cdn/shop/products/MASAMI_Mekabu_Conditioner_model_114x144_crop_center.jpg?v=1755656793",
+        "https://www.lovemasami.com/cdn/shop/products/masami-conditioner-mekabu-hydrating-conditioner-18600012765101-23627637325980_114x144_crop_center.jpg?v=1755656826",
+        "https://www.lovemasami.com/cdn/shop/products/justin-chen-J7Cf1Gch49E-unsplashcopy_114x144_crop_center.jpg?v=1755656860"
+      ],
+      "content_image_urls": [
+        "https://www.lovemasami.com/cdn/shop/files/Long_Straight_Hair_Before_and_after_114x144_crop_center.png?v=1739912374",
+        "https://www.lovemasami.com/cdn/shop/files/MASAMI_Conditioner_Texture_114x144_crop_center.png?v=1755656739",
+        "https://www.lovemasami.com/cdn/shop/files/MASAMI_Curly_Hair_Conditioner_114x144_crop_center.png?v=1755656764"
+      ]
+    },
+    {
+      "external_product_id": "ext_53cf4f0ee46873d280f632db",
+      "seed_id": "eps_07f3261f7a8de9fe306209a1",
+      "product_key": "prod::external_seed::external_seed::ext_53cf4f0ee46873d280f632db",
+      "content_key": "ck_0d893ff95c7d110e32d4d9c9ff190a63",
+      "status": "ready",
+      "blockers": [],
+      "changed": true,
+      "previous_image_url": "https://www.lovemasami.com/cdn/shop/files/Awards_600x600_14.png?v=1756936123&width=1920",
+      "primary_image_url": "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-serum-mekabu-hydrating-shine-serum-18600012765341-23627648893084.jpg?v=1756936109",
+      "product_image_count": 6,
+      "content_image_count": 6,
+      "previous_snapshot_contract_authoritative": false,
+      "previous_legacy_fields_quarantined": false,
+      "next_snapshot_contract_authoritative": true,
+      "next_legacy_fields_quarantined": true,
+      "product_image_urls": [
+        "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_girl_applying_shine_serum.png?v=1756936109",
+        "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Shine_Serum_straight_hair.jpg?v=1756936109",
+        "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-serum-mekabu-hydrating-shine-serum-18600012765341-23627648893084.jpg?v=1756936109",
+        "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Shine_Serum_Natural_Curls.jpg?v=1756936109",
+        "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Shine_Serum_Blonde.jpg?v=1756936109",
+        "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/Mekabu_ingredient.jpg?v=1756936109"
+      ],
+      "content_image_urls": [
+        "https://www.lovemasami.com/cdn/shop/files/Awards_600x600_14.png?v=1756936123&width=1920",
+        "https://www.lovemasami.com/cdn/shop/files/Long_Hair_Before_and_After_114x144_crop_center.png?v=1756936109",
+        "https://www.lovemasami.com/cdn/shop/files/MASAMI_shine_serum_texture_114x144_crop_center.png?v=1756936109",
+        "https://www.lovemasami.com/cdn/shop/files/Amazon_CVR_Image_114x144_crop_center.png?v=1756936109",
+        "https://cdn.shopify.com/s/files/1/0138/7901/7536/files/80554707-a5b6-4b6d-96d9-abaf657b8008.webp?v=1769712300",
+        "https://www.lovemasami.com/cdn/shop/files/Ingredient_Benefits_114x144_crop_center.png?v=1756936109"
+      ]
+    },
+    {
+      "external_product_id": "ext_fe9ef8f2a6343901489fe63e",
+      "seed_id": "eps_4a1782147cf6c901a6166f7e",
+      "product_key": "prod::external_seed::external_seed::ext_fe9ef8f2a6343901489fe63e",
+      "content_key": "ck_d684967513b6f360579c9505894163bd",
+      "status": "ready",
+      "blockers": [],
+      "changed": true,
+      "previous_image_url": "https://www.lovemasami.com/cdn/shop/files/MASAMI_Mekabu_Hydrating_Styling_Cream_Award.png?v=1762526423&width=1920",
+      "primary_image_url": "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-treatment-mekabu-hydrating-styling-cream-18600012765271-23627651547292.jpg?v=1755657303",
+      "product_image_count": 6,
+      "content_image_count": 6,
+      "previous_snapshot_contract_authoritative": false,
+      "previous_legacy_fields_quarantined": false,
+      "next_snapshot_contract_authoritative": true,
+      "next_legacy_fields_quarantined": true,
+      "product_image_urls": [
+        "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Mekabu_Hydrating_Styling_Cream_Texture.jpg?v=1755657190",
+        "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/Man_Holding_MASAMI_Styling_Cream.png?v=1755657253",
+        "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Mekabu_Hydrating_Styling_Cream_Edges.jpg?v=1755657284",
+        "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-treatment-mekabu-hydrating-styling-cream-18600012765271-23627651547292.jpg?v=1755657303",
+        "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Mekabu_Hydrating_Styling_Cream_Outside.jpg?v=1755657342",
+        "https://www.lovemasami.com/cdn/shop/products/MASAMI_Mekabu_Hydrating_Styling_Cream_Texture_114x144_crop_center.jpg?v=1755657190"
+      ],
+      "content_image_urls": [
+        "https://www.lovemasami.com/cdn/shop/files/MASAMI_Mekabu_Hydrating_Styling_Cream_Award.png?v=1762526423&width=1920",
+        "https://www.lovemasami.com/cdn/shop/files/Amazon_CVR_Image_114x144_crop_center.png?v=1756936109",
+        "https://www.lovemasami.com/cdn/shop/files/Curly_Hair_Before_and_after_114x144_crop_center.png?v=1748114850",
+        "https://www.lovemasami.com/cdn/shop/files/2_aa26e72a-d113-4139-ba6b-0f1bcf36cb1f_114x144_crop_center.png?v=1755657163",
+        "https://www.lovemasami.com/cdn/shop/files/MASAMI_Hydrating_Styling_Cream_Texture_114x144_crop_center.png?v=1755657233",
+        "https://www.lovemasami.com/cdn/shop/files/Ingredient_Benefits_114x144_crop_center.png?v=1756936109"
+      ]
+    }
+  ]
+}

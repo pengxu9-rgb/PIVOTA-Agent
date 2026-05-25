@@ -1,0 +1,330 @@
+[
+  {
+    "status": "failed",
+    "seed_id": "eps_4a1782147cf6c901a6166f7e",
+    "external_product_id": "ext_fe9ef8f2a6343901489fe63e",
+    "market": "US",
+    "domain": "lovemasami.com",
+    "canonical_url": "https://lovemasami.com/products/mekabu-cream",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 0,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 38.95,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "skipped",
+      "product_group_id": null,
+      "product_line_id": null,
+      "sellable_item_group_id": null,
+      "skipped_reason": "live_pdp_probe_failed",
+      "probe_error": "Gateway probe returned HTTP 404",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "skipped",
+      "has_product_intel": false,
+      "product_intel_status": null,
+      "skipped_reason": "live_pdp_probe_failed",
+      "probe_error": "Gateway probe returned HTTP 404",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "failed",
+      "price_amount": null,
+      "has_overview": false,
+      "live_modules": [],
+      "probe_error": "Gateway probe returned HTTP 404",
+      "failure_reasons": [
+        "live_pdp_probe_failed"
+      ]
+    },
+    "similar_gate": {
+      "status": "failed",
+      "similar_count": 0,
+      "exempt": false,
+      "probe_error": "Gateway probe returned HTTP 404",
+      "failure_reasons": [
+        "similar_probe_failed"
+      ]
+    },
+    "variant_gate": {
+      "status": "passed",
+      "visible_variant_row_count": 0,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": []
+    },
+    "root_cause_classification": [
+      "pdp_shaping_issue",
+      "similar_issue"
+    ],
+    "failure_reasons": [
+      "live_pdp_probe_failed",
+      "similar_probe_failed"
+    ]
+  },
+  {
+    "status": "failed",
+    "seed_id": "eps_ccb1ab0f2d6a2b29671e2116",
+    "external_product_id": "ext_96a7ecc1003f0f94e5b6805c",
+    "market": "US",
+    "domain": "lovemasami.com",
+    "canonical_url": "https://lovemasami.com/products/mekabu-shampoo",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 0,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 40.95,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "skipped",
+      "product_group_id": null,
+      "product_line_id": null,
+      "sellable_item_group_id": null,
+      "skipped_reason": "live_pdp_probe_failed",
+      "probe_error": "Gateway probe returned HTTP 404",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "skipped",
+      "has_product_intel": false,
+      "product_intel_status": null,
+      "skipped_reason": "live_pdp_probe_failed",
+      "probe_error": "Gateway probe returned HTTP 404",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "failed",
+      "price_amount": null,
+      "has_overview": false,
+      "live_modules": [],
+      "probe_error": "Gateway probe returned HTTP 404",
+      "failure_reasons": [
+        "live_pdp_probe_failed"
+      ]
+    },
+    "similar_gate": {
+      "status": "failed",
+      "similar_count": 0,
+      "exempt": false,
+      "probe_error": "Gateway probe returned HTTP 404",
+      "failure_reasons": [
+        "similar_probe_failed"
+      ]
+    },
+    "variant_gate": {
+      "status": "passed",
+      "visible_variant_row_count": 0,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": []
+    },
+    "root_cause_classification": [
+      "pdp_shaping_issue",
+      "similar_issue"
+    ],
+    "failure_reasons": [
+      "live_pdp_probe_failed",
+      "similar_probe_failed"
+    ]
+  },
+  {
+    "status": "failed",
+    "seed_id": "eps_94a899fff76f8e6463ddb8b7",
+    "external_product_id": "ext_a1bb997d38b6823e83f23948",
+    "market": "US",
+    "domain": "lovemasami.com",
+    "canonical_url": "https://lovemasami.com/products/mekabu-conditioner",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 0,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 40.95,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "skipped",
+      "product_group_id": null,
+      "product_line_id": null,
+      "sellable_item_group_id": null,
+      "skipped_reason": "live_pdp_probe_failed",
+      "probe_error": "Gateway probe returned HTTP 404",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "skipped",
+      "has_product_intel": false,
+      "product_intel_status": null,
+      "skipped_reason": "live_pdp_probe_failed",
+      "probe_error": "Gateway probe returned HTTP 404",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "failed",
+      "price_amount": null,
+      "has_overview": false,
+      "live_modules": [],
+      "probe_error": "Gateway probe returned HTTP 404",
+      "failure_reasons": [
+        "live_pdp_probe_failed"
+      ]
+    },
+    "similar_gate": {
+      "status": "failed",
+      "similar_count": 0,
+      "exempt": false,
+      "probe_error": "Gateway probe returned HTTP 404",
+      "failure_reasons": [
+        "similar_probe_failed"
+      ]
+    },
+    "variant_gate": {
+      "status": "passed",
+      "visible_variant_row_count": 0,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": []
+    },
+    "root_cause_classification": [
+      "pdp_shaping_issue",
+      "similar_issue"
+    ],
+    "failure_reasons": [
+      "live_pdp_probe_failed",
+      "similar_probe_failed"
+    ]
+  },
+  {
+    "status": "failed",
+    "seed_id": "eps_07f3261f7a8de9fe306209a1",
+    "external_product_id": "ext_53cf4f0ee46873d280f632db",
+    "market": "US",
+    "domain": "lovemasami.com",
+    "canonical_url": "https://lovemasami.com/products/mekabu-serum",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 0,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 36.95,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "skipped",
+      "product_group_id": null,
+      "product_line_id": null,
+      "sellable_item_group_id": null,
+      "skipped_reason": "live_pdp_probe_failed",
+      "probe_error": "Gateway probe returned HTTP 404",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "skipped",
+      "has_product_intel": false,
+      "product_intel_status": null,
+      "skipped_reason": "live_pdp_probe_failed",
+      "probe_error": "Gateway probe returned HTTP 404",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "failed",
+      "price_amount": null,
+      "has_overview": false,
+      "live_modules": [],
+      "probe_error": "Gateway probe returned HTTP 404",
+      "failure_reasons": [
+        "live_pdp_probe_failed"
+      ]
+    },
+    "similar_gate": {
+      "status": "failed",
+      "similar_count": 0,
+      "exempt": false,
+      "probe_error": "Gateway probe returned HTTP 404",
+      "failure_reasons": [
+        "similar_probe_failed"
+      ]
+    },
+    "variant_gate": {
+      "status": "passed",
+      "visible_variant_row_count": 0,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": []
+    },
+    "root_cause_classification": [
+      "pdp_shaping_issue",
+      "similar_issue"
+    ],
+    "failure_reasons": [
+      "live_pdp_probe_failed",
+      "similar_probe_failed"
+    ]
+  }
+]

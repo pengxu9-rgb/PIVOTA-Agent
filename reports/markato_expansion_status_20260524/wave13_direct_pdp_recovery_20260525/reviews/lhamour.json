@@ -1,0 +1,21 @@
+{
+  "generated_at": "2026-05-25T05:03:59.627Z",
+  "ok_to_continue": true,
+  "blocker_reasons": [],
+  "warning_reasons": [],
+  "item_count": 20,
+  "accepted_item_count": 20,
+  "blocked_item_count": 0,
+  "price_coverage_rate": 1,
+  "availability_coverage_rate": 1,
+  "image_coverage_rate": 1,
+  "diagnostics": [
+    {
+      "discovery_strategy": "shopify_json",
+      "failure_category": null,
+      "block_provider": null
+    }
+  ],
+  "row_findings": [],
+  "blocked_keys": []
+}

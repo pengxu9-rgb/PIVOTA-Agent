@@ -38,6 +38,48 @@ describe('sync-external-seeds-to-catalog category inference', () => {
       categoryPath: 'beauty/makeup/lip',
     });
   });
+
+  test('honors reviewed leaf catalog category paths over broad haircare heuristic', () => {
+    const category = inferCatalogMirrorCategory({
+      title: 'Mekabu Hydrating Shampoo',
+      domain: 'lovemasami.com',
+      seed_data: {
+        product_type: 'Shampoo',
+        category: 'Haircare',
+        catalog_category_path: 'beauty/haircare/shampoo',
+        snapshot: {
+          product_type: 'Shampoo',
+          category_path: ['beauty', 'haircare', 'shampoo'],
+        },
+      },
+    });
+
+    expect(category).toEqual({
+      productType: 'Shampoo',
+      category: 'Shampoo',
+      categoryPath: 'beauty/haircare/shampoo',
+    });
+  });
+
+  test('keeps reviewed hair styling cream out of skincare moisturizer', () => {
+    const category = inferCatalogMirrorCategory({
+      title: 'Mekabu Hydrating Styling Cream',
+      domain: 'lovemasami.com',
+      seed_data: {
+        product_type: 'Styling Cream',
+        category: 'Haircare',
+        catalog_category_path: 'beauty/haircare/styling-cream',
+        description: 'A curl-defining styling cream for frizz control and flexible hold.',
+        snapshot: {},
+      },
+    });
+
+    expect(category).toEqual({
+      productType: 'Styling Cream',
+      category: 'Styling Cream',
+      categoryPath: 'beauty/haircare/styling-cream',
+    });
+  });
 });
 
 describe('sync-external-seeds-to-catalog signature preservation', () => {

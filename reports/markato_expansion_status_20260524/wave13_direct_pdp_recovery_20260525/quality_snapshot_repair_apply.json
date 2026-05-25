@@ -1,0 +1,126 @@
+{
+  "generated_at": "2026-05-25T05:28:58.789Z",
+  "dry_run": false,
+  "missing": [],
+  "summary": {
+    "scanned": 4,
+    "missing": 0,
+    "would_insert_quality_snapshots": 0,
+    "inserted_quality_snapshots": 4,
+    "would_update_index_state": 0,
+    "updated_index_state": 4,
+    "serving_eligible_plans": 4
+  },
+  "plans": [
+    {
+      "external_product_id": "ext_96a7ecc1003f0f94e5b6805c",
+      "title": "Mekabu Hydrating Shampoo",
+      "content_key": "ck_cc824c4ac33da2cb2c56743b2369b875",
+      "pivota_signature_id": "sig_0ab1781be3e500ce2ddfa6b3",
+      "has_in_stock_offer": true,
+      "image_count": 12,
+      "price_amount": 38,
+      "description_length": 616,
+      "ingredients_length": 496,
+      "how_to_use_length": 261,
+      "content_quality_score": 100,
+      "rules_version": "v1-lite-direct-pdp-source-backed",
+      "problems": [],
+      "would_be_serving_eligible": true
+    },
+    {
+      "external_product_id": "ext_a1bb997d38b6823e83f23948",
+      "title": "Mekabu Hydrating Conditioner",
+      "content_key": "ck_2cb3f1ea7a906f8f2e807e5f6f31f8f6",
+      "pivota_signature_id": "sig_137493920cc718428f38809c",
+      "has_in_stock_offer": true,
+      "image_count": 12,
+      "price_amount": 38,
+      "description_length": 698,
+      "ingredients_length": 379,
+      "how_to_use_length": 244,
+      "content_quality_score": 100,
+      "rules_version": "v1-lite-direct-pdp-source-backed",
+      "problems": [],
+      "would_be_serving_eligible": true
+    },
+    {
+      "external_product_id": "ext_53cf4f0ee46873d280f632db",
+      "title": "Mekabu Hydrating Shine Serum",
+      "content_key": "ck_0d893ff95c7d110e32d4d9c9ff190a63",
+      "pivota_signature_id": "sig_2b5d9b4dc9941fef121d2f6a",
+      "has_in_stock_offer": true,
+      "image_count": 12,
+      "price_amount": 34,
+      "description_length": 500,
+      "ingredients_length": 191,
+      "how_to_use_length": 225,
+      "content_quality_score": 100,
+      "rules_version": "v1-lite-direct-pdp-source-backed",
+      "problems": [],
+      "would_be_serving_eligible": true
+    },
+    {
+      "external_product_id": "ext_fe9ef8f2a6343901489fe63e",
+      "title": "Mekabu Hydrating Styling Cream",
+      "content_key": "ck_d684967513b6f360579c9505894163bd",
+      "pivota_signature_id": "sig_e959cbde356524d37aa4e7f7",
+      "has_in_stock_offer": true,
+      "image_count": 12,
+      "price_amount": 36,
+      "description_length": 404,
+      "ingredients_length": 931,
+      "how_to_use_length": 197,
+      "content_quality_score": 100,
+      "rules_version": "v1-lite-direct-pdp-source-backed",
+      "problems": [],
+      "would_be_serving_eligible": true
+    }
+  ],
+  "apply_results": [
+    {
+      "external_product_id": "ext_96a7ecc1003f0f94e5b6805c",
+      "content_key": "ck_cc824c4ac33da2cb2c56743b2369b875",
+      "pivota_signature_id": "sig_0ab1781be3e500ce2ddfa6b3",
+      "serving_eligible": true,
+      "content_quality_score": 100,
+      "blocker_code": "none",
+      "blocker_detail": null,
+      "inserted_quality_snapshot": true,
+      "updated_index_state": true
+    },
+    {
+      "external_product_id": "ext_a1bb997d38b6823e83f23948",
+      "content_key": "ck_2cb3f1ea7a906f8f2e807e5f6f31f8f6",
+      "pivota_signature_id": "sig_137493920cc718428f38809c",
+      "serving_eligible": true,
+      "content_quality_score": 100,
+      "blocker_code": "none",
+      "blocker_detail": null,
+      "inserted_quality_snapshot": true,
+      "updated_index_state": true
+    },
+    {
+      "external_product_id": "ext_53cf4f0ee46873d280f632db",
+      "content_key": "ck_0d893ff95c7d110e32d4d9c9ff190a63",
+      "pivota_signature_id": "sig_2b5d9b4dc9941fef121d2f6a",
+      "serving_eligible": true,
+      "content_quality_score": 100,
+      "blocker_code": "none",
+      "blocker_detail": null,
+      "inserted_quality_snapshot": true,
+      "updated_index_state": true
+    },
+    {
+      "external_product_id": "ext_fe9ef8f2a6343901489fe63e",
+      "content_key": "ck_d684967513b6f360579c9505894163bd",
+      "pivota_signature_id": "sig_e959cbde356524d37aa4e7f7",
+      "serving_eligible": true,
+      "content_quality_score": 100,
+      "blocker_code": "none",
+      "blocker_detail": null,
+      "inserted_quality_snapshot": true,
+      "updated_index_state": true
+    }
+  ]
+}

@@ -1,0 +1,527 @@
+[
+  {
+    "status": "failed",
+    "seed_id": "eps_4a1782147cf6c901a6166f7e",
+    "external_product_id": "ext_fe9ef8f2a6343901489fe63e",
+    "market": "US",
+    "domain": "lovemasami.com",
+    "canonical_url": "https://lovemasami.com/products/mekabu-cream",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 0,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 38.95,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "passed",
+      "product_group_id": "sig_e959cbde356524d37aa4e7f7",
+      "product_line_id": "pl_f5957ad76070223e9eb58f7e",
+      "sellable_item_group_id": "sig_e959cbde356524d37aa4e7f7",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "passed",
+      "has_product_intel": true,
+      "product_intel_status": "ready",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "failed",
+      "price_amount": 36,
+      "has_overview": true,
+      "live_modules": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "reviews_preview",
+        "similar",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "media_gallery",
+        "price_promo"
+      ],
+      "details_status": {
+        "section_count": 3,
+        "section_soup_count": 0,
+        "has_product_facts": false,
+        "seed_section_count": 2,
+        "compressed_structured_sections": false
+      },
+      "questions_status": {
+        "seed_faq_count": 0,
+        "live_question_count": 0
+      },
+      "active_ingredients_status": {
+        "expected": true,
+        "live_item_count": 1,
+        "suppressed_for_product_family": null
+      },
+      "image_health": {
+        "scanned_count": 4,
+        "total_url_count": 5,
+        "broken_count": 0,
+        "broken_urls": [],
+        "transient_error_count": 0,
+        "transient_error_urls": [],
+        "skipped": false,
+        "truncated": true
+      },
+      "gallery_status": {
+        "image_count": 5,
+        "duplicate_count": 0,
+        "content_leak_count": 0,
+        "seed_content_image_count": 0
+      },
+      "snapshot_contract": null,
+      "image_url_identity_stripped_count": 0,
+      "image_url_identity_stripped_examples": [],
+      "failure_reasons": [
+        "legacy_snapshot_not_quarantined"
+      ]
+    },
+    "similar_gate": {
+      "status": "failed",
+      "similar_count": 0,
+      "card_highlight_missing_count": 0,
+      "card_seller_only_fallback_count": 0,
+      "exempt": false,
+      "failure_reasons": [
+        "similar_underfill"
+      ]
+    },
+    "variant_gate": {
+      "status": "passed",
+      "visible_variant_row_count": 0,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": []
+    },
+    "root_cause_classification": [
+      "snapshot_contract_gap",
+      "similar_issue"
+    ],
+    "failure_reasons": [
+      "legacy_snapshot_not_quarantined",
+      "similar_underfill"
+    ]
+  },
+  {
+    "status": "failed",
+    "seed_id": "eps_ccb1ab0f2d6a2b29671e2116",
+    "external_product_id": "ext_96a7ecc1003f0f94e5b6805c",
+    "market": "US",
+    "domain": "lovemasami.com",
+    "canonical_url": "https://lovemasami.com/products/mekabu-shampoo",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 0,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 40.95,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "passed",
+      "product_group_id": "sig_0ab1781be3e500ce2ddfa6b3",
+      "product_line_id": "pl_fc865156266a63bae1e9384f",
+      "sellable_item_group_id": "sig_0ab1781be3e500ce2ddfa6b3",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "passed",
+      "has_product_intel": true,
+      "product_intel_status": "ready",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "failed",
+      "price_amount": 38,
+      "has_overview": true,
+      "live_modules": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "reviews_preview",
+        "similar",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "media_gallery",
+        "price_promo"
+      ],
+      "details_status": {
+        "section_count": 3,
+        "section_soup_count": 0,
+        "has_product_facts": false,
+        "seed_section_count": 2,
+        "compressed_structured_sections": false
+      },
+      "questions_status": {
+        "seed_faq_count": 0,
+        "live_question_count": 0
+      },
+      "active_ingredients_status": {
+        "expected": false,
+        "live_item_count": 0,
+        "suppressed_for_product_family": null
+      },
+      "image_health": {
+        "scanned_count": 4,
+        "total_url_count": 8,
+        "broken_count": 0,
+        "broken_urls": [],
+        "transient_error_count": 0,
+        "transient_error_urls": [],
+        "skipped": false,
+        "truncated": true
+      },
+      "gallery_status": {
+        "image_count": 8,
+        "duplicate_count": 0,
+        "content_leak_count": 1,
+        "seed_content_image_count": 0
+      },
+      "snapshot_contract": null,
+      "image_url_identity_stripped_count": 0,
+      "image_url_identity_stripped_examples": [],
+      "failure_reasons": [
+        "content_media_leaked_into_gallery",
+        "legacy_snapshot_not_quarantined"
+      ]
+    },
+    "similar_gate": {
+      "status": "failed",
+      "similar_count": 0,
+      "card_highlight_missing_count": 0,
+      "card_seller_only_fallback_count": 0,
+      "exempt": false,
+      "failure_reasons": [
+        "similar_underfill"
+      ]
+    },
+    "variant_gate": {
+      "status": "passed",
+      "visible_variant_row_count": 0,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": []
+    },
+    "root_cause_classification": [
+      "image_asset_issue",
+      "snapshot_contract_gap",
+      "similar_issue"
+    ],
+    "failure_reasons": [
+      "content_media_leaked_into_gallery",
+      "legacy_snapshot_not_quarantined",
+      "similar_underfill"
+    ]
+  },
+  {
+    "status": "failed",
+    "seed_id": "eps_94a899fff76f8e6463ddb8b7",
+    "external_product_id": "ext_a1bb997d38b6823e83f23948",
+    "market": "US",
+    "domain": "lovemasami.com",
+    "canonical_url": "https://lovemasami.com/products/mekabu-conditioner",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 0,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 40.95,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "passed",
+      "product_group_id": "sig_137493920cc718428f38809c",
+      "product_line_id": "pl_275de677d9aab9757933fad8",
+      "sellable_item_group_id": "sig_137493920cc718428f38809c",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "passed",
+      "has_product_intel": true,
+      "product_intel_status": "ready",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "failed",
+      "price_amount": 38,
+      "has_overview": true,
+      "live_modules": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "reviews_preview",
+        "similar",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "media_gallery",
+        "price_promo"
+      ],
+      "details_status": {
+        "section_count": 3,
+        "section_soup_count": 0,
+        "has_product_facts": false,
+        "seed_section_count": 2,
+        "compressed_structured_sections": false
+      },
+      "questions_status": {
+        "seed_faq_count": 0,
+        "live_question_count": 0
+      },
+      "active_ingredients_status": {
+        "expected": true,
+        "live_item_count": 1,
+        "suppressed_for_product_family": null
+      },
+      "image_health": {
+        "scanned_count": 4,
+        "total_url_count": 8,
+        "broken_count": 0,
+        "broken_urls": [],
+        "transient_error_count": 0,
+        "transient_error_urls": [],
+        "skipped": false,
+        "truncated": true
+      },
+      "gallery_status": {
+        "image_count": 8,
+        "duplicate_count": 0,
+        "content_leak_count": 1,
+        "seed_content_image_count": 0
+      },
+      "snapshot_contract": null,
+      "image_url_identity_stripped_count": 0,
+      "image_url_identity_stripped_examples": [],
+      "failure_reasons": [
+        "content_media_leaked_into_gallery",
+        "legacy_snapshot_not_quarantined"
+      ]
+    },
+    "similar_gate": {
+      "status": "failed",
+      "similar_count": 0,
+      "card_highlight_missing_count": 0,
+      "card_seller_only_fallback_count": 0,
+      "exempt": false,
+      "failure_reasons": [
+        "similar_underfill"
+      ]
+    },
+    "variant_gate": {
+      "status": "passed",
+      "visible_variant_row_count": 0,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": []
+    },
+    "root_cause_classification": [
+      "image_asset_issue",
+      "snapshot_contract_gap",
+      "similar_issue"
+    ],
+    "failure_reasons": [
+      "content_media_leaked_into_gallery",
+      "legacy_snapshot_not_quarantined",
+      "similar_underfill"
+    ]
+  },
+  {
+    "status": "failed",
+    "seed_id": "eps_07f3261f7a8de9fe306209a1",
+    "external_product_id": "ext_53cf4f0ee46873d280f632db",
+    "market": "US",
+    "domain": "lovemasami.com",
+    "canonical_url": "https://lovemasami.com/products/mekabu-serum",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 0,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 36.95,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "passed",
+      "product_group_id": "sig_2b5d9b4dc9941fef121d2f6a",
+      "product_line_id": "pl_8545bc9a1c1b1abad3155b16",
+      "sellable_item_group_id": "sig_2b5d9b4dc9941fef121d2f6a",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "passed",
+      "has_product_intel": true,
+      "product_intel_status": "ready",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "failed",
+      "price_amount": 34,
+      "has_overview": true,
+      "live_modules": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "reviews_preview",
+        "similar",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "media_gallery",
+        "price_promo"
+      ],
+      "details_status": {
+        "section_count": 3,
+        "section_soup_count": 0,
+        "has_product_facts": false,
+        "seed_section_count": 2,
+        "compressed_structured_sections": false
+      },
+      "questions_status": {
+        "seed_faq_count": 0,
+        "live_question_count": 0
+      },
+      "active_ingredients_status": {
+        "expected": false,
+        "live_item_count": 0,
+        "suppressed_for_product_family": null
+      },
+      "image_health": {
+        "scanned_count": 4,
+        "total_url_count": 6,
+        "broken_count": 0,
+        "broken_urls": [],
+        "transient_error_count": 0,
+        "transient_error_urls": [],
+        "skipped": false,
+        "truncated": true
+      },
+      "gallery_status": {
+        "image_count": 6,
+        "duplicate_count": 0,
+        "content_leak_count": 1,
+        "seed_content_image_count": 0
+      },
+      "snapshot_contract": null,
+      "image_url_identity_stripped_count": 0,
+      "image_url_identity_stripped_examples": [],
+      "failure_reasons": [
+        "content_media_leaked_into_gallery",
+        "legacy_snapshot_not_quarantined"
+      ]
+    },
+    "similar_gate": {
+      "status": "failed",
+      "similar_count": 0,
+      "card_highlight_missing_count": 0,
+      "card_seller_only_fallback_count": 0,
+      "exempt": false,
+      "failure_reasons": [
+        "similar_underfill"
+      ]
+    },
+    "variant_gate": {
+      "status": "passed",
+      "visible_variant_row_count": 1,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": []
+    },
+    "root_cause_classification": [
+      "image_asset_issue",
+      "snapshot_contract_gap",
+      "similar_issue"
+    ],
+    "failure_reasons": [
+      "content_media_leaked_into_gallery",
+      "legacy_snapshot_not_quarantined",
+      "similar_underfill"
+    ]
+  }
+]

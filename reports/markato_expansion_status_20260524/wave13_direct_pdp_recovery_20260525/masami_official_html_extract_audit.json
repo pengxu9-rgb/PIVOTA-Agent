@@ -1,0 +1,223 @@
+{
+  "generated_at": "2026-05-25T05:14:52.230Z",
+  "market": "US",
+  "source": "wave13_masami_direct_pdp_official_html_recovery",
+  "scanned": 4,
+  "ready_count": 4,
+  "held_count": 0,
+  "audit_rows": [
+    {
+      "file": "masami-shampoo.json",
+      "target_url": "https://lovemasami.com/products/mekabu-shampoo",
+      "canonical_url": "https://lovemasami.com/products/mekabu-shampoo",
+      "title": "Mekabu Hydrating Shampoo",
+      "price": 38,
+      "currency": "USD",
+      "availability": "in_stock",
+      "ingredients_count": 19,
+      "ingredients_raw_len": 496,
+      "how_to_len": 261,
+      "price_normalized": true,
+      "commerce_gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "ok",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "promotions_status": "unknown",
+        "availability_status": "in_stock",
+        "problems": []
+      },
+      "diagnostics": {
+        "requested_domain": "lovemasami.com",
+        "resolved_base_url": "https://lovemasami.com",
+        "discovery_strategy": "shopify_json",
+        "failure_category": null,
+        "block_provider": null,
+        "http_trace": [
+          {
+            "url": "https://www.lovemasami.com/products/mekabu-shampoo.js",
+            "status": 200
+          },
+          {
+            "url": "https://www.lovemasami.com/products/mekabu-shampoo",
+            "status": 200
+          },
+          {
+            "url": "https://www.lovemasami.com/products/mekabu-shampoo",
+            "status": 200
+          },
+          {
+            "url": "https://www.lovemasami.com/products/mekabu-shampoo",
+            "status": 200
+          }
+        ]
+      },
+      "status": "ready",
+      "reasons": []
+    },
+    {
+      "file": "masami-conditioner.json",
+      "target_url": "https://lovemasami.com/products/mekabu-conditioner",
+      "canonical_url": "https://lovemasami.com/products/mekabu-conditioner",
+      "title": "Mekabu Hydrating Conditioner",
+      "price": 38,
+      "currency": "USD",
+      "availability": "in_stock",
+      "ingredients_count": 14,
+      "ingredients_raw_len": 379,
+      "how_to_len": 244,
+      "price_normalized": true,
+      "commerce_gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "ok",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "promotions_status": "unknown",
+        "availability_status": "in_stock",
+        "problems": []
+      },
+      "diagnostics": {
+        "requested_domain": "lovemasami.com",
+        "resolved_base_url": "https://lovemasami.com",
+        "discovery_strategy": "shopify_json",
+        "failure_category": null,
+        "block_provider": null,
+        "http_trace": [
+          {
+            "url": "https://www.lovemasami.com/products/mekabu-conditioner.js",
+            "status": 200
+          },
+          {
+            "url": "https://www.lovemasami.com/products/mekabu-conditioner",
+            "status": 200
+          },
+          {
+            "url": "https://www.lovemasami.com/products/mekabu-conditioner",
+            "status": 200
+          },
+          {
+            "url": "https://www.lovemasami.com/products/mekabu-conditioner",
+            "status": 200
+          }
+        ]
+      },
+      "status": "ready",
+      "reasons": []
+    },
+    {
+      "file": "masami-serum.json",
+      "target_url": "https://lovemasami.com/products/mekabu-serum",
+      "canonical_url": "https://lovemasami.com/products/mekabu-serum",
+      "title": "Mekabu Hydrating Shine Serum",
+      "price": 34,
+      "currency": "USD",
+      "availability": "in_stock",
+      "ingredients_count": 6,
+      "ingredients_raw_len": 191,
+      "how_to_len": 225,
+      "price_normalized": true,
+      "commerce_gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "ok",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "promotions_status": "unknown",
+        "availability_status": "in_stock",
+        "problems": []
+      },
+      "diagnostics": {
+        "requested_domain": "lovemasami.com",
+        "resolved_base_url": "https://lovemasami.com",
+        "discovery_strategy": "shopify_json",
+        "failure_category": null,
+        "block_provider": null,
+        "http_trace": [
+          {
+            "url": "https://www.lovemasami.com/products/mekabu-serum.js",
+            "status": 200
+          },
+          {
+            "url": "https://www.lovemasami.com/products/mekabu-serum",
+            "status": 200
+          },
+          {
+            "url": "https://www.lovemasami.com/products/mekabu-serum",
+            "status": 200
+          },
+          {
+            "url": "https://www.lovemasami.com/products/mekabu-serum",
+            "status": 200
+          }
+        ]
+      },
+      "status": "ready",
+      "reasons": []
+    },
+    {
+      "file": "masami-cream.json",
+      "target_url": "https://lovemasami.com/products/mekabu-cream",
+      "canonical_url": "https://lovemasami.com/products/mekabu-cream",
+      "title": "Mekabu Hydrating Styling Cream",
+      "price": 36,
+      "currency": "USD",
+      "availability": "in_stock",
+      "ingredients_count": 24,
+      "ingredients_raw_len": 931,
+      "how_to_len": 197,
+      "price_normalized": true,
+      "commerce_gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "ok",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "promotions_status": "unknown",
+        "availability_status": "in_stock",
+        "problems": []
+      },
+      "diagnostics": {
+        "requested_domain": "lovemasami.com",
+        "resolved_base_url": "https://lovemasami.com",
+        "discovery_strategy": "shopify_json",
+        "failure_category": null,
+        "block_provider": null,
+        "http_trace": [
+          {
+            "url": "https://www.lovemasami.com/products/mekabu-cream.js",
+            "status": 200
+          },
+          {
+            "url": "https://www.lovemasami.com/products/mekabu-cream",
+            "status": 200
+          },
+          {
+            "url": "https://www.lovemasami.com/products/mekabu-cream",
+            "status": 200
+          },
+          {
+            "url": "https://www.lovemasami.com/products/mekabu-cream",
+            "status": 200
+          },
+          {
+            "url": "https://www.lovemasami.com/products/mekabu-cream",
+            "status": 200
+          }
+        ]
+      },
+      "status": "ready",
+      "reasons": []
+    }
+  ],
+  "held_items": []
+}

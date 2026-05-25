@@ -1,0 +1,58 @@
+{
+  "generated_at": "2026-05-25T05:35:29.486Z",
+  "gateway_url": "https://pivota-agent-production.up.railway.app/api/gateway",
+  "rows": [
+    {
+      "product_id": "ext_96a7ecc1003f0f94e5b6805c",
+      "http_status": 404,
+      "root_keys": [],
+      "root_status": "",
+      "root_error": null,
+      "response_keys": [],
+      "result_keys": [],
+      "unwrapped_module_types": [],
+      "unwrapped_missing_modules": [],
+      "unwrapped_status": "",
+      "raw_preview": "{}"
+    },
+    {
+      "product_id": "ext_a1bb997d38b6823e83f23948",
+      "http_status": 404,
+      "root_keys": [],
+      "root_status": "",
+      "root_error": null,
+      "response_keys": [],
+      "result_keys": [],
+      "unwrapped_module_types": [],
+      "unwrapped_missing_modules": [],
+      "unwrapped_status": "",
+      "raw_preview": "{}"
+    },
+    {
+      "product_id": "ext_53cf4f0ee46873d280f632db",
+      "http_status": 404,
+      "root_keys": [],
+      "root_status": "",
+      "root_error": null,
+      "response_keys": [],
+      "result_keys": [],
+      "unwrapped_module_types": [],
+      "unwrapped_missing_modules": [],
+      "unwrapped_status": "",
+      "raw_preview": "{}"
+    },
+    {
+      "product_id": "ext_fe9ef8f2a6343901489fe63e",
+      "http_status": 404,
+      "root_keys": [],
+      "root_status": "",
+      "root_error": null,
+      "response_keys": [],
+      "result_keys": [],
+      "unwrapped_module_types": [],
+      "unwrapped_missing_modules": [],
+      "unwrapped_status": "",
+      "raw_preview": "{}"
+    }
+  ]
+}

@@ -1,0 +1,1572 @@
+{
+  "generated_at": "2026-05-25T05:03:59.587Z",
+  "brand": "Aetās",
+  "domain": "https://aetasofficial.com/en",
+  "fallback_domains": [],
+  "market": "US",
+  "preferred_titles": [
+    "The Serum",
+    "Moisturizer",
+    "Cleanser",
+    "Lotion"
+  ],
+  "matched_preferred_titles": [
+    "The Serum",
+    "Moisturizer",
+    "Cleanser",
+    "Lotion"
+  ],
+  "extracted_product_count": 6,
+  "excluded_bundle_like_count": 1,
+  "excluded_non_product_page_count": 0,
+  "excluded_incomplete_transaction_count": 0,
+  "excluded_brand_scope_mismatch_count": 1,
+  "matched_preferred_title_count": 4,
+  "item_count": 4,
+  "fallback_used": false,
+  "source_attempts": [
+    {
+      "source_url": "https://aetasofficial.com/en",
+      "source_role": "primary",
+      "extracted_product_count": 6,
+      "item_count": 4,
+      "matched_preferred_title_count": 4,
+      "matched_preferred_titles": [
+        "The Serum",
+        "Moisturizer",
+        "Cleanser",
+        "Lotion"
+      ],
+      "diagnostics_summary": {
+        "discovery_strategy": "shopify_json",
+        "failure_category": null,
+        "block_provider": null
+      },
+      "used_in_manifest": true,
+      "added_item_count": 4,
+      "added_matched_preferred_titles": [
+        "The Serum",
+        "Moisturizer",
+        "Cleanser",
+        "Lotion"
+      ],
+      "skip_reason": null
+    }
+  ],
+  "items": [
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "target_brand": "Aetās",
+      "target_url": "https://aetasofficial.com/products/serum",
+      "extract_status": "brand_catalog_extract",
+      "market": "US",
+      "source_domain": "https://aetasofficial.com/en",
+      "source_role": "primary",
+      "matched_preferred_titles": [
+        "The Serum"
+      ],
+      "alias_preferred_titles": [
+        "The Serum"
+      ],
+      "seed_row": {
+        "ingredient_id": null,
+        "ingredient_name": null,
+        "seed_id": "eps_00b1b6dc2b0d11c894a13934",
+        "brand": "Aetās",
+        "market": "US",
+        "tool": "creator_agents",
+        "status": "active",
+        "domain": "aetasofficial.com",
+        "external_product_id": "ext_38b10ae142ef283bdc0acca8",
+        "canonical_url": "https://aetasofficial.com/products/serum",
+        "destination_url": "https://aetasofficial.com/products/serum",
+        "title": "The Serum",
+        "image_url": "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/Serum_B_square.png?v=1751105329",
+        "price_amount": 60,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "attached_product_key": null,
+        "requires_seed_correction": false,
+        "seed_data": {
+          "brand": "Aetās",
+          "title": "The Serum",
+          "description": "イエベ肌・ブルベ肌を魅せる導入美容液。\n\n肌本来の輝きを引き出し、肌タイプを活かした「透明感 ※1 」を手にいれる\n\nパーソナルカラー診断でイエローベース・ブルーベースを決める要素のひとつ「肌質」の違いに着目。多くの方が理想とする、くすみのない ※２ ・透明感 ※1 あふれる美肌のあり方や、必要なアプローチの違いを研究。それぞれの肌が持つユニークな個性を最大限に際立たせ、内側から輝くような美しさを引き出す導入美容液。\n本来の肌の魅力を覚醒させ、自信に満ちた輝きへ。\n\nThe Serum γ (イエベの方へ) \n自然由来指数 ※3 ：99.54% \n\n肌に黄みを感じる、イエローベースの方向け。活力ある雰囲気が魅力。\n肌のごわつきに働きかけ肌のキメを整えることで、やわらかくしなやかな肌へと導き、明るく輝く肌印象へ。\nPCA-Na ※4 ・フルーツ酸 ※5 配合\n\nThe Serum β (ブルベの方へ) \n自然由来指数 ※3 ：98.89% \n\n肌に青みを感じる、ブルーベースの方向け。涼しげな雰囲気が魅力。\n潤いで満たして乾燥から守り、ハリ感のある肌に。顔全体をすっきりと澄み渡らせ、透明感 ※1 や洗練感を演出。\nビタミンP ※6 ・カフェイン ※4 配合\n\n※１ 潤いによる肌印象\n※２ 乾燥よる肌のくすみ\n※３ 自然由来指数は水を含む数値。ISO16128国際標準の規定に基づき、商品中の全配合成分に占める自然由来成分の比率 \n※４ 保湿成分\n※５ ライム果汁、オレンジ果汁、グレープフルーツ果実エキス、サンザシエキス、ナツメ果実エキス、リンゴ果実エキス（整肌成分）\n※６ グルコシルヘスペリジン（整肌成分）",
+          "external_product_id": "ext_38b10ae142ef283bdc0acca8",
+          "canonical_url": "https://aetasofficial.com/products/serum",
+          "destination_url": "https://aetasofficial.com/products/serum",
+          "price_amount": 60,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/Serum_B_square.png?v=1751105329",
+          "image_urls": [
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/Serum_B_square.png?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/SerumyB__2048px_2048.jpg?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09579_Large_48161306-3df3-45a5-910c-cb5ec6c37f5d.jpg?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09377.jpg?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09372.jpg?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09406_Large_841f00ba-1c87-469e-82e2-c32b50cb46df.jpg?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09636.jpg?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09537.jpg?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09581.jpg?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09320.jpg?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09319.jpg?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09306_Large_a2cf51e4-d8d6-45ff-93e1-51df8489d79d.jpg?v=1751105329"
+          ],
+          "images": [
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/Serum_B_square.png?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/SerumyB__2048px_2048.jpg?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09579_Large_48161306-3df3-45a5-910c-cb5ec6c37f5d.jpg?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09377.jpg?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09372.jpg?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09406_Large_841f00ba-1c87-469e-82e2-c32b50cb46df.jpg?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09636.jpg?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09537.jpg?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09581.jpg?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09320.jpg?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09319.jpg?v=1751105329",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09306_Large_a2cf51e4-d8d6-45ff-93e1-51df8489d79d.jpg?v=1751105329"
+          ],
+          "variants": [
+            {
+              "sku": "400",
+              "variant_id": "46009531236507",
+              "url": "https://aetasofficial.com/products/serum",
+              "option_name": "肌タイプ別",
+              "option_value": "β（ブルベ向け）",
+              "price": "60",
+              "currency": "USD",
+              "stock": "In Stock",
+              "description": "イエベ肌・ブルベ肌を魅せる導入美容液。\n\n肌本来の輝きを引き出し、肌タイプを活かした「透明感 ※1 」を手にいれる\n\nパーソナルカラー診断でイエローベース・ブルーベースを決める要素のひとつ「肌質」の違いに着目。多くの方が理想とする、くすみのない ※２ ・透明感 ※1 あふれる美肌のあり方や、必要なアプローチの違いを研究。それぞれの肌が持つユニークな個性を最大限に際立たせ、内側から輝くような美しさを引き出す導入美容液。\n本来の肌の魅力を覚醒させ、自信に満ちた輝きへ。\n\nThe Serum γ (イエベの方へ) \n自然由来指数 ※3 ：99.54% \n\n肌に黄みを感じる、イエローベースの方向け。活力ある雰囲気が魅力。\n肌のごわつきに働きかけ肌のキメを整えることで、やわらかくしなやかな肌へと導き、明るく輝く肌印象へ。\nPCA-Na ※4 ・フルーツ酸 ※5 配合\n\nThe Serum β (ブルベの方へ) \n自然由来指数 ※3 ：98.89% \n\n肌に青みを感じる、ブルーベースの方向け。涼しげな雰囲気が魅力。\n潤いで満たして乾燥から守り、ハリ感のある肌に。顔全体をすっきりと澄み渡らせ、透明感 ※1 や洗練感を演出。\nビタミンP ※6 ・カフェイン ※4 配合\n\n※１ 潤いによる肌印象\n※２ 乾燥よる肌のくすみ\n※３ 自然由来指数は水を含む数値。ISO16128国際標準の規定に基づき、商品中の全配合成分に占める自然由来成分の比率 \n※４ 保湿成分\n※５ ライム果汁、オレンジ果汁、グレープフルーツ果実エキス、サンザシエキス、ナツメ果実エキス、リンゴ果実エキス（整肌成分）\n※６ グルコシルヘスペリジン（整肌成分）",
+              "image_url": "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/Serum_B_square.png?v=1751105329",
+              "image_urls": [
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/Serum_B_square.png?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/SerumyB__2048px_2048.jpg?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09579_Large_48161306-3df3-45a5-910c-cb5ec6c37f5d.jpg?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09377.jpg?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09372.jpg?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09406_Large_841f00ba-1c87-469e-82e2-c32b50cb46df.jpg?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09636.jpg?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09537.jpg?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09581.jpg?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09320.jpg?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09319.jpg?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09306_Large_a2cf51e4-d8d6-45ff-93e1-51df8489d79d.jpg?v=1751105329"
+              ]
+            },
+            {
+              "sku": "410",
+              "variant_id": "46009531269275",
+              "url": "https://aetasofficial.com/products/serum",
+              "option_name": "肌タイプ別",
+              "option_value": "γ（イエベ向け）",
+              "price": "60",
+              "currency": "USD",
+              "stock": "In Stock",
+              "description": "イエベ肌・ブルベ肌を魅せる導入美容液。\n\n肌本来の輝きを引き出し、肌タイプを活かした「透明感 ※1 」を手にいれる\n\nパーソナルカラー診断でイエローベース・ブルーベースを決める要素のひとつ「肌質」の違いに着目。多くの方が理想とする、くすみのない ※２ ・透明感 ※1 あふれる美肌のあり方や、必要なアプローチの違いを研究。それぞれの肌が持つユニークな個性を最大限に際立たせ、内側から輝くような美しさを引き出す導入美容液。\n本来の肌の魅力を覚醒させ、自信に満ちた輝きへ。\n\nThe Serum γ (イエベの方へ) \n自然由来指数 ※3 ：99.54% \n\n肌に黄みを感じる、イエローベースの方向け。活力ある雰囲気が魅力。\n肌のごわつきに働きかけ肌のキメを整えることで、やわらかくしなやかな肌へと導き、明るく輝く肌印象へ。\nPCA-Na ※4 ・フルーツ酸 ※5 配合\n\nThe Serum β (ブルベの方へ) \n自然由来指数 ※3 ：98.89% \n\n肌に青みを感じる、ブルーベースの方向け。涼しげな雰囲気が魅力。\n潤いで満たして乾燥から守り、ハリ感のある肌に。顔全体をすっきりと澄み渡らせ、透明感 ※1 や洗練感を演出。\nビタミンP ※6 ・カフェイン ※4 配合\n\n※１ 潤いによる肌印象\n※２ 乾燥よる肌のくすみ\n※３ 自然由来指数は水を含む数値。ISO16128国際標準の規定に基づき、商品中の全配合成分に占める自然由来成分の比率 \n※４ 保湿成分\n※５ ライム果汁、オレンジ果汁、グレープフルーツ果実エキス、サンザシエキス、ナツメ果実エキス、リンゴ果実エキス（整肌成分）\n※６ グルコシルヘスペリジン（整肌成分）",
+              "image_url": "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/Serum_Y_square.png?v=1751105329",
+              "image_urls": [
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/Serum_Y_square.png?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/SerumyB__2048px_2048.jpg?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09579_Large_48161306-3df3-45a5-910c-cb5ec6c37f5d.jpg?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09377.jpg?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09372.jpg?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09406_Large_841f00ba-1c87-469e-82e2-c32b50cb46df.jpg?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09636.jpg?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09537.jpg?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09581.jpg?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09320.jpg?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09319.jpg?v=1751105329",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09306_Large_a2cf51e4-d8d6-45ff-93e1-51df8489d79d.jpg?v=1751105329"
+              ]
+            }
+          ],
+          "snapshot": {
+            "source": "catalog_intelligence_seed_creation_manifest",
+            "extracted_at": "2026-05-25T05:02:47.043Z",
+            "canonical_url": "https://aetasofficial.com/products/serum",
+            "destination_url": "https://aetasofficial.com/products/serum",
+            "title": "The Serum",
+            "description": "イエベ肌・ブルベ肌を魅せる導入美容液。\n\n肌本来の輝きを引き出し、肌タイプを活かした「透明感 ※1 」を手にいれる\n\nパーソナルカラー診断でイエローベース・ブルーベースを決める要素のひとつ「肌質」の違いに着目。多くの方が理想とする、くすみのない ※２ ・透明感 ※1 あふれる美肌のあり方や、必要なアプローチの違いを研究。それぞれの肌が持つユニークな個性を最大限に際立たせ、内側から輝くような美しさを引き出す導入美容液。\n本来の肌の魅力を覚醒させ、自信に満ちた輝きへ。\n\nThe Serum γ (イエベの方へ) \n自然由来指数 ※3 ：99.54% \n\n肌に黄みを感じる、イエローベースの方向け。活力ある雰囲気が魅力。\n肌のごわつきに働きかけ肌のキメを整えることで、やわらかくしなやかな肌へと導き、明るく輝く肌印象へ。\nPCA-Na ※4 ・フルーツ酸 ※5 配合\n\nThe Serum β (ブルベの方へ) \n自然由来指数 ※3 ：98.89% \n\n肌に青みを感じる、ブルーベースの方向け。涼しげな雰囲気が魅力。\n潤いで満たして乾燥から守り、ハリ感のある肌に。顔全体をすっきりと澄み渡らせ、透明感 ※1 や洗練感を演出。\nビタミンP ※6 ・カフェイン ※4 配合\n\n※１ 潤いによる肌印象\n※２ 乾燥よる肌のくすみ\n※３ 自然由来指数は水を含む数値。ISO16128国際標準の規定に基づき、商品中の全配合成分に占める自然由来成分の比率 \n※４ 保湿成分\n※５ ライム果汁、オレンジ果汁、グレープフルーツ果実エキス、サンザシエキス、ナツメ果実エキス、リンゴ果実エキス（整肌成分）\n※６ グルコシルヘスペリジン（整肌成分）",
+            "image_url": "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/Serum_B_square.png?v=1751105329",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/Serum_B_square.png?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/SerumyB__2048px_2048.jpg?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09579_Large_48161306-3df3-45a5-910c-cb5ec6c37f5d.jpg?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09377.jpg?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09372.jpg?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09406_Large_841f00ba-1c87-469e-82e2-c32b50cb46df.jpg?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09636.jpg?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09537.jpg?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09581.jpg?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09320.jpg?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09319.jpg?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09306_Large_a2cf51e4-d8d6-45ff-93e1-51df8489d79d.jpg?v=1751105329"
+            ],
+            "images": [
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/Serum_B_square.png?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/SerumyB__2048px_2048.jpg?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09579_Large_48161306-3df3-45a5-910c-cb5ec6c37f5d.jpg?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09377.jpg?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09372.jpg?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09406_Large_841f00ba-1c87-469e-82e2-c32b50cb46df.jpg?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09636.jpg?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09537.jpg?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09581.jpg?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09320.jpg?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09319.jpg?v=1751105329",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09306_Large_a2cf51e4-d8d6-45ff-93e1-51df8489d79d.jpg?v=1751105329"
+            ],
+            "variants": [
+              {
+                "sku": "400",
+                "variant_id": "46009531236507",
+                "url": "https://aetasofficial.com/products/serum",
+                "option_name": "肌タイプ別",
+                "option_value": "β（ブルベ向け）",
+                "price": "60",
+                "currency": "USD",
+                "stock": "In Stock",
+                "description": "イエベ肌・ブルベ肌を魅せる導入美容液。\n\n肌本来の輝きを引き出し、肌タイプを活かした「透明感 ※1 」を手にいれる\n\nパーソナルカラー診断でイエローベース・ブルーベースを決める要素のひとつ「肌質」の違いに着目。多くの方が理想とする、くすみのない ※２ ・透明感 ※1 あふれる美肌のあり方や、必要なアプローチの違いを研究。それぞれの肌が持つユニークな個性を最大限に際立たせ、内側から輝くような美しさを引き出す導入美容液。\n本来の肌の魅力を覚醒させ、自信に満ちた輝きへ。\n\nThe Serum γ (イエベの方へ) \n自然由来指数 ※3 ：99.54% \n\n肌に黄みを感じる、イエローベースの方向け。活力ある雰囲気が魅力。\n肌のごわつきに働きかけ肌のキメを整えることで、やわらかくしなやかな肌へと導き、明るく輝く肌印象へ。\nPCA-Na ※4 ・フルーツ酸 ※5 配合\n\nThe Serum β (ブルベの方へ) \n自然由来指数 ※3 ：98.89% \n\n肌に青みを感じる、ブルーベースの方向け。涼しげな雰囲気が魅力。\n潤いで満たして乾燥から守り、ハリ感のある肌に。顔全体をすっきりと澄み渡らせ、透明感 ※1 や洗練感を演出。\nビタミンP ※6 ・カフェイン ※4 配合\n\n※１ 潤いによる肌印象\n※２ 乾燥よる肌のくすみ\n※３ 自然由来指数は水を含む数値。ISO16128国際標準の規定に基づき、商品中の全配合成分に占める自然由来成分の比率 \n※４ 保湿成分\n※５ ライム果汁、オレンジ果汁、グレープフルーツ果実エキス、サンザシエキス、ナツメ果実エキス、リンゴ果実エキス（整肌成分）\n※６ グルコシルヘスペリジン（整肌成分）",
+                "image_url": "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/Serum_B_square.png?v=1751105329",
+                "image_urls": [
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/Serum_B_square.png?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/SerumyB__2048px_2048.jpg?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09579_Large_48161306-3df3-45a5-910c-cb5ec6c37f5d.jpg?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09377.jpg?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09372.jpg?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09406_Large_841f00ba-1c87-469e-82e2-c32b50cb46df.jpg?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09636.jpg?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09537.jpg?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09581.jpg?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09320.jpg?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09319.jpg?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09306_Large_a2cf51e4-d8d6-45ff-93e1-51df8489d79d.jpg?v=1751105329"
+                ]
+              },
+              {
+                "sku": "410",
+                "variant_id": "46009531269275",
+                "url": "https://aetasofficial.com/products/serum",
+                "option_name": "肌タイプ別",
+                "option_value": "γ（イエベ向け）",
+                "price": "60",
+                "currency": "USD",
+                "stock": "In Stock",
+                "description": "イエベ肌・ブルベ肌を魅せる導入美容液。\n\n肌本来の輝きを引き出し、肌タイプを活かした「透明感 ※1 」を手にいれる\n\nパーソナルカラー診断でイエローベース・ブルーベースを決める要素のひとつ「肌質」の違いに着目。多くの方が理想とする、くすみのない ※２ ・透明感 ※1 あふれる美肌のあり方や、必要なアプローチの違いを研究。それぞれの肌が持つユニークな個性を最大限に際立たせ、内側から輝くような美しさを引き出す導入美容液。\n本来の肌の魅力を覚醒させ、自信に満ちた輝きへ。\n\nThe Serum γ (イエベの方へ) \n自然由来指数 ※3 ：99.54% \n\n肌に黄みを感じる、イエローベースの方向け。活力ある雰囲気が魅力。\n肌のごわつきに働きかけ肌のキメを整えることで、やわらかくしなやかな肌へと導き、明るく輝く肌印象へ。\nPCA-Na ※4 ・フルーツ酸 ※5 配合\n\nThe Serum β (ブルベの方へ) \n自然由来指数 ※3 ：98.89% \n\n肌に青みを感じる、ブルーベースの方向け。涼しげな雰囲気が魅力。\n潤いで満たして乾燥から守り、ハリ感のある肌に。顔全体をすっきりと澄み渡らせ、透明感 ※1 や洗練感を演出。\nビタミンP ※6 ・カフェイン ※4 配合\n\n※１ 潤いによる肌印象\n※２ 乾燥よる肌のくすみ\n※３ 自然由来指数は水を含む数値。ISO16128国際標準の規定に基づき、商品中の全配合成分に占める自然由来成分の比率 \n※４ 保湿成分\n※５ ライム果汁、オレンジ果汁、グレープフルーツ果実エキス、サンザシエキス、ナツメ果実エキス、リンゴ果実エキス（整肌成分）\n※６ グルコシルヘスペリジン（整肌成分）",
+                "image_url": "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/Serum_Y_square.png?v=1751105329",
+                "image_urls": [
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/Serum_Y_square.png?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/SerumyB__2048px_2048.jpg?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09579_Large_48161306-3df3-45a5-910c-cb5ec6c37f5d.jpg?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09377.jpg?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09372.jpg?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09406_Large_841f00ba-1c87-469e-82e2-c32b50cb46df.jpg?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09636.jpg?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09537.jpg?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09581.jpg?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09320.jpg?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09319.jpg?v=1751105329",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/7IV09306_Large_a2cf51e4-d8d6-45ff-93e1-51df8489d79d.jpg?v=1751105329"
+                ]
+              }
+            ],
+            "diagnostics": {
+              "requested_domain": "aetasofficial.com",
+              "resolved_base_url": "https://aetasofficial.com",
+              "discovery_strategy": "shopify_json",
+              "failure_category": null,
+              "block_provider": null,
+              "http_trace": [
+                {
+                  "url": "https://aetasofficial.com/products.json?limit=1",
+                  "status": 200
+                },
+                {
+                  "url": "https://aetasofficial.com/en",
+                  "status": 200
+                },
+                {
+                  "url": "https://aetasofficial.com/products.json?limit=250&page=1",
+                  "status": 200
+                }
+              ]
+            },
+            "search_aliases": [
+              "The Serum"
+            ],
+            "authority_source": {
+              "source_url": "https://aetasofficial.com/en",
+              "source_role": "primary",
+              "matched_preferred_titles": [
+                "The Serum"
+              ]
+            },
+            "source_validation": {
+              "source_type": "channel_or_retailer",
+              "requires_multi_offer_merge_validation": true,
+              "source_host": "aetasofficial.com"
+            },
+            "requires_multi_offer_merge_validation": true,
+            "commerce_facts_v1": {
+              "contract_version": "commerce_facts.v1",
+              "market_id": "US",
+              "country": "US",
+              "currency_target": "USD",
+              "source_authority": "catalog_extract_v2",
+              "captured_at": "2026-05-25T05:02:47.535Z",
+              "evidence_url": "https://aetasofficial.com/products/serum",
+              "sellable_region": {
+                "status": "unknown",
+                "countries": [],
+                "evidence_source": "catalog_extract_v2",
+                "confidence": "medium",
+                "checked_at": "2026-05-25T05:02:47.535Z",
+                "reason_codes": [
+                  "market_currency_observed",
+                  "shipping_destination_not_verified",
+                  "external_checkout_not_queried"
+                ],
+                "evidence_url": "https://aetasofficial.com/products/serum"
+              },
+              "regional_price": {
+                "amount": 60,
+                "currency": "USD",
+                "display_raw": "60.00",
+                "price_type": "list",
+                "compare_at_amount": null,
+                "compare_at_currency": null,
+                "compare_at_display_raw": null,
+                "tax_included": "unknown",
+                "confidence": "medium",
+                "market_switch_status": "ok",
+                "observed_currency": "USD",
+                "source_url": "https://aetasofficial.com/products/serum",
+                "captured_at": "2026-05-25T05:02:47.535Z"
+              },
+              "availability": {
+                "status": "in_stock",
+                "source": "catalog_extract_v2",
+                "confidence": "medium",
+                "captured_at": "2026-05-25T05:02:47.535Z"
+              },
+              "shipping": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_checkout_not_queried"
+                ],
+                "checked_at": "2026-05-25T05:02:47.535Z"
+              },
+              "promotions": [],
+              "returns": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_returns_not_extracted"
+                ],
+                "checked_at": "2026-05-25T05:02:47.535Z"
+              }
+            },
+            "commerce_facts_gate": {
+              "status": "hold",
+              "market_id": "US",
+              "expected_currency": "USD",
+              "observed_currency": "USD",
+              "market_switch_status": "ok",
+              "sellable_region_status": "unknown",
+              "shipping_status": "unknown",
+              "promotions_status": "unknown",
+              "availability_status": "in_stock",
+              "problems": [
+                "missing_multi_offer_merge_candidate"
+              ]
+            }
+          },
+          "search_aliases": [
+            "The Serum"
+          ],
+          "authority_source": {
+            "source_url": "https://aetasofficial.com/en",
+            "source_role": "primary",
+            "matched_preferred_titles": [
+              "The Serum"
+            ]
+          },
+          "source_validation": {
+            "source_type": "channel_or_retailer",
+            "requires_multi_offer_merge_validation": true,
+            "source_host": "aetasofficial.com"
+          },
+          "requires_multi_offer_merge_validation": true,
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-25T05:02:47.535Z",
+            "evidence_url": "https://aetasofficial.com/products/serum",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-25T05:02:47.535Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://aetasofficial.com/products/serum"
+            },
+            "regional_price": {
+              "amount": 60,
+              "currency": "USD",
+              "display_raw": "60.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://aetasofficial.com/products/serum",
+              "captured_at": "2026-05-25T05:02:47.535Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T05:02:47.535Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T05:02:47.535Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T05:02:47.535Z"
+            }
+          },
+          "commerce_facts_gate": {
+            "status": "hold",
+            "market_id": "US",
+            "expected_currency": "USD",
+            "observed_currency": "USD",
+            "market_switch_status": "ok",
+            "sellable_region_status": "unknown",
+            "shipping_status": "unknown",
+            "promotions_status": "unknown",
+            "availability_status": "in_stock",
+            "problems": [
+              "missing_multi_offer_merge_candidate"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "target_brand": "Aetās",
+      "target_url": "https://aetasofficial.com/products/moisturizer",
+      "extract_status": "brand_catalog_extract",
+      "market": "US",
+      "source_domain": "https://aetasofficial.com/en",
+      "source_role": "primary",
+      "matched_preferred_titles": [
+        "Moisturizer"
+      ],
+      "alias_preferred_titles": [
+        "Moisturizer"
+      ],
+      "seed_row": {
+        "ingredient_id": null,
+        "ingredient_name": null,
+        "seed_id": "eps_e40eca9c5cdd22f0a384f4c0",
+        "brand": "Aetās",
+        "market": "US",
+        "tool": "creator_agents",
+        "status": "active",
+        "domain": "aetasofficial.com",
+        "external_product_id": "ext_5438938eb0ce766d93118fc2",
+        "canonical_url": "https://aetasofficial.com/products/moisturizer",
+        "destination_url": "https://aetasofficial.com/products/moisturizer",
+        "title": "The Moisturizer 50mL",
+        "image_url": "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/aetas_japan_0098_web_a0f9a783-d489-4d5f-85ac-497bf8706386.jpg?v=1729154760",
+        "price_amount": 85,
+        "price_currency": "USD",
+        "availability": "out_of_stock",
+        "attached_product_key": null,
+        "requires_seed_correction": false,
+        "seed_data": {
+          "brand": "Aetās",
+          "title": "The Moisturizer 50mL",
+          "description": "インナードライ肌に潤いを与えるシールド型 ※１ 高保湿乳液。\n\nAetās独自開発の高速浸透ビューティ・コア・ロケット（BCR）®️を贅沢配合し、 バイタミンゲル乳化法 により、肌の上で再乳化せず、塗布した瞬間ヴェールが形成され、柔らかさと滑らかさを引き出し、さらりとした肌触りへ。\n\nLess-is-more発想のバイタミンゲル乳化法 \n\n栄養を最大限に肌に届けるため、Aetāsはless-is-more発想で処方設計をゼロから考え、界面活性剤不使用の技術、バイタミンゲル乳化法に辿り着いた。 VCE誘導体 ※２ とスクワランのみで乳化でき、肌へ塗布した後も 再乳化 せず、ヴェールをまとったように肌を守り続ける。 \n\nまた、バイタミンゲル乳化法を用いると常温・短時間で製造でき、加温も冷却も不要。CO 2 削減に貢献し、環境にも優しい。\n\nVCE誘導体 ※２ のWパワーをチャージ \n\n抗酸化作用のある美肌の栄養素ビタミンCとビタミンEを効率よく摂るには水にも油にもなじむことができる両親媒性の誘導体にする必要があると考えた。VCE誘導体 ※２ は水溶性のビタミンCと油溶性のビタミンEをリン酸で結合させたもので、ビューティ・コア・ロケット（BCR）®️にも内包されている。肌へ素早くなじみ、すみずみまで浸透。\n\n※１ さまざまな外的トラブルから肌を守ること\n※２ (アスコルビル／トコフェリル)リン酸K（製品の抗酸化剤）",
+          "external_product_id": "ext_5438938eb0ce766d93118fc2",
+          "canonical_url": "https://aetasofficial.com/products/moisturizer",
+          "destination_url": "https://aetasofficial.com/products/moisturizer",
+          "price_amount": 85,
+          "price_currency": "USD",
+          "availability": "out_of_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/aetas_japan_0098_web_a0f9a783-d489-4d5f-85ac-497bf8706386.jpg?v=1729154760",
+          "image_urls": [
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/aetas_japan_0098_web_a0f9a783-d489-4d5f-85ac-497bf8706386.jpg?v=1729154760",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/products/aetas_japan_0048_web.jpg?v=1744083609",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/20231026_5_2_Moisturizer_Tokyo_square.png?v=1744083609",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/20231026_17_1_Moisturizer.jpg?v=1744083609",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/PBGA_Finalist_2024.png?v=1744083609",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/silverwinnerggba.png?v=1744083609",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/2024____RGB.png?v=1744083609",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/PD2025_RD_t_3e6ad5f5-1cd1-4a7b-89bb-111285c9b0ac.png?v=1768376744"
+          ],
+          "images": [
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/aetas_japan_0098_web_a0f9a783-d489-4d5f-85ac-497bf8706386.jpg?v=1729154760",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/products/aetas_japan_0048_web.jpg?v=1744083609",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/20231026_5_2_Moisturizer_Tokyo_square.png?v=1744083609",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/20231026_17_1_Moisturizer.jpg?v=1744083609",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/PBGA_Finalist_2024.png?v=1744083609",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/silverwinnerggba.png?v=1744083609",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/2024____RGB.png?v=1744083609",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/PD2025_RD_t_3e6ad5f5-1cd1-4a7b-89bb-111285c9b0ac.png?v=1768376744"
+          ],
+          "variants": [
+            {
+              "sku": "300",
+              "variant_id": "42368029130907",
+              "url": "https://aetasofficial.com/products/moisturizer",
+              "option_name": "Size",
+              "option_value": "50ml",
+              "price": "85",
+              "currency": "USD",
+              "stock": "Out of Stock",
+              "description": "インナードライ肌に潤いを与えるシールド型 ※１ 高保湿乳液。\n\nAetās独自開発の高速浸透ビューティ・コア・ロケット（BCR）®️を贅沢配合し、 バイタミンゲル乳化法 により、肌の上で再乳化せず、塗布した瞬間ヴェールが形成され、柔らかさと滑らかさを引き出し、さらりとした肌触りへ。\n\nLess-is-more発想のバイタミンゲル乳化法 \n\n栄養を最大限に肌に届けるため、Aetāsはless-is-more発想で処方設計をゼロから考え、界面活性剤不使用の技術、バイタミンゲル乳化法に辿り着いた。 VCE誘導体 ※２ とスクワランのみで乳化でき、肌へ塗布した後も 再乳化 せず、ヴェールをまとったように肌を守り続ける。 \n\nまた、バイタミンゲル乳化法を用いると常温・短時間で製造でき、加温も冷却も不要。CO 2 削減に貢献し、環境にも優しい。\n\nVCE誘導体 ※２ のWパワーをチャージ \n\n抗酸化作用のある美肌の栄養素ビタミンCとビタミンEを効率よく摂るには水にも油にもなじむことができる両親媒性の誘導体にする必要があると考えた。VCE誘導体 ※２ は水溶性のビタミンCと油溶性のビタミンEをリン酸で結合させたもので、ビューティ・コア・ロケット（BCR）®️にも内包されている。肌へ素早くなじみ、すみずみまで浸透。\n\n※１ さまざまな外的トラブルから肌を守ること\n※２ (アスコルビル／トコフェリル)リン酸K（製品の抗酸化剤）",
+              "image_url": "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/aetas_japan_0098_web_a0f9a783-d489-4d5f-85ac-497bf8706386.jpg?v=1729154760",
+              "image_urls": [
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/aetas_japan_0098_web_a0f9a783-d489-4d5f-85ac-497bf8706386.jpg?v=1729154760",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/products/aetas_japan_0048_web.jpg?v=1744083609",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/20231026_5_2_Moisturizer_Tokyo_square.png?v=1744083609",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/20231026_17_1_Moisturizer.jpg?v=1744083609",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/PBGA_Finalist_2024.png?v=1744083609",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/silverwinnerggba.png?v=1744083609",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/2024____RGB.png?v=1744083609",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/PD2025_RD_t_3e6ad5f5-1cd1-4a7b-89bb-111285c9b0ac.png?v=1768376744"
+              ]
+            }
+          ],
+          "snapshot": {
+            "source": "catalog_intelligence_seed_creation_manifest",
+            "extracted_at": "2026-05-25T05:02:47.051Z",
+            "canonical_url": "https://aetasofficial.com/products/moisturizer",
+            "destination_url": "https://aetasofficial.com/products/moisturizer",
+            "title": "The Moisturizer 50mL",
+            "description": "インナードライ肌に潤いを与えるシールド型 ※１ 高保湿乳液。\n\nAetās独自開発の高速浸透ビューティ・コア・ロケット（BCR）®️を贅沢配合し、 バイタミンゲル乳化法 により、肌の上で再乳化せず、塗布した瞬間ヴェールが形成され、柔らかさと滑らかさを引き出し、さらりとした肌触りへ。\n\nLess-is-more発想のバイタミンゲル乳化法 \n\n栄養を最大限に肌に届けるため、Aetāsはless-is-more発想で処方設計をゼロから考え、界面活性剤不使用の技術、バイタミンゲル乳化法に辿り着いた。 VCE誘導体 ※２ とスクワランのみで乳化でき、肌へ塗布した後も 再乳化 せず、ヴェールをまとったように肌を守り続ける。 \n\nまた、バイタミンゲル乳化法を用いると常温・短時間で製造でき、加温も冷却も不要。CO 2 削減に貢献し、環境にも優しい。\n\nVCE誘導体 ※２ のWパワーをチャージ \n\n抗酸化作用のある美肌の栄養素ビタミンCとビタミンEを効率よく摂るには水にも油にもなじむことができる両親媒性の誘導体にする必要があると考えた。VCE誘導体 ※２ は水溶性のビタミンCと油溶性のビタミンEをリン酸で結合させたもので、ビューティ・コア・ロケット（BCR）®️にも内包されている。肌へ素早くなじみ、すみずみまで浸透。\n\n※１ さまざまな外的トラブルから肌を守ること\n※２ (アスコルビル／トコフェリル)リン酸K（製品の抗酸化剤）",
+            "image_url": "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/aetas_japan_0098_web_a0f9a783-d489-4d5f-85ac-497bf8706386.jpg?v=1729154760",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/aetas_japan_0098_web_a0f9a783-d489-4d5f-85ac-497bf8706386.jpg?v=1729154760",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/products/aetas_japan_0048_web.jpg?v=1744083609",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/20231026_5_2_Moisturizer_Tokyo_square.png?v=1744083609",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/20231026_17_1_Moisturizer.jpg?v=1744083609",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/PBGA_Finalist_2024.png?v=1744083609",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/silverwinnerggba.png?v=1744083609",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/2024____RGB.png?v=1744083609",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/PD2025_RD_t_3e6ad5f5-1cd1-4a7b-89bb-111285c9b0ac.png?v=1768376744"
+            ],
+            "images": [
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/aetas_japan_0098_web_a0f9a783-d489-4d5f-85ac-497bf8706386.jpg?v=1729154760",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/products/aetas_japan_0048_web.jpg?v=1744083609",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/20231026_5_2_Moisturizer_Tokyo_square.png?v=1744083609",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/20231026_17_1_Moisturizer.jpg?v=1744083609",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/PBGA_Finalist_2024.png?v=1744083609",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/silverwinnerggba.png?v=1744083609",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/2024____RGB.png?v=1744083609",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/PD2025_RD_t_3e6ad5f5-1cd1-4a7b-89bb-111285c9b0ac.png?v=1768376744"
+            ],
+            "variants": [
+              {
+                "sku": "300",
+                "variant_id": "42368029130907",
+                "url": "https://aetasofficial.com/products/moisturizer",
+                "option_name": "Size",
+                "option_value": "50ml",
+                "price": "85",
+                "currency": "USD",
+                "stock": "Out of Stock",
+                "description": "インナードライ肌に潤いを与えるシールド型 ※１ 高保湿乳液。\n\nAetās独自開発の高速浸透ビューティ・コア・ロケット（BCR）®️を贅沢配合し、 バイタミンゲル乳化法 により、肌の上で再乳化せず、塗布した瞬間ヴェールが形成され、柔らかさと滑らかさを引き出し、さらりとした肌触りへ。\n\nLess-is-more発想のバイタミンゲル乳化法 \n\n栄養を最大限に肌に届けるため、Aetāsはless-is-more発想で処方設計をゼロから考え、界面活性剤不使用の技術、バイタミンゲル乳化法に辿り着いた。 VCE誘導体 ※２ とスクワランのみで乳化でき、肌へ塗布した後も 再乳化 せず、ヴェールをまとったように肌を守り続ける。 \n\nまた、バイタミンゲル乳化法を用いると常温・短時間で製造でき、加温も冷却も不要。CO 2 削減に貢献し、環境にも優しい。\n\nVCE誘導体 ※２ のWパワーをチャージ \n\n抗酸化作用のある美肌の栄養素ビタミンCとビタミンEを効率よく摂るには水にも油にもなじむことができる両親媒性の誘導体にする必要があると考えた。VCE誘導体 ※２ は水溶性のビタミンCと油溶性のビタミンEをリン酸で結合させたもので、ビューティ・コア・ロケット（BCR）®️にも内包されている。肌へ素早くなじみ、すみずみまで浸透。\n\n※１ さまざまな外的トラブルから肌を守ること\n※２ (アスコルビル／トコフェリル)リン酸K（製品の抗酸化剤）",
+                "image_url": "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/aetas_japan_0098_web_a0f9a783-d489-4d5f-85ac-497bf8706386.jpg?v=1729154760",
+                "image_urls": [
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/aetas_japan_0098_web_a0f9a783-d489-4d5f-85ac-497bf8706386.jpg?v=1729154760",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/products/aetas_japan_0048_web.jpg?v=1744083609",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/20231026_5_2_Moisturizer_Tokyo_square.png?v=1744083609",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/20231026_17_1_Moisturizer.jpg?v=1744083609",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/PBGA_Finalist_2024.png?v=1744083609",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/silverwinnerggba.png?v=1744083609",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/2024____RGB.png?v=1744083609",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/PD2025_RD_t_3e6ad5f5-1cd1-4a7b-89bb-111285c9b0ac.png?v=1768376744"
+                ]
+              }
+            ],
+            "diagnostics": {
+              "requested_domain": "aetasofficial.com",
+              "resolved_base_url": "https://aetasofficial.com",
+              "discovery_strategy": "shopify_json",
+              "failure_category": null,
+              "block_provider": null,
+              "http_trace": [
+                {
+                  "url": "https://aetasofficial.com/products.json?limit=1",
+                  "status": 200
+                },
+                {
+                  "url": "https://aetasofficial.com/en",
+                  "status": 200
+                },
+                {
+                  "url": "https://aetasofficial.com/products.json?limit=250&page=1",
+                  "status": 200
+                }
+              ]
+            },
+            "search_aliases": [
+              "Moisturizer",
+              "The Moisturizer 50mL"
+            ],
+            "authority_source": {
+              "source_url": "https://aetasofficial.com/en",
+              "source_role": "primary",
+              "matched_preferred_titles": [
+                "Moisturizer"
+              ]
+            },
+            "source_validation": {
+              "source_type": "channel_or_retailer",
+              "requires_multi_offer_merge_validation": true,
+              "source_host": "aetasofficial.com"
+            },
+            "requires_multi_offer_merge_validation": true,
+            "commerce_facts_v1": {
+              "contract_version": "commerce_facts.v1",
+              "market_id": "US",
+              "country": "US",
+              "currency_target": "USD",
+              "source_authority": "catalog_extract_v2",
+              "captured_at": "2026-05-25T05:02:47.535Z",
+              "evidence_url": "https://aetasofficial.com/products/moisturizer",
+              "sellable_region": {
+                "status": "unknown",
+                "countries": [],
+                "evidence_source": "catalog_extract_v2",
+                "confidence": "medium",
+                "checked_at": "2026-05-25T05:02:47.535Z",
+                "reason_codes": [
+                  "market_currency_observed",
+                  "shipping_destination_not_verified",
+                  "external_checkout_not_queried"
+                ],
+                "evidence_url": "https://aetasofficial.com/products/moisturizer"
+              },
+              "regional_price": {
+                "amount": 85,
+                "currency": "USD",
+                "display_raw": "85.00",
+                "price_type": "list",
+                "compare_at_amount": null,
+                "compare_at_currency": null,
+                "compare_at_display_raw": null,
+                "tax_included": "unknown",
+                "confidence": "medium",
+                "market_switch_status": "ok",
+                "observed_currency": "USD",
+                "source_url": "https://aetasofficial.com/products/moisturizer",
+                "captured_at": "2026-05-25T05:02:47.535Z"
+              },
+              "availability": {
+                "status": "out_of_stock",
+                "source": "catalog_extract_v2",
+                "confidence": "medium",
+                "captured_at": "2026-05-25T05:02:47.535Z"
+              },
+              "shipping": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_checkout_not_queried"
+                ],
+                "checked_at": "2026-05-25T05:02:47.535Z"
+              },
+              "promotions": [],
+              "returns": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_returns_not_extracted"
+                ],
+                "checked_at": "2026-05-25T05:02:47.535Z"
+              }
+            },
+            "commerce_facts_gate": {
+              "status": "hold",
+              "market_id": "US",
+              "expected_currency": "USD",
+              "observed_currency": "USD",
+              "market_switch_status": "ok",
+              "sellable_region_status": "unknown",
+              "shipping_status": "unknown",
+              "promotions_status": "unknown",
+              "availability_status": "out_of_stock",
+              "problems": [
+                "missing_multi_offer_merge_candidate"
+              ]
+            }
+          },
+          "search_aliases": [
+            "Moisturizer",
+            "The Moisturizer 50mL"
+          ],
+          "authority_source": {
+            "source_url": "https://aetasofficial.com/en",
+            "source_role": "primary",
+            "matched_preferred_titles": [
+              "Moisturizer"
+            ]
+          },
+          "source_validation": {
+            "source_type": "channel_or_retailer",
+            "requires_multi_offer_merge_validation": true,
+            "source_host": "aetasofficial.com"
+          },
+          "requires_multi_offer_merge_validation": true,
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-25T05:02:47.535Z",
+            "evidence_url": "https://aetasofficial.com/products/moisturizer",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-25T05:02:47.535Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://aetasofficial.com/products/moisturizer"
+            },
+            "regional_price": {
+              "amount": 85,
+              "currency": "USD",
+              "display_raw": "85.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://aetasofficial.com/products/moisturizer",
+              "captured_at": "2026-05-25T05:02:47.535Z"
+            },
+            "availability": {
+              "status": "out_of_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T05:02:47.535Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T05:02:47.535Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T05:02:47.535Z"
+            }
+          },
+          "commerce_facts_gate": {
+            "status": "hold",
+            "market_id": "US",
+            "expected_currency": "USD",
+            "observed_currency": "USD",
+            "market_switch_status": "ok",
+            "sellable_region_status": "unknown",
+            "shipping_status": "unknown",
+            "promotions_status": "unknown",
+            "availability_status": "out_of_stock",
+            "problems": [
+              "missing_multi_offer_merge_candidate"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "target_brand": "Aetās",
+      "target_url": "https://aetasofficial.com/products/cleanser",
+      "extract_status": "brand_catalog_extract",
+      "market": "US",
+      "source_domain": "https://aetasofficial.com/en",
+      "source_role": "primary",
+      "matched_preferred_titles": [
+        "Cleanser"
+      ],
+      "alias_preferred_titles": [
+        "Cleanser"
+      ],
+      "seed_row": {
+        "ingredient_id": null,
+        "ingredient_name": null,
+        "seed_id": "eps_10c9443d858ecb36d1fd277f",
+        "brand": "Aetās",
+        "market": "US",
+        "tool": "creator_agents",
+        "status": "active",
+        "domain": "aetasofficial.com",
+        "external_product_id": "ext_dfbdc5b5d7b6849fffaef2be",
+        "canonical_url": "https://aetasofficial.com/products/cleanser",
+        "destination_url": "https://aetasofficial.com/products/cleanser",
+        "title": "The Cleanser 200mL",
+        "image_url": "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/aetas_japan_0093_web_3cdcb580-8ace-4ea1-aca8-f1fcce111de0.jpg?v=1729154332",
+        "price_amount": 85,
+        "price_currency": "USD",
+        "availability": "out_of_stock",
+        "attached_product_key": null,
+        "requires_seed_correction": false,
+        "seed_data": {
+          "brand": "Aetās",
+          "title": "The Cleanser 200mL",
+          "description": "コールドプレス製法で栄養を可能な限り残しながら抽出したマカデミアナッツオイル ※１ とアルガンオイル ※２ がベースで皮脂や汚れを優しく絡め取り、角層まで潤すクレンジング。さらに一般的に保湿剤として使われるセラミド類似のアミノ酸誘導体 ※３ を贅沢配合。毛穴の奥まで入り込み、皮脂やメイクなどの汚れを押し出し再付着を防ぐ。うるおいを残し、肌荒れを防止する。\n\n※１ マカデミアナッツ油（エモリエント剤）\n※２ アルガニアスピノサ核油（エモリエント剤）\n※３ ラウロイルグルタミン酸ジ(フィトステリル／オクチルドデシル)（エモリエント剤）",
+          "external_product_id": "ext_dfbdc5b5d7b6849fffaef2be",
+          "canonical_url": "https://aetasofficial.com/products/cleanser",
+          "destination_url": "https://aetasofficial.com/products/cleanser",
+          "price_amount": 85,
+          "price_currency": "USD",
+          "availability": "out_of_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/aetas_japan_0093_web_3cdcb580-8ace-4ea1-aca8-f1fcce111de0.jpg?v=1729154332",
+          "image_urls": [
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/aetas_japan_0093_web_3cdcb580-8ace-4ea1-aca8-f1fcce111de0.jpg?v=1729154332",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/products/aetas_japan_0037_web.jpg?v=1741748422",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/20231026_3_2_Cleanser_Tokyo_square.png?v=1741747805",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/20231026_15_1_Cleanser.jpg?v=1741747805",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/CBA2024.png?v=1741747805",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/PBGA_Finalist_2024.png?v=1744083609",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/2024____RGB.png?v=1744083609",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/GOLDWIN.png?v=1741747805",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/PD2025_RD_t_d74474e2-0921-4986-8a75-7599c88c5547.png?v=1768376694"
+          ],
+          "images": [
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/aetas_japan_0093_web_3cdcb580-8ace-4ea1-aca8-f1fcce111de0.jpg?v=1729154332",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/products/aetas_japan_0037_web.jpg?v=1741748422",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/20231026_3_2_Cleanser_Tokyo_square.png?v=1741747805",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/20231026_15_1_Cleanser.jpg?v=1741747805",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/CBA2024.png?v=1741747805",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/PBGA_Finalist_2024.png?v=1744083609",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/2024____RGB.png?v=1744083609",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/GOLDWIN.png?v=1741747805",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/PD2025_RD_t_d74474e2-0921-4986-8a75-7599c88c5547.png?v=1768376694"
+          ],
+          "variants": [
+            {
+              "sku": "100",
+              "variant_id": "43350863741083",
+              "url": "https://aetasofficial.com/products/cleanser",
+              "option_name": "Size",
+              "option_value": "200ml",
+              "price": "85",
+              "currency": "USD",
+              "stock": "Out of Stock",
+              "description": "コールドプレス製法で栄養を可能な限り残しながら抽出したマカデミアナッツオイル ※１ とアルガンオイル ※２ がベースで皮脂や汚れを優しく絡め取り、角層まで潤すクレンジング。さらに一般的に保湿剤として使われるセラミド類似のアミノ酸誘導体 ※３ を贅沢配合。毛穴の奥まで入り込み、皮脂やメイクなどの汚れを押し出し再付着を防ぐ。うるおいを残し、肌荒れを防止する。\n\n※１ マカデミアナッツ油（エモリエント剤）\n※２ アルガニアスピノサ核油（エモリエント剤）\n※３ ラウロイルグルタミン酸ジ(フィトステリル／オクチルドデシル)（エモリエント剤）",
+              "image_url": "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/aetas_japan_0093_web_3cdcb580-8ace-4ea1-aca8-f1fcce111de0.jpg?v=1729154332",
+              "image_urls": [
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/aetas_japan_0093_web_3cdcb580-8ace-4ea1-aca8-f1fcce111de0.jpg?v=1729154332",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/products/aetas_japan_0037_web.jpg?v=1741748422",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/20231026_3_2_Cleanser_Tokyo_square.png?v=1741747805",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/20231026_15_1_Cleanser.jpg?v=1741747805",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/CBA2024.png?v=1741747805",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/PBGA_Finalist_2024.png?v=1744083609",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/2024____RGB.png?v=1744083609",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/GOLDWIN.png?v=1741747805",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/PD2025_RD_t_d74474e2-0921-4986-8a75-7599c88c5547.png?v=1768376694"
+              ]
+            }
+          ],
+          "snapshot": {
+            "source": "catalog_intelligence_seed_creation_manifest",
+            "extracted_at": "2026-05-25T05:02:47.051Z",
+            "canonical_url": "https://aetasofficial.com/products/cleanser",
+            "destination_url": "https://aetasofficial.com/products/cleanser",
+            "title": "The Cleanser 200mL",
+            "description": "コールドプレス製法で栄養を可能な限り残しながら抽出したマカデミアナッツオイル ※１ とアルガンオイル ※２ がベースで皮脂や汚れを優しく絡め取り、角層まで潤すクレンジング。さらに一般的に保湿剤として使われるセラミド類似のアミノ酸誘導体 ※３ を贅沢配合。毛穴の奥まで入り込み、皮脂やメイクなどの汚れを押し出し再付着を防ぐ。うるおいを残し、肌荒れを防止する。\n\n※１ マカデミアナッツ油（エモリエント剤）\n※２ アルガニアスピノサ核油（エモリエント剤）\n※３ ラウロイルグルタミン酸ジ(フィトステリル／オクチルドデシル)（エモリエント剤）",
+            "image_url": "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/aetas_japan_0093_web_3cdcb580-8ace-4ea1-aca8-f1fcce111de0.jpg?v=1729154332",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/aetas_japan_0093_web_3cdcb580-8ace-4ea1-aca8-f1fcce111de0.jpg?v=1729154332",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/products/aetas_japan_0037_web.jpg?v=1741748422",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/20231026_3_2_Cleanser_Tokyo_square.png?v=1741747805",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/20231026_15_1_Cleanser.jpg?v=1741747805",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/CBA2024.png?v=1741747805",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/PBGA_Finalist_2024.png?v=1744083609",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/2024____RGB.png?v=1744083609",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/GOLDWIN.png?v=1741747805",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/PD2025_RD_t_d74474e2-0921-4986-8a75-7599c88c5547.png?v=1768376694"
+            ],
+            "images": [
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/aetas_japan_0093_web_3cdcb580-8ace-4ea1-aca8-f1fcce111de0.jpg?v=1729154332",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/products/aetas_japan_0037_web.jpg?v=1741748422",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/20231026_3_2_Cleanser_Tokyo_square.png?v=1741747805",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/20231026_15_1_Cleanser.jpg?v=1741747805",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/CBA2024.png?v=1741747805",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/PBGA_Finalist_2024.png?v=1744083609",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/2024____RGB.png?v=1744083609",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/GOLDWIN.png?v=1741747805",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/PD2025_RD_t_d74474e2-0921-4986-8a75-7599c88c5547.png?v=1768376694"
+            ],
+            "variants": [
+              {
+                "sku": "100",
+                "variant_id": "43350863741083",
+                "url": "https://aetasofficial.com/products/cleanser",
+                "option_name": "Size",
+                "option_value": "200ml",
+                "price": "85",
+                "currency": "USD",
+                "stock": "Out of Stock",
+                "description": "コールドプレス製法で栄養を可能な限り残しながら抽出したマカデミアナッツオイル ※１ とアルガンオイル ※２ がベースで皮脂や汚れを優しく絡め取り、角層まで潤すクレンジング。さらに一般的に保湿剤として使われるセラミド類似のアミノ酸誘導体 ※３ を贅沢配合。毛穴の奥まで入り込み、皮脂やメイクなどの汚れを押し出し再付着を防ぐ。うるおいを残し、肌荒れを防止する。\n\n※１ マカデミアナッツ油（エモリエント剤）\n※２ アルガニアスピノサ核油（エモリエント剤）\n※３ ラウロイルグルタミン酸ジ(フィトステリル／オクチルドデシル)（エモリエント剤）",
+                "image_url": "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/aetas_japan_0093_web_3cdcb580-8ace-4ea1-aca8-f1fcce111de0.jpg?v=1729154332",
+                "image_urls": [
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/aetas_japan_0093_web_3cdcb580-8ace-4ea1-aca8-f1fcce111de0.jpg?v=1729154332",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/products/aetas_japan_0037_web.jpg?v=1741748422",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/20231026_3_2_Cleanser_Tokyo_square.png?v=1741747805",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/20231026_15_1_Cleanser.jpg?v=1741747805",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/CBA2024.png?v=1741747805",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/PBGA_Finalist_2024.png?v=1744083609",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/2024____RGB.png?v=1744083609",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/GOLDWIN.png?v=1741747805",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/PD2025_RD_t_d74474e2-0921-4986-8a75-7599c88c5547.png?v=1768376694"
+                ]
+              }
+            ],
+            "diagnostics": {
+              "requested_domain": "aetasofficial.com",
+              "resolved_base_url": "https://aetasofficial.com",
+              "discovery_strategy": "shopify_json",
+              "failure_category": null,
+              "block_provider": null,
+              "http_trace": [
+                {
+                  "url": "https://aetasofficial.com/products.json?limit=1",
+                  "status": 200
+                },
+                {
+                  "url": "https://aetasofficial.com/en",
+                  "status": 200
+                },
+                {
+                  "url": "https://aetasofficial.com/products.json?limit=250&page=1",
+                  "status": 200
+                }
+              ]
+            },
+            "search_aliases": [
+              "Cleanser",
+              "The Cleanser 200mL"
+            ],
+            "authority_source": {
+              "source_url": "https://aetasofficial.com/en",
+              "source_role": "primary",
+              "matched_preferred_titles": [
+                "Cleanser"
+              ]
+            },
+            "source_validation": {
+              "source_type": "channel_or_retailer",
+              "requires_multi_offer_merge_validation": true,
+              "source_host": "aetasofficial.com"
+            },
+            "requires_multi_offer_merge_validation": true,
+            "commerce_facts_v1": {
+              "contract_version": "commerce_facts.v1",
+              "market_id": "US",
+              "country": "US",
+              "currency_target": "USD",
+              "source_authority": "catalog_extract_v2",
+              "captured_at": "2026-05-25T05:02:47.535Z",
+              "evidence_url": "https://aetasofficial.com/products/cleanser",
+              "sellable_region": {
+                "status": "unknown",
+                "countries": [],
+                "evidence_source": "catalog_extract_v2",
+                "confidence": "medium",
+                "checked_at": "2026-05-25T05:02:47.535Z",
+                "reason_codes": [
+                  "market_currency_observed",
+                  "shipping_destination_not_verified",
+                  "external_checkout_not_queried"
+                ],
+                "evidence_url": "https://aetasofficial.com/products/cleanser"
+              },
+              "regional_price": {
+                "amount": 85,
+                "currency": "USD",
+                "display_raw": "85.00",
+                "price_type": "list",
+                "compare_at_amount": null,
+                "compare_at_currency": null,
+                "compare_at_display_raw": null,
+                "tax_included": "unknown",
+                "confidence": "medium",
+                "market_switch_status": "ok",
+                "observed_currency": "USD",
+                "source_url": "https://aetasofficial.com/products/cleanser",
+                "captured_at": "2026-05-25T05:02:47.535Z"
+              },
+              "availability": {
+                "status": "out_of_stock",
+                "source": "catalog_extract_v2",
+                "confidence": "medium",
+                "captured_at": "2026-05-25T05:02:47.535Z"
+              },
+              "shipping": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_checkout_not_queried"
+                ],
+                "checked_at": "2026-05-25T05:02:47.535Z"
+              },
+              "promotions": [],
+              "returns": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_returns_not_extracted"
+                ],
+                "checked_at": "2026-05-25T05:02:47.535Z"
+              }
+            },
+            "commerce_facts_gate": {
+              "status": "hold",
+              "market_id": "US",
+              "expected_currency": "USD",
+              "observed_currency": "USD",
+              "market_switch_status": "ok",
+              "sellable_region_status": "unknown",
+              "shipping_status": "unknown",
+              "promotions_status": "unknown",
+              "availability_status": "out_of_stock",
+              "problems": [
+                "missing_multi_offer_merge_candidate"
+              ]
+            }
+          },
+          "search_aliases": [
+            "Cleanser",
+            "The Cleanser 200mL"
+          ],
+          "authority_source": {
+            "source_url": "https://aetasofficial.com/en",
+            "source_role": "primary",
+            "matched_preferred_titles": [
+              "Cleanser"
+            ]
+          },
+          "source_validation": {
+            "source_type": "channel_or_retailer",
+            "requires_multi_offer_merge_validation": true,
+            "source_host": "aetasofficial.com"
+          },
+          "requires_multi_offer_merge_validation": true,
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-25T05:02:47.535Z",
+            "evidence_url": "https://aetasofficial.com/products/cleanser",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-25T05:02:47.535Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://aetasofficial.com/products/cleanser"
+            },
+            "regional_price": {
+              "amount": 85,
+              "currency": "USD",
+              "display_raw": "85.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://aetasofficial.com/products/cleanser",
+              "captured_at": "2026-05-25T05:02:47.535Z"
+            },
+            "availability": {
+              "status": "out_of_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T05:02:47.535Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T05:02:47.535Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T05:02:47.535Z"
+            }
+          },
+          "commerce_facts_gate": {
+            "status": "hold",
+            "market_id": "US",
+            "expected_currency": "USD",
+            "observed_currency": "USD",
+            "market_switch_status": "ok",
+            "sellable_region_status": "unknown",
+            "shipping_status": "unknown",
+            "promotions_status": "unknown",
+            "availability_status": "out_of_stock",
+            "problems": [
+              "missing_multi_offer_merge_candidate"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "target_brand": "Aetās",
+      "target_url": "https://aetasofficial.com/products/lotion",
+      "extract_status": "brand_catalog_extract",
+      "market": "US",
+      "source_domain": "https://aetasofficial.com/en",
+      "source_role": "primary",
+      "matched_preferred_titles": [
+        "Lotion"
+      ],
+      "alias_preferred_titles": [
+        "Lotion"
+      ],
+      "seed_row": {
+        "ingredient_id": null,
+        "ingredient_name": null,
+        "seed_id": "eps_81d50d95bdfe2d9cc743ab09",
+        "brand": "Aetās",
+        "market": "US",
+        "tool": "creator_agents",
+        "status": "active",
+        "domain": "aetasofficial.com",
+        "external_product_id": "ext_f1f6ca6a5b72b45bbdd0f226",
+        "canonical_url": "https://aetasofficial.com/products/lotion",
+        "destination_url": "https://aetasofficial.com/products/lotion",
+        "title": "The Lotion 200mL",
+        "image_url": "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/aetas_japan_0096_web_1e8c379d-5985-4d36-8f88-01ddd606db3c.jpg?v=1729154554",
+        "price_amount": 85,
+        "price_currency": "USD",
+        "availability": "out_of_stock",
+        "attached_product_key": null,
+        "requires_seed_correction": false,
+        "seed_data": {
+          "brand": "Aetās",
+          "title": "The Lotion 200mL",
+          "description": "インナードライ肌の角層すみずみまで潤す高速浸透化粧水。\n水分と栄養豊富な成分が吸い込まれるようにスムーズになじみ、蓄えられ、潤いに満ちたハリツヤのある輝く肌へ。\n\nAetās独自開発の高速浸透ビューティ・コア・ロケット（BCR）®️ ️ \n\n健康な肌に必要なミネラルやビタミンなどの栄養を肌のすみずみまでいき渡らせるため、Aetāsは肌の構造に似せた水分と油分の層が交互に重なり合った毛穴より小さいカプセルを開発した。肌に触れた瞬間外側から１層ずつ剥がれていき、内包された水溶性と油溶性の栄養豊富な成分が肌へ素早くなじみ、すみずみまで浸透。\n\nさらにカプセルに配合している VCE誘導体 ※１ はマイナス電荷を持たせた特殊加工。カプセル同士が反発し合い、１粒１粒安定した状態で栄養豊富な成分を届けることができる。\n\nカプセルに内包した主な成分 \n\n◆アミノ酸誘導体（ラウロイルグルタミン酸ジ(フィトステリル／オクチルドデシル)※エモリエント剤）： ラメラ液晶形成成分\n●セラミドNG、セラミドNP、セラミドAP（保湿成分)：細胞間脂質と類似のセラミド\n■VCE誘導体 ※１ ：ビタミンCとビタミンEをリン酸で結合させたビタミン誘導体\n\n※１ (アスコルビル／トコフェリル)リン酸K（製品の抗酸化剤）",
+          "external_product_id": "ext_f1f6ca6a5b72b45bbdd0f226",
+          "canonical_url": "https://aetasofficial.com/products/lotion",
+          "destination_url": "https://aetasofficial.com/products/lotion",
+          "price_amount": 85,
+          "price_currency": "USD",
+          "availability": "out_of_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/aetas_japan_0096_web_1e8c379d-5985-4d36-8f88-01ddd606db3c.jpg?v=1729154554",
+          "image_urls": [
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/aetas_japan_0096_web_1e8c379d-5985-4d36-8f88-01ddd606db3c.jpg?v=1729154554",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/products/aetas_japan_0045_web.jpg?v=1741747915",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/20231026_4_2_Lotion_Tokyo_square.png?v=1741747915",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/20231026_16_1_Lotion.jpg?v=1741747915",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/products/0410.png?v=1741747915",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/products/0405.gif?v=1741747915",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/g_type2024_h.jpg?v=1741747915",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/PBGA_Finalist_2024.png?v=1744083609",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/2414_ac80198f-3e5b-4870-815a-ea4f31344932.jpg?v=1741747915",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/PD2025_RD_t_83c80923-70bf-41f6-8924-d30114fb6810.png?v=1768375920",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/oms2025_logo_3_award_6354f342-8c39-43af-808c-b571f27211bb.png?v=1768375998"
+          ],
+          "images": [
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/aetas_japan_0096_web_1e8c379d-5985-4d36-8f88-01ddd606db3c.jpg?v=1729154554",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/products/aetas_japan_0045_web.jpg?v=1741747915",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/20231026_4_2_Lotion_Tokyo_square.png?v=1741747915",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/20231026_16_1_Lotion.jpg?v=1741747915",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/products/0410.png?v=1741747915",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/products/0405.gif?v=1741747915",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/g_type2024_h.jpg?v=1741747915",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/PBGA_Finalist_2024.png?v=1744083609",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/2414_ac80198f-3e5b-4870-815a-ea4f31344932.jpg?v=1741747915",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/PD2025_RD_t_83c80923-70bf-41f6-8924-d30114fb6810.png?v=1768375920",
+            "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/oms2025_logo_3_award_6354f342-8c39-43af-808c-b571f27211bb.png?v=1768375998"
+          ],
+          "variants": [
+            {
+              "sku": "200",
+              "variant_id": "40075656102043",
+              "url": "https://aetasofficial.com/products/lotion",
+              "option_name": "Size",
+              "option_value": "200ml",
+              "price": "85",
+              "currency": "USD",
+              "stock": "Out of Stock",
+              "description": "インナードライ肌の角層すみずみまで潤す高速浸透化粧水。\n水分と栄養豊富な成分が吸い込まれるようにスムーズになじみ、蓄えられ、潤いに満ちたハリツヤのある輝く肌へ。\n\nAetās独自開発の高速浸透ビューティ・コア・ロケット（BCR）®️ ️ \n\n健康な肌に必要なミネラルやビタミンなどの栄養を肌のすみずみまでいき渡らせるため、Aetāsは肌の構造に似せた水分と油分の層が交互に重なり合った毛穴より小さいカプセルを開発した。肌に触れた瞬間外側から１層ずつ剥がれていき、内包された水溶性と油溶性の栄養豊富な成分が肌へ素早くなじみ、すみずみまで浸透。\n\nさらにカプセルに配合している VCE誘導体 ※１ はマイナス電荷を持たせた特殊加工。カプセル同士が反発し合い、１粒１粒安定した状態で栄養豊富な成分を届けることができる。\n\nカプセルに内包した主な成分 \n\n◆アミノ酸誘導体（ラウロイルグルタミン酸ジ(フィトステリル／オクチルドデシル)※エモリエント剤）： ラメラ液晶形成成分\n●セラミドNG、セラミドNP、セラミドAP（保湿成分)：細胞間脂質と類似のセラミド\n■VCE誘導体 ※１ ：ビタミンCとビタミンEをリン酸で結合させたビタミン誘導体\n\n※１ (アスコルビル／トコフェリル)リン酸K（製品の抗酸化剤）",
+              "image_url": "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/aetas_japan_0096_web_1e8c379d-5985-4d36-8f88-01ddd606db3c.jpg?v=1729154554",
+              "image_urls": [
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/aetas_japan_0096_web_1e8c379d-5985-4d36-8f88-01ddd606db3c.jpg?v=1729154554",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/products/aetas_japan_0045_web.jpg?v=1741747915",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/20231026_4_2_Lotion_Tokyo_square.png?v=1741747915",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/20231026_16_1_Lotion.jpg?v=1741747915",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/products/0410.png?v=1741747915",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/products/0405.gif?v=1741747915",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/g_type2024_h.jpg?v=1741747915",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/PBGA_Finalist_2024.png?v=1744083609",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/2414_ac80198f-3e5b-4870-815a-ea4f31344932.jpg?v=1741747915",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/PD2025_RD_t_83c80923-70bf-41f6-8924-d30114fb6810.png?v=1768375920",
+                "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/oms2025_logo_3_award_6354f342-8c39-43af-808c-b571f27211bb.png?v=1768375998"
+              ]
+            }
+          ],
+          "snapshot": {
+            "source": "catalog_intelligence_seed_creation_manifest",
+            "extracted_at": "2026-05-25T05:02:47.051Z",
+            "canonical_url": "https://aetasofficial.com/products/lotion",
+            "destination_url": "https://aetasofficial.com/products/lotion",
+            "title": "The Lotion 200mL",
+            "description": "インナードライ肌の角層すみずみまで潤す高速浸透化粧水。\n水分と栄養豊富な成分が吸い込まれるようにスムーズになじみ、蓄えられ、潤いに満ちたハリツヤのある輝く肌へ。\n\nAetās独自開発の高速浸透ビューティ・コア・ロケット（BCR）®️ ️ \n\n健康な肌に必要なミネラルやビタミンなどの栄養を肌のすみずみまでいき渡らせるため、Aetāsは肌の構造に似せた水分と油分の層が交互に重なり合った毛穴より小さいカプセルを開発した。肌に触れた瞬間外側から１層ずつ剥がれていき、内包された水溶性と油溶性の栄養豊富な成分が肌へ素早くなじみ、すみずみまで浸透。\n\nさらにカプセルに配合している VCE誘導体 ※１ はマイナス電荷を持たせた特殊加工。カプセル同士が反発し合い、１粒１粒安定した状態で栄養豊富な成分を届けることができる。\n\nカプセルに内包した主な成分 \n\n◆アミノ酸誘導体（ラウロイルグルタミン酸ジ(フィトステリル／オクチルドデシル)※エモリエント剤）： ラメラ液晶形成成分\n●セラミドNG、セラミドNP、セラミドAP（保湿成分)：細胞間脂質と類似のセラミド\n■VCE誘導体 ※１ ：ビタミンCとビタミンEをリン酸で結合させたビタミン誘導体\n\n※１ (アスコルビル／トコフェリル)リン酸K（製品の抗酸化剤）",
+            "image_url": "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/aetas_japan_0096_web_1e8c379d-5985-4d36-8f88-01ddd606db3c.jpg?v=1729154554",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/aetas_japan_0096_web_1e8c379d-5985-4d36-8f88-01ddd606db3c.jpg?v=1729154554",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/products/aetas_japan_0045_web.jpg?v=1741747915",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/20231026_4_2_Lotion_Tokyo_square.png?v=1741747915",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/20231026_16_1_Lotion.jpg?v=1741747915",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/products/0410.png?v=1741747915",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/products/0405.gif?v=1741747915",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/g_type2024_h.jpg?v=1741747915",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/PBGA_Finalist_2024.png?v=1744083609",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/2414_ac80198f-3e5b-4870-815a-ea4f31344932.jpg?v=1741747915",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/PD2025_RD_t_83c80923-70bf-41f6-8924-d30114fb6810.png?v=1768375920",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/oms2025_logo_3_award_6354f342-8c39-43af-808c-b571f27211bb.png?v=1768375998"
+            ],
+            "images": [
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/aetas_japan_0096_web_1e8c379d-5985-4d36-8f88-01ddd606db3c.jpg?v=1729154554",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/products/aetas_japan_0045_web.jpg?v=1741747915",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/20231026_4_2_Lotion_Tokyo_square.png?v=1741747915",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/20231026_16_1_Lotion.jpg?v=1741747915",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/products/0410.png?v=1741747915",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/products/0405.gif?v=1741747915",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/g_type2024_h.jpg?v=1741747915",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/PBGA_Finalist_2024.png?v=1744083609",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/2414_ac80198f-3e5b-4870-815a-ea4f31344932.jpg?v=1741747915",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/PD2025_RD_t_83c80923-70bf-41f6-8924-d30114fb6810.png?v=1768375920",
+              "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/oms2025_logo_3_award_6354f342-8c39-43af-808c-b571f27211bb.png?v=1768375998"
+            ],
+            "variants": [
+              {
+                "sku": "200",
+                "variant_id": "40075656102043",
+                "url": "https://aetasofficial.com/products/lotion",
+                "option_name": "Size",
+                "option_value": "200ml",
+                "price": "85",
+                "currency": "USD",
+                "stock": "Out of Stock",
+                "description": "インナードライ肌の角層すみずみまで潤す高速浸透化粧水。\n水分と栄養豊富な成分が吸い込まれるようにスムーズになじみ、蓄えられ、潤いに満ちたハリツヤのある輝く肌へ。\n\nAetās独自開発の高速浸透ビューティ・コア・ロケット（BCR）®️ ️ \n\n健康な肌に必要なミネラルやビタミンなどの栄養を肌のすみずみまでいき渡らせるため、Aetāsは肌の構造に似せた水分と油分の層が交互に重なり合った毛穴より小さいカプセルを開発した。肌に触れた瞬間外側から１層ずつ剥がれていき、内包された水溶性と油溶性の栄養豊富な成分が肌へ素早くなじみ、すみずみまで浸透。\n\nさらにカプセルに配合している VCE誘導体 ※１ はマイナス電荷を持たせた特殊加工。カプセル同士が反発し合い、１粒１粒安定した状態で栄養豊富な成分を届けることができる。\n\nカプセルに内包した主な成分 \n\n◆アミノ酸誘導体（ラウロイルグルタミン酸ジ(フィトステリル／オクチルドデシル)※エモリエント剤）： ラメラ液晶形成成分\n●セラミドNG、セラミドNP、セラミドAP（保湿成分)：細胞間脂質と類似のセラミド\n■VCE誘導体 ※１ ：ビタミンCとビタミンEをリン酸で結合させたビタミン誘導体\n\n※１ (アスコルビル／トコフェリル)リン酸K（製品の抗酸化剤）",
+                "image_url": "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/aetas_japan_0096_web_1e8c379d-5985-4d36-8f88-01ddd606db3c.jpg?v=1729154554",
+                "image_urls": [
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/aetas_japan_0096_web_1e8c379d-5985-4d36-8f88-01ddd606db3c.jpg?v=1729154554",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/products/aetas_japan_0045_web.jpg?v=1741747915",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/20231026_4_2_Lotion_Tokyo_square.png?v=1741747915",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/20231026_16_1_Lotion.jpg?v=1741747915",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/products/0410.png?v=1741747915",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/products/0405.gif?v=1741747915",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/g_type2024_h.jpg?v=1741747915",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/PBGA_Finalist_2024.png?v=1744083609",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/2414_ac80198f-3e5b-4870-815a-ea4f31344932.jpg?v=1741747915",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/PD2025_RD_t_83c80923-70bf-41f6-8924-d30114fb6810.png?v=1768375920",
+                  "https://cdn.shopify.com/s/files/1/0567/1727/9387/files/oms2025_logo_3_award_6354f342-8c39-43af-808c-b571f27211bb.png?v=1768375998"
+                ]
+              }
+            ],
+            "diagnostics": {
+              "requested_domain": "aetasofficial.com",
+              "resolved_base_url": "https://aetasofficial.com",
+              "discovery_strategy": "shopify_json",
+              "failure_category": null,
+              "block_provider": null,
+              "http_trace": [
+                {
+                  "url": "https://aetasofficial.com/products.json?limit=1",
+                  "status": 200
+                },
+                {
+                  "url": "https://aetasofficial.com/en",
+                  "status": 200
+                },
+                {
+                  "url": "https://aetasofficial.com/products.json?limit=250&page=1",
+                  "status": 200
+                }
+              ]
+            },
+            "search_aliases": [
+              "Lotion",
+              "The Lotion 200mL"
+            ],
+            "authority_source": {
+              "source_url": "https://aetasofficial.com/en",
+              "source_role": "primary",
+              "matched_preferred_titles": [
+                "Lotion"
+              ]
+            },
+            "source_validation": {
+              "source_type": "channel_or_retailer",
+              "requires_multi_offer_merge_validation": true,
+              "source_host": "aetasofficial.com"
+            },
+            "requires_multi_offer_merge_validation": true,
+            "commerce_facts_v1": {
+              "contract_version": "commerce_facts.v1",
+              "market_id": "US",
+              "country": "US",
+              "currency_target": "USD",
+              "source_authority": "catalog_extract_v2",
+              "captured_at": "2026-05-25T05:02:47.535Z",
+              "evidence_url": "https://aetasofficial.com/products/lotion",
+              "sellable_region": {
+                "status": "unknown",
+                "countries": [],
+                "evidence_source": "catalog_extract_v2",
+                "confidence": "medium",
+                "checked_at": "2026-05-25T05:02:47.535Z",
+                "reason_codes": [
+                  "market_currency_observed",
+                  "shipping_destination_not_verified",
+                  "external_checkout_not_queried"
+                ],
+                "evidence_url": "https://aetasofficial.com/products/lotion"
+              },
+              "regional_price": {
+                "amount": 85,
+                "currency": "USD",
+                "display_raw": "85.00",
+                "price_type": "list",
+                "compare_at_amount": null,
+                "compare_at_currency": null,
+                "compare_at_display_raw": null,
+                "tax_included": "unknown",
+                "confidence": "medium",
+                "market_switch_status": "ok",
+                "observed_currency": "USD",
+                "source_url": "https://aetasofficial.com/products/lotion",
+                "captured_at": "2026-05-25T05:02:47.535Z"
+              },
+              "availability": {
+                "status": "out_of_stock",
+                "source": "catalog_extract_v2",
+                "confidence": "medium",
+                "captured_at": "2026-05-25T05:02:47.535Z"
+              },
+              "shipping": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_checkout_not_queried"
+                ],
+                "checked_at": "2026-05-25T05:02:47.535Z"
+              },
+              "promotions": [],
+              "returns": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_returns_not_extracted"
+                ],
+                "checked_at": "2026-05-25T05:02:47.535Z"
+              }
+            },
+            "commerce_facts_gate": {
+              "status": "hold",
+              "market_id": "US",
+              "expected_currency": "USD",
+              "observed_currency": "USD",
+              "market_switch_status": "ok",
+              "sellable_region_status": "unknown",
+              "shipping_status": "unknown",
+              "promotions_status": "unknown",
+              "availability_status": "out_of_stock",
+              "problems": [
+                "missing_multi_offer_merge_candidate"
+              ]
+            }
+          },
+          "search_aliases": [
+            "Lotion",
+            "The Lotion 200mL"
+          ],
+          "authority_source": {
+            "source_url": "https://aetasofficial.com/en",
+            "source_role": "primary",
+            "matched_preferred_titles": [
+              "Lotion"
+            ]
+          },
+          "source_validation": {
+            "source_type": "channel_or_retailer",
+            "requires_multi_offer_merge_validation": true,
+            "source_host": "aetasofficial.com"
+          },
+          "requires_multi_offer_merge_validation": true,
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-25T05:02:47.535Z",
+            "evidence_url": "https://aetasofficial.com/products/lotion",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-25T05:02:47.535Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://aetasofficial.com/products/lotion"
+            },
+            "regional_price": {
+              "amount": 85,
+              "currency": "USD",
+              "display_raw": "85.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://aetasofficial.com/products/lotion",
+              "captured_at": "2026-05-25T05:02:47.535Z"
+            },
+            "availability": {
+              "status": "out_of_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T05:02:47.535Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T05:02:47.535Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T05:02:47.535Z"
+            }
+          },
+          "commerce_facts_gate": {
+            "status": "hold",
+            "market_id": "US",
+            "expected_currency": "USD",
+            "observed_currency": "USD",
+            "market_switch_status": "ok",
+            "sellable_region_status": "unknown",
+            "shipping_status": "unknown",
+            "promotions_status": "unknown",
+            "availability_status": "out_of_stock",
+            "problems": [
+              "missing_multi_offer_merge_candidate"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "reviewed_from_manifest_generated_at": "2026-05-25T05:02:47.052Z",
+  "review_gate": {
+    "ok_to_continue": true,
+    "blocker_reasons": [],
+    "warning_reasons": [],
+    "accepted_item_count": 4,
+    "blocked_item_count": 0
+  }
+}

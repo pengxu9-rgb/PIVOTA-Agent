@@ -1,0 +1,422 @@
+{
+  "generated_at": "2026-05-25T05:05:25.139Z",
+  "brand": "MASAMI",
+  "domain": "https://lovemasami.com/products/mekabu-shampoo",
+  "fallback_domains": [],
+  "market": "US",
+  "preferred_titles": [
+    "Mekabu Hydrating Shampoo"
+  ],
+  "matched_preferred_titles": [
+    "Mekabu Hydrating Shampoo"
+  ],
+  "extracted_product_count": 1,
+  "excluded_bundle_like_count": 0,
+  "excluded_non_product_page_count": 0,
+  "excluded_incomplete_transaction_count": 0,
+  "excluded_brand_scope_mismatch_count": 0,
+  "matched_preferred_title_count": 1,
+  "item_count": 1,
+  "fallback_used": false,
+  "source_attempts": [
+    {
+      "source_url": "https://lovemasami.com/products/mekabu-shampoo",
+      "source_role": "primary",
+      "extracted_product_count": 1,
+      "item_count": 1,
+      "matched_preferred_title_count": 1,
+      "matched_preferred_titles": [
+        "Mekabu Hydrating Shampoo"
+      ],
+      "diagnostics_summary": {
+        "discovery_strategy": "shopify_json",
+        "failure_category": null,
+        "block_provider": null
+      },
+      "used_in_manifest": true,
+      "added_item_count": 1,
+      "added_matched_preferred_titles": [
+        "Mekabu Hydrating Shampoo"
+      ],
+      "skip_reason": null
+    }
+  ],
+  "items": [
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "target_brand": "MASAMI",
+      "target_url": "https://lovemasami.com/products/mekabu-shampoo",
+      "extract_status": "brand_catalog_extract",
+      "market": "US",
+      "source_domain": "https://lovemasami.com/products/mekabu-shampoo",
+      "source_role": "primary",
+      "matched_preferred_titles": [
+        "Mekabu Hydrating Shampoo"
+      ],
+      "alias_preferred_titles": [
+        "Mekabu Hydrating Shampoo"
+      ],
+      "seed_row": {
+        "ingredient_id": null,
+        "ingredient_name": null,
+        "seed_id": "eps_ccb1ab0f2d6a2b29671e2116",
+        "brand": "MASAMI",
+        "market": "US",
+        "tool": "creator_agents",
+        "status": "active",
+        "domain": "lovemasami.com",
+        "external_product_id": "ext_96a7ecc1003f0f94e5b6805c",
+        "canonical_url": "https://lovemasami.com/products/mekabu-shampoo",
+        "destination_url": "https://lovemasami.com/products/mekabu-shampoo",
+        "title": "Mekabu Hydrating Shampoo",
+        "image_url": "https://www.lovemasami.com/cdn/shop/files/Shampoo_Award_Winning_Hero_Bottle.png?v=1762526416&width=1920",
+        "price_amount": 40.95,
+        "price_currency": "EUR",
+        "availability": "in_stock",
+        "attached_product_key": null,
+        "requires_seed_correction": false,
+        "seed_data": {
+          "brand": "MASAMI",
+          "title": "Mekabu Hydrating Shampoo",
+          "description": "MASAMI Mekabu Hydrating Shampoo's nutrient-rich formulation fortifies and reawakens hair. Apricot oil, coconut oil and laminaria japonica (kombu) provide nutrients and vitamins important for healthy hair. MASAMI Shampoo is the ultimate in botanical hydration for hair and nourishment for the scalp. Great for any hair type and texture -- anyone who wants salon hair every day without weighing hair down.\n\nOur low foam formula keeps hair hydrated between washes. You don't need to use a lot to see the benefits -- and thanks to our botanically hydrating formulas, you'll find you won't have to wash your hair as often.",
+          "external_product_id": "ext_96a7ecc1003f0f94e5b6805c",
+          "canonical_url": "https://lovemasami.com/products/mekabu-shampoo",
+          "destination_url": "https://lovemasami.com/products/mekabu-shampoo",
+          "price_amount": 40.95,
+          "price_currency": "EUR",
+          "availability": "in_stock",
+          "image_url": "https://www.lovemasami.com/cdn/shop/files/Shampoo_Award_Winning_Hero_Bottle.png?v=1762526416&width=1920",
+          "image_urls": [
+            "https://www.lovemasami.com/cdn/shop/files/Shampoo_Award_Winning_Hero_Bottle.png?v=1762526416&width=1920",
+            "https://www.lovemasami.com/cdn/shop/files/Wavy_Hair_Before_and_After_114x144_crop_center.png?v=1739912350",
+            "https://www.lovemasami.com/cdn/shop/files/Amazon_CVR_Image_114x144_crop_center.png?v=1756936109",
+            "https://www.lovemasami.com/cdn/shop/files/MASAMI_shampoo_texture_114x144_crop_center.png?v=1755658002",
+            "https://www.lovemasami.com/cdn/shop/files/Blonde_holding_MASAMI_shampoo_conditioner_114x144_crop_center.png?v=1755658033",
+            "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/Girl_smelling_MASAMI_shampoo.png?v=1755658069",
+            "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_shampoo_underwater.jpg?v=1755658109",
+            "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/justin-chen-J7Cf1Gch49E-unsplashcopy_8a98ee0b-69f0-4c7c-b15b-49f19dcf7b4d.jpg?v=1755658137",
+            "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/Woman_with_curly_hair_holding_shampoo.jpg?v=1755658196",
+            "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_with_girl_in_background.jpg?v=1755658226",
+            "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-shampoo-mekabu-shampoo-18600012765031-13418472865856.jpg?v=1755658247",
+            "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-shampoo-mekabu-shampoo-18600012765031-13418474143808.jpg?v=1755658277"
+          ],
+          "images": [
+            "https://www.lovemasami.com/cdn/shop/files/Shampoo_Award_Winning_Hero_Bottle.png?v=1762526416&width=1920",
+            "https://www.lovemasami.com/cdn/shop/files/Wavy_Hair_Before_and_After_114x144_crop_center.png?v=1739912350",
+            "https://www.lovemasami.com/cdn/shop/files/Amazon_CVR_Image_114x144_crop_center.png?v=1756936109",
+            "https://www.lovemasami.com/cdn/shop/files/MASAMI_shampoo_texture_114x144_crop_center.png?v=1755658002",
+            "https://www.lovemasami.com/cdn/shop/files/Blonde_holding_MASAMI_shampoo_conditioner_114x144_crop_center.png?v=1755658033",
+            "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/Girl_smelling_MASAMI_shampoo.png?v=1755658069",
+            "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_shampoo_underwater.jpg?v=1755658109",
+            "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/justin-chen-J7Cf1Gch49E-unsplashcopy_8a98ee0b-69f0-4c7c-b15b-49f19dcf7b4d.jpg?v=1755658137",
+            "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/Woman_with_curly_hair_holding_shampoo.jpg?v=1755658196",
+            "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_with_girl_in_background.jpg?v=1755658226",
+            "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-shampoo-mekabu-shampoo-18600012765031-13418472865856.jpg?v=1755658247",
+            "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-shampoo-mekabu-shampoo-18600012765031-13418474143808.jpg?v=1755658277"
+          ],
+          "variants": [
+            {
+              "sku": "18600012765031",
+              "variant_id": "44102598033632",
+              "url": "https://lovemasami.com/products/mekabu-shampoo",
+              "option_name": "Offer",
+              "option_value": "18600012765031",
+              "price": "40.95",
+              "currency": "EUR",
+              "stock": "In Stock",
+              "description": "MASAMI Mekabu Hydrating Shampoo's nutrient-rich formulation fortifies and reawakens hair. Apricot oil, coconut oil and laminaria japonica (kombu) provide nutrients and vitamins important for healthy hair. MASAMI Shampoo is the ultimate in botanical hydration for hair and nourishment for the scalp. Great for any hair type and texture -- anyone who wants salon hair every day without weighing hair down.\n\nOur low foam formula keeps hair hydrated between washes. You don't need to use a lot to see the benefits -- and thanks to our botanically hydrating formulas, you'll find you won't have to wash your hair as often.",
+              "image_url": "https://www.lovemasami.com/cdn/shop/files/Shampoo_Award_Winning_Hero_Bottle.png?v=1762526416&width=1920",
+              "image_urls": [
+                "https://www.lovemasami.com/cdn/shop/files/Shampoo_Award_Winning_Hero_Bottle.png?v=1762526416&width=1920",
+                "https://www.lovemasami.com/cdn/shop/files/Wavy_Hair_Before_and_After_114x144_crop_center.png?v=1739912350",
+                "https://www.lovemasami.com/cdn/shop/files/Amazon_CVR_Image_114x144_crop_center.png?v=1756936109",
+                "https://www.lovemasami.com/cdn/shop/files/MASAMI_shampoo_texture_114x144_crop_center.png?v=1755658002",
+                "https://www.lovemasami.com/cdn/shop/files/Blonde_holding_MASAMI_shampoo_conditioner_114x144_crop_center.png?v=1755658033",
+                "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/Girl_smelling_MASAMI_shampoo.png?v=1755658069",
+                "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_shampoo_underwater.jpg?v=1755658109",
+                "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/justin-chen-J7Cf1Gch49E-unsplashcopy_8a98ee0b-69f0-4c7c-b15b-49f19dcf7b4d.jpg?v=1755658137",
+                "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/Woman_with_curly_hair_holding_shampoo.jpg?v=1755658196",
+                "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_with_girl_in_background.jpg?v=1755658226",
+                "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-shampoo-mekabu-shampoo-18600012765031-13418472865856.jpg?v=1755658247",
+                "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-shampoo-mekabu-shampoo-18600012765031-13418474143808.jpg?v=1755658277"
+              ]
+            }
+          ],
+          "snapshot": {
+            "source": "catalog_intelligence_seed_creation_manifest",
+            "extracted_at": "2026-05-25T05:05:25.136Z",
+            "canonical_url": "https://lovemasami.com/products/mekabu-shampoo",
+            "destination_url": "https://lovemasami.com/products/mekabu-shampoo",
+            "title": "Mekabu Hydrating Shampoo",
+            "description": "MASAMI Mekabu Hydrating Shampoo's nutrient-rich formulation fortifies and reawakens hair. Apricot oil, coconut oil and laminaria japonica (kombu) provide nutrients and vitamins important for healthy hair. MASAMI Shampoo is the ultimate in botanical hydration for hair and nourishment for the scalp. Great for any hair type and texture -- anyone who wants salon hair every day without weighing hair down.\n\nOur low foam formula keeps hair hydrated between washes. You don't need to use a lot to see the benefits -- and thanks to our botanically hydrating formulas, you'll find you won't have to wash your hair as often.",
+            "image_url": "https://www.lovemasami.com/cdn/shop/files/Shampoo_Award_Winning_Hero_Bottle.png?v=1762526416&width=1920",
+            "image_urls": [
+              "https://www.lovemasami.com/cdn/shop/files/Shampoo_Award_Winning_Hero_Bottle.png?v=1762526416&width=1920",
+              "https://www.lovemasami.com/cdn/shop/files/Wavy_Hair_Before_and_After_114x144_crop_center.png?v=1739912350",
+              "https://www.lovemasami.com/cdn/shop/files/Amazon_CVR_Image_114x144_crop_center.png?v=1756936109",
+              "https://www.lovemasami.com/cdn/shop/files/MASAMI_shampoo_texture_114x144_crop_center.png?v=1755658002",
+              "https://www.lovemasami.com/cdn/shop/files/Blonde_holding_MASAMI_shampoo_conditioner_114x144_crop_center.png?v=1755658033",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/Girl_smelling_MASAMI_shampoo.png?v=1755658069",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_shampoo_underwater.jpg?v=1755658109",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/justin-chen-J7Cf1Gch49E-unsplashcopy_8a98ee0b-69f0-4c7c-b15b-49f19dcf7b4d.jpg?v=1755658137",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/Woman_with_curly_hair_holding_shampoo.jpg?v=1755658196",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_with_girl_in_background.jpg?v=1755658226",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-shampoo-mekabu-shampoo-18600012765031-13418472865856.jpg?v=1755658247",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-shampoo-mekabu-shampoo-18600012765031-13418474143808.jpg?v=1755658277"
+            ],
+            "images": [
+              "https://www.lovemasami.com/cdn/shop/files/Shampoo_Award_Winning_Hero_Bottle.png?v=1762526416&width=1920",
+              "https://www.lovemasami.com/cdn/shop/files/Wavy_Hair_Before_and_After_114x144_crop_center.png?v=1739912350",
+              "https://www.lovemasami.com/cdn/shop/files/Amazon_CVR_Image_114x144_crop_center.png?v=1756936109",
+              "https://www.lovemasami.com/cdn/shop/files/MASAMI_shampoo_texture_114x144_crop_center.png?v=1755658002",
+              "https://www.lovemasami.com/cdn/shop/files/Blonde_holding_MASAMI_shampoo_conditioner_114x144_crop_center.png?v=1755658033",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/Girl_smelling_MASAMI_shampoo.png?v=1755658069",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_shampoo_underwater.jpg?v=1755658109",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/justin-chen-J7Cf1Gch49E-unsplashcopy_8a98ee0b-69f0-4c7c-b15b-49f19dcf7b4d.jpg?v=1755658137",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/Woman_with_curly_hair_holding_shampoo.jpg?v=1755658196",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_with_girl_in_background.jpg?v=1755658226",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-shampoo-mekabu-shampoo-18600012765031-13418472865856.jpg?v=1755658247",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-shampoo-mekabu-shampoo-18600012765031-13418474143808.jpg?v=1755658277"
+            ],
+            "variants": [
+              {
+                "sku": "18600012765031",
+                "variant_id": "44102598033632",
+                "url": "https://lovemasami.com/products/mekabu-shampoo",
+                "option_name": "Offer",
+                "option_value": "18600012765031",
+                "price": "40.95",
+                "currency": "EUR",
+                "stock": "In Stock",
+                "description": "MASAMI Mekabu Hydrating Shampoo's nutrient-rich formulation fortifies and reawakens hair. Apricot oil, coconut oil and laminaria japonica (kombu) provide nutrients and vitamins important for healthy hair. MASAMI Shampoo is the ultimate in botanical hydration for hair and nourishment for the scalp. Great for any hair type and texture -- anyone who wants salon hair every day without weighing hair down.\n\nOur low foam formula keeps hair hydrated between washes. You don't need to use a lot to see the benefits -- and thanks to our botanically hydrating formulas, you'll find you won't have to wash your hair as often.",
+                "image_url": "https://www.lovemasami.com/cdn/shop/files/Shampoo_Award_Winning_Hero_Bottle.png?v=1762526416&width=1920",
+                "image_urls": [
+                  "https://www.lovemasami.com/cdn/shop/files/Shampoo_Award_Winning_Hero_Bottle.png?v=1762526416&width=1920",
+                  "https://www.lovemasami.com/cdn/shop/files/Wavy_Hair_Before_and_After_114x144_crop_center.png?v=1739912350",
+                  "https://www.lovemasami.com/cdn/shop/files/Amazon_CVR_Image_114x144_crop_center.png?v=1756936109",
+                  "https://www.lovemasami.com/cdn/shop/files/MASAMI_shampoo_texture_114x144_crop_center.png?v=1755658002",
+                  "https://www.lovemasami.com/cdn/shop/files/Blonde_holding_MASAMI_shampoo_conditioner_114x144_crop_center.png?v=1755658033",
+                  "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/Girl_smelling_MASAMI_shampoo.png?v=1755658069",
+                  "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_shampoo_underwater.jpg?v=1755658109",
+                  "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/justin-chen-J7Cf1Gch49E-unsplashcopy_8a98ee0b-69f0-4c7c-b15b-49f19dcf7b4d.jpg?v=1755658137",
+                  "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/Woman_with_curly_hair_holding_shampoo.jpg?v=1755658196",
+                  "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_with_girl_in_background.jpg?v=1755658226",
+                  "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-shampoo-mekabu-shampoo-18600012765031-13418472865856.jpg?v=1755658247",
+                  "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-shampoo-mekabu-shampoo-18600012765031-13418474143808.jpg?v=1755658277"
+                ]
+              }
+            ],
+            "diagnostics": {
+              "requested_domain": "lovemasami.com",
+              "resolved_base_url": "https://lovemasami.com",
+              "discovery_strategy": "shopify_json",
+              "failure_category": null,
+              "block_provider": null,
+              "http_trace": [
+                {
+                  "url": "https://www.lovemasami.com/products/mekabu-shampoo.js",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.lovemasami.com/products/mekabu-shampoo",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.lovemasami.com/products/mekabu-shampoo",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.lovemasami.com/products/mekabu-shampoo",
+                  "status": 200
+                }
+              ]
+            },
+            "search_aliases": [
+              "Mekabu Hydrating Shampoo"
+            ],
+            "authority_source": {
+              "source_url": "https://lovemasami.com/products/mekabu-shampoo",
+              "source_role": "primary",
+              "matched_preferred_titles": [
+                "Mekabu Hydrating Shampoo"
+              ]
+            },
+            "source_validation": {
+              "source_type": "brand_owned",
+              "requires_multi_offer_merge_validation": false,
+              "source_host": "lovemasami.com"
+            },
+            "commerce_facts_v1": {
+              "contract_version": "commerce_facts.v1",
+              "market_id": "US",
+              "country": "US",
+              "currency_target": "USD",
+              "source_authority": "catalog_extract_v2",
+              "captured_at": "2026-05-25T05:05:25.772Z",
+              "evidence_url": "https://lovemasami.com/products/mekabu-shampoo",
+              "sellable_region": {
+                "status": "unknown",
+                "countries": [],
+                "evidence_source": "catalog_extract_v2",
+                "confidence": "medium",
+                "checked_at": "2026-05-25T05:05:25.772Z",
+                "reason_codes": [
+                  "market_currency_observed",
+                  "shipping_destination_not_verified",
+                  "external_checkout_not_queried"
+                ],
+                "evidence_url": "https://lovemasami.com/products/mekabu-shampoo"
+              },
+              "regional_price": {
+                "amount": 38,
+                "currency": "USD",
+                "display_raw": "38.00",
+                "price_type": "list",
+                "compare_at_amount": null,
+                "compare_at_currency": null,
+                "compare_at_display_raw": null,
+                "tax_included": "unknown",
+                "confidence": "medium",
+                "market_switch_status": "ok",
+                "observed_currency": "USD",
+                "source_url": "https://lovemasami.com/products/mekabu-shampoo",
+                "captured_at": "2026-05-25T05:05:25.772Z"
+              },
+              "availability": {
+                "status": "in_stock",
+                "source": "catalog_extract_v2",
+                "confidence": "medium",
+                "captured_at": "2026-05-25T05:05:25.772Z"
+              },
+              "shipping": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_checkout_not_queried"
+                ],
+                "checked_at": "2026-05-25T05:05:25.772Z"
+              },
+              "promotions": [],
+              "returns": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_returns_not_extracted"
+                ],
+                "checked_at": "2026-05-25T05:05:25.772Z"
+              }
+            },
+            "commerce_facts_gate": {
+              "status": "hold",
+              "market_id": "US",
+              "expected_currency": "USD",
+              "observed_currency": "USD",
+              "market_switch_status": "ok",
+              "sellable_region_status": "unknown",
+              "shipping_status": "unknown",
+              "promotions_status": "unknown",
+              "availability_status": "in_stock",
+              "problems": [
+                "market_currency_mismatch"
+              ]
+            }
+          },
+          "search_aliases": [
+            "Mekabu Hydrating Shampoo"
+          ],
+          "authority_source": {
+            "source_url": "https://lovemasami.com/products/mekabu-shampoo",
+            "source_role": "primary",
+            "matched_preferred_titles": [
+              "Mekabu Hydrating Shampoo"
+            ]
+          },
+          "source_validation": {
+            "source_type": "brand_owned",
+            "requires_multi_offer_merge_validation": false,
+            "source_host": "lovemasami.com"
+          },
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-25T05:05:25.772Z",
+            "evidence_url": "https://lovemasami.com/products/mekabu-shampoo",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-25T05:05:25.772Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://lovemasami.com/products/mekabu-shampoo"
+            },
+            "regional_price": {
+              "amount": 38,
+              "currency": "USD",
+              "display_raw": "38.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://lovemasami.com/products/mekabu-shampoo",
+              "captured_at": "2026-05-25T05:05:25.772Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T05:05:25.772Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T05:05:25.772Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T05:05:25.772Z"
+            }
+          },
+          "commerce_facts_gate": {
+            "status": "hold",
+            "market_id": "US",
+            "expected_currency": "USD",
+            "observed_currency": "USD",
+            "market_switch_status": "ok",
+            "sellable_region_status": "unknown",
+            "shipping_status": "unknown",
+            "promotions_status": "unknown",
+            "availability_status": "in_stock",
+            "problems": [
+              "market_currency_mismatch"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}
