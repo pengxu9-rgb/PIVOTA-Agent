@@ -17,6 +17,7 @@ const {
     parseGuerlainIngredientModalHtml,
     extractTomFordFields,
     extractRareFields,
+    extractGenericOfficialShopifyFields,
     extractOfficialShopifyVariants,
     fetchStampedReviewSummary,
     fetchBazaarvoiceReviewSummary,
@@ -443,6 +444,110 @@ describe('backfill-external-seed-official-html-pdp-fields TIRTIR sheet matching'
       ]),
     );
     expect(fields.pdp_active_ingredients_raw).toContain('Azelaic Acid');
+  });
+
+  test('extracts generic official Shopify product tab fields without callout drift', () => {
+    const fullInci =
+      'Aqua, Caprylic/Capric Triglyceride, Glycerin, Squalane, Simmondsia Chinensis Seed Oil, ' +
+      'Cetearyl Olivate, Sorbitan Olivate, Cetearyl Alcohol, Sodium Benzoate, Hydroxyacetophenone, ' +
+      'Helianthus Annuus Seed Oil, Tocopherol';
+    const product = {
+      title: 'Silk Night Cream',
+      description: '<p>A rich restorative night cream for dry-looking skin.</p>',
+      variants: [{ id: 1, title: 'Default Title', option1: 'Default Title', price: 11000 }],
+    };
+    const html = `
+      <div class="product__callouts-item-text"><p>Sustainably Sourced Ingredients</p></div>
+      <script type="application/json" id="ProductJson-template--main">${JSON.stringify(product)}</script>
+      <button type="button" aria-controls="country-selector"><span>Singapore (SGD $)</span></button>
+      <button type="button" aria-controls="product-tab--how"><span>How to use</span></button>
+      <button type="button" aria-controls="product-tab--hero"><span>Hero ingredients</span></button>
+      <button type="button" aria-controls="product-tab--ingredients"><span>Ingredients</span></button>
+      <ul>
+        <li id="country-selector"><p>Afghanistan Albania Algeria checkout country list.</p></li>
+        <li id="product-tab--how" data-tab-item><p>Apply a pea-sized amount to clean skin at night and massage until absorbed.</p></li>
+        <li id="product-tab--hero" data-tab-item><p><strong>HSC-01A 2%, Squalane 5% & Vitamin E 0.5%</strong></p></li>
+        <li id="product-tab--ingredients" data-tab-item><p>${fullInci}</p><p>Ingredients explained: supporting copy.</p></li>
+      </ul>
+    `;
+
+    const fields = extractGenericOfficialShopifyFields(html, { productTitle: 'Silk Night Cream' });
+
+    expect(fields.pdp_ingredients_raw).toBe(fullInci);
+    expect(fields.pdp_how_to_use_raw).toContain('Apply a pea-sized amount');
+    expect(fields.pdp_active_ingredients_raw).toContain('Squalane');
+    expect(fields.pdp_details_sections).toEqual(
+      expect.arrayContaining([expect.objectContaining({ heading: 'How To Use' })]),
+    );
+    expect(fields.pdp_details_sections).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ heading: expect.stringContaining('Singapore') })]),
+    );
+  });
+
+  test('extracts generic official Shopify accordion ingredients and how-to', () => {
+    const fullInci =
+      'Aqua, Aloe Vera, Terminalia Ferdinandiana Fruit Extract, Tamarindus Indica Seed Extract, ' +
+      'Silk Amino Acid, Tocopherol, Hectorite, Allantoin, Pelargonium Graveolens Oil, Xanthan Gum, ' +
+      'Benzyl Alcohol, Dehydroacetic Acid';
+    const html = `
+      <meta property="og:title" content="Kakadu Plum Super Serum with Vit C">
+      <div class="accordion-item">
+        <button class="accordion-toggle">How To Use <span>+</span></button>
+        <div class="accordion-content"><p>Apply twice daily to clean skin and massage gently before moisturiser.</p></div>
+      </div>
+      <div class="accordion-item">
+        <button class="accordion-toggle">Ingredients <span>+</span></button>
+        <div class="accordion-content"><p>${fullInci}</p></div>
+      </div>
+      <div>Tag Section Cruelty Free Australian Made Shipping footer text that must not join INCI.</div>
+    `;
+
+    const fields = extractGenericOfficialShopifyFields(html, {
+      productTitle: 'Kakadu Plum Super Serum with Vit C',
+    });
+
+    expect(fields.pdp_ingredients_raw).toBe(fullInci);
+    expect(fields.pdp_how_to_use_raw).toContain('Apply twice daily');
+    expect(fields.pdp_ingredients_raw).not.toContain('Tag Section');
+  });
+
+  test('extracts short official balm ingredient lists from Shopify description labels', () => {
+    const product = {
+      title: 'Lucamar Baalm 50g',
+      description: `
+        <p><strong>A lanolin skin balm for dry hands and body.</strong></p>
+        <p><strong>INGREDIENTS:</strong></p>
+        <p>Pure Australian Anhydrous Lanolin, Humanely Sourced Vitellaria paradoxa Shea Butter, Australian Hemp extract, Cera Alba, Australian Bees Wax, Vitamin A, Vitamin E, Frankincense and Ginger fragrance.</p>
+        <p>No parabens, petrolatum, PEGs, mineral oil or sulphates.</p>
+        <p><strong>DAILY RITUAL:</strong></p>
+        <p>Soften balm between hands and apply on required areas daily. Only a little is needed.</p>
+      `,
+    };
+    const html = `<script type="application/json" id="ProductJson-template--main">${JSON.stringify(product)}</script>`;
+
+    const fields = extractGenericOfficialShopifyFields(html, { productTitle: 'Lucamar Baalm 50g' });
+
+    expect(fields.pdp_ingredients_raw).toContain('Pure Australian Anhydrous Lanolin');
+    expect(fields.pdp_ingredients_raw).not.toContain('No parabens');
+    expect(fields.pdp_how_to_use_raw).toContain('Soften balm');
+  });
+
+  test('fails closed on unscented ingredient copy that still names fragrance', () => {
+    const product = {
+      title: 'Lucamar Baalm 50g UNSCENTED',
+      description: `
+        <p><strong>INGREDIENTS:</strong></p>
+        <p>Pure Australian Anhydrous Lanolin, Humanely Sourced Vitellaria paradoxa Shea Butter, Australian Hemp extract, Cera Alba, Australian Bees Wax, Vitamin A, Vitamin E, Frankincense and Ginger Body Safe fragrance.</p>
+        <p><strong>DAILY RITUAL:</strong></p>
+        <p>Soften balm between hands and apply on required areas daily. Only a little is needed.</p>
+      `,
+    };
+    const html = `<script type="application/json" id="ProductJson-template--main">${JSON.stringify(product)}</script>`;
+
+    const fields = extractGenericOfficialShopifyFields(html, { productTitle: 'Lucamar Baalm 50g UNSCENTED' });
+
+    expect(fields.pdp_ingredients_raw).toBeUndefined();
+    expect(fields.pdp_how_to_use_raw).toContain('Soften balm');
   });
 
   test('extracts LANEIGE official fields from current product HTML without related-product ingredient drift', () => {

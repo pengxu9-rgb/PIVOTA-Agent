@@ -20,6 +20,12 @@ const SHOPIFY_PRODUCT_JSON_VARIANT_HOSTS = new Set([
 ]);
 const REVIEW_SUMMARY_ONLY_OKENDO_HOSTS = new Set(['beautyofjoseon.com', 'kravebeauty.com']);
 const REVIEW_SUMMARY_ONLY_GENERIC_HOSTS = new Set([...REVIEW_SUMMARY_ONLY_OKENDO_HOSTS, 'roundlab.com']);
+const GENERIC_OFFICIAL_SHOPIFY_FIELD_HOSTS = new Set([
+  'lucamarskincare.com',
+  'rohrremedy.com',
+  'seresilk.com.au',
+  'www.rohrremedy.com',
+]);
 
 function argValue(name) {
   const idx = process.argv.indexOf(`--${name}`);
@@ -349,10 +355,10 @@ function looksLikeFullInci(value) {
 
 function looksLikeShortOfficialInci(value) {
   const text = normalizeText(value);
-  if (text.length < 35 || text.length > 220) return false;
+  if (text.length < 35 || text.length > 360) return false;
   if ((text.match(/,/g) || []).length < 2) return false;
   if (/\b(?:cart|checkout|shipping|customer service|menu|ambassador|swiper|document\.addEventListener)\b/i.test(text)) return false;
-  return /\b(?:polyisobutene|cellulose gum|pectin|copolymer|hydrocolloid|glycerin|water|aqua|sodium|acid)\b/i.test(text);
+  return /\b(?:polyisobutene|cellulose gum|pectin|copolymer|hydrocolloid|glycerin|water|aqua|sodium|acid|lanolin|vitellaria|shea butter|hemp|cera alba|bees\s*wax|beeswax|tocopherol|vitamin|frankincense)\b/i.test(text);
 }
 
 function looksLikeHowToUse(value) {
@@ -366,7 +372,7 @@ function looksLikeActiveIngredientList(value) {
   const text = normalizeText(value);
   if (text.length < 8 || text.length > 500) return false;
   if (/\b(?:cart|checkout|shipping|customer service|menu|ambassador|find your routine)\b/i.test(text)) return false;
-  return /\b(?:ascorbic acid|niacinamide|salicylic acid|centella|tea tree|retinol|retinal|hyaluronic acid|panthenol|ceramide|peptide|vitamin c)\b/i.test(text);
+  return /\b(?:ascorbic acid|niacinamide|salicylic acid|centella|tea tree|retinol|retinal|hyaluronic acid|panthenol|ceramide|peptide|vitamin c|vitamin e|squalane|hydrolysed silk|hydrolyzed silk)\b/i.test(text);
 }
 
 function extractKnownHeroIngredients(value) {
@@ -2487,6 +2493,281 @@ function extractRareFields(html, options = {}) {
   return fields;
 }
 
+function parseJsonScriptPayload(value) {
+  const text = normalizeText(value);
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    try {
+      return JSON.parse(decodeHtmlEntities(text));
+    } catch {
+      return null;
+    }
+  }
+}
+
+function normalizeGenericProductObject(product) {
+  const safe = ensureObject(product);
+  if (!Object.keys(safe).length) return null;
+  const title = normalizeText(safe.title || safe.name);
+  if (!title) return null;
+  return {
+    ...safe,
+    title,
+    description: safe.description || safe.body_html || safe.content || '',
+  };
+}
+
+function extractGenericShopifyProductJsonScripts(html) {
+  const products = [];
+  for (const match of String(html || '').matchAll(
+    /<script\b[^>]*id=["'][^"']*ProductJson[^"']*["'][^>]*>([\s\S]*?)<\/script>/gi,
+  )) {
+    const parsed = normalizeGenericProductObject(parseJsonScriptPayload(match[1]));
+    if (parsed) products.push(parsed);
+  }
+  return products;
+}
+
+function extractGenericOfficialProduct(html, options = {}) {
+  const productTitle = normalizeText(options.productTitle);
+  const candidates = [
+    ...extractGenericShopifyProductJsonScripts(html),
+    normalizeGenericProductObject(findJsonLdProduct(html, options)),
+  ].filter(Boolean);
+  if (!candidates.length) return null;
+  if (!productTitle) return candidates[0];
+  return (
+    candidates.find((candidate) => scoreProductTitleMatch(productTitle, candidate.title) >= 0.75) ||
+    candidates.find((candidate) => scoreProductTitleMatch(productTitle, candidate.description) >= 0.45) ||
+    null
+  );
+}
+
+function extractMetaContent(html, nameOrProperty) {
+  const label = escapeRegExp(nameOrProperty);
+  const pattern = new RegExp(
+    `<meta\\b(?=[^>]*(?:name|property)=["']${label}["'])(?=[^>]*content=["']([^"']+)["'])[^>]*>`,
+    'i',
+  );
+  const match = pattern.exec(String(html || ''));
+  return match ? decodeHtmlEntities(match[1]) : '';
+}
+
+function genericOfficialProductMatches(html, product, options = {}) {
+  const productTitle = normalizeText(options.productTitle);
+  if (!productTitle) return true;
+  if (product && scoreProductTitleMatch(productTitle, product.title) >= 0.75) return true;
+  const metaTitle = extractMetaContent(html, 'og:title') || normalizeText(String(html || '').match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]);
+  return scoreProductTitleMatch(productTitle, metaTitle) >= 0.75;
+}
+
+function normalizeSectionHeading(value) {
+  return cleanSectionText(value)
+    .replace(/\s*\+\s*$/g, '')
+    .replace(/:$/, '')
+    .trim();
+}
+
+function isGenericProductContentHeading(value) {
+  return /^(?:overview|summary|description|details|recommended use|how\s+to\s+use|directions?|usage|daily\s+ritual|ingredients?|full\s+ingredients?|inci|key\s+ingredients?|hero\s+ingredients?|active\s+ingredients?|benefits?)$/i.test(
+    normalizeText(value),
+  );
+}
+
+function extractProductTabSections(html) {
+  const source = String(html || '');
+  const sections = [];
+  for (const match of source.matchAll(/<button\b[^>]*aria-controls=["']([^"']+)["'][^>]*>([\s\S]*?)<\/button>/gi)) {
+    const id = normalizeText(match[1]);
+    const heading = normalizeSectionHeading(match[2]);
+    if (!id || !heading || !isGenericProductContentHeading(heading)) continue;
+    const idPattern = new RegExp(`<([a-z0-9]+)\\b[^>]*\\bid=["']${escapeRegExp(id)}["'][^>]*>`, 'i');
+    const idMatch = idPattern.exec(source);
+    if (!idMatch) continue;
+    const start = idMatch.index + idMatch[0].length;
+    const rest = source.slice(start);
+    const next = rest.search(/<li\b[^>]*id=["']product-tab--|<div\b[^>]*class=["'][^"']*\bproduct-tabs__tab-list-wrapper\b|<script\b/i);
+    const block = next >= 0 ? rest.slice(0, next) : rest.slice(0, 9000);
+    const body = cleanSectionText(block);
+    if (body.length >= 20) sections.push({ heading, body, source_origin: 'official_product_tab' });
+  }
+  return sections;
+}
+
+function extractAccordionItemSections(html) {
+  const source = String(html || '');
+  const starts = Array.from(source.matchAll(/<div\b[^>]*class=["'][^"']*\baccordion-item\b[^"']*["'][^>]*>/gi));
+  const sections = [];
+  for (let index = 0; index < starts.length; index += 1) {
+    const start = starts[index].index;
+    const end = index + 1 < starts.length ? starts[index + 1].index : start + 9000;
+    const block = source.slice(start, end);
+    const headingMatch = block.match(/<button\b[^>]*>([\s\S]*?)<\/button>/i);
+    if (!headingMatch) continue;
+    const heading = normalizeSectionHeading(headingMatch[1]);
+    if (!isGenericProductContentHeading(heading)) continue;
+    const body = cleanSectionText(block.slice(headingMatch.index + headingMatch[0].length));
+    if (heading && body.length >= 20) sections.push({ heading, body, source_origin: 'official_accordion' });
+  }
+  return sections;
+}
+
+const GENERIC_DESCRIPTION_LABELS = [
+  { heading: 'Ingredients', pattern: /^(?:full\s+ingredients?|ingredients?|inci)\s*:?\s*(.*)$/i },
+  { heading: 'How To Use', pattern: /^(?:how\s+to\s+use|directions?|usage|daily\s+ritual|ritual)\s*:?\s*(.*)$/i },
+  { heading: 'Key Ingredients', pattern: /^(?:key|hero|active)\s+ingredients?\s*:?\s*(.*)$/i },
+  { heading: 'Benefits', pattern: /^benefits?\s*:?\s*(.*)$/i },
+];
+
+function extractDescriptionParagraphs(htmlFragment) {
+  const paragraphs = [];
+  for (const match of String(htmlFragment || '').matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)) {
+    const text = cleanSectionText(match[1]);
+    if (text) paragraphs.push(text);
+  }
+  if (paragraphs.length) return paragraphs;
+  return cleanSectionText(htmlFragment)
+    .split(/\n+/)
+    .map((item) => normalizeText(item))
+    .filter(Boolean);
+}
+
+function paragraphLabelMatch(text) {
+  return GENERIC_DESCRIPTION_LABELS.find((label) => label.pattern.test(text));
+}
+
+function extractDescriptionLabeledSections(htmlFragment) {
+  const paragraphs = extractDescriptionParagraphs(htmlFragment);
+  const sections = [];
+  for (let index = 0; index < paragraphs.length; index += 1) {
+    const paragraph = paragraphs[index];
+    const label = paragraphLabelMatch(paragraph);
+    if (!label) continue;
+    const match = paragraph.match(label.pattern);
+    const bodyParts = [];
+    if (normalizeText(match?.[1]).length >= 8) bodyParts.push(normalizeText(match[1]));
+    for (let inner = index + 1; inner < paragraphs.length; inner += 1) {
+      const next = paragraphs[inner];
+      if (paragraphLabelMatch(next)) break;
+      if (/^(?:proudly\s+made|cruelty\s+free|made\s+in|shop\s+now)\b/i.test(next)) break;
+      bodyParts.push(next);
+      if (bodyParts.join(' ').length > 1400) break;
+    }
+    const body = normalizeText(bodyParts.join('\n'));
+    if (body.length >= 20) sections.push({ heading: label.heading, body, source_origin: 'official_product_description' });
+  }
+  return sections;
+}
+
+function cleanOfficialIngredientCandidate(value) {
+  return normalizeText(value)
+    .replace(/^(?:full\s+ingredients?|ingredients?|inci)\s*:?\s*/i, '')
+    .replace(/\bIngredients explained\s*:?\s*[\s\S]*$/i, '')
+    .replace(/\bNo\s+parab[eé]ns\b[\s\S]*$/i, '')
+    .replace(/\bProudly\s+Made\b[\s\S]*$/i, '')
+    .replace(/\b(?:Tag Section|Cruelty Free|Australian Made|All Natural)\b[\s\S]*$/i, '')
+    .replace(/\s+,/g, ',')
+    .replace(/,\s*/g, ', ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+function hasUnscentedIngredientConflict(productTitle, ingredients) {
+  return /\bunscented\b/i.test(normalizeText(productTitle)) && /\b(?:fragrance|parfum|perfume)\b/i.test(normalizeText(ingredients));
+}
+
+function cleanOfficialHowToCandidate(value) {
+  return normalizeHowToUseCandidate(
+    normalizeText(value)
+      .replace(/^(?:how\s+to\s+use|directions?|usage|daily\s+ritual|ritual)\s*:?\s*/i, '')
+      .replace(/\bLearn more about using our products\b[\s\S]*$/i, '')
+      .trim(),
+  );
+}
+
+function cleanOfficialActiveIngredientCandidate(value) {
+  const text = normalizeText(value)
+    .replace(/^(?:key|hero|active)\s+ingredients?\s*:?\s*/i, '')
+    .trim();
+  const firstLine = text
+    .split(/\n+/)
+    .map((item) => normalizeText(item))
+    .find((item) => item.length >= 8 && item.length <= 220 && /(?:%|vitamin|squalane|peptide|acid|extract|oil|butter|lanolin)/i.test(item));
+  if (firstLine) return firstLine;
+  const sentence = text.match(/^(.{8,220}?(?:%|vitamin|squalane|peptide|acid|extract|oil|butter|lanolin)[^.!?]*)(?:[.!?]\s|$)/i);
+  return normalizeText(sentence?.[1] || text);
+}
+
+function firstGenericSection(sections, patterns) {
+  return sections.find((section) => patterns.some((pattern) => pattern.test(section.heading)));
+}
+
+function extractGenericOfficialShopifyFields(html, options = {}) {
+  const fields = {};
+  const product = extractGenericOfficialProduct(html, options);
+  if (!genericOfficialProductMatches(html, product, options)) return fields;
+
+  const productDescriptionHtml = normalizeText(product?.description);
+  const productDescription = normalizeText(
+    cleanSectionText(productDescriptionHtml) ||
+    cleanSectionText(findJsonLdProduct(html, options)?.description) ||
+    cleanSectionText(extractMetaContent(html, 'description')),
+  )
+    .replace(/\bMultibuy\b[\s\S]*$/i, '')
+    .replace(/\b(?:AGE|SKIN\s+CONCERN|SKIN\s+TYPE)\s*:\s*[\s\S]*$/i, '')
+    .trim();
+  if (productDescription.length >= 60) fields.pdp_description_raw = productDescription;
+
+  const sections = mergeDetails(
+    [],
+    [
+      ...extractProductTabSections(html),
+      ...extractAccordionItemSections(html),
+      ...extractDescriptionLabeledSections(productDescriptionHtml),
+    ],
+  );
+
+  const ingredients = cleanOfficialIngredientCandidate(
+    firstGenericSection(sections, [/^(?:full\s+)?ingredients?$/i, /^inci$/i])?.body,
+  );
+  if (
+    !hasUnscentedIngredientConflict(options.productTitle || product?.title, ingredients) &&
+    (looksLikeFullInci(ingredients) || looksLikeShortOfficialInci(ingredients))
+  ) {
+    fields.pdp_ingredients_raw = ingredients;
+  }
+
+  const howTo = cleanOfficialHowToCandidate(
+    firstGenericSection(sections, [/^how\s+to\s+use$/i, /^directions?$/i, /^usage$/i, /^daily\s+ritual$/i])?.body,
+  );
+  if (looksLikeHowToUse(howTo)) fields.pdp_how_to_use_raw = howTo;
+
+  const activeIngredients = cleanOfficialActiveIngredientCandidate(
+    firstGenericSection(sections, [/^(?:key|hero|active)\s+ingredients?$/i])?.body,
+  );
+  if (looksLikeActiveIngredientList(activeIngredients)) fields.pdp_active_ingredients_raw = activeIngredients;
+
+  const details = [];
+  if (productDescription.length >= 60) details.push({ heading: 'Overview', body: truncateOfficialDetailText(productDescription) || productDescription });
+  for (const section of sections) {
+    if (/^(?:full\s+)?ingredients?$|^inci$/i.test(section.heading)) continue;
+    if (/^how\s+to\s+use$|^directions?$|^usage$|^daily\s+ritual$/i.test(section.heading) && looksLikeHowToUse(section.body)) {
+      details.push({ heading: 'How To Use', body: cleanOfficialHowToCandidate(section.body) });
+      continue;
+    }
+    const body = truncateOfficialDetailText(section.body);
+    if (body) details.push({ heading: section.heading, body });
+  }
+  if (details.length) fields.pdp_details_sections = mergeDetails([], details);
+
+  const variants = product ? extractOfficialShopifyVariants(product, options) : [];
+  if (variants.length) fields.variants = variants;
+
+  return fields;
+}
+
 async function extractOfficialHtmlFields(host, html, options = {}) {
   let fields = {};
   if (host === 'skin1004.com') fields = extractSkin1004Fields(html);
@@ -2505,6 +2786,7 @@ async function extractOfficialHtmlFields(host, html, options = {}) {
   }
   else if (host === 'tomfordbeauty.com') fields = extractTomFordFields(html, options);
   else if (host === 'rarebeauty.com') fields = extractRareFields(html, options);
+  else if (GENERIC_OFFICIAL_SHOPIFY_FIELD_HOSTS.has(host)) fields = extractGenericOfficialShopifyFields(html, options);
   else if (!options.reviewSummaryOnly || !REVIEW_SUMMARY_ONLY_GENERIC_HOSTS.has(host)) return {};
 
   if (options.reviewSummaryOnly && REVIEW_SUMMARY_ONLY_OKENDO_HOSTS.has(host)) {
@@ -3207,6 +3489,7 @@ module.exports = {
     extractGuerlainVariantsFromJsonLd,
     extractTomFordFields,
     extractRareFields,
+    extractGenericOfficialShopifyFields,
     extractTomFordAccordionText,
     extractOfficialShopifyVariants,
     fetchStampedReviewSummary,
