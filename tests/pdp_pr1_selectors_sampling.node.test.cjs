@@ -22,6 +22,8 @@ const EXPECTED_SELECTORS = [
   'orphan_catalog_product',
   'orphan_offer_without_sku',
   'zero_or_missing_price_offer',
+  'quarantine_active_entries',
+  'quarantine_impact_summary',
 ];
 
 const SAMPLING_SCRIPTS = [
@@ -61,6 +63,15 @@ test('PDP PR-1 selector queries are read-only SELECT/CTE statements', () => {
     const query = selector.query.trim();
     assert.match(query, /^(SELECT|WITH)\b/i, selector.name);
     assert.doesNotMatch(query, /\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE)\b/i, selector.name);
+  }
+});
+
+test('source quarantine selectors are registered and read-only', () => {
+  const byName = Object.fromEntries(selectors.map((selector) => [selector.name, selector]));
+  for (const name of ['quarantine_active_entries', 'quarantine_impact_summary']) {
+    assert.ok(byName[name], name);
+    assert.match(byName[name].query.trim(), /^(SELECT|WITH)\b/i);
+    assert.doesNotMatch(byName[name].query, /\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE)\b/i);
   }
 });
 
