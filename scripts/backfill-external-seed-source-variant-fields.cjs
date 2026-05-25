@@ -14,6 +14,8 @@ const SNAPSHOT_CONTRACT_VERSION = 'external_seed.snapshot_contract.v1';
 const TRUSTED_SOURCE_HOSTS = new Set([
   'guerlain.com',
   'fentybeauty.com',
+  'roundlab.com',
+  'tirtir.global',
   'kyliecosmetics.com',
   'rarebeauty.com',
   'tomfordbeauty.com',

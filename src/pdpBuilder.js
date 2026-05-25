@@ -1700,8 +1700,8 @@ function buildVariantSelectorVariants(variants) {
         title: asNonEmptyString(variant.title) || undefined,
         display_label: displayLabel || undefined,
         options,
-        price: variant.price,
-        availability: variant.availability,
+        ...(variant.price ? { price: variant.price } : {}),
+        ...(variant.availability ? { availability: variant.availability } : {}),
         image_url: normalizePdpImageUrl(variant.image_url || variant.image) || undefined,
         label_image_url:
           normalizePdpImageUrl(variant.label_image_url || variant.swatch_image_url || variant.thumbnail_url) ||
@@ -1852,6 +1852,9 @@ function toVariantPrice(input, currency) {
     input.price_amount ??
     input.value ??
     input;
+  if (amount == null || amount === '') return undefined;
+  const normalizedAmount = normalizeAmount(amount);
+  if (!Number.isFinite(Number(normalizedAmount)) || Number(normalizedAmount) <= 0) return undefined;
   const compareAt =
     input.compare_at ??
     input.compareAt ??
@@ -1859,7 +1862,7 @@ function toVariantPrice(input, currency) {
     input.list_price;
 
   return {
-    current: { amount: normalizeAmount(amount), currency: normalizeCurrency(input, currency) },
+    current: { amount: normalizedAmount, currency: normalizeCurrency(input, currency) },
     ...(compareAt != null
       ? {
           compare_at: {
@@ -1996,20 +1999,21 @@ function buildVariants(product) {
     if (hasReviewedSingleSkuSpecFallback) {
       filteredOptions = [singleSkuSizeOption];
     }
+    const variantPrice = toVariantPrice(
+      v.price ||
+        v.pricing || {
+          amount: v.price_amount ?? v.priceAmount,
+          currency: v.price_currency || v.priceCurrency || v.currency,
+        },
+      currency,
+    );
     return {
       variant_id: String(variantId),
       sku_id: attrs.sku || v.sku_id || v.sku || v.sku_code,
       title: hasReviewedSingleSkuSpecFallback ? singleSkuSizeOption.value : String(title),
       options: filteredOptions,
       swatch: swatchHex ? { hex: swatchHex } : undefined,
-      price: toVariantPrice(
-        v.price ||
-          v.pricing || {
-            amount: v.price_amount ?? v.priceAmount,
-            currency: v.price_currency || v.priceCurrency || v.currency,
-          },
-        currency,
-      ),
+      ...(variantPrice ? { price: variantPrice } : {}),
       availability,
       image_url: variantImages[0],
       label_image_url: normalizePdpImageUrl(
@@ -4751,13 +4755,27 @@ function buildPdpPayload(args) {
       },
     });
   }
-  if (!commerceSuppressed) {
+  const productPriceAmount = normalizeAmount(
+    product.price?.current?.amount ??
+      product.price?.amount ??
+      product.price_amount ??
+      product.priceAmount ??
+      product.current_price ??
+      product.currentPrice ??
+      product.price,
+  );
+  const pricePromoCurrent =
+    defaultVariant?.price?.current ||
+    (Number.isFinite(Number(productPriceAmount)) && Number(productPriceAmount) > 0
+      ? { amount: productPriceAmount, currency }
+      : null);
+  if (!commerceSuppressed && pricePromoCurrent) {
     modules.push({
       module_id: 'm_price',
       type: 'price_promo',
       priority: 90,
       data: {
-        price: defaultVariant.price?.current || { amount: normalizeAmount(product.price), currency },
+        price: pricePromoCurrent,
         compare_at: defaultVariant.price?.compare_at,
         promotions: product.promotions || [],
       },
@@ -4963,7 +4981,7 @@ function buildPdpPayload(args) {
       ...(productLineOptions.length > 1 && productLineOptionName
         ? { product_line_option_name: productLineOptionName }
         : {}),
-      price: commerceSuppressed ? undefined : defaultVariant.price,
+      ...(!commerceSuppressed && defaultVariant?.price ? { price: defaultVariant.price } : {}),
       availability: commerceSuppressed ? { in_stock: false, available_quantity: 0 } : productAvailability,
       shipping: product.shipping || undefined,
       returns: product.returns || undefined,

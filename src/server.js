@@ -7978,22 +7978,38 @@ function hydrateCanonicalPdpPayloadFromOffers(pdpPayload, offersData) {
     if (product.price_source === 'default_offer') delete product.price_source;
   }
 
-  const modules =
-    projectedOfferPrice && Array.isArray(pdpPayload.modules)
-      ? pdpPayload.modules.map((module) => {
-          if (String(module?.type || '').trim() !== 'price_promo') return module;
-          const data = module?.data && typeof module.data === 'object' && !Array.isArray(module.data)
-            ? module.data
-            : {};
-          return {
-            ...module,
-            data: {
-              ...data,
-              price: projectedOfferPrice,
-            },
-          };
-        })
-      : pdpPayload.modules;
+  let modules = pdpPayload.modules;
+  if (projectedOfferPrice && Array.isArray(pdpPayload.modules)) {
+    let replacedPriceModule = false;
+    modules = pdpPayload.modules.map((module) => {
+      if (String(module?.type || '').trim() !== 'price_promo') return module;
+      replacedPriceModule = true;
+      const data = module?.data && typeof module.data === 'object' && !Array.isArray(module.data)
+        ? module.data
+        : {};
+      return {
+        ...module,
+        data: {
+          ...data,
+          price: projectedOfferPrice,
+        },
+      };
+    });
+    if (!replacedPriceModule) {
+      modules = [
+        ...modules,
+        {
+          module_id: 'm_price',
+          type: 'price_promo',
+          priority: 90,
+          data: {
+            price: projectedOfferPrice,
+            promotions: [],
+          },
+        },
+      ];
+    }
+  }
 
   return hydrateCanonicalPdpMediaFromOfferImages({
     ...pdpPayload,
