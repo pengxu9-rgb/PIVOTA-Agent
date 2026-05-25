@@ -16,6 +16,7 @@ Pushed to `main` via `git push` only:
 
 - `0f83f1b421f731a1fc50ef3565cf746992071afb` - `Recover Markato WooCommerce PDP extraction`
 - `1262847d383591d765c34295099f00be01b7d974` - `Relax prefetched PDP gallery gate`
+- `18e4f9cf5a413742329f7b50e567ae7275d2892e` - `Recover MPP popup ingredient extraction`
 
 Implemented:
 
@@ -25,24 +26,25 @@ Implemented:
 - Extract WooCommerce short descriptions and Visual Composer accordion content.
 - Filter WooCommerce review-form noise such as `Leave feedback about this Cancel reply`.
 - Keep the prefetched fallback gate source-backed: title, product URL shape, clean image assets, positive offer price, and product context are still required.
+- Recover full INCI from WordPress MPP popups by following the `mpp-trigger-popup-*` id to its matching popup container instead of scanning unrelated hidden popups on the page.
 
 ## Verification
 
 Local tests:
 
-- `test/puppeteer.shopify-seed.test.ts`: 57 passed
+- `test/puppeteer.shopify-seed.test.ts`: 58 passed
 - `test/shared.extractor-hardening.test.ts`: 62 passed
 
 Production deploy verification:
 
-- Railway service `Pivota-catalog-intelligence` production latest deployment reports commit `1262847d383591d765c34295099f00be01b7d974`.
+- Railway service `Pivota-catalog-intelligence` production latest deployment reports commit `18e4f9cf5a413742329f7b50e567ae7275d2892e`.
 - No `railway up` was used.
 
 Production read-only extractor probes after deploy:
 
 | Brand | Seed | Products | Variants | Result | Remaining quality hold |
 |---|---:|---:|---:|---|---|
-| Apiceuticals | `https://www.apiceuticals.com/shop/propowax-antioxidant-shampoo/` | 1 | 1 | recovered official PDP content, how-to, FAQ, images, size, price | missing full INCI |
+| Apiceuticals | `https://www.apiceuticals.com/shop/propowax-antioxidant-shampoo/` | 1 | 1 | recovered official PDP content, how-to, FAQ, images, size, price, and full INCI | none; `missing=[]` under current PDP quality logic |
 | KHUS KHUS | `https://khus-khus.com/products/c-drops-serum/` | 1 | 1 | recovered official PDP content, image, SKU, price after bot-challenge fallback | missing how-to and full INCI |
 | LIME | `https://en.limecosmetic.com/product/lime-oil-gel-eye-patch/72` | 1 | 3 | unchanged commerce extraction | missing overview, how-to, full INCI |
 
@@ -50,10 +52,10 @@ Production read-only extractor probes after deploy:
 
 No production DB apply in this wave.
 
-Recovered products are now source-visible to the catalog extractor, but they are not ready for public PDP catalog promotion under the current quality bar:
+Recovered products are now source-visible to the catalog extractor, but readiness still varies by source-backed PDP content:
 
-- Apiceuticals has strong official overview/how-to/FAQ, but no source-backed full INCI. Treat as `thin` until the INCI modal/source is recovered or manually reviewed.
+- Apiceuticals now has source-backed overview/how-to/FAQ and full INCI from the official MPP modal. Treat as a ready candidate for the next seed/catalog apply lane; this wave did not write production DB rows.
 - KHUS KHUS has official product context and price, but no source-backed how-to or full INCI. Treat as `thin`.
 - LIME remains a thin/image-only content hold.
 
-Next recommended step: target official full-INCI recovery for Apiceuticals first, because it is closest to ready after this extractor fix.
+Next recommended step: run the next controlled Markato seed/catalog apply lane for the now-ready Apiceuticals SKU, while continuing source-backed full-INCI/how-to recovery for KHUS KHUS and LIME.
