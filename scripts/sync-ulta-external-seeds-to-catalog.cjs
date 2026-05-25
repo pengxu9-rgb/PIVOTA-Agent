@@ -10,6 +10,7 @@ const {
   readCommerceFactsV1,
   validateCommerceFactsGateForSeedRow,
 } = require('../src/commerce/commerceFacts');
+const { makeContentKey } = require('./lib/compute-content-key.cjs');
 
 const MERCHANT_ID = 'external_seed';
 const PLATFORM = 'external_seed';
@@ -222,7 +223,7 @@ function buildMirror(row) {
   const facts = readCommerceFactsV1(row);
   const agentSafeCommerceFacts = buildAgentSafeCommerceFacts(row);
   const gate = validateCommerceFactsGateForSeedRow(row);
-  const contentKey = stableHash('ck', [normalizeText(brand), normalizeText(title)], 32);
+  const contentKey = makeContentKey(brand, title, null);
   const sigId = stableHash('sig', ['external_seed_catalog_sig', externalProductId], 32);
   const productGroupId = stableHash('pg', ['external_seed_self_group', externalProductId], 32);
   const offerId = `offer:external_seed:${crypto
