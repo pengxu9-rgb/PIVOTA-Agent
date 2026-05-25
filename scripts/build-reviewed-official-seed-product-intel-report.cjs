@@ -39,6 +39,11 @@ function text(value) {
   return String(value).replace(/\s+/g, ' ').trim();
 }
 
+function pathText(value) {
+  if (Array.isArray(value)) return value.map(text).filter(Boolean).join('/');
+  return text(value);
+}
+
 function asObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
@@ -94,6 +99,7 @@ function sanitizePublicSourceText(value) {
   return text(value)
     .replace(/<!--[\s\S]*?-->/g, ' ')
     .replace(/<\/?[^>]+>/g, ' ')
+    .replace(/\bhttps?:\/\/\S+/gi, ' ')
     .replace(/[\u200B-\u200D\uFEFF]/g, '')
     .replace(/[$€£¥]\s*\d+(?:\.\d{2})?\s*(?:value)?\b/gi, '')
     .replace(/\b\d{1,3}%\s*off\b/gi, '')
@@ -376,6 +382,8 @@ function sanitizePublicTitleText(value) {
 
 function sanitizeFormulaSummary(value) {
   return text(value)
+    .replace(/\bDenotes\s+\*?organic\b\.?/gi, ' ')
+    .replace(/\*/g, '')
     .replace(/\bVitamin-C brightens\s*&\s*promotes collagen production\b/gi, 'Vitamin-C supports radiant-looking tone')
     .replace(/\bVitamin-C brightens\s*&\s*boosts luminosity\b/gi, 'Vitamin-C supports luminous-looking tone')
     .replace(/\bVitamin C brightens and promotes a radiant complexion\b/gi, 'Vitamin C supports a radiant-looking complexion')
@@ -445,6 +453,11 @@ function displayBrand(value) {
 function inferCategory(seed, inventoryRow) {
   const seedData = asObject(seed.seed_data);
   const snapshot = asObject(seedData.snapshot);
+  const reviewedCategoryPath = pathText(seedData.catalog_category_path || snapshot.catalog_category_path);
+  const reviewedProductType = text(
+    seedData.product_type || seedData.leaf_category || snapshot.product_type || snapshot.leaf_category,
+  );
+  if (reviewedCategoryPath && reviewedProductType) return reviewedProductType;
   return (
     text(seedData.category) ||
     text(snapshot.category) ||
@@ -457,13 +470,13 @@ function inferCategory(seed, inventoryRow) {
 function inferCategoryPath(seed, inventoryRow) {
   const seedData = asObject(seed.seed_data);
   const snapshot = asObject(seedData.snapshot);
-  return text(
-    seedData.category_path ||
-      snapshot.category_path ||
-      seedData.catalog_category_path ||
+  return pathText(
+    seedData.catalog_category_path ||
       snapshot.catalog_category_path ||
-      inventoryRow?.category_path ||
-      inventoryRow?.catalog_category_path,
+      seedData.category_path ||
+      snapshot.category_path ||
+      inventoryRow?.catalog_category_path ||
+      inventoryRow?.category_path,
   );
 }
 
@@ -521,6 +534,11 @@ function inferKind(title, category, categoryPath, description = '') {
   const titleDescriptionText = `${title} ${description}`.toLowerCase();
   const descriptionText = `${description}`.toLowerCase();
   const haystack = `${titleCategoryText} ${descriptionText}`;
+  const reviewedPath = `${categoryPath}`.toLowerCase().replace(/\\/g, '/');
+  if (/\bbeauty\/bodycare\/body-oil\b/.test(reviewedPath)) return 'body_oil';
+  if (/\bbeauty\/skincare\/face-balm\b/.test(reviewedPath)) return 'face_balm';
+  if (/\bbeauty\/skincare\/serum\b/.test(reviewedPath) && /\bserum\b/.test(titleCategoryText)) return 'serum';
+  if (/\bbeauty\/skincare\/toner\b/.test(reviewedPath) && /\b(?:toner|tonic|humectant|drop)\b/.test(titleCategoryText)) return 'toner';
   const brushCareTitlePattern =
     /\b(?:palmat|brush\s+care|brush cleanser|brush cleaning|brush cleaner|brushampoo|sigmagic|travel\s+switch|switch\s+set|dry['’]?n\s+shape|brush\s+cleaning\s+mat|brush\s+cleaning\s+tool)\b|sigma\W*switch\b/;
   const brushCareDescriptionPattern =
@@ -699,9 +717,10 @@ function kindLabel(kind, category) {
     body_gel: 'body gel',
     body_spray_treatment: 'body treatment spray',
     face_oil: 'face oil',
+    face_balm: 'face balm',
     toner: 'toner',
     moisturizer: 'moisturizer',
-    serum: 'skincare treatment',
+    serum: 'serum',
     sunscreen: 'sunscreen',
     blemish_patch: 'blemish patch',
     cleanser: 'cleanser',
@@ -773,9 +792,10 @@ function displayCategoryForKind(kind, category) {
     body_gel: 'Body Gel',
     body_spray_treatment: 'Body Treatment',
     face_oil: 'Face Oil',
+    face_balm: 'Face Balm',
     toner: 'Toner',
     moisturizer: 'Moisturizer',
-    serum: 'Skincare Treatment',
+    serum: 'Serum',
     sunscreen: 'Sunscreen',
     blemish_patch: 'Blemish Patch',
     cleanser: 'Cleanser',
@@ -846,6 +866,7 @@ function displayCategoryForKind(kind, category) {
     'body_oil',
     'blotting_paper',
     'face_oil',
+    'face_balm',
     'toner',
     'moisturizer',
     'serum',
@@ -902,6 +923,7 @@ function routineStep(kind) {
     body_gel: 'body_care',
     body_spray_treatment: 'body_care',
     face_oil: 'skin_care',
+    face_balm: 'skin_care',
     toner: 'skin_care',
     moisturizer: 'skin_care',
     serum: 'skin_care',
@@ -1057,6 +1079,56 @@ function ingredientSignals(seedData) {
   };
 }
 
+function formulaPreviewFromSeedData(seedData, maxItems = 5) {
+  const snapshot = asObject(seedData.snapshot);
+  function flatten(value) {
+    if (!value) return [];
+    if (Array.isArray(value)) return value.flatMap(flatten);
+    if (typeof value === 'object') {
+      return [
+        value.inci_list,
+        value.inci_normalized,
+        value.ingredients_inci,
+        value.raw_ingredient_text_clean,
+        value.inci_raw,
+      ].flatMap(flatten);
+    }
+    return text(value)
+      .split(/\s*,\s*/)
+      .map((item) =>
+        sanitizeFormulaSummary(item)
+          .replace(/\bDenotes\s+organic\b\.?/gi, '')
+          .replace(/\s+/g, ' ')
+          .trim(),
+      )
+      .filter((item) => item.length >= 3 && !/^(?:and|or|ingredients?|inci)$/i.test(item));
+  }
+  const candidates = [
+    seedData.ingredients_inci,
+    snapshot.ingredients_inci,
+    seedData.inci_list,
+    snapshot.inci_list,
+    seedData.ingredient_intel,
+    snapshot.ingredient_intel,
+  ];
+  const seen = new Set();
+  const parts = [];
+  for (const candidate of candidates) {
+    for (const item of flatten(candidate)) {
+      const key = item
+        .toLowerCase()
+        .replace(/\([^)]*\)/g, ' ')
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      parts.push(item);
+      if (parts.length >= maxItems) return parts.join(', ');
+    }
+  }
+  return parts.join(', ');
+}
+
 function sourceDescription(seedData) {
   const snapshot = asObject(seedData.snapshot);
   return (
@@ -1065,6 +1137,20 @@ function sourceDescription(seedData) {
     text(seedData.pdp_description_raw) ||
     text(snapshot.pdp_description_raw)
   );
+}
+
+const RISKY_PUBLIC_DESCRIPTION_RE =
+  /\b(?:https?:\/\/|acne|inflamed|anti[-\s]?inflammatory|therapeutic|healing?|wrinkles?|analgesic|pain|clinically\s+proven|breakthrough|revolutionary|superior\s+alternative|prevent\s+premature\s+aging|collagen\s+production|damaged\s+skin\s+cells|tighten\s+pores|anti[-\s]?aging|anti[-\s]?ageing)\b/i;
+
+function safeOfficialDescriptionSentence({ title, label, description, ingredient, formulaPreview = '' }) {
+  const descriptionHasSourceUrl = /\bhttps?:\/\//i.test(text(description));
+  const sentence = firstSentence(sanitizePublicSourceText(description));
+  if (sentence && !descriptionHasSourceUrl && !RISKY_PUBLIC_DESCRIPTION_RE.test(sentence)) return sentence;
+  const formula = text(formulaPreview) || (ingredient.available ? sentenceFragment(ingredient.summary) : '');
+  if (formula) {
+    return `The source page lists ${title} as ${articleFor(label).toLowerCase()} ${label} with formula fields including ${formula}.`;
+  }
+  return `The source page supplies source-backed description and use fields for ${title}.`;
 }
 
 function reviewedSourceDescriptionForKind({ title, kind, description }) {
@@ -1204,6 +1290,7 @@ function buildHighlightPhrase(kind, category, description, title = '') {
   if (kind === 'body_gel') return 'Body gel format detail';
   if (kind === 'body_spray_treatment') return 'Body blemish spray detail';
   if (kind === 'face_oil') return 'Face oil formula detail';
+  if (kind === 'face_balm') return 'Face balm formula detail';
   if (kind === 'toner') return /mist/.test(signalText) ? 'Toning mist detail' : 'Toner formula detail';
   if (kind === 'moisturizer') return /body/.test(signalText) ? 'Body moisturizer detail' : 'Moisturizer formula detail';
   if (kind === 'serum') {
@@ -1324,19 +1411,32 @@ function buildBundle({ seed, inventoryRow, generatedAt, batchName, reviewer }) {
   const rawDescription = sourceDescription(seedData);
   const kind = inferKind(title, rawCategory, categoryPath, rawDescription);
   const description = reviewedSourceDescriptionForKind({ title, kind, description: rawDescription });
-  const descriptionSentence = firstSentence(sanitizePublicSourceText(description));
   const category = displayCategoryForKind(kind, rawCategory);
   const label = kindLabel(kind, category);
   const ingredient = ingredientSignals(seedData);
+  const formulaPreview = formulaPreviewFromSeedData(seedData);
+  const descriptionSentence = safeOfficialDescriptionSentence({
+    title,
+    label,
+    description,
+    ingredient,
+    formulaPreview,
+  });
   const evidenceProfile = ingredient.available ? 'seller_plus_formula' : 'official_pdp_seed';
   const highlight = buildHighlightPhrase(kind, category, description, title);
   const labeledProduct = text(`${brandPrefix}${label}`);
   const article = articleFor(labeledProduct);
+  const descriptionReference = descriptionSentence
+    ? RISKY_PUBLIC_DESCRIPTION_RE.test(descriptionSentence) || /^The source page\b/i.test(descriptionSentence)
+      ? descriptionSentence
+      : `The source description identifies: ${descriptionSentence}`
+    : '';
   const whatItIsBody = descriptionSentence
-    ? `${article} ${labeledProduct} listed on the official source page as ${title}. The official description identifies: ${descriptionSentence}`
-    : `${article} ${labeledProduct} listed on the official source page as ${title}.`;
+    ? `${article} ${labeledProduct} listed on the brand source page as ${title}. ${descriptionReference}`
+    : `${article} ${labeledProduct} listed on the brand source page as ${title}.`;
+  const formulaSummary = formulaPreview || sentenceFragment(ingredient.summary) || `${ingredient.ingredient_count} ingredient tokens`;
   const formulaBody = ingredient.available
-    ? `Captured formula fields include ${sentenceFragment(ingredient.summary) || `${ingredient.ingredient_count} ingredient tokens`}. Agents should keep composition claims within those source fields.`
+    ? `Captured formula fields include ${formulaSummary}. Agents should keep composition claims within those source fields.`
     : `No complete ingredient list was captured for this review batch, so formula-level claims stay unavailable.`;
 
   const sourceCoverage = {
@@ -1391,10 +1491,8 @@ function buildBundle({ seed, inventoryRow, generatedAt, batchName, reviewer }) {
       best_for: buildBestFor(kind, category),
       why_it_stands_out: [
         {
-          headline: 'Official product detail',
-          body: descriptionSentence
-            ? `The official page describes ${title} with product-specific detail: ${descriptionSentence}`
-            : `The official title and reviewed category identify this PDP as ${category}, giving agents a grounded product type.`,
+          headline: 'Source-backed product detail',
+          body: descriptionSentence || `The source title and reviewed category identify this PDP as ${category}, giving agents a grounded product type.`,
           evidence_strength: evidenceProfile,
         },
         {
@@ -1407,7 +1505,7 @@ function buildBundle({ seed, inventoryRow, generatedAt, batchName, reviewer }) {
         step: routineStep(kind),
         am_pm: ['as_needed'],
         pairing_notes: [
-          `Use within the ${label} context; avoid inferring benefits not present in the official source.`,
+          `Use within the ${label} context; avoid inferring benefits not present in the source fields.`,
         ],
       },
       watchouts: [

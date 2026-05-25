@@ -1,0 +1,1763 @@
+{
+  "generated_at": "2026-05-25T06:30:40.832Z",
+  "mode": "apply",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": true,
+  "requested_ids": 8,
+  "fetched_rows": 8,
+  "mirror_rows": 8,
+  "planned_sku_rows": 8,
+  "planned_offer_rows": 8,
+  "planned_index_state_rows": 8,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "apply",
+    "existing_before": {
+      "catalog_products": 0,
+      "catalog_skus": 0,
+      "catalog_offers": 0,
+      "product_group_members": 0
+    },
+    "batch_size": null,
+    "batches": 1,
+    "product_upserts": 8,
+    "sku_upserts": 8,
+    "offer_upserts": 8,
+    "group_member_upserts": 8,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 8,
+    "index_state_upserts": 8,
+    "identity_live_read_updates": 8
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_65f9a9219685ffc820a9eee8",
+      "product_key": "prod::external_seed::external_seed::ext_65f9a9219685ffc820a9eee8",
+      "product_group_id": "sig_059a3a113be5114dda5ef987",
+      "title": "C DROPS serum",
+      "brand": "KHUS KHUS",
+      "product_type": "Serum",
+      "category": "Serum",
+      "category_path": "beauty/skincare/serum",
+      "canonical_url": "https://khus-khus.com/products/c-drops-serum/",
+      "pivota_signature_id": "sig_059a3a113be5114dda5ef987",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_65f9a9219685ffc820a9eee8::sku_fac59d8bc5b58fd236df",
+        "product_key": "prod::external_seed::external_seed::ext_65f9a9219685ffc820a9eee8",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_65f9a9219685ffc820a9eee8",
+        "source_variant_id": "ext_65f9a9219685ffc820a9eee8:khus-15659",
+        "sku": "KKCDROPS-30",
+        "title": "C DROPS serum",
+        "currency": "USD",
+        "image_url": "https://khus-khus.com/wp-content/uploads/2023/07/c-drops.jpg",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_65f9a9219685ffc820a9eee8",
+          "raw_variant_id": "khus-15659",
+          "source_variant_id": "ext_65f9a9219685ffc820a9eee8:khus-15659",
+          "variant_sku": "KKCDROPS-30",
+          "source_url": "https://khus-khus.com/products/c-drops-serum/",
+          "external_redirect_url": "https://khus-khus.com/products/c-drops-serum/",
+          "price": "32",
+          "price_amount": 32,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://khus-khus.com/wp-content/uploads/2023/07/c-drops.jpg",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "KKCDROPS-30",
+            "url": "https://khus-khus.com/products/c-drops-serum/",
+            "price": "32.00",
+            "stock": "In Stock",
+            "images": [
+              "https://khus-khus.com/wp-content/uploads/2023/07/c-drops.jpg",
+              "https://khus-khus.com/wp-content/uploads/2023/07/i-k5shhhG-X2.jpg",
+              "https://khus-khus.com/wp-content/uploads/2023/07/DSCF3463_2-copy.jpg",
+              "https://khus-khus.com/wp-content/uploads/2023/07/SKINHEALTH-routine.png"
+            ],
+            "currency": "USD",
+            "image_url": "https://khus-khus.com/wp-content/uploads/2023/07/c-drops.jpg",
+            "image_urls": [
+              "https://khus-khus.com/wp-content/uploads/2023/07/c-drops.jpg",
+              "https://khus-khus.com/wp-content/uploads/2023/07/i-k5shhhG-X2.jpg",
+              "https://khus-khus.com/wp-content/uploads/2023/07/DSCF3463_2-copy.jpg",
+              "https://khus-khus.com/wp-content/uploads/2023/07/SKINHEALTH-routine.png"
+            ],
+            "variant_id": "khus-15659",
+            "description": "https://khus-khus.com/wp-content/uploads/2024/09/KHUS-CDrops-e-website.mp4 squalane sea buckthorn co2 vit c THE REVOLUTIONARY VITAMIN C SERUM FOR RADIANT SKIN SKIN CHALLENGES | most skin types: acne, combination, dry skin, inflamed skin, mature skin, oily skin, sensitive skin Experience the power of scientific innovation with our cutting-edge KHUS+KHUS C DROPS, a breakthrough vitamin C serum formulated with 10% Tetrahexyldecyl ascorbate. Backed by extensive research, Tetrahexyldecyl ascorbate has proven to be a superior alternative to traditional L-ascorbic acid in skincare. Here's why you should choose C DROPS with Tetrahexyldecyl ascorbate over L-ascorbic acid, and the remarkable benefits each ingredient brings to improve your skin health. COMPOSITION TETRAHEXYLDECYL ASCORBATE: THE FUTURE OF VITAMIN C SKINCARE Tetrahexyldecyl ascorbate, a lipid-soluble form of vitamin C, represents the latest breakthrough in skincare. Its unique molecular structure allows for deeper penetration into the skin, resulting in enhanced effectiveness and superior results. Here's why it outshines L-ascorbic acid: ENHANCED STABILITY: Tetrahexyldecyl ascorbate remains stable even in the presence of air and light, ensuring the potency of vitamin C remains intact for longer periods. This means that every drop delivers the maximum benefits of vitamin C to your skin. INCREASED BIOAVAILABILITY: Unlike L-ascorbic acid, Tetrahexyldecyl ascorbate readily penetrates the skin's lipid barrier, allowing it to be absorbed more efficiently. This enhanced bioavailability ensures that the active form of vitamin C is delivered precisely where it is needed, promoting optimal skin health. POWERFUL ANTIOXIDANT PROPERTIES: Tetrahexyldecyl ascorbate exhibits exceptional antioxidant activity, effectively neutralizing harmful free radicals. By reducing oxidative stress, it helps to prevent premature aging, brightens the complexion, and improves overall skin tone and texture. SIBERIAN SEA BUCKTHORN | NATURE'S SKIN SAVIOR Rich in Vitamins and Nutrients: Siberian sea buckthorn is packed with vitamins A, C, and E, as well as essential fatty acids and antioxidants. These nourishing components work synergistically to promote collagen production, boost skin elasticity, and repair damaged skin cells, resulting in a youthful and radiant complexion. OLIVE-DERIVED SQUALANE | THE ULTIMATE SKIN MOISTURIZER H arnessing the power of olive-derived squalane, a natural emollient known for its outstanding moisturizing properties. A game-changer for your skin: DEEP HYDRATION Olive-derived squalane mimics the skin's natural lipid barrier, effectively locking in moisture and preventing water loss. It hydrates your skin from within, leaving it plump, supple, and nourished. SKIN BARRIER RESTORATION H elps restore the skin's protective barrier, strengthening its resilience and defending against environmental aggressors. By fortifying the skin's natural defense mechanisms, it helps maintain optimal moisture levels and promotes a healthy, glowing complexion. https://khus-khus.com/wp-content/uploads/2023/07/khus-cdrops-ddrops-video-web.mp4 ENERGETICS anti-inflammatory skin tonic soothing x",
+            "option_name": "Size",
+            "option_value": "30ml/1oz"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:f601b132764edbc620f4c0620c17c2eb",
+        "sku_key": "prod::external_seed::external_seed::ext_65f9a9219685ffc820a9eee8::sku_fac59d8bc5b58fd236df",
+        "product_key": "prod::external_seed::external_seed::ext_65f9a9219685ffc820a9eee8",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 32,
+        "merchant_effective_price": 32,
+        "estimated_best_price": 32,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_33140c8f7b9e0b23b8de646f",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_33140c8f7b9e0b23b8de646f",
+          "external_product_id": "ext_65f9a9219685ffc820a9eee8",
+          "domain": "khus-khus.com",
+          "market": "US",
+          "product_title": "C DROPS serum",
+          "variant_title": "C DROPS serum",
+          "variant_sku": "KKCDROPS-30",
+          "raw_variant_id": "khus-15659",
+          "url": "https://khus-khus.com/products/c-drops-serum/",
+          "offer_url": "https://khus-khus.com/products/c-drops-serum/",
+          "canonical_url": "https://khus-khus.com/products/c-drops-serum/",
+          "destination_url": "https://khus-khus.com/products/c-drops-serum/",
+          "external_redirect_url": "https://khus-khus.com/products/c-drops-serum/",
+          "merchant_display_name": "KHUS KHUS",
+          "price": "32",
+          "price_amount": 32,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "official_woocommerce_store_api",
+            "captured_at": "2026-05-25T06:25:14.497Z",
+            "evidence_url": "https://khus-khus.com/products/c-drops-serum/",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [
+                "US"
+              ],
+              "evidence_source": "woocommerce_store_api_checkout_config",
+              "confidence": "medium",
+              "checked_at": "2026-05-25T06:25:14.497Z",
+              "reason_codes": [
+                "store_api_usd_price",
+                "official_store_country_us"
+              ],
+              "evidence_url": "https://khus-khus.com/products/c-drops-serum/"
+            },
+            "regional_price": {
+              "amount": 32,
+              "currency": "USD",
+              "display_raw": "32.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "high",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://khus-khus.com/products/c-drops-serum/",
+              "captured_at": "2026-05-25T06:25:14.497Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "woocommerce_store_api",
+              "confidence": "high",
+              "captured_at": "2026-05-25T06:25:14.497Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "woocommerce_store_api",
+              "confidence": "medium",
+              "reason_codes": [
+                "checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T06:25:14.497Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "woocommerce_store_api",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T06:25:14.497Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 32,
+              "currency": "USD",
+              "display_raw": "32.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "high",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://khus-khus.com/products/c-drops-serum/",
+              "captured_at": "2026-05-25T06:25:14.497Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "woocommerce_store_api",
+              "confidence": "high",
+              "captured_at": "2026-05-25T06:25:14.497Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 3172
+      }
+    },
+    {
+      "external_product_id": "ext_290f05b3b8bfbfdb4e079d09",
+      "product_key": "prod::external_seed::external_seed::ext_290f05b3b8bfbfdb4e079d09",
+      "product_group_id": "sig_8645b51f78b6e7c77e64d6c3",
+      "title": "D DROP humectant factor",
+      "brand": "KHUS KHUS",
+      "product_type": "Toner",
+      "category": "Toner",
+      "category_path": "beauty/skincare/toner",
+      "canonical_url": "https://khus-khus.com/products/d-drop-humectant-factor/",
+      "pivota_signature_id": "sig_8645b51f78b6e7c77e64d6c3",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_290f05b3b8bfbfdb4e079d09::sku_86af68612835540356a6",
+        "product_key": "prod::external_seed::external_seed::ext_290f05b3b8bfbfdb4e079d09",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_290f05b3b8bfbfdb4e079d09",
+        "source_variant_id": "ext_290f05b3b8bfbfdb4e079d09:khus-12109",
+        "sku": "KKHFDROP-30",
+        "title": "D DROP humectant factor",
+        "currency": "USD",
+        "image_url": "https://khus-khus.com/wp-content/uploads/2021/10/i-KGG8dq4-X2.jpg",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_290f05b3b8bfbfdb4e079d09",
+          "raw_variant_id": "khus-12109",
+          "source_variant_id": "ext_290f05b3b8bfbfdb4e079d09:khus-12109",
+          "variant_sku": "KKHFDROP-30",
+          "source_url": "https://khus-khus.com/products/d-drop-humectant-factor/",
+          "external_redirect_url": "https://khus-khus.com/products/d-drop-humectant-factor/",
+          "price": "38",
+          "price_amount": 38,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://khus-khus.com/wp-content/uploads/2021/10/i-KGG8dq4-X2.jpg",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "KKHFDROP-30",
+            "url": "https://khus-khus.com/products/d-drop-humectant-factor/",
+            "price": "38.00",
+            "stock": "In Stock",
+            "images": [
+              "https://khus-khus.com/wp-content/uploads/2021/10/i-KGG8dq4-X2.jpg",
+              "https://khus-khus.com/wp-content/uploads/2021/10/khus-d-drop.png",
+              "https://khus-khus.com/wp-content/uploads/2021/10/DSCF7908-copy2222-scaled.jpg",
+              "https://khus-khus.com/wp-content/uploads/2023/07/SKINHEALTH-routine-5.png"
+            ],
+            "currency": "USD",
+            "image_url": "https://khus-khus.com/wp-content/uploads/2021/10/i-KGG8dq4-X2.jpg",
+            "image_urls": [
+              "https://khus-khus.com/wp-content/uploads/2021/10/i-KGG8dq4-X2.jpg",
+              "https://khus-khus.com/wp-content/uploads/2021/10/khus-d-drop.png",
+              "https://khus-khus.com/wp-content/uploads/2021/10/DSCF7908-copy2222-scaled.jpg",
+              "https://khus-khus.com/wp-content/uploads/2023/07/SKINHEALTH-routine-5.png"
+            ],
+            "variant_id": "khus-12109",
+            "description": "https://khus-khus.com/wp-content/uploads/2024/09/KHUS-D-DROPS-e-website.mp4 hemp liposomes watermelon ferment french peppermint water Enter a new dimension of skin hydration with the D DROP humectant factor. Rooted in rigorous scientific research and formulation expertise, this product offers a unique hydrating solution tailored to address the skin's intricate moisture equilibrium. Leveraging advanced bioactive compounds and innovative delivery systems, it ensures optimal skin hydration, promoting a plump, radiant complexion that is resistant to external stressors. SKIN CHALLENGES dry parched skin, inflamed, sensitive COMPOSITION HEMP LIPOSOMES Utilizing cutting-edge liposomal technology, these structures encapsulate the nourishing properties of hemp. This encapsulation enhances the delivery of hemp's nutrients deep into the skin layers, ensuring maximized absorption and efficacy. The result is fortified skin integrity and improved barrier function, laying a foundation for lasting hydration. WATERMELON FERMENT This bio-transformed ingredient is a testament to the power of fermentation in skincare. Rich in amino acids and vitamins, watermelon ferment enhances the skin's natural moisture-retention capacity. Its naturally occurring enzymes also offer gentle exfoliation, revealing a fresh, revitalized skin surface. FRENCH PEPPERMINT WATER Beyond its invigorating aroma, French peppermint water carries a wealth of skin benefits. Packed with menthol and rosmarinic acid, it offers anti-inflammatory properties that soothe skin irritations. Additionally, its natural astringent properties help tighten pores and refine the skin's texture, imparting a refreshed, vibrant appearance. https://khus-khus.com/wp-content/uploads/2024/08/DdropCdrop-web-1.mp4 ENERGETICS cooling soothing skin tonic channel clearer",
+            "option_name": "Size",
+            "option_value": "30ml/1oz"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:d0e5cedb76bea97d9535e4e2d6b29d97",
+        "sku_key": "prod::external_seed::external_seed::ext_290f05b3b8bfbfdb4e079d09::sku_86af68612835540356a6",
+        "product_key": "prod::external_seed::external_seed::ext_290f05b3b8bfbfdb4e079d09",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 38,
+        "merchant_effective_price": 38,
+        "estimated_best_price": 38,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_048bcb3392fc3c2dcdca5538",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_048bcb3392fc3c2dcdca5538",
+          "external_product_id": "ext_290f05b3b8bfbfdb4e079d09",
+          "domain": "khus-khus.com",
+          "market": "US",
+          "product_title": "D DROP humectant factor",
+          "variant_title": "D DROP humectant factor",
+          "variant_sku": "KKHFDROP-30",
+          "raw_variant_id": "khus-12109",
+          "url": "https://khus-khus.com/products/d-drop-humectant-factor/",
+          "offer_url": "https://khus-khus.com/products/d-drop-humectant-factor/",
+          "canonical_url": "https://khus-khus.com/products/d-drop-humectant-factor/",
+          "destination_url": "https://khus-khus.com/products/d-drop-humectant-factor/",
+          "external_redirect_url": "https://khus-khus.com/products/d-drop-humectant-factor/",
+          "merchant_display_name": "KHUS KHUS",
+          "price": "38",
+          "price_amount": 38,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "official_woocommerce_store_api",
+            "captured_at": "2026-05-25T06:25:14.497Z",
+            "evidence_url": "https://khus-khus.com/products/d-drop-humectant-factor/",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [
+                "US"
+              ],
+              "evidence_source": "woocommerce_store_api_checkout_config",
+              "confidence": "medium",
+              "checked_at": "2026-05-25T06:25:14.497Z",
+              "reason_codes": [
+                "store_api_usd_price",
+                "official_store_country_us"
+              ],
+              "evidence_url": "https://khus-khus.com/products/d-drop-humectant-factor/"
+            },
+            "regional_price": {
+              "amount": 38,
+              "currency": "USD",
+              "display_raw": "38.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "high",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://khus-khus.com/products/d-drop-humectant-factor/",
+              "captured_at": "2026-05-25T06:25:14.497Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "woocommerce_store_api",
+              "confidence": "high",
+              "captured_at": "2026-05-25T06:25:14.497Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "woocommerce_store_api",
+              "confidence": "medium",
+              "reason_codes": [
+                "checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T06:25:14.497Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "woocommerce_store_api",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T06:25:14.497Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 38,
+              "currency": "USD",
+              "display_raw": "38.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "high",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://khus-khus.com/products/d-drop-humectant-factor/",
+              "captured_at": "2026-05-25T06:25:14.497Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "woocommerce_store_api",
+              "confidence": "high",
+              "captured_at": "2026-05-25T06:25:14.497Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 1822
+      }
+    },
+    {
+      "external_product_id": "ext_f27f918bac908cf6ba236b83",
+      "product_key": "prod::external_seed::external_seed::ext_f27f918bac908cf6ba236b83",
+      "product_group_id": "sig_cd2abc5dfc8c8ccbebdc0719",
+      "title": "KAI repair balm",
+      "brand": "KHUS KHUS",
+      "product_type": "Face Balm",
+      "category": "Face Balm",
+      "category_path": "beauty/skincare/face-balm",
+      "canonical_url": "https://khus-khus.com/products/kai-repair-balm/",
+      "pivota_signature_id": "sig_cd2abc5dfc8c8ccbebdc0719",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_f27f918bac908cf6ba236b83::sku_90b182d8a360a8229fa1",
+        "product_key": "prod::external_seed::external_seed::ext_f27f918bac908cf6ba236b83",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_f27f918bac908cf6ba236b83",
+        "source_variant_id": "ext_f27f918bac908cf6ba236b83:khus-12111",
+        "sku": "KKRBKAI-30",
+        "title": "KAI repair balm",
+        "currency": "USD",
+        "image_url": "https://khus-khus.com/wp-content/uploads/2021/10/kai.jpg",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_f27f918bac908cf6ba236b83",
+          "raw_variant_id": "khus-12111",
+          "source_variant_id": "ext_f27f918bac908cf6ba236b83:khus-12111",
+          "variant_sku": "KKRBKAI-30",
+          "source_url": "https://khus-khus.com/products/kai-repair-balm/",
+          "external_redirect_url": "https://khus-khus.com/products/kai-repair-balm/",
+          "price": "52",
+          "price_amount": 52,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://khus-khus.com/wp-content/uploads/2021/10/kai.jpg",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "KKRBKAI-30",
+            "url": "https://khus-khus.com/products/kai-repair-balm/",
+            "price": "52.00",
+            "stock": "In Stock",
+            "images": [
+              "https://khus-khus.com/wp-content/uploads/2021/10/kai.jpg",
+              "https://khus-khus.com/wp-content/uploads/2021/10/KAI-REPAIR-ABLM-scaled.jpg",
+              "https://khus-khus.com/wp-content/uploads/2021/10/i-nbkJq24-X2.jpg",
+              "https://khus-khus.com/wp-content/uploads/2023/07/SKINHEALTH-routine-4.png"
+            ],
+            "currency": "USD",
+            "image_url": "https://khus-khus.com/wp-content/uploads/2021/10/kai.jpg",
+            "image_urls": [
+              "https://khus-khus.com/wp-content/uploads/2021/10/kai.jpg",
+              "https://khus-khus.com/wp-content/uploads/2021/10/KAI-REPAIR-ABLM-scaled.jpg",
+              "https://khus-khus.com/wp-content/uploads/2021/10/i-nbkJq24-X2.jpg",
+              "https://khus-khus.com/wp-content/uploads/2023/07/SKINHEALTH-routine-4.png"
+            ],
+            "variant_id": "khus-12111",
+            "description": "https://khus-khus.com/wp-content/uploads/2024/09/KHUS-KAI-e-website.mp4 green caviar squalane resveratrol Introducing the KAI repair balm, a masterclass in innovation and botanical expertise. Engineered with precision, this balm employs a curated blend of potent ingredients to offer targeted skin repair, rejuvenation, and protection, ensuring optimal skin health and resilience against daily challenges. Immerse your skin in this concentrated balm, confident in its transformative capabilities and restorative prowess. SKIN CHALLENGES most skin types: dry, oily, sensitive, eczema, acne, inflammation COMPOSITION SIBERIAN SEA BUCKTHORN This botanical marvel is acclaimed for its unparalleled content of Omega 7 fatty acids and carotenoids. As a potent antioxidant, sea buckthorn aids in neutralizing harmful free radicals, promoting skin healing and elasticity. Its rich nutrient profile also ensures enhanced moisture retention, resulting in a supple, radiant complexion. FSS SIRTUIN COMPLEX At the cutting edge of skincare research, the FSS SIRTUIN COMPLEX leverages the power of sirtuins – proteins known to regulate cellular lifespan. This complex promotes skin longevity and regeneration, visibly diminishing signs of aging and fatigue, and fostering a youthful skin appearance. GREEN CAVIAR OIL Also known as Caulerpa lentillifera oil, this luxurious ingredient is a treasure trove of amino acids, vitamins, and minerals. Revered for its ability to improve skin hydration and elasticity, GREEN CAVIAR OIL works diligently to reinforce the skin's natural barrier, offering protection against environmental aggressors. SQUALANE A biomimetic lipid derived from olives, squalane mirrors the skin's natural sebum. It offers intensive hydration, ensuring the skin remains soft and pliable. Moreover, its ability to rapidly penetrate the skin ensures enhanced delivery of other active ingredients, amplifying their collective benefits. https://khus-khus.com/wp-content/uploads/2024/08/KaiRepairBalm-web.mp4 ENERGETICS anti-inflammatory skin tonic soothing x",
+            "option_name": "Size",
+            "option_value": "30ml/1oz"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:796aa8ef3f2b1f8685ba65b951bd1446",
+        "sku_key": "prod::external_seed::external_seed::ext_f27f918bac908cf6ba236b83::sku_90b182d8a360a8229fa1",
+        "product_key": "prod::external_seed::external_seed::ext_f27f918bac908cf6ba236b83",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 52,
+        "merchant_effective_price": 52,
+        "estimated_best_price": 52,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_8416ab9521044f35a34e47aa",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_8416ab9521044f35a34e47aa",
+          "external_product_id": "ext_f27f918bac908cf6ba236b83",
+          "domain": "khus-khus.com",
+          "market": "US",
+          "product_title": "KAI repair balm",
+          "variant_title": "KAI repair balm",
+          "variant_sku": "KKRBKAI-30",
+          "raw_variant_id": "khus-12111",
+          "url": "https://khus-khus.com/products/kai-repair-balm/",
+          "offer_url": "https://khus-khus.com/products/kai-repair-balm/",
+          "canonical_url": "https://khus-khus.com/products/kai-repair-balm/",
+          "destination_url": "https://khus-khus.com/products/kai-repair-balm/",
+          "external_redirect_url": "https://khus-khus.com/products/kai-repair-balm/",
+          "merchant_display_name": "KHUS KHUS",
+          "price": "52",
+          "price_amount": 52,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "official_woocommerce_store_api",
+            "captured_at": "2026-05-25T06:25:14.497Z",
+            "evidence_url": "https://khus-khus.com/products/kai-repair-balm/",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [
+                "US"
+              ],
+              "evidence_source": "woocommerce_store_api_checkout_config",
+              "confidence": "medium",
+              "checked_at": "2026-05-25T06:25:14.497Z",
+              "reason_codes": [
+                "store_api_usd_price",
+                "official_store_country_us"
+              ],
+              "evidence_url": "https://khus-khus.com/products/kai-repair-balm/"
+            },
+            "regional_price": {
+              "amount": 52,
+              "currency": "USD",
+              "display_raw": "52.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "high",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://khus-khus.com/products/kai-repair-balm/",
+              "captured_at": "2026-05-25T06:25:14.497Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "woocommerce_store_api",
+              "confidence": "high",
+              "captured_at": "2026-05-25T06:25:14.497Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "woocommerce_store_api",
+              "confidence": "medium",
+              "reason_codes": [
+                "checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T06:25:14.497Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "woocommerce_store_api",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T06:25:14.497Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 52,
+              "currency": "USD",
+              "display_raw": "52.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "high",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://khus-khus.com/products/kai-repair-balm/",
+              "captured_at": "2026-05-25T06:25:14.497Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "woocommerce_store_api",
+              "confidence": "high",
+              "captured_at": "2026-05-25T06:25:14.497Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 2058
+      }
+    },
+    {
+      "external_product_id": "ext_45cabf70e20e807f1ea5d63e",
+      "product_key": "prod::external_seed::external_seed::ext_45cabf70e20e807f1ea5d63e",
+      "product_group_id": "sig_4683665b02e4eefe502a89da",
+      "title": "THE FIX face potion",
+      "brand": "KHUS KHUS",
+      "product_type": "Face Balm",
+      "category": "Face Balm",
+      "category_path": "beauty/skincare/face-balm",
+      "canonical_url": "https://khus-khus.com/products/fix-face-potion/",
+      "pivota_signature_id": "sig_4683665b02e4eefe502a89da",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_45cabf70e20e807f1ea5d63e::sku_6134a97aef03392e74af",
+        "product_key": "prod::external_seed::external_seed::ext_45cabf70e20e807f1ea5d63e",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_45cabf70e20e807f1ea5d63e",
+        "source_variant_id": "ext_45cabf70e20e807f1ea5d63e:khus-4624",
+        "sku": "KKFPFIX",
+        "title": "THE FIX face potion",
+        "currency": "USD",
+        "image_url": "https://khus-khus.com/wp-content/uploads/2019/09/the-fix.jpg",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_45cabf70e20e807f1ea5d63e",
+          "raw_variant_id": "khus-4624",
+          "source_variant_id": "ext_45cabf70e20e807f1ea5d63e:khus-4624",
+          "variant_sku": "KKFPFIX",
+          "source_url": "https://khus-khus.com/products/fix-face-potion/",
+          "external_redirect_url": "https://khus-khus.com/products/fix-face-potion/",
+          "price": "84",
+          "price_amount": 84,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://khus-khus.com/wp-content/uploads/2019/09/the-fix.jpg",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "KKFPFIX",
+            "url": "https://khus-khus.com/products/fix-face-potion/",
+            "price": "84.00",
+            "stock": "In Stock",
+            "images": [
+              "https://khus-khus.com/wp-content/uploads/2019/09/the-fix.jpg",
+              "https://khus-khus.com/wp-content/uploads/2021/04/RESQ-FACE-POTION-scaled.jpg",
+              "https://khus-khus.com/wp-content/uploads/2019/09/i-8Lmqv3h-X2.jpg",
+              "https://khus-khus.com/wp-content/uploads/2021/10/DSCF7838-copy_2-scaled.jpg",
+              "https://khus-khus.com/wp-content/uploads/2023/07/SKINHEALTH-routine-1.png"
+            ],
+            "currency": "USD",
+            "image_url": "https://khus-khus.com/wp-content/uploads/2019/09/the-fix.jpg",
+            "image_urls": [
+              "https://khus-khus.com/wp-content/uploads/2019/09/the-fix.jpg",
+              "https://khus-khus.com/wp-content/uploads/2021/04/RESQ-FACE-POTION-scaled.jpg",
+              "https://khus-khus.com/wp-content/uploads/2019/09/i-8Lmqv3h-X2.jpg",
+              "https://khus-khus.com/wp-content/uploads/2021/10/DSCF7838-copy_2-scaled.jpg",
+              "https://khus-khus.com/wp-content/uploads/2023/07/SKINHEALTH-routine-1.png"
+            ],
+            "variant_id": "khus-4624",
+            "description": "https://khus-khus.com/wp-content/uploads/2024/09/KHUS-theFix-e-website.mp4 usnea elderflower amla hemp prickly pear amalaki seed oil Introducing THE FIX face potion: where the potent forces of nature unite with cutting-edge scientific innovation. More than just a skincare solution, this potion is a meticulously curated experience, designed to address complex skin needs with both the gentleness of botanicals and the assurance of scientific research. Drawing from both age-old botanical wisdom and contemporary dermatological insights, this potion promises a rejuvenated, healthier skin experience. SKIN CHALLENGES most skin types: dry, oily, sensitive, eczema, acne, inflammation, sun-damaged, dark circles BOTANICAL THERAPEUTIC ACTIONS calmative, antioxidant, regulator, skin tonic COMPOSITION PRICKLY PEAR Derived from the Opuntia cactus, prickly pear is enriched with linoleic acid, vitamin E, and betalains. Scientifically recognized for its antioxidant and anti-inflammatory attributes, it aids in reducing redness, hydrating the skin, and fending off environmental stressors that contribute to premature aging. ELDERFLOWER This botanical marvel stands out for its flavonoid-rich composition. Research has lauded its ability to boost complexion and enhance skin's radiance. Furthermore, its anti-inflammatory and antiseptic properties assist in reducing the appearance of blemishes and soothe irritated skin. USNEA Often referred to as \"Old Man's Beard\", usnea is a unique lichen with potent antibacterial and antifungal benefits. Scientific literature highlights its role in protecting the skin against harmful pathogens, making it invaluable for maintaining a balanced skin microbiome. AMALAKI A cornerstone in Ayurvedic skincare, Amalaki, or Indian gooseberry, is packed with vitamin C and antioxidants. Its scientifically validated benefits span from bolstering collagen production to neutralizing oxidative stress, promoting a firmer, more youthful complexion. https://khus-khus.com/wp-content/uploads/2024/08/khus-TheFix-video-web.mp4 ENERGETICS anti-inflammatory skin tonic antioxidant xxxxx",
+            "option_name": "Size",
+            "option_value": "30ml/1.0oz"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:0eca1a6fee1e4029afb978715dd58041",
+        "sku_key": "prod::external_seed::external_seed::ext_45cabf70e20e807f1ea5d63e::sku_6134a97aef03392e74af",
+        "product_key": "prod::external_seed::external_seed::ext_45cabf70e20e807f1ea5d63e",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 84,
+        "merchant_effective_price": 84,
+        "estimated_best_price": 84,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_41846ee47f81ca96984ccacc",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_41846ee47f81ca96984ccacc",
+          "external_product_id": "ext_45cabf70e20e807f1ea5d63e",
+          "domain": "khus-khus.com",
+          "market": "US",
+          "product_title": "THE FIX face potion",
+          "variant_title": "THE FIX face potion",
+          "variant_sku": "KKFPFIX",
+          "raw_variant_id": "khus-4624",
+          "url": "https://khus-khus.com/products/fix-face-potion/",
+          "offer_url": "https://khus-khus.com/products/fix-face-potion/",
+          "canonical_url": "https://khus-khus.com/products/fix-face-potion/",
+          "destination_url": "https://khus-khus.com/products/fix-face-potion/",
+          "external_redirect_url": "https://khus-khus.com/products/fix-face-potion/",
+          "merchant_display_name": "KHUS KHUS",
+          "price": "84",
+          "price_amount": 84,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "official_woocommerce_store_api",
+            "captured_at": "2026-05-25T06:25:14.497Z",
+            "evidence_url": "https://khus-khus.com/products/fix-face-potion/",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [
+                "US"
+              ],
+              "evidence_source": "woocommerce_store_api_checkout_config",
+              "confidence": "medium",
+              "checked_at": "2026-05-25T06:25:14.497Z",
+              "reason_codes": [
+                "store_api_usd_price",
+                "official_store_country_us"
+              ],
+              "evidence_url": "https://khus-khus.com/products/fix-face-potion/"
+            },
+            "regional_price": {
+              "amount": 84,
+              "currency": "USD",
+              "display_raw": "84.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "high",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://khus-khus.com/products/fix-face-potion/",
+              "captured_at": "2026-05-25T06:25:14.497Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "woocommerce_store_api",
+              "confidence": "high",
+              "captured_at": "2026-05-25T06:25:14.497Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "woocommerce_store_api",
+              "confidence": "medium",
+              "reason_codes": [
+                "checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T06:25:14.497Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "woocommerce_store_api",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T06:25:14.497Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 84,
+              "currency": "USD",
+              "display_raw": "84.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "high",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://khus-khus.com/products/fix-face-potion/",
+              "captured_at": "2026-05-25T06:25:14.497Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "woocommerce_store_api",
+              "confidence": "high",
+              "captured_at": "2026-05-25T06:25:14.497Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 2106
+      }
+    },
+    {
+      "external_product_id": "ext_f86a3606bf6dc20fc810f99d",
+      "product_key": "prod::external_seed::external_seed::ext_f86a3606bf6dc20fc810f99d",
+      "product_group_id": "sig_6e14d673e184819055e0122a",
+      "title": "SANS AGE face serum",
+      "brand": "KHUS KHUS",
+      "product_type": "Face Serum",
+      "category": "Face Serum",
+      "category_path": "beauty/skincare/serum",
+      "canonical_url": "https://khus-khus.com/products/sans-anti-wrinkle-face-serum/",
+      "pivota_signature_id": "sig_6e14d673e184819055e0122a",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_f86a3606bf6dc20fc810f99d::sku_a82d7741a450c315354b",
+        "product_key": "prod::external_seed::external_seed::ext_f86a3606bf6dc20fc810f99d",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_f86a3606bf6dc20fc810f99d",
+        "source_variant_id": "ext_f86a3606bf6dc20fc810f99d:khus-607",
+        "sku": "KKFSSA-50",
+        "title": "SANS AGE face serum",
+        "currency": "USD",
+        "image_url": "https://khus-khus.com/wp-content/uploads/2016/07/SANS-AGE-face-serum-1-scaled-e1608237456272.jpg",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_f86a3606bf6dc20fc810f99d",
+          "raw_variant_id": "khus-607",
+          "source_variant_id": "ext_f86a3606bf6dc20fc810f99d:khus-607",
+          "variant_sku": "KKFSSA-50",
+          "source_url": "https://khus-khus.com/products/sans-anti-wrinkle-face-serum/",
+          "external_redirect_url": "https://khus-khus.com/products/sans-anti-wrinkle-face-serum/",
+          "price": "80",
+          "price_amount": 80,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://khus-khus.com/wp-content/uploads/2016/07/SANS-AGE-face-serum-1-scaled-e1608237456272.jpg",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "KKFSSA-50",
+            "url": "https://khus-khus.com/products/sans-anti-wrinkle-face-serum/",
+            "price": "80.00",
+            "stock": "In Stock",
+            "images": [
+              "https://khus-khus.com/wp-content/uploads/2016/07/SANS-AGE-face-serum-1-scaled-e1608237456272.jpg",
+              "https://khus-khus.com/wp-content/uploads/2016/07/khus-sans-droper.png",
+              "https://khus-khus.com/wp-content/uploads/2016/07/Screenshot-2025-09-29-144059.png",
+              "https://khus-khus.com/wp-content/uploads/2023/07/SKINHEALTH-routine-3.png"
+            ],
+            "currency": "USD",
+            "image_url": "https://khus-khus.com/wp-content/uploads/2016/07/SANS-AGE-face-serum-1-scaled-e1608237456272.jpg",
+            "image_urls": [
+              "https://khus-khus.com/wp-content/uploads/2016/07/SANS-AGE-face-serum-1-scaled-e1608237456272.jpg",
+              "https://khus-khus.com/wp-content/uploads/2016/07/khus-sans-droper.png",
+              "https://khus-khus.com/wp-content/uploads/2016/07/Screenshot-2025-09-29-144059.png",
+              "https://khus-khus.com/wp-content/uploads/2023/07/SKINHEALTH-routine-3.png"
+            ],
+            "variant_id": "khus-607",
+            "description": "https://khus-khus.com/wp-content/uploads/2024/09/KHUS-SANS-age-e-website.mp4 helichrysum german chamomile blue tansy marula baobab argan squalane sea buckthorn Co2 rosehip Co2 Venture into the realm where the artistry of botanical extraction meets the precision of scientific research. The SANS AGE face serum is a confluence of nature's profound wisdom and cutting-edge dermatological innovations. It's not just skincare, it's a carefully curated journey designed to unveil the skin's innate vitality and luminance. SKIN CHALLENGES normal, sensitive, inflamed skin, ideal for skin that needs to be calmed down and regenerated. BOTANICAL THERAPEUTIC ACTIONS highly anti-inflammatory, lymph mover, tonic, emollient COMPOSITION GERMAN CHAMOMILE A botanical gem, German chamomile is cherished for its calming and anti-inflammatory properties. Rich in azulene, it imparts a soothing effect, mitigating redness and sensitivities, while enhancing the skin's natural healing process. HELICHRYSUM Often referred to as the 'Immortelle', helichrysum is a testament to its unparalleled regenerative abilities. With powerful anti-inflammatory and antioxidant properties, it aids in diminishing signs of aging, promoting cell turnover, and supporting the skin's resilience against environmental stressors. BLUE TANSY With its vibrant blue hue and aromatic allure, blue tansy delivers a potent dose of azulene, a compound recognized for its profound soothing and anti-inflammatory benefits. This botanical wonder aids in calming irritated skin and imparting a luminous, even-toned complexion. SIBERIAN SEA BUCKTHORN A nutrient powerhouse, sea buckthorn is laden with omega fatty acids, vitamins, and antioxidants. It plays a pivotal role in bolstering skin hydration, accelerating wound healing, and protecting the skin from damaging UV rays and free radicals. SQUALANE A harmonious mimic of the skin's natural lipids, squalane is derived from olives and serves as an intense hydrator. It ensures optimal moisture retention, boosts suppleness, and enhances the serum's penetrative capabilities, ensuring each ingredient is absorbed deeply and efficiently. https://khus-khus.com/wp-content/uploads/2016/07/khus-combo-sansage-especial-golden-web.mp4",
+            "option_name": "Size",
+            "option_value": "50ml/1.7oz"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:90d196af6e4dcb1b000de8587745882a",
+        "sku_key": "prod::external_seed::external_seed::ext_f86a3606bf6dc20fc810f99d::sku_a82d7741a450c315354b",
+        "product_key": "prod::external_seed::external_seed::ext_f86a3606bf6dc20fc810f99d",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 80,
+        "merchant_effective_price": 80,
+        "estimated_best_price": 80,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_8c19c7a89115389494403344",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_8c19c7a89115389494403344",
+          "external_product_id": "ext_f86a3606bf6dc20fc810f99d",
+          "domain": "khus-khus.com",
+          "market": "US",
+          "product_title": "SANS AGE face serum",
+          "variant_title": "SANS AGE face serum",
+          "variant_sku": "KKFSSA-50",
+          "raw_variant_id": "khus-607",
+          "url": "https://khus-khus.com/products/sans-anti-wrinkle-face-serum/",
+          "offer_url": "https://khus-khus.com/products/sans-anti-wrinkle-face-serum/",
+          "canonical_url": "https://khus-khus.com/products/sans-anti-wrinkle-face-serum/",
+          "destination_url": "https://khus-khus.com/products/sans-anti-wrinkle-face-serum/",
+          "external_redirect_url": "https://khus-khus.com/products/sans-anti-wrinkle-face-serum/",
+          "merchant_display_name": "KHUS KHUS",
+          "price": "80",
+          "price_amount": 80,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "official_woocommerce_store_api",
+            "captured_at": "2026-05-25T06:25:14.497Z",
+            "evidence_url": "https://khus-khus.com/products/sans-anti-wrinkle-face-serum/",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [
+                "US"
+              ],
+              "evidence_source": "woocommerce_store_api_checkout_config",
+              "confidence": "medium",
+              "checked_at": "2026-05-25T06:25:14.497Z",
+              "reason_codes": [
+                "store_api_usd_price",
+                "official_store_country_us"
+              ],
+              "evidence_url": "https://khus-khus.com/products/sans-anti-wrinkle-face-serum/"
+            },
+            "regional_price": {
+              "amount": 80,
+              "currency": "USD",
+              "display_raw": "80.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "high",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://khus-khus.com/products/sans-anti-wrinkle-face-serum/",
+              "captured_at": "2026-05-25T06:25:14.497Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "woocommerce_store_api",
+              "confidence": "high",
+              "captured_at": "2026-05-25T06:25:14.497Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "woocommerce_store_api",
+              "confidence": "medium",
+              "reason_codes": [
+                "checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T06:25:14.497Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "woocommerce_store_api",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T06:25:14.497Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 80,
+              "currency": "USD",
+              "display_raw": "80.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "high",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://khus-khus.com/products/sans-anti-wrinkle-face-serum/",
+              "captured_at": "2026-05-25T06:25:14.497Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "woocommerce_store_api",
+              "confidence": "high",
+              "captured_at": "2026-05-25T06:25:14.497Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 2233
+      }
+    },
+    {
+      "external_product_id": "ext_4dace0e8a2fe70b378b91c2c",
+      "product_key": "prod::external_seed::external_seed::ext_4dace0e8a2fe70b378b91c2c",
+      "product_group_id": "sig_5c7196c7dcb74ada1236c84f",
+      "title": "BLEU body serum",
+      "brand": "KHUS KHUS",
+      "product_type": "Body Oil",
+      "category": "Body Oil",
+      "category_path": "beauty/bodycare/body-oil",
+      "canonical_url": "https://khus-khus.com/products/bleu-body-serum/",
+      "pivota_signature_id": "sig_5c7196c7dcb74ada1236c84f",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_4dace0e8a2fe70b378b91c2c::sku_9ef6804667a95b2c6d8c",
+        "product_key": "prod::external_seed::external_seed::ext_4dace0e8a2fe70b378b91c2c",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_4dace0e8a2fe70b378b91c2c",
+        "source_variant_id": "ext_4dace0e8a2fe70b378b91c2c:khus-534",
+        "sku": "KKBSBLEU-200",
+        "title": "BLEU body serum",
+        "currency": "USD",
+        "image_url": "https://khus-khus.com/wp-content/uploads/2016/07/bleu-body-serum.jpg",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_4dace0e8a2fe70b378b91c2c",
+          "raw_variant_id": "khus-534",
+          "source_variant_id": "ext_4dace0e8a2fe70b378b91c2c:khus-534",
+          "variant_sku": "KKBSBLEU-200",
+          "source_url": "https://khus-khus.com/products/bleu-body-serum/",
+          "external_redirect_url": "https://khus-khus.com/products/bleu-body-serum/",
+          "price": "85",
+          "price_amount": 85,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://khus-khus.com/wp-content/uploads/2016/07/bleu-body-serum.jpg",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "KKBSBLEU-200",
+            "url": "https://khus-khus.com/products/bleu-body-serum/",
+            "price": "85.00",
+            "stock": "In Stock",
+            "images": [
+              "https://khus-khus.com/wp-content/uploads/2016/07/bleu-body-serum.jpg",
+              "https://khus-khus.com/wp-content/uploads/2016/07/i-3hXcK8D-X2.jpg",
+              "https://khus-khus.com/wp-content/uploads/2016/07/DSCF7806-copy-scaled.jpg"
+            ],
+            "currency": "USD",
+            "image_url": "https://khus-khus.com/wp-content/uploads/2016/07/bleu-body-serum.jpg",
+            "image_urls": [
+              "https://khus-khus.com/wp-content/uploads/2016/07/bleu-body-serum.jpg",
+              "https://khus-khus.com/wp-content/uploads/2016/07/i-3hXcK8D-X2.jpg",
+              "https://khus-khus.com/wp-content/uploads/2016/07/DSCF7806-copy-scaled.jpg"
+            ],
+            "variant_id": "khus-534",
+            "description": "https://khus-khus.com/wp-content/uploads/2025/10/BLEU-body-serum-elena-2025.mp4 blue tansy blue yarrow squalane argan baobab BLEU body serum is a culmination of botanical science and innovative formulation. This serum has been meticulously developed to deliver a concentrated fusion of phytoactive compounds that target skin health on a molecular level, promoting restoration, hydration, and balance. It's more than just skincare—it's a meticulously crafted solution, rooted in empirical research, tailored to meet the nuanced needs of your skin. With KHUS + KHUS, you're not just applying a product; you're embracing a scientifically-backed botanical experience. SKIN CHALLENGES normal, sensitive, inflamed skin, ideal for skin that needs to be calmed down and regenerated. BOTANICAL THERAPEUTIC ACTIONS emollient, relaxant, restorative, skin and mind tonic COMPOSITION BLUE YARROW A powerhouse of azulene, a compound known for its profound soothing properties, bleu yarrow addresses skin irritation on a cellular level, ensuring a calmed, balanced skin response to external stressors. MARULA With a high concentration of essential fatty acids, particularly oleic acid, marula oil enhances the skin's ability to retain moisture. Its antioxidant profile, featuring tocopherols, sterols, and flavonoids, fortifies the skin barrier, making it resilient against environmental aggressors. BLUE TANSY Revered for its chamazulene content, blue tansy not only imparts the serum with its characteristic hue but also provides potent anti-inflammatory and antihistaminic benefits. This results in alleviated skin reactivity and a noticeable reduction in redness and irritation. https://khus-khus.com/wp-content/uploads/2016/07/BLEU-body-serum-web.mp4 ENERGETICS soothing skin tonic antioxidant",
+            "option_name": "Size",
+            "option_value": "200ml/6.7oz"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:397462602e5e180c17a30fa63e48ed66",
+        "sku_key": "prod::external_seed::external_seed::ext_4dace0e8a2fe70b378b91c2c::sku_9ef6804667a95b2c6d8c",
+        "product_key": "prod::external_seed::external_seed::ext_4dace0e8a2fe70b378b91c2c",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 85,
+        "merchant_effective_price": 85,
+        "estimated_best_price": 85,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_8e5c2bf3f271e93346944053",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_8e5c2bf3f271e93346944053",
+          "external_product_id": "ext_4dace0e8a2fe70b378b91c2c",
+          "domain": "khus-khus.com",
+          "market": "US",
+          "product_title": "BLEU body serum",
+          "variant_title": "BLEU body serum",
+          "variant_sku": "KKBSBLEU-200",
+          "raw_variant_id": "khus-534",
+          "url": "https://khus-khus.com/products/bleu-body-serum/",
+          "offer_url": "https://khus-khus.com/products/bleu-body-serum/",
+          "canonical_url": "https://khus-khus.com/products/bleu-body-serum/",
+          "destination_url": "https://khus-khus.com/products/bleu-body-serum/",
+          "external_redirect_url": "https://khus-khus.com/products/bleu-body-serum/",
+          "merchant_display_name": "KHUS KHUS",
+          "price": "85",
+          "price_amount": 85,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "official_woocommerce_store_api",
+            "captured_at": "2026-05-25T06:25:14.497Z",
+            "evidence_url": "https://khus-khus.com/products/bleu-body-serum/",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [
+                "US"
+              ],
+              "evidence_source": "woocommerce_store_api_checkout_config",
+              "confidence": "medium",
+              "checked_at": "2026-05-25T06:25:14.497Z",
+              "reason_codes": [
+                "store_api_usd_price",
+                "official_store_country_us"
+              ],
+              "evidence_url": "https://khus-khus.com/products/bleu-body-serum/"
+            },
+            "regional_price": {
+              "amount": 85,
+              "currency": "USD",
+              "display_raw": "85.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "high",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://khus-khus.com/products/bleu-body-serum/",
+              "captured_at": "2026-05-25T06:25:14.497Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "woocommerce_store_api",
+              "confidence": "high",
+              "captured_at": "2026-05-25T06:25:14.497Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "woocommerce_store_api",
+              "confidence": "medium",
+              "reason_codes": [
+                "checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T06:25:14.497Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "woocommerce_store_api",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T06:25:14.497Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 85,
+              "currency": "USD",
+              "display_raw": "85.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "high",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://khus-khus.com/products/bleu-body-serum/",
+              "captured_at": "2026-05-25T06:25:14.497Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "woocommerce_store_api",
+              "confidence": "high",
+              "captured_at": "2026-05-25T06:25:14.497Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 1783
+      }
+    },
+    {
+      "external_product_id": "ext_b30bcf26cdb534ef9538a3f7",
+      "product_key": "prod::external_seed::external_seed::ext_b30bcf26cdb534ef9538a3f7",
+      "product_group_id": "sig_0ebbe86c7118d24e0d759b35",
+      "title": "COPIOUS body serum",
+      "brand": "KHUS KHUS",
+      "product_type": "Body Oil",
+      "category": "Body Oil",
+      "category_path": "beauty/bodycare/body-oil",
+      "canonical_url": "https://khus-khus.com/products/copious-body-serum/",
+      "pivota_signature_id": "sig_0ebbe86c7118d24e0d759b35",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_b30bcf26cdb534ef9538a3f7::sku_1d87220b83b14d239237",
+        "product_key": "prod::external_seed::external_seed::ext_b30bcf26cdb534ef9538a3f7",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_b30bcf26cdb534ef9538a3f7",
+        "source_variant_id": "ext_b30bcf26cdb534ef9538a3f7:khus-554",
+        "sku": "KKBSCOPIOUS-200",
+        "title": "COPIOUS body serum",
+        "currency": "USD",
+        "image_url": "https://khus-khus.com/wp-content/uploads/2016/07/COPIOUS-body-serum-200ml-1.jpg",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_b30bcf26cdb534ef9538a3f7",
+          "raw_variant_id": "khus-554",
+          "source_variant_id": "ext_b30bcf26cdb534ef9538a3f7:khus-554",
+          "variant_sku": "KKBSCOPIOUS-200",
+          "source_url": "https://khus-khus.com/products/copious-body-serum/",
+          "external_redirect_url": "https://khus-khus.com/products/copious-body-serum/",
+          "price": "85",
+          "price_amount": 85,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://khus-khus.com/wp-content/uploads/2016/07/COPIOUS-body-serum-200ml-1.jpg",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "KKBSCOPIOUS-200",
+            "url": "https://khus-khus.com/products/copious-body-serum/",
+            "price": "85.00",
+            "stock": "In Stock",
+            "images": [
+              "https://khus-khus.com/wp-content/uploads/2016/07/COPIOUS-body-serum-200ml-1.jpg",
+              "https://khus-khus.com/wp-content/uploads/2021/04/Copious-Body-Serum-1-copy.jpg",
+              "https://khus-khus.com/wp-content/uploads/2016/07/DSCF7719-copy-scaled.jpg",
+              "https://khus-khus.com/wp-content/uploads/2016/07/i-544W7MS-X2.jpg"
+            ],
+            "currency": "USD",
+            "image_url": "https://khus-khus.com/wp-content/uploads/2016/07/COPIOUS-body-serum-200ml-1.jpg",
+            "image_urls": [
+              "https://khus-khus.com/wp-content/uploads/2016/07/COPIOUS-body-serum-200ml-1.jpg",
+              "https://khus-khus.com/wp-content/uploads/2021/04/Copious-Body-Serum-1-copy.jpg",
+              "https://khus-khus.com/wp-content/uploads/2016/07/DSCF7719-copy-scaled.jpg",
+              "https://khus-khus.com/wp-content/uploads/2016/07/i-544W7MS-X2.jpg"
+            ],
+            "variant_id": "khus-554",
+            "description": "https://khus-khus.com/wp-content/uploads/2025/10/KHUS-KHUS_lifestyle-content_8.mp4 jatamansi myrrh frankincense lavender ashwagandha nettle black cumin seed oil olive licorice Embark on a journey where the ancient wisdom of Ayurvedic medicine harmoniously melds with modern dermatological science. The COPIOUS body serum encapsulates this profound union, creating an elixir rooted in time-honored practices, yet enhanced for contemporary skincare needs. Designed with meticulous attention to the balance and rhythm inherent to Ayurveda, this serum offers a transformative experience, both in texture and therapeutic benefits. SKIN CHALLENGES normal, sensitive, inflamed skin, ideal for skin that needs to be calmed down and regenerated. BOTANICAL THERAPEUTIC ACTIONS emollient, sedative, relaxant, tonic, antioxidant, analgesic SUBTLE AROMATHERAPY having a pronounced effect on the spirit assisting in inner stillness and peace. COMPOSITION ORGANIC GOLDEN HEMP SEED With an optimal balance of omega-3 and omega-6 fatty acids, hemp seed oil stands as a moisturizing powerhouse. Its lipid profile mimics the skin's natural oils, ensuring effective hydration and improved barrier function. Furthermore, its anti-inflammatory properties aid in calming irritated skin, promoting a balanced complexion. NETTLE best known as an adrenal tonic, blood cleanser, anti-inflammatory, antioxidant, endocrine tonic, sedative, and nutritive. Nettles energizes the nerves, muscles, capillaries, and lymphatic system. LICORICE enters all twelve meridians, stimulates interferon production, soothes irritated membranes, and restores pituitary activity. ASHWAGANDHA A revered adaptogen in Ayurvedic practices, ashwagandha contains withanolides which offer antioxidant and anti-inflammatory benefits. By counteracting oxidative stress, it supports skin's structural integrity and combats premature aging. JATAMANSI Known for its triterpenoids and sesquiterpenes, Jatamansi not only soothes and calms the skin but also offers antioxidative properties. This aids in neutralizing free radicals, ensuring skin remains youthful and vibrant. FRANKINCENSE Historically celebrated for its therapeutic properties, frankincense boasts boswellic acids, which contribute to its anti-inflammatory effects. It aids in skin repair, reduces the appearance of fine lines, and revitalizes the skin with its rejuvenating properties. https://khus-khus.com/wp-content/uploads/2024/08/COPIOUS-body-serum-web.mp4 ENERGETICS adaptogenic nervous system superstar pain soother",
+            "option_name": "Size",
+            "option_value": "200ml/6.7oz"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:90425fa3a5ca475f21c752ca700cfd6b",
+        "sku_key": "prod::external_seed::external_seed::ext_b30bcf26cdb534ef9538a3f7::sku_1d87220b83b14d239237",
+        "product_key": "prod::external_seed::external_seed::ext_b30bcf26cdb534ef9538a3f7",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 85,
+        "merchant_effective_price": 85,
+        "estimated_best_price": 85,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_3b2dde159f971e19bcb10fb0",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_3b2dde159f971e19bcb10fb0",
+          "external_product_id": "ext_b30bcf26cdb534ef9538a3f7",
+          "domain": "khus-khus.com",
+          "market": "US",
+          "product_title": "COPIOUS body serum",
+          "variant_title": "COPIOUS body serum",
+          "variant_sku": "KKBSCOPIOUS-200",
+          "raw_variant_id": "khus-554",
+          "url": "https://khus-khus.com/products/copious-body-serum/",
+          "offer_url": "https://khus-khus.com/products/copious-body-serum/",
+          "canonical_url": "https://khus-khus.com/products/copious-body-serum/",
+          "destination_url": "https://khus-khus.com/products/copious-body-serum/",
+          "external_redirect_url": "https://khus-khus.com/products/copious-body-serum/",
+          "merchant_display_name": "KHUS KHUS",
+          "price": "85",
+          "price_amount": 85,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "official_woocommerce_store_api",
+            "captured_at": "2026-05-25T06:25:14.497Z",
+            "evidence_url": "https://khus-khus.com/products/copious-body-serum/",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [
+                "US"
+              ],
+              "evidence_source": "woocommerce_store_api_checkout_config",
+              "confidence": "medium",
+              "checked_at": "2026-05-25T06:25:14.497Z",
+              "reason_codes": [
+                "store_api_usd_price",
+                "official_store_country_us"
+              ],
+              "evidence_url": "https://khus-khus.com/products/copious-body-serum/"
+            },
+            "regional_price": {
+              "amount": 85,
+              "currency": "USD",
+              "display_raw": "85.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "high",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://khus-khus.com/products/copious-body-serum/",
+              "captured_at": "2026-05-25T06:25:14.497Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "woocommerce_store_api",
+              "confidence": "high",
+              "captured_at": "2026-05-25T06:25:14.497Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "woocommerce_store_api",
+              "confidence": "medium",
+              "reason_codes": [
+                "checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T06:25:14.497Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "woocommerce_store_api",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T06:25:14.497Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 85,
+              "currency": "USD",
+              "display_raw": "85.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "high",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://khus-khus.com/products/copious-body-serum/",
+              "captured_at": "2026-05-25T06:25:14.497Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "woocommerce_store_api",
+              "confidence": "high",
+              "captured_at": "2026-05-25T06:25:14.497Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 2529
+      }
+    },
+    {
+      "external_product_id": "ext_6ae70ce8a0cf2d0f8615d4dc",
+      "product_key": "prod::external_seed::external_seed::ext_6ae70ce8a0cf2d0f8615d4dc",
+      "product_group_id": "sig_2afbc56f52ac6b1c99659ab3",
+      "title": "SURYA body elixir",
+      "brand": "KHUS KHUS",
+      "product_type": "Body Oil",
+      "category": "Body Oil",
+      "category_path": "beauty/bodycare/body-oil",
+      "canonical_url": "https://khus-khus.com/products/surya-body-elixir/",
+      "pivota_signature_id": "sig_2afbc56f52ac6b1c99659ab3",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_6ae70ce8a0cf2d0f8615d4dc::sku_db532a08ed3a19c3087b",
+        "product_key": "prod::external_seed::external_seed::ext_6ae70ce8a0cf2d0f8615d4dc",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_6ae70ce8a0cf2d0f8615d4dc",
+        "source_variant_id": "ext_6ae70ce8a0cf2d0f8615d4dc:khus-17039",
+        "sku": "KKBESURYA-100",
+        "title": "SURYA body elixir",
+        "currency": "USD",
+        "image_url": "https://khus-khus.com/wp-content/uploads/2024/03/SURYA.jpg",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_6ae70ce8a0cf2d0f8615d4dc",
+          "raw_variant_id": "khus-17039",
+          "source_variant_id": "ext_6ae70ce8a0cf2d0f8615d4dc:khus-17039",
+          "variant_sku": "KKBESURYA-100",
+          "source_url": "https://khus-khus.com/products/surya-body-elixir/",
+          "external_redirect_url": "https://khus-khus.com/products/surya-body-elixir/",
+          "price": "72",
+          "price_amount": 72,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://khus-khus.com/wp-content/uploads/2024/03/SURYA.jpg",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "KKBESURYA-100",
+            "url": "https://khus-khus.com/products/surya-body-elixir/",
+            "price": "72.00",
+            "stock": "In Stock",
+            "images": [
+              "https://khus-khus.com/wp-content/uploads/2024/03/SURYA.jpg",
+              "https://khus-khus.com/wp-content/uploads/2023/07/i-k5shhhG-X2.jpg",
+              "https://khus-khus.com/wp-content/uploads/2024/03/unnamed.jpg",
+              "https://khus-khus.com/wp-content/uploads/2024/03/KHUS-surya-box-1.png"
+            ],
+            "currency": "USD",
+            "image_url": "https://khus-khus.com/wp-content/uploads/2024/03/SURYA.jpg",
+            "image_urls": [
+              "https://khus-khus.com/wp-content/uploads/2024/03/SURYA.jpg",
+              "https://khus-khus.com/wp-content/uploads/2023/07/i-k5shhhG-X2.jpg",
+              "https://khus-khus.com/wp-content/uploads/2024/03/unnamed.jpg",
+              "https://khus-khus.com/wp-content/uploads/2024/03/KHUS-surya-box-1.png"
+            ],
+            "variant_id": "khus-17039",
+            "description": "https://khus-khus.com/wp-content/uploads/2024/03/khus-surya-video-web-3.mp4 siberian sea buckthorn thd vit c 10% indian neroli new caledonia sandalwood raw organic coconut oil olive-derived squalane SURYA body elixir is a testament to the synergy of sun and earth, a modern herbal concoction designed to nourish and illuminate your skin. Embrace the essence of the sun's life-giving energy, and let your skin glow with the radiance of a thousand suns. Discover the sun's botanical alchemy with KHUS+KHUS – where tradition meets modernity in a celebration of herbal wisdom. SKIN CHALLENGES normal, sensitive, inflamed skin, ideal for skin that needs to be calmed down and regenerated. BOTANICAL THERAPEUTIC ACTIONS emollient, sedative, relaxant, tonic, antioxidant COMPOSITION SIBERIAN SEA BUCKTHORN: A golden treasure, this vibrant berry is rich in essential fatty acids and oil solubility. THD VIT C 10%: Unlike water-soluble forms of Vitamin C, such as ascorbic acid, THD Ascorbate is lipid (fat) soluble. This allows it to penetrate the skin's lipid barrier more easily, reaching the deeper layers of the skin where it can be more effective. In terms of efficacy at lower concentrations: THD Ascorbate has been shown to be effective at lower concentrations compared to other forms of Vitamin C. This can reduce the risk of skin irritation, making it a good option for those with sensitive skin. ORGANIC ROSE HIP SEED OIL: Celebrated for its remarkable skin-regenerating properties, this oil is a fountain of Vitamin A and antioxidants, aiding in skin repair and renewal, just like the dawn's rejuvenating rays. INDIAN NEROLI: Extracted from the blossoms of the bitter orange tree, this ethereal oil is a symbol of purity and light. It helps balance skin's moisture, imparting a luminous glow reminiscent of the first light of sunrise. NEW CALEDONIA SANDALWOOD: Revered for its soothing properties, this aromatic wood oil grounds the spirit, much like the warm, comforting embrace of the late afternoon sun. RAW ORGANIC COCONUT: This tropical marvel, brimming with healthy fatty acids, nurtures and hydrates, offering your skin a touch of the sun's nurturing caress. OLIVE-DERIVED SQUALANE: A harmonious echo of the olive tree's sun-soaked vitality, this emollient helps to lock in moisture, leaving the skin feeling soft and supple, like a gentle sunbeam. INFUSED WITH ORGANIC JASMINE FLOWER AND CALENDULA FLOWERS: Jasmine, the twilight bloom, complements the sun's journey with its soothing, moisturizing properties, while Calendula, a solar-hued marigold, is known for its calming and healing abilities, akin to a sunset's soothing embrace. https://khus-khus.com/wp-content/uploads/2024/08/khus-surya-video-web.mp4 ENERGETICS anti inflammatory meditation channel skin tonic antioxidant",
+            "option_name": "Size",
+            "option_value": "100ml/3.4oz"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:43c66578893658129d1dd6fb53bb357f",
+        "sku_key": "prod::external_seed::external_seed::ext_6ae70ce8a0cf2d0f8615d4dc::sku_db532a08ed3a19c3087b",
+        "product_key": "prod::external_seed::external_seed::ext_6ae70ce8a0cf2d0f8615d4dc",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 72,
+        "merchant_effective_price": 72,
+        "estimated_best_price": 72,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_748df00d5321e2c0ad141e80",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_748df00d5321e2c0ad141e80",
+          "external_product_id": "ext_6ae70ce8a0cf2d0f8615d4dc",
+          "domain": "khus-khus.com",
+          "market": "US",
+          "product_title": "SURYA body elixir",
+          "variant_title": "SURYA body elixir",
+          "variant_sku": "KKBESURYA-100",
+          "raw_variant_id": "khus-17039",
+          "url": "https://khus-khus.com/products/surya-body-elixir/",
+          "offer_url": "https://khus-khus.com/products/surya-body-elixir/",
+          "canonical_url": "https://khus-khus.com/products/surya-body-elixir/",
+          "destination_url": "https://khus-khus.com/products/surya-body-elixir/",
+          "external_redirect_url": "https://khus-khus.com/products/surya-body-elixir/",
+          "merchant_display_name": "KHUS KHUS",
+          "price": "72",
+          "price_amount": 72,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "official_woocommerce_store_api",
+            "captured_at": "2026-05-25T06:25:14.497Z",
+            "evidence_url": "https://khus-khus.com/products/surya-body-elixir/",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [
+                "US"
+              ],
+              "evidence_source": "woocommerce_store_api_checkout_config",
+              "confidence": "medium",
+              "checked_at": "2026-05-25T06:25:14.497Z",
+              "reason_codes": [
+                "store_api_usd_price",
+                "official_store_country_us"
+              ],
+              "evidence_url": "https://khus-khus.com/products/surya-body-elixir/"
+            },
+            "regional_price": {
+              "amount": 72,
+              "currency": "USD",
+              "display_raw": "72.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "high",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://khus-khus.com/products/surya-body-elixir/",
+              "captured_at": "2026-05-25T06:25:14.497Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "woocommerce_store_api",
+              "confidence": "high",
+              "captured_at": "2026-05-25T06:25:14.497Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "woocommerce_store_api",
+              "confidence": "medium",
+              "reason_codes": [
+                "checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T06:25:14.497Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "woocommerce_store_api",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T06:25:14.497Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 72,
+              "currency": "USD",
+              "display_raw": "72.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "high",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://khus-khus.com/products/surya-body-elixir/",
+              "captured_at": "2026-05-25T06:25:14.497Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "woocommerce_store_api",
+              "confidence": "high",
+              "captured_at": "2026-05-25T06:25:14.497Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 2790
+      }
+    }
+  ]
+}

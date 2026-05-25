@@ -1,0 +1,465 @@
+{
+  "generated_at": "2026-05-25T07:05:46.953Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 8,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_8645b51f78b6e7c77e64d6c3",
+      "sellable_item_group_id": "sig_8645b51f78b6e7c77e64d6c3",
+      "product_line_id": "pl_108f96ef0a9d6b6bed9c3b60",
+      "review_family_id": "rf_108f96ef0a9d6b6bed9c3b60",
+      "brand_name": "KHUS KHUS",
+      "category_paths": [
+        "Skincare",
+        "Toner"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "D DROP humectant factor",
+      "subtitle": "KHUS KHUS D DROP humectant factor is a source-backed toner from the brand-owned product page. The source page lists formula fields including mentha piperita (peppermint hydrosol), guar hydroxypropyltrimonium chloride (guar gum), water & phospholipids & cannabis sativa flower/leaf/stem extract, lactobacillus/watermelon fruit ferment extract, silver dihydrogen citrate (silver ion). Use instructions, size/detail fields, price, availability, and images were captured from the same source.",
+      "variant_axes": {
+        "volume": "30ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://khus-khus.com/wp-content/uploads/2021/10/i-KGG8dq4-X2.jpg",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://khus-khus.com/wp-content/uploads/2021/10/i-KGG8dq4-X2.jpg",
+        "https://khus-khus.com/wp-content/uploads/2021/10/khus-d-drop.png",
+        "https://khus-khus.com/wp-content/uploads/2021/10/DSCF7908-copy2222-scaled.jpg",
+        "https://khus-khus.com/wp-content/uploads/2023/07/SKINHEALTH-routine-5.png"
+      ],
+      "price_min": 38,
+      "price_max": 38,
+      "default_offer_id": "external_seed:ext_290f05b3b8bfbfdb4e079d09",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A KHUS KHUS toner listed on the brand source page as D DROP humectant factor.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "KHUS KHUS",
+        "Skincare",
+        "Toner"
+      ],
+      "sort_keys": {
+        "price_min": 38,
+        "price_max": 38,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_290f05b3b8bfbfdb4e079d09"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_4683665b02e4eefe502a89da",
+      "sellable_item_group_id": "sig_4683665b02e4eefe502a89da",
+      "product_line_id": "pl_923c792b53171e42c661c255",
+      "review_family_id": "rf_923c792b53171e42c661c255",
+      "brand_name": "KHUS KHUS",
+      "category_paths": [
+        "Skincare",
+        "Face Balm"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "THE FIX face potion",
+      "subtitle": "KHUS KHUS THE FIX face potion is a source-backed face balm from the brand-owned product page. The source page lists formula fields including hemp seed butter, rosa canina (rose hip) butter, emblica officinalis (amalaki), ficus indica (prickly pear) oil, tillandsia usneoldes (usnea). Use instructions, size/detail fields, price, availability, and images were captured from the same source.",
+      "variant_axes": {
+        "volume": "30ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://khus-khus.com/wp-content/uploads/2019/09/the-fix.jpg",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://khus-khus.com/wp-content/uploads/2019/09/the-fix.jpg",
+        "https://khus-khus.com/wp-content/uploads/2021/04/RESQ-FACE-POTION-scaled.jpg",
+        "https://khus-khus.com/wp-content/uploads/2019/09/i-8Lmqv3h-X2.jpg",
+        "https://khus-khus.com/wp-content/uploads/2021/10/DSCF7838-copy_2-scaled.jpg",
+        "https://khus-khus.com/wp-content/uploads/2023/07/SKINHEALTH-routine-1.png"
+      ],
+      "price_min": 84,
+      "price_max": 84,
+      "default_offer_id": "external_seed:ext_45cabf70e20e807f1ea5d63e",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A KHUS KHUS face balm listed on the brand source page as THE FIX face potion.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "KHUS KHUS",
+        "Skincare",
+        "Face Balm"
+      ],
+      "sort_keys": {
+        "price_min": 84,
+        "price_max": 84,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_45cabf70e20e807f1ea5d63e"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_5c7196c7dcb74ada1236c84f",
+      "sellable_item_group_id": "sig_5c7196c7dcb74ada1236c84f",
+      "product_line_id": "pl_f76a1f4c69ea82b0fc8d5b00",
+      "review_family_id": "rf_f76a1f4c69ea82b0fc8d5b00",
+      "brand_name": "KHUS KHUS",
+      "category_paths": [
+        "Bodycare",
+        "Body Oil"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "BLEU body serum",
+      "subtitle": "KHUS KHUS BLEU body serum is a source-backed body oil from the brand-owned product page. The source page lists formula fields including squalane(olive derived), caprylic/capric triglyceride (mct oil), sclerocarya birrea (marula oil), argania spinosa(argan oil), helichrysum italicum(helichrysum) tanacetum annuum(blue tansy). Use instructions, size/detail fields, price, availability, and images were captured from the same source.",
+      "variant_axes": {
+        "volume": "200ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://khus-khus.com/wp-content/uploads/2016/07/bleu-body-serum.jpg",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://khus-khus.com/wp-content/uploads/2016/07/bleu-body-serum.jpg",
+        "https://khus-khus.com/wp-content/uploads/2016/07/i-3hXcK8D-X2.jpg",
+        "https://khus-khus.com/wp-content/uploads/2016/07/DSCF7806-copy-scaled.jpg"
+      ],
+      "price_min": 85,
+      "price_max": 85,
+      "default_offer_id": "external_seed:ext_4dace0e8a2fe70b378b91c2c",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A KHUS KHUS body oil listed on the brand source page as BLEU body serum.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "KHUS KHUS",
+        "Bodycare",
+        "Body Oil"
+      ],
+      "sort_keys": {
+        "price_min": 85,
+        "price_max": 85,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_4dace0e8a2fe70b378b91c2c"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_059a3a113be5114dda5ef987",
+      "sellable_item_group_id": "sig_059a3a113be5114dda5ef987",
+      "product_line_id": "pl_9f83e45c1115426ede513b33",
+      "review_family_id": "rf_9f83e45c1115426ede513b33",
+      "brand_name": "KHUS KHUS",
+      "category_paths": [
+        "Skincare",
+        "Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "C DROPS serum",
+      "subtitle": "KHUS KHUS C DROPS serum is a source-backed serum from the brand-owned product page. The source page lists formula fields including squalane(olive derived), hippophae rhamnoides (sea buckthorn), vitamin C (tetrahexyldecyl ascorbate), sambucus nigra (elderberry) fruit extract. Use instructions, size/detail fields, price, availability, and images were captured from the same source.",
+      "variant_axes": {
+        "volume": "30ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://khus-khus.com/wp-content/uploads/2023/07/c-drops.jpg",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://khus-khus.com/wp-content/uploads/2023/07/c-drops.jpg",
+        "https://khus-khus.com/wp-content/uploads/2023/07/i-k5shhhG-X2.jpg",
+        "https://khus-khus.com/wp-content/uploads/2023/07/DSCF3463_2-copy.jpg",
+        "https://khus-khus.com/wp-content/uploads/2023/07/SKINHEALTH-routine.png"
+      ],
+      "price_min": 32,
+      "price_max": 32,
+      "default_offer_id": "external_seed:ext_65f9a9219685ffc820a9eee8",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A KHUS KHUS serum listed on the brand source page as C DROPS serum.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "KHUS KHUS",
+        "Skincare",
+        "Serum"
+      ],
+      "sort_keys": {
+        "price_min": 32,
+        "price_max": 32,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_65f9a9219685ffc820a9eee8"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_2afbc56f52ac6b1c99659ab3",
+      "sellable_item_group_id": "sig_2afbc56f52ac6b1c99659ab3",
+      "product_line_id": "pl_86e4199162b05ac9148f9cbe",
+      "review_family_id": "rf_86e4199162b05ac9148f9cbe",
+      "brand_name": "KHUS KHUS",
+      "category_paths": [
+        "Bodycare",
+        "Body Oil"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "SURYA body elixir",
+      "subtitle": "KHUS KHUS SURYA body elixir is a source-backed body oil from the brand-owned product page. The source page lists formula fields including squalane(olive derived), caprylic/capric triglyceride (mct oil), cocos nucifera (coconut oil), calendula officinalis (calendula flowers), jasminum officinale (jasmine flowers). Use instructions, size/detail fields, price, availability, and images were captured from the same source.",
+      "variant_axes": {
+        "volume": "100ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://khus-khus.com/wp-content/uploads/2024/03/SURYA.jpg",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://khus-khus.com/wp-content/uploads/2024/03/SURYA.jpg",
+        "https://khus-khus.com/wp-content/uploads/2023/07/i-k5shhhG-X2.jpg",
+        "https://khus-khus.com/wp-content/uploads/2024/03/unnamed.jpg",
+        "https://khus-khus.com/wp-content/uploads/2024/03/KHUS-surya-box-1.png"
+      ],
+      "price_min": 72,
+      "price_max": 72,
+      "default_offer_id": "external_seed:ext_6ae70ce8a0cf2d0f8615d4dc",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A KHUS KHUS body oil listed on the brand source page as SURYA body elixir.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "KHUS KHUS",
+        "Bodycare",
+        "Body Oil"
+      ],
+      "sort_keys": {
+        "price_min": 72,
+        "price_max": 72,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_6ae70ce8a0cf2d0f8615d4dc"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_0ebbe86c7118d24e0d759b35",
+      "sellable_item_group_id": "sig_0ebbe86c7118d24e0d759b35",
+      "product_line_id": "pl_864b902d6bc1c925b6647d22",
+      "review_family_id": "rf_864b902d6bc1c925b6647d22",
+      "brand_name": "KHUS KHUS",
+      "category_paths": [
+        "Bodycare",
+        "Body Oil"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "COPIOUS body serum",
+      "subtitle": "KHUS KHUS COPIOUS body serum is a source-backed body oil from the brand-owned product page. The source page lists formula fields including hemp oil, olea europaea (olive oil), nigella sativa (black cumin seed oil), camellia oleifera (camellia), commiphora myrrha (myrrh). Use instructions, size/detail fields, price, availability, and images were captured from the same source.",
+      "variant_axes": {
+        "volume": "200ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://khus-khus.com/wp-content/uploads/2016/07/COPIOUS-body-serum-200ml-1.jpg",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://khus-khus.com/wp-content/uploads/2016/07/COPIOUS-body-serum-200ml-1.jpg",
+        "https://khus-khus.com/wp-content/uploads/2021/04/Copious-Body-Serum-1-copy.jpg",
+        "https://khus-khus.com/wp-content/uploads/2016/07/DSCF7719-copy-scaled.jpg",
+        "https://khus-khus.com/wp-content/uploads/2016/07/i-544W7MS-X2.jpg"
+      ],
+      "price_min": 85,
+      "price_max": 85,
+      "default_offer_id": "external_seed:ext_b30bcf26cdb534ef9538a3f7",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A KHUS KHUS body oil listed on the brand source page as COPIOUS body serum.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "KHUS KHUS",
+        "Bodycare",
+        "Body Oil"
+      ],
+      "sort_keys": {
+        "price_min": 85,
+        "price_max": 85,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_b30bcf26cdb534ef9538a3f7"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_cd2abc5dfc8c8ccbebdc0719",
+      "sellable_item_group_id": "sig_cd2abc5dfc8c8ccbebdc0719",
+      "product_line_id": "pl_86028d2cc19d545d4d31f368",
+      "review_family_id": "rf_86028d2cc19d545d4d31f368",
+      "brand_name": "KHUS KHUS",
+      "category_paths": [
+        "Skincare",
+        "Face Balm"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "KAI repair balm",
+      "subtitle": "KHUS KHUS KAI repair balm is a source-backed face balm from the brand-owned product page. The source page lists formula fields including squalane(olive derived), caulerpa lentillifera (green caviar), helianthus annuus (sunflower) seed oil & saccharomyces/podophyllum peltatum ferment filtrate, brassica oleracea (broccoli seed), stearic acid. Use instructions, size/detail fields, price, availability, and images were captured from the same source.",
+      "variant_axes": {
+        "volume": "30ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://khus-khus.com/wp-content/uploads/2021/10/kai.jpg",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://khus-khus.com/wp-content/uploads/2021/10/kai.jpg",
+        "https://khus-khus.com/wp-content/uploads/2021/10/KAI-REPAIR-ABLM-scaled.jpg",
+        "https://khus-khus.com/wp-content/uploads/2021/10/i-nbkJq24-X2.jpg",
+        "https://khus-khus.com/wp-content/uploads/2023/07/SKINHEALTH-routine-4.png"
+      ],
+      "price_min": 52,
+      "price_max": 52,
+      "default_offer_id": "external_seed:ext_f27f918bac908cf6ba236b83",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A KHUS KHUS face balm listed on the brand source page as KAI repair balm.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "KHUS KHUS",
+        "Skincare",
+        "Face Balm"
+      ],
+      "sort_keys": {
+        "price_min": 52,
+        "price_max": 52,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_f27f918bac908cf6ba236b83"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_6e14d673e184819055e0122a",
+      "sellable_item_group_id": "sig_6e14d673e184819055e0122a",
+      "product_line_id": "pl_2955c2c61f5a12485093f2c5",
+      "review_family_id": "rf_2955c2c61f5a12485093f2c5",
+      "brand_name": "KHUS KHUS",
+      "category_paths": [
+        "Skincare",
+        "Face Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "SANS AGE face serum",
+      "subtitle": "KHUS KHUS SANS AGE face serum is a source-backed face serum from the brand-owned product page. The source page lists formula fields including simmondsia chinensis (jojoba seed oil), sclerocarya birrea(marula oil), adansonia digitata(baobab seed oil), argania spinosa(argan oil), squalane(olive derived). Use instructions, size/detail fields, price, availability, and images were captured from the same source.",
+      "variant_axes": {
+        "volume": "50ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://khus-khus.com/wp-content/uploads/2016/07/SANS-AGE-face-serum-1-scaled-e1608237456272.jpg",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://khus-khus.com/wp-content/uploads/2016/07/SANS-AGE-face-serum-1-scaled-e1608237456272.jpg",
+        "https://khus-khus.com/wp-content/uploads/2016/07/khus-sans-droper.png",
+        "https://khus-khus.com/wp-content/uploads/2016/07/Screenshot-2025-09-29-144059.png",
+        "https://khus-khus.com/wp-content/uploads/2023/07/SKINHEALTH-routine-3.png"
+      ],
+      "price_min": 80,
+      "price_max": 80,
+      "default_offer_id": "external_seed:ext_f86a3606bf6dc20fc810f99d",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A KHUS KHUS serum listed on the brand source page as SANS AGE face serum.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "KHUS KHUS",
+        "Skincare",
+        "Face Serum"
+      ],
+      "sort_keys": {
+        "price_min": 80,
+        "price_max": 80,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_f86a3606bf6dc20fc810f99d"
+      ]
+    }
+  ]
+}

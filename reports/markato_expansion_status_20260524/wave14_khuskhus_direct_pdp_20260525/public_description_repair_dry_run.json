@@ -1,0 +1,84 @@
+{
+  "ok": true,
+  "generated_at": "2026-05-25T06:49:10.419Z",
+  "mode": "dry_run",
+  "manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/wave14_khuskhus_direct_pdp_20260525/db_ready_candidate_manifest.json",
+  "scanned": 8,
+  "summary": {
+    "would_update": 8
+  },
+  "results": [
+    {
+      "external_product_id": "ext_65f9a9219685ffc820a9eee8",
+      "title": "C DROPS serum",
+      "status": "would_update",
+      "existing_description_length": 3172,
+      "next_description_length": 396,
+      "preserved_official_raw_description_length": 3172,
+      "validation_problems": []
+    },
+    {
+      "external_product_id": "ext_290f05b3b8bfbfdb4e079d09",
+      "title": "D DROP humectant factor",
+      "status": "would_update",
+      "existing_description_length": 1822,
+      "next_description_length": 503,
+      "preserved_official_raw_description_length": 1822,
+      "validation_problems": []
+    },
+    {
+      "external_product_id": "ext_f27f918bac908cf6ba236b83",
+      "title": "KAI repair balm",
+      "status": "would_update",
+      "existing_description_length": 2058,
+      "next_description_length": 463,
+      "preserved_official_raw_description_length": 2058,
+      "validation_problems": []
+    },
+    {
+      "external_product_id": "ext_45cabf70e20e807f1ea5d63e",
+      "title": "THE FIX face potion",
+      "status": "would_update",
+      "existing_description_length": 2106,
+      "next_description_length": 404,
+      "preserved_official_raw_description_length": 2106,
+      "validation_problems": []
+    },
+    {
+      "external_product_id": "ext_f86a3606bf6dc20fc810f99d",
+      "title": "SANS AGE face serum",
+      "status": "would_update",
+      "existing_description_length": 2233,
+      "next_description_length": 424,
+      "preserved_official_raw_description_length": 2233,
+      "validation_problems": []
+    },
+    {
+      "external_product_id": "ext_4dace0e8a2fe70b378b91c2c",
+      "title": "BLEU body serum",
+      "status": "would_update",
+      "existing_description_length": 1783,
+      "next_description_length": 446,
+      "preserved_official_raw_description_length": 1783,
+      "validation_problems": []
+    },
+    {
+      "external_product_id": "ext_b30bcf26cdb534ef9538a3f7",
+      "title": "COPIOUS body serum",
+      "status": "would_update",
+      "existing_description_length": 2529,
+      "next_description_length": 392,
+      "preserved_official_raw_description_length": 2529,
+      "validation_problems": []
+    },
+    {
+      "external_product_id": "ext_6ae70ce8a0cf2d0f8615d4dc",
+      "title": "SURYA body elixir",
+      "status": "would_update",
+      "existing_description_length": 2790,
+      "next_description_length": 435,
+      "preserved_official_raw_description_length": 2790,
+      "validation_problems": []
+    }
+  ]
+}
