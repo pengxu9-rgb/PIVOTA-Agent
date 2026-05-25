@@ -2165,6 +2165,45 @@ describe('externalSeedProducts helper', () => {
     );
   });
 
+  test('preserves dual-unit size labels for source-backed single-SKU variants', () => {
+    const row = {
+      id: 'eps_boj_rice_milk',
+      external_product_id: 'ext_boj_rice_milk',
+      canonical_url: 'https://beautyofjoseon.com/products/glow-replenishing-rice-milk',
+      destination_url: 'https://beautyofjoseon.com/products/glow-replenishing-rice-milk',
+      domain: 'beautyofjoseon.com',
+      title: 'Glow Replenishing Rice Milk',
+      price_amount: '18.00',
+      price_currency: 'USD',
+      seed_data: {
+        snapshot: {
+          variants: [
+            {
+              variant_id: 'boj_rice_milk_150ml',
+              sku_id: 'boj_rice_milk_150ml',
+              title: '5.07 oz / 150 mL',
+              options: [{ name: 'Size', value: '5.07 oz / 150 mL', axis_kind: 'size' }],
+              display_label: 'Size: 5.07 oz / 150 mL',
+              source_quality_status: 'high',
+            },
+          ],
+        },
+      },
+    };
+
+    const product = buildExternalSeedProduct(row);
+
+    expect(product.variants[0]).toEqual(
+      expect.objectContaining({
+        title: '5.07 oz / 150 mL',
+        display_label: 'Size: 5.07 oz / 150 mL',
+        axis_kind: 'volume',
+        option_value: '5.07 oz / 150 mL',
+        options: [{ name: 'Size', value: '5.07 oz / 150 mL', axis_kind: 'volume' }],
+      }),
+    );
+  });
+
   test('narrows polluted variant image galleries back to the active shade family', () => {
     const row = {
       id: 'eps_variant_gallery_pollution_1',

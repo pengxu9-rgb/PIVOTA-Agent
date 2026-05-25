@@ -2570,13 +2570,9 @@ function parseVariantQuantityValue(value) {
   return `${amount}${unit}`;
 }
 
-function formatSeedSizeDetailValue(value) {
-  const normalized = normalizeOptionText(value);
-  if (!normalized) return '';
-  const match = normalized.match(/\b(\d+(?:\.\d+)?)\s*(ml|m l|g|kg|oz|fl\.?\s*oz\.?|fluid\s*ounces?|l|lb|lbs|mm|cm)\b/i);
-  if (!match) return '';
-  const amount = String(match[1] || '').trim();
-  const normalizedUnit = String(match[2] || '')
+function formatSeedSizeDetailParts(amountValue, unitValue) {
+  const amount = String(amountValue || '').trim();
+  const normalizedUnit = String(unitValue || '')
     .toLowerCase()
     .replace(/fluid\s*ounces?/g, 'fl oz')
     .replace(/fl\.?\s*oz\.?/g, 'fl oz')
@@ -2593,6 +2589,26 @@ function formatSeedSizeDetailValue(value) {
   return `${amount} ${displayUnit}`.trim();
 }
 
+function collectSeedSizeDetailValues(value) {
+  const normalized = normalizeOptionText(value);
+  if (!normalized) return [];
+  const out = [];
+  const seen = new Set();
+  const matches = normalized.matchAll(/\b(\d+(?:\.\d+)?)\s*(ml|m l|g|kg|oz|fl\.?\s*oz\.?|fluid\s*ounces?|l|lb|lbs|mm|cm)\b/gi);
+  for (const match of matches) {
+    const formatted = formatSeedSizeDetailParts(match[1], match[2]);
+    const key = formatted.toLowerCase();
+    if (!formatted || seen.has(key)) continue;
+    seen.add(key);
+    out.push(formatted);
+  }
+  return out;
+}
+
+function formatSeedSizeDetailValue(value) {
+  return collectSeedSizeDetailValues(value)[0] || '';
+}
+
 function getSeedSizeDetailPriority(value) {
   const normalized = normalizeOptionText(value).toLowerCase();
   if (!normalized) return 99;
@@ -2605,12 +2621,12 @@ function buildSeedSizeDetailLabel(...values) {
   const unique = [];
   const seen = new Set();
   for (const value of values) {
-    const formatted = formatSeedSizeDetailValue(value);
-    if (!formatted) continue;
-    const key = formatted.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    unique.push(formatted);
+    for (const formatted of collectSeedSizeDetailValues(value)) {
+      const key = formatted.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      unique.push(formatted);
+    }
   }
   if (!unique.length) return '';
   unique.sort((left, right) => getSeedSizeDetailPriority(left) - getSeedSizeDetailPriority(right));
