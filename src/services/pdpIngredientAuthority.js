@@ -643,8 +643,45 @@ function filterDisplayableActiveItems(product, items) {
 
 function displayableActiveItemsForSource(product, items, sourceOrigin = '') {
   const normalized = uniqueStrings(Array.isArray(items) ? items : []);
-  if (asString(sourceOrigin) === 'reviewed_active_ingredients') return normalized;
+  if (asString(sourceOrigin) === 'reviewed_active_ingredients' || isReviewedIngredientAuthoritySource(sourceOrigin)) {
+    return normalized;
+  }
   return filterDisplayableActiveItems(product, normalized);
+}
+
+function isMakeupColorCosmeticProduct(product) {
+  const categoryText = [
+    product?.catalog_category_path,
+    Array.isArray(product?.category_path) ? product.category_path.join('/') : product?.category_path,
+    product?.category,
+    product?.product_type,
+    product?.title,
+  ]
+    .map((value) => asString(value).toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+  if (/beauty\/makeup\/(?:lip|eye|face|cheek|complexion|base)(?:\/|$)/i.test(categoryText)) return true;
+  return /\b(?:lipstick|lip gloss|lip luminizer|lip paint|mascara|eyeliner|eyeshadow|eye shadow|foundation|concealer|blush|bronzer|highlighter|luminizer)\b/i
+    .test(categoryText);
+}
+
+function isExplicitActiveSourceOrigin(sourceOrigin) {
+  const normalized = asString(sourceOrigin).toLowerCase();
+  return (
+    normalized === 'reviewed_active_ingredients' ||
+    isReviewedIngredientAuthoritySource(normalized) ||
+    normalized === 'active_block' ||
+    normalized === 'active_section' ||
+    /\b(?:regulatory|otc|drug[_\s-]?facts?|active[_\s-]?ingredients?)\b/i.test(normalized)
+  );
+}
+
+function shouldSuppressCosmeticActiveIngredients(product, items, sourceOrigin) {
+  if (!Array.isArray(items) || items.length === 0) return false;
+  if (!isMakeupColorCosmeticProduct(product)) return false;
+  if (isExplicitActiveSourceOrigin(sourceOrigin)) return false;
+  if (items.some((item) => REGULATORY_ACTIVE_RE.test(asString(item)))) return false;
+  return true;
 }
 
 function classifySuppressedActiveItems(items) {
@@ -1570,11 +1607,20 @@ function buildStructuredPdpIngredientModules(product, options = {}) {
                 }),
           }
       : null;
-  const displayableAuthorityActiveItems = displayableActiveItemsForSource(
+  let displayableAuthorityActiveItems = displayableActiveItemsForSource(
     product,
     authority.active_items,
-    authority.active_source_origin,
+    authority.active_source_origin || authority.source_origin,
   );
+  if (
+    shouldSuppressCosmeticActiveIngredients(
+      product,
+      displayableAuthorityActiveItems,
+      authority.active_source_origin || authority.source_origin,
+    )
+  ) {
+    displayableAuthorityActiveItems = [];
+  }
   const activeIngredientsData =
     Array.isArray(authority.active_items) && displayableAuthorityActiveItems.length
       ? {

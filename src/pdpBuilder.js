@@ -876,6 +876,10 @@ function isPublicContributionVisible(item) {
 
 const PDP_SYNTHETIC_QUESTION_SOURCE_RE =
   /(?:pivota_force_fill|force_filled|force_fill|synthetic|simulation|mock|browser_fallback|legacy_fallback)/i;
+const PDP_SYNTHETIC_HOW_TO_SOURCE_RE =
+  /(?:pivota_force_fill|force_filled|force_fill|synthetic|simulation|mock|browser_fallback|legacy_fallback)/i;
+const PDP_GENERIC_FORCE_FILL_HOW_TO_RE =
+  /\b(?:use according to the merchant directions for this product|patch test first if you have sensitivity concerns|apply to the target area and build as needed|remove thoroughly at the end of the day)\b/i;
 
 function isSyntheticPdpQuestionSource(item) {
   const source = asPlainObject(item) || {};
@@ -896,6 +900,29 @@ function isSyntheticPdpQuestionSource(item) {
     .filter(Boolean)
     .join(' ');
   return PDP_SYNTHETIC_QUESTION_SOURCE_RE.test(sourceSignals);
+}
+
+function isSyntheticPdpHowToCandidate(candidate, candidateText = '') {
+  const text = asNonEmptyString(candidateText || pickStructuredText(candidate));
+  if (text && PDP_GENERIC_FORCE_FILL_HOW_TO_RE.test(text)) return true;
+  if (!candidate || typeof candidate !== 'object') return false;
+  const sourceSignals = [
+    candidate.source,
+    candidate.source_kind,
+    candidate.sourceKind,
+    candidate.source_origin,
+    candidate.sourceOrigin,
+    candidate.source_type,
+    candidate.sourceType,
+    candidate.source_quality_status,
+    candidate.sourceQualityStatus,
+    candidate.content_review_state,
+    candidate.review_status,
+  ]
+    .map((value) => asNonEmptyString(value))
+    .filter(Boolean)
+    .join(' ');
+  return PDP_SYNTHETIC_HOW_TO_SOURCE_RE.test(sourceSignals);
 }
 
 function buildContributionPolicy(moduleType) {
@@ -1379,6 +1406,7 @@ function buildHowToUseModuleData(candidates, fallbackTitle) {
       splitHowToUseStepsFromText(item),
     );
     const candidateText = uniqueNonEmptyStrings([rawText, ...structuredSteps]).join(' ');
+    if (isSyntheticPdpHowToCandidate(candidate, candidateText)) continue;
     if (looksLikeCrossSellPairingText(candidateText)) continue;
     const steps = uniqueNonEmptyStrings([
       ...structuredSteps,
