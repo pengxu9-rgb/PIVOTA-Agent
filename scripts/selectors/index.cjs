@@ -352,6 +352,25 @@ ORDER BY total_skus DESC, source_system
 `.trim(),
   },
   {
+    name: 'source_domain_coverage',
+    description: 'Coverage of source_domain on catalog rows grouped by source_system.',
+    paramSchema: LIMIT_PARAM_SCHEMA,
+    query: `
+SELECT
+  source_system,
+  COUNT(*) AS rows,
+  COUNT(*) FILTER (WHERE source_domain IS NOT NULL AND source_domain <> '') AS rows_with_domain,
+  ROUND(
+    100.0 * COUNT(*) FILTER (WHERE source_domain IS NOT NULL AND source_domain <> '')
+    / NULLIF(COUNT(*), 0),
+    1
+  ) AS pct_with_domain
+FROM catalog_products
+GROUP BY source_system
+ORDER BY rows DESC
+`.trim(),
+  },
+  {
     name: 'orphan_catalog_product',
     description: 'Catalog products with neither SKUs nor offers.',
     paramSchema: LIMIT_PARAM_SCHEMA,

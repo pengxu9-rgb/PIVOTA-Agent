@@ -726,6 +726,7 @@ function buildMirror(row) {
   const snapshot = pickSnapshot(row);
   const externalProductId = asString(row.external_product_id);
   const seedId = asString(row.id);
+  const sourceDomain = asString(row.domain) || null;
   const brand = pickBrand(row);
   const title = asString(row.title || seedData.title || snapshot.title || externalProductId);
   const canonicalUrl = pickCanonicalUrl(row);
@@ -870,6 +871,7 @@ function buildMirror(row) {
         platform: PLATFORM,
         source_product_id: externalProductId,
         source_variant_id: variant.source_variant_id,
+        source_domain: sourceDomain,
         sku: variant.sku,
         barcode: variant.barcode,
         title: variant.title,
@@ -899,6 +901,7 @@ function buildMirror(row) {
         price_confidence: variant.price_amount > 0 ? 1 : null,
         source_system: SOURCE_SYSTEM,
         source_ref: seedId,
+        source_domain: sourceDomain,
         offer_payload: offerPayload,
       },
     };
@@ -917,6 +920,7 @@ function buildMirror(row) {
       readiness_tier: 'referral_only',
       source_system: SOURCE_SYSTEM,
       source_ref: seedId,
+      source_domain: sourceDomain,
       title,
       description,
       brand,
@@ -1106,6 +1110,7 @@ async function applyMirrors(
               readiness_tier,
               source_system,
               source_ref,
+              source_domain,
               title,
               description,
               brand,
@@ -1131,8 +1136,8 @@ async function applyMirrors(
               sync_status,
               updated_at
             ) VALUES (
-              $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18::jsonb,$19,$20,$21,$22,$23,now(),
-              $24,$25,now(),$26::jsonb,$27,$28,now(),$29,now()
+              $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18::jsonb,$19::jsonb,$20,$21,$22,$23,$24,now(),
+              $25,$26,now(),$27::jsonb,$28,$29,now(),$30,now()
             )
             ON CONFLICT (product_key) DO UPDATE SET
               catalog_track = EXCLUDED.catalog_track,
@@ -1140,6 +1145,7 @@ async function applyMirrors(
               readiness_tier = EXCLUDED.readiness_tier,
               source_system = EXCLUDED.source_system,
               source_ref = EXCLUDED.source_ref,
+              source_domain = EXCLUDED.source_domain,
               title = EXCLUDED.title,
               description = EXCLUDED.description,
               brand = EXCLUDED.brand,
@@ -1174,6 +1180,7 @@ async function applyMirrors(
             p.readiness_tier,
             p.source_system,
             p.source_ref,
+            p.source_domain,
             p.title,
             p.description,
             p.brand,
@@ -1316,6 +1323,7 @@ async function applyMirrors(
                 platform,
                 source_product_id,
                 source_variant_id,
+                source_domain,
                 sku,
                 barcode,
                 title,
@@ -1327,8 +1335,9 @@ async function applyMirrors(
                 sku_payload,
                 readiness_tier,
                 updated_at
-              ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14::jsonb,$15::jsonb,$16,now())
+              ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14::jsonb,$15::jsonb,$16::jsonb,$17,now())
               ON CONFLICT (sku_key) DO UPDATE SET
+                source_domain = EXCLUDED.source_domain,
                 barcode = EXCLUDED.barcode,
                 title = EXCLUDED.title,
                 currency = EXCLUDED.currency,
@@ -1347,6 +1356,7 @@ async function applyMirrors(
               s.platform,
               s.source_product_id,
               s.source_variant_id,
+              s.source_domain,
               s.sku,
               s.barcode,
               s.title,
@@ -1382,9 +1392,10 @@ async function applyMirrors(
                 price_confidence,
                 source_system,
                 source_ref,
+                source_domain,
                 offer_payload,
                 updated_at
-              ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18::jsonb,now())
+              ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19::jsonb,now())
               ON CONFLICT (offer_id) DO UPDATE SET
                 availability = EXCLUDED.availability,
                 currency = EXCLUDED.currency,
@@ -1394,6 +1405,7 @@ async function applyMirrors(
                 price_confidence = EXCLUDED.price_confidence,
                 source_system = EXCLUDED.source_system,
                 source_ref = EXCLUDED.source_ref,
+                source_domain = EXCLUDED.source_domain,
                 offer_payload = EXCLUDED.offer_payload,
                 updated_at = now()
             `,
@@ -1415,6 +1427,7 @@ async function applyMirrors(
               o.price_confidence,
               o.source_system,
               o.source_ref,
+              o.source_domain,
               JSON.stringify(o.offer_payload),
             ],
           );

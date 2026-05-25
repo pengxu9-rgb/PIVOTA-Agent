@@ -18,6 +18,7 @@ const EXPECTED_SELECTORS = [
   'catalog_staler_than_seed',
   'index_serving_contract_violation',
   'sku_barcode_coverage',
+  'source_domain_coverage',
   'orphan_catalog_product',
   'orphan_offer_without_sku',
   'zero_or_missing_price_offer',
