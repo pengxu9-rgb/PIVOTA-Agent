@@ -35268,9 +35268,24 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        markPdpV2Phase('identity_graph_product_intel_gate', identityGraphIntelGateStartedAt);
 	      }
 	      if (identityGraphLive?.synthetic_product) {
+	        const canonicalProductSourceSystem = firstNonEmptyString(
+            canonicalProduct?.source_system,
+            canonicalProduct?.sourceSystem,
+            canonicalProduct?.source,
+          );
+          const canonicalProductExternalId = firstNonEmptyString(
+            canonicalProduct?.external_product_id,
+            canonicalProduct?.externalProductId,
+            canonicalProduct?.source_product_id,
+            canonicalProduct?.sourceProductId,
+          );
 	        const shouldPreserveExternalSeedPdpContent =
 	          canonicalProductRef?.merchant_id === EXTERNAL_SEED_MERCHANT_ID &&
-	          isExternalSeedProductId(canonicalProductRef?.product_id) &&
+	          (
+              isExternalSeedProductId(canonicalProductRef?.product_id) ||
+              isExternalSeedProductId(canonicalProductExternalId) ||
+              canonicalProductSourceSystem === 'external_product_seeds_mirror_v1'
+            ) &&
 	          hasExternalSeedRichPdpContent(canonicalProduct);
 	        canonicalProductForPdp = shouldPreserveExternalSeedPdpContent
 	          ? mergeIdentitySyntheticWithRichExternalSeedProduct(
