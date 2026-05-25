@@ -118,6 +118,44 @@ describe('pdpIngredientAuthority', () => {
     expect(modules.ingredientsInciData.raw_text).not.toMatch(/^FLORAL PEONY BLOSSOM/i);
   });
 
+  test('keeps source-backed lanolin balm INCI visible for external seed body balms', () => {
+    const modules = buildStructuredPdpIngredientModules({
+      merchant_id: 'external_seed',
+      source: 'external_seed',
+      title: 'Baa Ram Ewe Lanolin Skin Balm 120g',
+      category_path: ['beauty', 'bodycare', 'body-balm'],
+      pdp_details_sections: [
+        {
+          heading: 'Ingredients',
+          content:
+            'Lanolin Anhydrous,Pure Australian Lanolin, Vitellaria Paradora,Organic Shea Butter, Cera Alba, Bees Wax, Retinoids, Vitamin A, Tocoherol, Viamin E, Neroli & Musk body safe fragrance.',
+        },
+      ],
+      pdp_field_quality_summary: {
+        ingredients_raw: {
+          source_origin: 'official_shopify_product_json',
+          source_quality_status: 'high',
+        },
+      },
+    });
+
+    expect(modules.ingredientsInciData).toEqual(
+      expect.objectContaining({
+        source_origin: 'pdp_section',
+        source_quality_status: 'authoritative',
+        items: expect.arrayContaining([
+          'Lanolin Anhydrous',
+          'Pure Australian Lanolin',
+          'Organic Shea Butter',
+          'Cera Alba',
+          'Bees Wax',
+        ]),
+      }),
+    );
+    expect(modules.ingredientsInciData.raw_text).toContain('Lanolin Anhydrous');
+    expect(modules.authority.purity_status).toBe('authoritative');
+  });
+
   test('keeps reviewed mineral makeup INCI visible for color formulas', () => {
     const modules = buildStructuredPdpIngredientModules({
       merchant_id: 'external_seed',
