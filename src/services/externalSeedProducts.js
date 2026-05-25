@@ -2691,6 +2691,14 @@ function variantValueHasPackCountAndVolume(value) {
   );
 }
 
+function variantValueLooksLikeDimensions(value) {
+  const normalized = normalizeOptionText(value);
+  if (!normalized) return false;
+  return /\b\d+(?:\.\d+)?\s*(?:mm|cm|in|inch|inches)?\s*(?:x|×|by)\s*\d+(?:\.\d+)?\s*(?:mm|cm|in|inch|inches)\b/i.test(
+    normalized,
+  );
+}
+
 function inferVariantAxisKind(option, context = {}) {
   const optionName = normalizeOptionNameKey(option?.name);
   const optionValue = normalizeOptionText(option?.value);
@@ -2733,6 +2741,13 @@ function inferVariantAxisKind(option, context = {}) {
     optionName === 'size' ||
     /\b(?:size|volume|capacity|amount|weight|net weight|net wt|ml|m l)\b/.test(optionName)
   ) {
+    if (variantValueLooksLikeDimensions(optionValue)) {
+      return {
+        axis_kind: 'size',
+        display_label: VARIANT_AXIS_LABELS.size,
+        normalized_value: optionValue,
+      };
+    }
     const mixedPackAndVolume = variantValueHasPackCountAndVolume(optionValue);
     const normalizedSizeValue =
       volume && !mixedPackAndVolume ? buildSeedSizeDetailLabel(optionValue) || optionValue : optionValue;

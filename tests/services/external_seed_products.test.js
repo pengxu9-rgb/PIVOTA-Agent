@@ -2204,6 +2204,44 @@ describe('externalSeedProducts helper', () => {
     );
   });
 
+  test('preserves source-backed dimension size labels for accessory variants', () => {
+    const row = {
+      id: 'eps_boj_soap_saver',
+      external_product_id: 'ext_boj_soap_saver',
+      canonical_url: 'https://beautyofjoseon.com/products/nobang-soap-saver',
+      destination_url: 'https://beautyofjoseon.com/products/nobang-soap-saver',
+      domain: 'beautyofjoseon.com',
+      title: 'Nobang Soap Saver',
+      price_amount: '5.00',
+      price_currency: 'USD',
+      seed_data: {
+        snapshot: {
+          variants: [
+            {
+              variant_id: 'boj_nobang_soap_saver_190x135mm',
+              sku_id: 'boj_nobang_soap_saver_190x135mm',
+              title: '190 x 135 mm',
+              options: [{ name: 'Size', value: '190 x 135 mm', axis_kind: 'size' }],
+              display_label: 'Size: 190 x 135 mm',
+              source_quality_status: 'high',
+            },
+          ],
+        },
+      },
+    };
+
+    const [variant] = normalizeSeedVariants(row.seed_data, row);
+    expect(variant).toEqual(
+      expect.objectContaining({
+        title: '190 x 135 mm',
+        display_label: 'Size: 190 x 135 mm',
+        axis_kind: 'size',
+        option_value: '190 x 135 mm',
+        options: [{ name: 'Size', value: '190 x 135 mm', axis_kind: 'size' }],
+      }),
+    );
+  });
+
   test('narrows polluted variant image galleries back to the active shade family', () => {
     const row = {
       id: 'eps_variant_gallery_pollution_1',
