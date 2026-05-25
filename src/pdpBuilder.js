@@ -1234,6 +1234,7 @@ function looksLikeTransactionalNoiseText(value) {
 function looksLikeMarketingBlendName(value) {
   const text = asNonEmptyString(value);
   if (!text) return false;
+  if (/^and\s+vitamins?\s+[a-z0-9]/i.test(text)) return true;
   if (!/^[A-Z0-9][A-Z0-9&+\- ]{5,}$/.test(text)) return false;
   return /\b(RELIEF|COMPLEX|GRIP|PREP|SMOOTH|DEFENSE|ENERGY)\b/.test(text);
 }
