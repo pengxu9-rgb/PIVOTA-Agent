@@ -5667,6 +5667,121 @@ function readExternalSeedRichVariants(product) {
   return [];
 }
 
+function normalizeVariantSpecText(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  if (isPlainObject(value)) {
+    for (const key of ['value', 'label', 'title', 'name', 'text', 'display_label', 'displayLabel', 'option_value', 'optionValue']) {
+      const normalized = normalizeVariantSpecText(value[key]);
+      if (normalized) return normalized;
+    }
+    return '';
+  }
+  if (typeof value !== 'string') return '';
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  if (!normalized || /^\[object Object\]$/i.test(normalized)) return '';
+  if (/^(default|default title|variant \d+|single item|one size)$/i.test(normalized)) return '';
+  return normalized;
+}
+
+function collectVariantSpecTexts(variant) {
+  if (!isPlainObject(variant)) return [];
+  const out = [];
+  const push = (value) => {
+    const normalized = normalizeVariantSpecText(value);
+    if (normalized) out.push(normalized);
+  };
+  push(variant.display_label || variant.displayLabel);
+  push(variant.title || variant.name);
+  push(variant.option_value || variant.optionValue);
+  const optionSources = [variant.options, variant.selected_options, variant.selectedOptions];
+  for (const raw of optionSources) {
+    if (Array.isArray(raw)) {
+      for (const option of raw) {
+        if (!isPlainObject(option)) continue;
+        push(option.value || option.label || option.text);
+      }
+    } else if (isPlainObject(raw)) {
+      Object.values(raw).forEach(push);
+    }
+  }
+  return Array.from(new Set(out));
+}
+
+function variantSpecScore(variant) {
+  const texts = collectVariantSpecTexts(variant);
+  return texts.reduce((score, text) => {
+    let next = score + text.length;
+    if (/\d+\s*(?:pads?|sheets?|pcs?|pieces?|count|ct)\b/i.test(text)) next += 20;
+    if (/\d+\s*(?:m\s*l|ml|fl\.?\s*oz|oz|g|kg)\b/i.test(text)) next += 10;
+    return next;
+  }, 0);
+}
+
+function isHighQualityVariantSpec(variant) {
+  const status = firstNonEmptyString(variant?.source_quality_status, variant?.sourceQualityStatus)
+    ?.trim()
+    .toLowerCase();
+  return ['high', 'reviewed', 'manual_reviewed', 'official_authoritative', 'official', 'source_backed'].includes(status);
+}
+
+function shouldUseRichExternalSeedVariantSpec(targetVariant, richVariant) {
+  if (!isPlainObject(richVariant)) return false;
+  const richScore = variantSpecScore(richVariant);
+  if (richScore <= 0) return false;
+  const targetScore = variantSpecScore(targetVariant);
+  return isHighQualityVariantSpec(richVariant) || richScore > targetScore;
+}
+
+function mergeRichExternalSeedVariantSpecFields(targetVariant, richVariant) {
+  if (!shouldUseRichExternalSeedVariantSpec(targetVariant, richVariant)) return targetVariant;
+  const next = { ...targetVariant };
+  for (const key of [
+    'title',
+    'options',
+    'selected_options',
+    'selectedOptions',
+    'option1',
+    'option2',
+    'option3',
+    'option_name',
+    'optionName',
+    'option_value',
+    'optionValue',
+    'display_label',
+    'displayLabel',
+    'axis_kind',
+    'axisKind',
+    'source_quality_status',
+    'sourceQualityStatus',
+  ]) {
+    if (richVariant[key] != null) next[key] = richVariant[key];
+  }
+  return next;
+}
+
+function mergeRichExternalSeedVariantSpecs(targetVariants, richVariants) {
+  if (!Array.isArray(richVariants) || richVariants.length === 0) return targetVariants;
+  if (!Array.isArray(targetVariants) || targetVariants.length === 0) return richVariants;
+
+  const richByKey = new Map();
+  richVariants.forEach((variant) => {
+    if (!isPlainObject(variant)) return;
+    getVariantEvidenceKeys(variant).forEach((key) => {
+      if (!richByKey.has(key)) richByKey.set(key, variant);
+    });
+  });
+  if (!richByKey.size && targetVariants.length === 1 && richVariants.length === 1) {
+    return [mergeRichExternalSeedVariantSpecFields(targetVariants[0], richVariants[0])];
+  }
+  return targetVariants.map((variant) => {
+    if (!isPlainObject(variant)) return variant;
+    const richVariant = getVariantEvidenceKeys(variant)
+      .map((key) => richByKey.get(key))
+      .find(Boolean);
+    return richVariant ? mergeRichExternalSeedVariantSpecFields(variant, richVariant) : variant;
+  });
+}
+
 function mergeIdentitySyntheticWithRichExternalSeedProduct(syntheticProduct, richProduct) {
   if (!isPlainObject(syntheticProduct) || !hasExternalSeedRichPdpContent(richProduct)) {
     return syntheticProduct;
@@ -5687,14 +5802,11 @@ function mergeIdentitySyntheticWithRichExternalSeedProduct(syntheticProduct, ric
     if (syntheticProduct[key] != null) identityFields[key] = syntheticProduct[key];
   }
   const richVariants = readExternalSeedRichVariants(richProduct);
-  const shouldPromoteRichVariants =
-    richVariants.length > 0 &&
-    (!Array.isArray(richProduct.variants) || richProduct.variants.length === 0) &&
-    (!Array.isArray(syntheticProduct.variants) || syntheticProduct.variants.length === 0);
+  const mergedVariants = mergeRichExternalSeedVariantSpecs(syntheticProduct.variants, richVariants);
   return {
     ...syntheticProduct,
     ...richProduct,
-    ...(shouldPromoteRichVariants ? { variants: richVariants } : {}),
+    ...(Array.isArray(mergedVariants) && mergedVariants.length > 0 ? { variants: mergedVariants } : {}),
     ...identityFields,
   };
 }

@@ -2373,6 +2373,60 @@ describe('external seed product detail hydration', () => {
     );
   });
 
+  test('preserves richer source-backed variant specs over thinner identity synthetic labels', () => {
+    const { debug } = loadServerWithDb();
+    const richProduct = {
+      product_id: 'ext_matcha_pads',
+      merchant_id: 'external_seed',
+      title: 'Matcha Tea Pads',
+      variants: [
+        {
+          variant_id: 'tirtir_matcha_tea_pads_70pads_160ml',
+          sku_id: 'tirtir_matcha_tea_pads_70pads_160ml',
+          title: '70 pads / 160 mL',
+          options: [{ name: 'Size', value: '70 pads / 160 mL', axis_kind: 'size' }],
+          display_label: 'Size: 70 pads / 160 mL',
+          source_quality_status: 'high',
+        },
+      ],
+      pdp_how_to_use_raw: 'Swipe across clean skin after cleansing.',
+    };
+    const syntheticProduct = {
+      product_id: 'sig_matcha_pads',
+      merchant_id: 'external_seed',
+      title: 'Matcha Tea Pads',
+      variants: [
+        {
+          variant_id: 'tirtir_matcha_tea_pads_70pads_160ml',
+          sku_id: 'tirtir_matcha_tea_pads_70pads_160ml',
+          title: '160 mL',
+          options: [{ name: 'Size', value: '160 mL', axis_kind: 'volume' }],
+          display_label: 'Size: 160 mL',
+          source_quality_status: 'captured',
+          availability: { in_stock: true, available_quantity: 999 },
+          image_url: 'https://cdn.example.com/matcha-tea-pads.png',
+        },
+      ],
+      selected_commerce_ref: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_matcha_pads',
+      },
+    };
+
+    const merged = debug.mergeIdentitySyntheticWithRichExternalSeedProduct(syntheticProduct, richProduct);
+
+    expect(merged.variants?.[0]).toEqual(
+      expect.objectContaining({
+        title: '70 pads / 160 mL',
+        display_label: 'Size: 70 pads / 160 mL',
+        options: [{ name: 'Size', value: '70 pads / 160 mL', axis_kind: 'size' }],
+        availability: { in_stock: true, available_quantity: 999 },
+        image_url: 'https://cdn.example.com/matcha-tea-pads.png',
+      }),
+    );
+    expect(merged.selected_commerce_ref).toEqual(syntheticProduct.selected_commerce_ref);
+  });
+
   test('hydrates identity line member payloads when an external seed alias resolves to a different canonical row', () => {
     const { debug } = loadServerWithDb();
 
