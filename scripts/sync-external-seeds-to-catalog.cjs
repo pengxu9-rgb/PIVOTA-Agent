@@ -11,6 +11,7 @@ const {
   readCommerceFactsV1,
   validateCommerceFactsGateForSeedRow,
 } = require('../src/commerce/commerceFacts');
+const { makeContentKey } = require('./lib/compute-content-key.cjs');
 
 const MERCHANT_ID = 'external_seed';
 const PLATFORM = 'external_seed';
@@ -670,7 +671,7 @@ function buildMirror(row) {
   const sellerName = sourceRole === 'official_brand_dtc' ? brand : asString(seedData.seller_or_retailer_name || snapshot.seller_or_retailer_name || extractHostname(canonicalUrl));
   const contentKey =
     asString(row.existing_content_key) ||
-    stableHash('ck', [normalizeText(brand), normalizeText(title), normalizeText(canonicalUrl)], 32);
+    makeContentKey(brand, title, null);
   const freshness = {
     source: SOURCE_SYSTEM,
     mirrored_at: new Date().toISOString(),
