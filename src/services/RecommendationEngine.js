@@ -530,9 +530,14 @@ const SIMILAR_INTENT_FAMILY_RULES = Object.freeze([
     sql: '\\m(lip\\s+oil|lip\\s+glaze)\\M',
   },
   {
+    id: 'lipstick',
+    js: /\b(?:lipstick|lip\s*stick|liquid\s+lip(?:stick)?|lip\s+paint|lip\s+colour|lip\s+color)\b/i,
+    sql: '\\m(lipstick|lip\\s*stick|liquid\\s+lip(stick)?|lip\\s+paint|lip\\s+colou?r)\\M',
+  },
+  {
     id: 'lip_treatment',
-    js: /\b(?:lip\s*(?:barrier|care|cream|gloss|balm|butter|(?:sleep(?:ing)?\s*)?mask|relief|repair|restore|rescue|serum|sleep|soften(?:er|ing)?|treat|treatment|nourish(?:er|ing)?|plump(?:er|ing)?|luminiz(?:er|ers?)?|glow|lift|blush|tint|stain|colou?r|matt(?:e)?)|lipgloss|lipglow|liplift|lipblush|liptint|lipstain|liptreat|lipnourish(?:er|ing)?)\b/i,
-    sql: '\\m(lip\\s*(barrier|care|cream|gloss|balm|butter|(sleep(ing)?\\s*)?mask|relief|repair|restore|rescue|serum|sleep|soften(er|ing)?|treat|treatment|nourish(er|ing)?|plump(er|ing)?|luminiz(er|ers?)?|glow|lift|blush|tint|stain|colou?r|matt(e)?)|lipgloss|lipglow|liplift|lipblush|liptint|lipstain|liptreat|lipnourish(er|ing)?)\\M',
+    js: /\b(?:lip\s*(?:barrier|care|cream|gloss|balm|butter|(?:sleep(?:ing)?\s*)?mask|relief|repair|restore|rescue|serum|sleep|soften(?:er|ing)?|treat|treatment|nourish(?:er|ing)?|plump(?:er|ing)?|luminiz(?:er|ers?)?|glow|lift|blush|tint|stain|matt(?:e)?)|lipgloss|lipglow|liplift|lipblush|liptint|lipstain|liptreat|lipnourish(?:er|ing)?)\b/i,
+    sql: '\\m(lip\\s*(barrier|care|cream|gloss|balm|butter|(sleep(ing)?\\s*)?mask|relief|repair|restore|rescue|serum|sleep|soften(er|ing)?|treat|treatment|nourish(er|ing)?|plump(er|ing)?|luminiz(er|ers?)?|glow|lift|blush|tint|stain|matt(e)?)|lipgloss|lipglow|liplift|lipblush|liptint|lipstain|liptreat|lipnourish(er|ing)?)\\M',
   },
   {
     id: 'highlighter',
@@ -2820,6 +2825,17 @@ function getSimilarIntentFamilySqlLikePatterns(intentFamily) {
   }
   if (id === 'highlighter') return ['%highlighter%', '%illuminator%'];
   if (id === 'lip_oil') return ['%lip oil%', '%lip glaze%'];
+  if (id === 'lipstick') {
+    return [
+      '%lipstick%',
+      '%lip stick%',
+      '%liquid lip%',
+      '%liquid lipstick%',
+      '%lip paint%',
+      '%lip color%',
+      '%lip colour%',
+    ];
+  }
   if (id === 'lip_treatment') {
     return [
       '%lip gloss%',
@@ -2841,8 +2857,6 @@ function getSimilarIntentFamilySqlLikePatterns(intentFamily) {
       '%liptint%',
       '%lip stain%',
       '%lipstain%',
-      '%lip color%',
-      '%lip colour%',
       '%lip matt%',
       '%lip matte%',
     ];
