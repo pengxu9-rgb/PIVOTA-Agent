@@ -1221,6 +1221,51 @@ describe('PDP grouped offers', () => {
     expect(payload.product.price.current).toEqual({ amount: 90, currency: 'USD' });
   });
 
+  test('adds a price module when offer hydration supplies the first positive PDP price', () => {
+    const app = require('../src/server');
+
+    const payload = app._debug.hydrateCanonicalPdpPayloadFromOffers(
+      {
+        product: {
+          product_id: 'sig_roundlab_jelly_cleanser',
+          title: 'Camellia Deep Collagen Jelly Mask Cleanser',
+          currency: 'USD',
+        },
+        modules: [
+          {
+            module_id: 'm_variant',
+            type: 'variant_selector',
+            data: {
+              selected_variant_id: 'roundlab_jelly_150ml',
+            },
+          },
+        ],
+      },
+      {
+        offer_source: 'group_fused',
+        default_offer_id: 'offer_roundlab_official',
+        best_price_offer_id: 'offer_roundlab_official',
+        offers: [
+          {
+            offer_id: 'offer_roundlab_official',
+            merchant_name: 'Round Lab',
+            price: { amount: 21, currency: 'USD' },
+            inventory: { in_stock: true },
+          },
+        ],
+      },
+    );
+
+    expect(payload.product.price.current).toEqual({ amount: 21, currency: 'USD' });
+    expect(payload.modules.find((module) => module.type === 'price_promo')).toEqual(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          price: { amount: 21, currency: 'USD' },
+        }),
+      }),
+    );
+  });
+
   test('does not overwrite an existing positive canonical PDP product price', () => {
     const app = require('../src/server');
 

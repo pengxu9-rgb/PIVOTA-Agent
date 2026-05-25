@@ -1911,6 +1911,36 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     ]);
   });
 
+  test('does not turn source-backed size variants without price into zero-dollar PDP prices', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_roundlab_jelly_mask_cleanser',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Camellia Deep Collagen Jelly Mask Cleanser',
+        category: 'Cleanser',
+        image_url: 'https://example.com/roundlab-jelly-cleanser.png',
+        variants: [
+          {
+            variant_id: 'roundlab_jelly_150ml',
+            title: '5.07 fl oz (150 mL)',
+            options: [{ name: 'Size', value: '5.07 fl oz (150 mL)', axis_kind: 'size' }],
+            display_label: 'Size: 5.07 fl oz (150 mL)',
+            source_quality_status: 'high',
+          },
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const variantSelector = payload.modules.find((module) => module.type === 'variant_selector');
+    expect(variantSelector?.data?.variants?.[0]).not.toHaveProperty('price');
+    expect(payload.product.variants?.[0]).not.toHaveProperty('price');
+    expect(payload.modules.find((module) => module.type === 'price_promo')).toBeFalsy();
+    expect(payload.product.price).toBeUndefined();
+  });
+
   test('preserves structured ingredient items without re-splitting numeric INCI commas', () => {
     const payload = buildPdpPayload({
       product: {
