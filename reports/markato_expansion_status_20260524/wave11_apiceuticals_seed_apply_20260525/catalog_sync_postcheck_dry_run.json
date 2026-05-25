@@ -1,0 +1,252 @@
+{
+  "generated_at": "2026-05-25T03:12:10.143Z",
+  "mode": "dry_run",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": false,
+  "requested_ids": 1,
+  "fetched_rows": 1,
+  "mirror_rows": 1,
+  "planned_sku_rows": 1,
+  "planned_offer_rows": 1,
+  "planned_index_state_rows": 1,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "dry_run",
+    "existing_before": {
+      "catalog_products": 1,
+      "catalog_skus": 1,
+      "catalog_offers": 1,
+      "product_group_members": 1
+    },
+    "batch_size": null,
+    "batches": 1,
+    "product_upserts": 0,
+    "sku_upserts": 0,
+    "offer_upserts": 0,
+    "group_member_upserts": 0,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 0,
+    "identity_live_read_updates": 0
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_1e27467ab07ddb83ad74c213",
+      "product_key": "prod::external_seed::external_seed::ext_1e27467ab07ddb83ad74c213",
+      "product_group_id": "sig_3986f474bf585056885f6125",
+      "title": "PROPOWAX™ Antioxidant Shampoo 300ml",
+      "brand": "Apiceuticals",
+      "product_type": "Haircare",
+      "category": "Haircare",
+      "category_path": "beauty/haircare",
+      "canonical_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-shampoo/",
+      "pivota_signature_id": "sig_ccd26fbd0425a9591fbe7a981b2cec97",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_1e27467ab07ddb83ad74c213::sku_f9b5e92dc8ebe0639cd2",
+        "product_key": "prod::external_seed::external_seed::ext_1e27467ab07ddb83ad74c213",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_1e27467ab07ddb83ad74c213",
+        "source_variant_id": "ext_1e27467ab07ddb83ad74c213:15af3b3356b1",
+        "sku": "DC.0008",
+        "title": "PROPOWAX™ Antioxidant Shampoo 300ml",
+        "currency": "USD",
+        "image_url": "https://www.apiceuticals.com/wp-content/uploads/2018/07/Shampoo_2-1.webp",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_1e27467ab07ddb83ad74c213",
+          "raw_variant_id": "15af3b3356b1",
+          "source_variant_id": "ext_1e27467ab07ddb83ad74c213:15af3b3356b1",
+          "variant_sku": "DC.0008",
+          "source_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-shampoo/",
+          "external_redirect_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-shampoo/",
+          "price": "33",
+          "price_amount": 33,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://www.apiceuticals.com/wp-content/uploads/2018/07/Shampoo_2-1.webp",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "DC.0008",
+            "url": "https://www.apiceuticals.com/shop/propowax-antioxidant-shampoo/",
+            "price": "33.00",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://www.apiceuticals.com/wp-content/uploads/2018/07/Shampoo_2-1.webp",
+            "image_urls": [
+              "https://www.apiceuticals.com/wp-content/uploads/2018/07/Shampoo_2-1.webp",
+              "https://www.apiceuticals.com/wp-content/uploads/2018/07/Shampoo_4.webp",
+              "https://www.apiceuticals.com/wp-content/uploads/2018/07/Shampoo_7.jpg",
+              "https://www.apiceuticals.com/wp-content/uploads/2018/07/Shampoo_8.webp",
+              "https://www.apiceuticals.com/wp-content/uploads/2018/07/Shampoo_3-1.webp",
+              "https://www.apiceuticals.com/wp-content/uploads/2018/07/Shampoo_6.webp",
+              "https://www.apiceuticals.com/wp-content/uploads/2018/07/Shampoo_9.webp",
+              "https://www.apiceuticals.com/wp-content/uploads/2018/07/Shampoo_2-1-600x800.webp",
+              "https://www.apiceuticals.com/wp-content/uploads/2018/07/Shampoo_2-1-225x300.webp",
+              "https://www.apiceuticals.com/wp-content/uploads/2018/07/Shampoo_2-1-768x1024.webp",
+              "https://www.apiceuticals.com/wp-content/uploads/2018/07/Shampoo_2-1-1152x1536.webp",
+              "https://www.apiceuticals.com/wp-content/uploads/2018/07/Shampoo_2-1-1536x2048.webp"
+            ],
+            "variant_id": "15af3b3356b1",
+            "description": "PROPOWAX™ SERIES\nANTIOXIDANT • ANTIPOLLUTION\n\n100% Clean, Sustainable, Cruelty-free Beauty\n10.1 fl. oz. / 300 ml\n\nThe PROPOWAX™ Antioxidant Shampoo is the world’s first honeycomb shampoo powered by the patented Living Honeycomb — clinically proven to deliver the highest antioxidant activity worldwide. Detoxifies and restores scalp & hair from pollution, UV, styling tools, and harsh products. Rebalances, soothes, and strengthens hair from the roots. Leaves hair radiant, nourished, and infused with a luxurious fine fragrance.\n\nHow to Use: Apply a small amount to the scalp and massage gently until it lathers. Healthy hair starts with a healthy scalp, so take your time. Rinse thoroughly with lukewarm water (avoid hot water as it weakens roots and dries hair). For best results, follow with Antioxidant Conditioner PROPOWAX™ Series.\n\nIngredients and Safety: Aqua (Water), Ammonium Lauryl Sulfate, Disodium Laureth Sulfosuccinate, Cocamidopropyl Betaine, Sodium Lauroyl Sarcosinate, Polysorbate-20, PEG-120 Methyl Glucose Dioleate, Parfum (Fragrance), Glycerin, Honey/mel, Melissa Officinalis Flower Extract, Disodium EDTA, Glyceryl Oleate, Coco Glucoside, Lactic acid, Starch hydroxypropyltrimonium chloride, Sodium Lactate, Sodium Benzoate, Potassium Sorbate, Phenoxyethanol, Ethylhexylglycerin, Caramel, Hexyl Cinnamal.",
+            "option_name": "Size",
+            "option_value": "300ml"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:b15acdd9b49093e041618c8581b84508",
+        "sku_key": "prod::external_seed::external_seed::ext_1e27467ab07ddb83ad74c213::sku_f9b5e92dc8ebe0639cd2",
+        "product_key": "prod::external_seed::external_seed::ext_1e27467ab07ddb83ad74c213",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 33,
+        "merchant_effective_price": 33,
+        "estimated_best_price": 33,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_d7bbe1c523ff1a28e9fc0feb",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_d7bbe1c523ff1a28e9fc0feb",
+          "external_product_id": "ext_1e27467ab07ddb83ad74c213",
+          "domain": "apiceuticals.com",
+          "market": "US",
+          "product_title": "PROPOWAX™ Antioxidant Shampoo 300ml",
+          "variant_title": "PROPOWAX™ Antioxidant Shampoo 300ml",
+          "variant_sku": "DC.0008",
+          "raw_variant_id": "15af3b3356b1",
+          "url": "https://www.apiceuticals.com/shop/propowax-antioxidant-shampoo/",
+          "offer_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-shampoo/",
+          "canonical_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-shampoo/",
+          "destination_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-shampoo/",
+          "external_redirect_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-shampoo/",
+          "merchant_display_name": "Apiceuticals",
+          "price": "33",
+          "price_amount": 33,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-25T03:03:58.365Z",
+            "evidence_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-shampoo/",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-25T03:03:58.365Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-shampoo/"
+            },
+            "regional_price": {
+              "amount": 33,
+              "currency": "USD",
+              "display_raw": "33.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-shampoo/",
+              "captured_at": "2026-05-25T03:03:58.365Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T03:03:58.365Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T03:03:58.365Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T03:03:58.365Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 33,
+              "currency": "USD",
+              "display_raw": "33.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-shampoo/",
+              "captured_at": "2026-05-25T03:03:58.365Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T03:03:58.365Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 529
+      }
+    }
+  ]
+}

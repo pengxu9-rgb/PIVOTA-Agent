@@ -366,6 +366,55 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     expect(JSON.stringify(forestBundle)).not.toMatch(/plant 1 m2|biodiverse forest/i);
   });
 
+  test('softens Apiceuticals shampoo public source claims before quality validation', () => {
+    const description =
+      'PROPOWAX™ SERIES ANTIOXIDANT • ANTIPOLLUTION 100% Clean, Sustainable, Cruelty-free Beauty 10.1 fl. oz. / 300 ml The PROPOWAX™ Antioxidant Shampoo is the world’s first honeycomb shampoo powered by the patented Living Honeycomb — clinically proven to deliver the highest antioxidant activity worldwide. Detoxifies and restores scalp & hair from pollution, UV, styling tools, and harsh products. Rebalances, soothes, and strengthens hair from the roots. Leaves hair radiant, nourished, and infused with a luxurious fine fragrance.';
+    const ingredients =
+      'Aqua (Water), Ammonium Lauryl Sulfate, Disodium Laureth Sulfosuccinate, Cocamidopropyl Betaine, Sodium Lauroyl Sarcosinate, Polysorbate-20, PEG-120 Methyl Glucose Dioleate, Parfum (Fragrance), Glycerin, Honey/mel, Melissa Officinalis Flower Extract, Disodium EDTA, Glyceryl Oleate, Coco Glucoside, Lactic acid, Starch hydroxypropyltrimonium chloride, Sodium Lactate, Sodium Benzoate, Potassium Sorbate, Phenoxyethanol, Ethylhexylglycerin, Caramel, Hexyl Cinnamal.';
+
+    expect(sanitizePublicSourceText(description)).not.toMatch(
+      /cruelty[-\s]?free|clinically\s+proven|highest\s+antioxidant|detoxifies\s+and\s+restores/i,
+    );
+
+    const bundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_apiceuticals_shampoo',
+        title: 'PROPOWAX™ Antioxidant Shampoo 300ml',
+        canonical_url: 'https://www.apiceuticals.com/shop/propowax-antioxidant-shampoo/',
+        seed_data: {
+          brand: 'Apiceuticals',
+          category: 'Haircare',
+          description,
+          ingredient_tokens: ['Honey/mel', 'Melissa Officinalis Flower Extract'],
+          raw_ingredient_text_clean: ingredients,
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_apiceuticals_shampoo',
+        sellable_item_group_id: 'sig_apiceuticals_shampoo',
+      },
+      generatedAt: '2026-05-25T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+
+    expect(JSON.stringify(bundle)).not.toMatch(
+      /cruelty[-\s]?free|clinically\s+proven|highest\s+antioxidant|detoxifies\s+and\s+restores/i,
+    );
+    expect(bundle.provenance.official_source_ingredient_count).toBe(23);
+    expect(bundle.product_intel_core.what_it_is.body).toContain(
+      'The PROPOWAX Antioxidant Shampoo is positioned as a honeycomb shampoo',
+    );
+    expect(bundle.product_intel_core.what_it_is.body).not.toMatch(/is the A honeycomb/i);
+    expect(bundle.product_intel_core.what_it_is.body).not.toMatch(/identifies:\s*[./]/i);
+    expect(detectPublicProductIntelQualityIssues(bundle)).toEqual([]);
+    expect(classifyGeneratedBundle(bundle)).toMatchObject({
+      displayable: true,
+      high_quality_ready: true,
+      blocking_issues: [],
+    });
+  });
+
   test('uses non-workout highlights unless the product is explicitly workout positioned', () => {
     expect(
       buildBundle({

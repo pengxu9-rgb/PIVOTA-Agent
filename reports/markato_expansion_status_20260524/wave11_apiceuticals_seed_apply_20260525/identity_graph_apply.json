@@ -1,0 +1,20 @@
+{
+  "ok": true,
+  "generated_at": "2026-05-25T03:08:31.890Z",
+  "input": {
+    "brand": null,
+    "limit": 1,
+    "external_product_ids": [
+      "ext_1e27467ab07ddb83ad74c213"
+    ],
+    "dry_run": false
+  },
+  "result": {
+    "dry_run": false,
+    "source_rows_scanned": 1,
+    "identity_rows_built": 1,
+    "review_queue_rows_built": 0,
+    "written_rows": 1,
+    "review_queue_rows": 0
+  }
+}

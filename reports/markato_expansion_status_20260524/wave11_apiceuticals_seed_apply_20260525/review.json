@@ -1,0 +1,15 @@
+{
+  "generated_at": "2026-05-25T03:04:04.726Z",
+  "ok_to_continue": true,
+  "blocker_reasons": [],
+  "warning_reasons": [],
+  "item_count": 1,
+  "accepted_item_count": 1,
+  "blocked_item_count": 0,
+  "price_coverage_rate": 1,
+  "availability_coverage_rate": 1,
+  "image_coverage_rate": 1,
+  "diagnostics": [],
+  "row_findings": [],
+  "blocked_keys": []
+}

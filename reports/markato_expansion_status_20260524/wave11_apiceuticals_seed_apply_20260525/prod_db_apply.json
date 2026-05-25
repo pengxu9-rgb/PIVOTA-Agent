@@ -1,0 +1,58 @@
+{
+  "generated_at": "2026-05-25T03:06:01.957Z",
+  "manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/wave11_apiceuticals_seed_apply_20260525/accepted_manifest.json",
+  "mode": "apply",
+  "database_available": true,
+  "correction_script_available": true,
+  "apply_result": {
+    "generated_at": "2026-05-25T03:05:31.951Z",
+    "input_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/wave11_apiceuticals_seed_apply_20260525/accepted_manifest.json",
+    "summary": {
+      "mode": "apply",
+      "database_available": true,
+      "scanned": 1,
+      "inserted": 1,
+      "skipped_existing": 0,
+      "would_insert": 0,
+      "would_insert_unverified": 0,
+      "invalid": 0,
+      "requires_seed_correction_count": 0
+    },
+    "correction_followups": [],
+    "items": [
+      {
+        "ingredient_id": "",
+        "ingredient_name": "",
+        "seed_id": "eps_d7bbe1c523ff1a28e9fc0feb",
+        "external_product_id": "ext_1e27467ab07ddb83ad74c213",
+        "status": "inserted",
+        "commerce_facts_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "ok",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "promotions_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": []
+        },
+        "requires_seed_correction": false,
+        "ingredient_writeback_source": "pdp_ingredient_fields",
+        "seed_structured_ingredient_status": "present",
+        "seed_kb_sync_status": "seed_only",
+        "runtime_ingredient_evidence_source": "seed_structured_fields"
+      }
+    ]
+  },
+  "correction_plans": [],
+  "correction_results": [],
+  "runtime_reprobe_targets": [
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "expected_lane": "direct_explicit_supply"
+    }
+  ]
+}

@@ -174,6 +174,20 @@ function sanitizePublicSourceText(value) {
     .replace(/\b(?:best[-\s]?selling|bestselling|viral|cult[-\s]?favorite)\b/gi, '')
     .replace(/\blimited[-\s]?edition\b/gi, 'seasonal')
     .replace(/\baward[-\s]?winning\b(?!\s+brush\s+set)/gi, '')
+    .replace(/\bPROPOWAX™?\s+SERIES\s+ANTIOXIDANT\s*(?:•|\/)\s*ANTIPOLLUTION\b[./\s]*/gi, '')
+    .replace(
+      /\bThe\s+PROPOWAX™?\s+Antioxidant\s+Shampoo\s+is\s+the\s+world[’']s\s+first\s+honeycomb\s+shampoo\s+powered\s+by\s+the\s+patented\s+Living\s+Honeycomb\s*[—-]\s*clinically\s+proven\s+to\s+deliver\s+the\s+highest\s+antioxidant\s+activity\s+worldwide\.?/gi,
+      'The PROPOWAX Antioxidant Shampoo is positioned as a honeycomb shampoo with Living Honeycomb referenced on the official page.',
+    )
+    .replace(
+      /\bworld[’']s\s+first\s+honeycomb\s+shampoo\s+powered\s+by\s+the\s+patented\s+Living\s+Honeycomb\s*[—-]\s*clinically\s+proven\s+to\s+deliver\s+the\s+highest\s+antioxidant\s+activity\s+worldwide\.?/gi,
+      'honeycomb-positioned shampoo with Living Honeycomb referenced on the official page.',
+    )
+    .replace(/\bis\s+the\s+honeycomb-positioned\s+shampoo\b/gi, 'is positioned as a honeycomb-positioned shampoo')
+    .replace(/\bclinically\s+proven\s+to\s+deliver\s+the\s+highest\s+antioxidant\s+activity\s+worldwide\.?/gi, 'referenced by the official page.')
+    .replace(/\bDetoxifies\s+and\s+restores\s+scalp\s*&\s*hair\s+from\s+pollution,\s*UV,\s*styling\s+tools,\s*and\s+harsh\s+products\.?/gi, 'Positioned for scalp-and-hair cleansing in pollution, UV, styling-tool, and harsh-product contexts.')
+    .replace(/\bRebalances,\s*soothes,\s*and\s*strengthens\s+hair\s+from\s+the\s+roots\.?/gi, 'Positioned around scalp comfort and stronger-feeling hair from the roots.')
+    .replace(/\bLeaves\s+hair\s+radiant,\s*nourished,\s*and\s*infused\s+with\s+a\s+luxurious\s+fine\s+fragrance\.?/gi, 'The official page frames the finish around radiant-looking, nourished-feeling hair and fine fragrance.')
     .replace(
       /\bShop\s+Kylie\s+Cosmetics\s+by\s+Kylie\s+Jenner,\s*Kylie\s+Jenner\s+Fragrances\s+and\s+Kylie\s+Skin\s+featuring\s+makeup,\s*fragrance,\s*and\s+skincare\s+that['’]s\s+clean,\s*vegan,\s*cruelty[-\s]?free,\s*and\s+dermatologist[-\s]?tested\.?/gi,
       '',
@@ -182,6 +196,8 @@ function sanitizePublicSourceText(value) {
       /\bShop\s+Kylie\s+Cosmetics\s+by\s+Kylie\s+Jenner,\s*Kylie\s+Jenner\s+Fragrances\s+and\s+Kylie\s+Skin\s+featuring\s+makeup,\s*fragrance,\s*and\s+skincare\s+that['’]s\s+clean\.?/gi,
       '',
     )
+    .replace(/\b100%\s*clean,\s*sustainable,\s*cruelty[-\s]?free\s+beauty\b[.!]?/gi, '')
+    .replace(/\bclean,\s*vegan,\s*cruelty[-\s]?free(?:,\s*and\s*dermatologist[-\s]?tested)?\b[.!]?/gi, '')
     .replace(/\bdouble up and save with this jumbo size of our\b/gi, "This jumbo size is the brand's")
     .replace(/\b\d+(?:\.\d+)?\s*(?:fl\.?\s*oz|ml|oz)\b/gi, '')
     .replace(/\bhighlighte\s+r\b/gi, 'highlighter')
@@ -327,6 +343,7 @@ function sanitizePublicSourceText(value) {
     .replace(/\bBalance and restore your oil-prone skin naturally with our signature oily skin cleanser\.?/gi, 'A cleanser positioned for oily-skin routines.')
     .replace(/\bLooking for a firming and brightening moisturiser that won['’]?t mess with your makeup\??/gi, 'A lightweight moisturiser positioned around firming- and brightening-looking care.')
     .replace(/\bKeep your glow looking as young as you feel with our mature-skin serum\.?/gi, 'A mature-skin serum positioned around Vitamin B and peptide support.')
+    .replace(/^\s*(?:[./]\s*)+/, '')
     .replace(/\s{2,}/g, ' ')
     .trim();
 }
@@ -994,7 +1011,18 @@ function ingredientSignals(seedData) {
       .split(/\s*,\s*/)
       .map((item) => item.trim())
       .filter((item) => item.length > 1 && !/^(?:and|or)$/i.test(item));
-    if (parts.length >= 2) return parts.length;
+    const uniqueParts = new Set(
+      parts
+        .map((item) =>
+          item
+            .toLowerCase()
+            .replace(/\([^)]*\)/g, ' ')
+            .replace(/[^a-z0-9]+/g, ' ')
+            .trim(),
+        )
+        .filter(Boolean),
+    );
+    if (uniqueParts.size >= 2) return uniqueParts.size;
     return ingredientLikePattern.test(cleaned) ? 1 : 0;
   }
   const candidates = [
@@ -1021,7 +1049,7 @@ function ingredientSignals(seedData) {
   const joined = sanitizeFormulaSummary(text(flattened.join(' ')));
   const tokenCount = asArray(seedData.ingredient_tokens || snapshot.ingredient_tokens).length;
   const derivedCount = flattened.reduce((max, item) => Math.max(max, countIngredientParts(item)), 0);
-  const ingredientCount = tokenCount || derivedCount;
+  const ingredientCount = Math.max(tokenCount, derivedCount);
   return {
     available: joined.length > 20,
     ingredient_count: ingredientCount,

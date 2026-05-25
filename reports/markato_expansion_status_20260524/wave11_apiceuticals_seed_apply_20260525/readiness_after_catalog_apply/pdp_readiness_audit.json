@@ -1,0 +1,244 @@
+{
+  "generated_at": "2026-05-25T03:21:17.232Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": "apiceuticals.com",
+    "limit": 20,
+    "sampleLimit": 10,
+    "checkpointDir": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/wave11_apiceuticals_seed_apply_20260525/readiness_after_catalog_apply/pdp_readiness_checkpoint",
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json"
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 1,
+    "by_market": {
+      "US": 1
+    },
+    "by_domain": [
+      {
+        "key": "apiceuticals.com",
+        "count": 1
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 1
+      }
+    ],
+    "coverage": {
+      "missing_inci": 0,
+      "missing_active_raw": 0,
+      "missing_details": 0,
+      "missing_how_to": 0,
+      "missing_faq": 0
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 0,
+        "high_quality_ready": 0,
+        "missing_kb": 1,
+        "not_displayable": 0
+      },
+      "effective": {
+        "displayable": 0,
+        "high_quality_ready": 0,
+        "missing_kb": 1,
+        "not_displayable": 0,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [
+        {
+          "key": "missing_kb",
+          "count": 1
+        }
+      ],
+      "effective_issue_domains": [
+        {
+          "key": "apiceuticals.com::missing_kb",
+          "count": 1
+        }
+      ],
+      "quality_state": [
+        {
+          "key": "missing",
+          "count": 1
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "missing",
+          "count": 1
+        }
+      ],
+      "samples": {
+        "missing_kb": [
+          {
+            "external_product_id": "ext_1e27467ab07ddb83ad74c213",
+            "domain": "apiceuticals.com",
+            "title": "PROPOWAX™ Antioxidant Shampoo 300ml",
+            "used_product_id": "ext_1e27467ab07ddb83ad74c213",
+            "quality_state": "missing",
+            "evidence_profile": "missing"
+          }
+        ]
+      }
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 1,
+      "any_active_items": 0,
+      "status": [
+        {
+          "key": "low_signal_active",
+          "count": 1
+        }
+      ],
+      "issues": [
+        {
+          "key": "low_signal_active",
+          "count": 1
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "apiceuticals.com::low_signal_active",
+          "count": 1
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "pdp_section",
+          "count": 1
+        }
+      ],
+      "samples": {
+        "low_signal_active": [
+          {
+            "external_product_id": "ext_1e27467ab07ddb83ad74c213",
+            "domain": "apiceuticals.com",
+            "title": "PROPOWAX™ Antioxidant Shampoo 300ml",
+            "status": "low_signal_active",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 1
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_d7bbe1c523ff1a28e9fc0feb",
+      "external_product_id": "ext_1e27467ab07ddb83ad74c213",
+      "market": "US",
+      "domain": "apiceuticals.com",
+      "title": "PROPOWAX™ Antioxidant Shampoo 300ml",
+      "canonical_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-shampoo/",
+      "product_family": "single_formula",
+      "product_line_id": "pl_c0bad4679095d97a8e48c5b6",
+      "identity_variant_axes": {
+        "volume": "300ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_1e27467ab07ddb83ad74c213",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "effective": {
+          "product_id": "ext_1e27467ab07ddb83ad74c213",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "product_line_id": "pl_c0bad4679095d97a8e48c5b6",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "low_signal_active",
+        "issues": [
+          "low_signal_active"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 20,
+          "how_to_chars": 294,
+          "inci_chars": 463,
+          "active_ingredients_chars": 21,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 463,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_low_signal"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 20,
+        "how_to_chars": 294,
+        "inci_chars": 463,
+        "active_ingredients_chars": 21,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 463,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}
