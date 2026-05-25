@@ -1,0 +1,434 @@
+{
+  "generated_at": "2026-05-25T01:41:31.489Z",
+  "brand": "LIME",
+  "domain": "https://m.en.limecosmetic.com/product/lime-v-collagen-ample-cushion/104/",
+  "fallback_domains": [],
+  "market": "US",
+  "preferred_titles": [],
+  "matched_preferred_titles": [],
+  "extracted_product_count": 1,
+  "excluded_bundle_like_count": 0,
+  "excluded_non_product_page_count": 0,
+  "excluded_incomplete_transaction_count": 0,
+  "excluded_brand_scope_mismatch_count": 0,
+  "matched_preferred_title_count": 0,
+  "item_count": 1,
+  "fallback_used": false,
+  "source_attempts": [
+    {
+      "source_url": "https://m.en.limecosmetic.com/product/lime-v-collagen-ample-cushion/104/",
+      "source_role": "primary",
+      "extracted_product_count": 1,
+      "item_count": 1,
+      "matched_preferred_title_count": 0,
+      "matched_preferred_titles": [],
+      "diagnostics_summary": {
+        "discovery_strategy": "seed_page",
+        "failure_category": null,
+        "block_provider": null
+      },
+      "used_in_manifest": true,
+      "added_item_count": 1,
+      "added_matched_preferred_titles": [],
+      "skip_reason": null
+    }
+  ],
+  "items": [
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "target_brand": "LIME",
+      "target_url": "https://en.limecosmetic.com/product/lime-v-collagen-ample-cushion/104/",
+      "extract_status": "brand_catalog_extract",
+      "market": "US",
+      "source_domain": "https://m.en.limecosmetic.com/product/lime-v-collagen-ample-cushion/104/",
+      "source_role": "primary",
+      "matched_preferred_titles": [],
+      "alias_preferred_titles": [],
+      "seed_row": {
+        "ingredient_id": null,
+        "ingredient_name": null,
+        "seed_id": "eps_77b4f43990bb67c0d8c093b9",
+        "brand": "LIME",
+        "market": "US",
+        "tool": "creator_agents",
+        "status": "active",
+        "domain": "m.en.limecosmetic.com",
+        "external_product_id": "ext_4f5d3ea88230814ab05d9c71",
+        "canonical_url": "https://m.en.limecosmetic.com/product/detail.html?product_no=104&item_code=P00000EA000A",
+        "destination_url": "https://m.en.limecosmetic.com/product/detail.html?product_no=104&item_code=P00000EA000A",
+        "title": "LIME V COLLAGEN AMPLE CUSHION",
+        "image_url": "https://m.en.limecosmetic.com/web/product/big/202012/334621c425548714247a8b008551eb2e.jpg",
+        "price_amount": 11.14,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "attached_product_key": null,
+        "requires_seed_correction": false,
+        "seed_data": {
+          "brand": "LIME",
+          "title": "LIME V COLLAGEN AMPLE CUSHION",
+          "description": "20g",
+          "external_product_id": "ext_4f5d3ea88230814ab05d9c71",
+          "canonical_url": "https://m.en.limecosmetic.com/product/detail.html?product_no=104&item_code=P00000EA000A",
+          "destination_url": "https://m.en.limecosmetic.com/product/detail.html?product_no=104&item_code=P00000EA000A",
+          "price_amount": 11.14,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://m.en.limecosmetic.com/web/product/big/202012/334621c425548714247a8b008551eb2e.jpg",
+          "image_urls": [
+            "https://m.en.limecosmetic.com/web/product/big/202012/334621c425548714247a8b008551eb2e.jpg",
+            "https://m.en.limecosmetic.com/web/product/extra/big/20200122/a0ed0cf2a86edc5b9de8c7323f4db88c.jpg",
+            "https://m.en.limecosmetic.com/web/product/extra/big/20200122/852c5ed490476570ecbe9aa29d1a73c5.jpg",
+            "https://m.en.limecosmetic.com/web/product/extra/big/20200122/6b8f6e41236831352f075203844dad8b.jpg",
+            "https://m.en.limecosmetic.com/web/product/extra/big/20200122/4278b76cad66a881eeda7ccf7d7f46f5.jpg",
+            "https://m.en.limecosmetic.com/web/upload/icon_201807041517498300.png",
+            "https://m.en.limecosmetic.com/web/upload/icon_201807041517527300.png",
+            "https://img.echosting.cafe24.com/skin/mobile/common/ico_quantity_down.jpg",
+            "https://img.echosting.cafe24.com/skin/mobile/common/ico_quantity_up.jpg"
+          ],
+          "images": [
+            "https://m.en.limecosmetic.com/web/product/big/202012/334621c425548714247a8b008551eb2e.jpg",
+            "https://m.en.limecosmetic.com/web/product/extra/big/20200122/a0ed0cf2a86edc5b9de8c7323f4db88c.jpg",
+            "https://m.en.limecosmetic.com/web/product/extra/big/20200122/852c5ed490476570ecbe9aa29d1a73c5.jpg",
+            "https://m.en.limecosmetic.com/web/product/extra/big/20200122/6b8f6e41236831352f075203844dad8b.jpg",
+            "https://m.en.limecosmetic.com/web/product/extra/big/20200122/4278b76cad66a881eeda7ccf7d7f46f5.jpg",
+            "https://m.en.limecosmetic.com/web/upload/icon_201807041517498300.png",
+            "https://m.en.limecosmetic.com/web/upload/icon_201807041517527300.png",
+            "https://img.echosting.cafe24.com/skin/mobile/common/ico_quantity_down.jpg",
+            "https://img.echosting.cafe24.com/skin/mobile/common/ico_quantity_up.jpg"
+          ],
+          "variants": [
+            {
+              "sku": "AUTO-b4dacb450374",
+              "variant_id": "6c0d60e05701",
+              "url": "https://m.en.limecosmetic.com/product/detail.html?product_no=104&item_code=P00000EA000A",
+              "option_name": "Offer",
+              "option_value": "LIME V COLLAGEN AMPLE CUSHION # 10",
+              "price": "11.14",
+              "currency": "USD",
+              "stock": "In Stock",
+              "description": "20g",
+              "image_url": "https://m.en.limecosmetic.com/web/product/big/202012/334621c425548714247a8b008551eb2e.jpg",
+              "image_urls": [
+                "https://m.en.limecosmetic.com/web/product/big/202012/334621c425548714247a8b008551eb2e.jpg",
+                "https://m.en.limecosmetic.com/web/product/extra/big/20200122/a0ed0cf2a86edc5b9de8c7323f4db88c.jpg",
+                "https://m.en.limecosmetic.com/web/product/extra/big/20200122/852c5ed490476570ecbe9aa29d1a73c5.jpg",
+                "https://m.en.limecosmetic.com/web/product/extra/big/20200122/6b8f6e41236831352f075203844dad8b.jpg",
+                "https://m.en.limecosmetic.com/web/product/extra/big/20200122/4278b76cad66a881eeda7ccf7d7f46f5.jpg",
+                "https://m.en.limecosmetic.com/web/upload/icon_201807041517498300.png",
+                "https://m.en.limecosmetic.com/web/upload/icon_201807041517527300.png",
+                "https://img.echosting.cafe24.com/skin/mobile/common/ico_quantity_down.jpg",
+                "https://img.echosting.cafe24.com/skin/mobile/common/ico_quantity_up.jpg"
+              ]
+            },
+            {
+              "sku": "AUTO-c8cc9e7453fd",
+              "variant_id": "dd6f7abfe5d9",
+              "url": "https://m.en.limecosmetic.com/product/detail.html?product_no=104&item_code=P00000EA000B",
+              "option_name": "Offer",
+              "option_value": "LIME V COLLAGEN AMPLE CUSHION # 20",
+              "price": "11.14",
+              "currency": "USD",
+              "stock": "In Stock",
+              "description": "20g",
+              "image_url": "https://m.en.limecosmetic.com/web/product/big/202012/334621c425548714247a8b008551eb2e.jpg",
+              "image_urls": [
+                "https://m.en.limecosmetic.com/web/product/big/202012/334621c425548714247a8b008551eb2e.jpg",
+                "https://m.en.limecosmetic.com/web/product/extra/big/20200122/a0ed0cf2a86edc5b9de8c7323f4db88c.jpg",
+                "https://m.en.limecosmetic.com/web/product/extra/big/20200122/852c5ed490476570ecbe9aa29d1a73c5.jpg",
+                "https://m.en.limecosmetic.com/web/product/extra/big/20200122/6b8f6e41236831352f075203844dad8b.jpg",
+                "https://m.en.limecosmetic.com/web/product/extra/big/20200122/4278b76cad66a881eeda7ccf7d7f46f5.jpg",
+                "https://m.en.limecosmetic.com/web/upload/icon_201807041517498300.png",
+                "https://m.en.limecosmetic.com/web/upload/icon_201807041517527300.png",
+                "https://img.echosting.cafe24.com/skin/mobile/common/ico_quantity_down.jpg",
+                "https://img.echosting.cafe24.com/skin/mobile/common/ico_quantity_up.jpg"
+              ]
+            }
+          ],
+          "snapshot": {
+            "source": "catalog_intelligence_seed_creation_manifest",
+            "extracted_at": "2026-05-25T01:41:31.480Z",
+            "canonical_url": "https://m.en.limecosmetic.com/product/detail.html?product_no=104&item_code=P00000EA000A",
+            "destination_url": "https://m.en.limecosmetic.com/product/detail.html?product_no=104&item_code=P00000EA000A",
+            "title": "LIME V COLLAGEN AMPLE CUSHION",
+            "description": "20g",
+            "image_url": "https://m.en.limecosmetic.com/web/product/big/202012/334621c425548714247a8b008551eb2e.jpg",
+            "image_urls": [
+              "https://m.en.limecosmetic.com/web/product/big/202012/334621c425548714247a8b008551eb2e.jpg",
+              "https://m.en.limecosmetic.com/web/product/extra/big/20200122/a0ed0cf2a86edc5b9de8c7323f4db88c.jpg",
+              "https://m.en.limecosmetic.com/web/product/extra/big/20200122/852c5ed490476570ecbe9aa29d1a73c5.jpg",
+              "https://m.en.limecosmetic.com/web/product/extra/big/20200122/6b8f6e41236831352f075203844dad8b.jpg",
+              "https://m.en.limecosmetic.com/web/product/extra/big/20200122/4278b76cad66a881eeda7ccf7d7f46f5.jpg",
+              "https://m.en.limecosmetic.com/web/upload/icon_201807041517498300.png",
+              "https://m.en.limecosmetic.com/web/upload/icon_201807041517527300.png",
+              "https://img.echosting.cafe24.com/skin/mobile/common/ico_quantity_down.jpg",
+              "https://img.echosting.cafe24.com/skin/mobile/common/ico_quantity_up.jpg"
+            ],
+            "images": [
+              "https://m.en.limecosmetic.com/web/product/big/202012/334621c425548714247a8b008551eb2e.jpg",
+              "https://m.en.limecosmetic.com/web/product/extra/big/20200122/a0ed0cf2a86edc5b9de8c7323f4db88c.jpg",
+              "https://m.en.limecosmetic.com/web/product/extra/big/20200122/852c5ed490476570ecbe9aa29d1a73c5.jpg",
+              "https://m.en.limecosmetic.com/web/product/extra/big/20200122/6b8f6e41236831352f075203844dad8b.jpg",
+              "https://m.en.limecosmetic.com/web/product/extra/big/20200122/4278b76cad66a881eeda7ccf7d7f46f5.jpg",
+              "https://m.en.limecosmetic.com/web/upload/icon_201807041517498300.png",
+              "https://m.en.limecosmetic.com/web/upload/icon_201807041517527300.png",
+              "https://img.echosting.cafe24.com/skin/mobile/common/ico_quantity_down.jpg",
+              "https://img.echosting.cafe24.com/skin/mobile/common/ico_quantity_up.jpg"
+            ],
+            "variants": [
+              {
+                "sku": "AUTO-b4dacb450374",
+                "variant_id": "6c0d60e05701",
+                "url": "https://m.en.limecosmetic.com/product/detail.html?product_no=104&item_code=P00000EA000A",
+                "option_name": "Offer",
+                "option_value": "LIME V COLLAGEN AMPLE CUSHION # 10",
+                "price": "11.14",
+                "currency": "USD",
+                "stock": "In Stock",
+                "description": "20g",
+                "image_url": "https://m.en.limecosmetic.com/web/product/big/202012/334621c425548714247a8b008551eb2e.jpg",
+                "image_urls": [
+                  "https://m.en.limecosmetic.com/web/product/big/202012/334621c425548714247a8b008551eb2e.jpg",
+                  "https://m.en.limecosmetic.com/web/product/extra/big/20200122/a0ed0cf2a86edc5b9de8c7323f4db88c.jpg",
+                  "https://m.en.limecosmetic.com/web/product/extra/big/20200122/852c5ed490476570ecbe9aa29d1a73c5.jpg",
+                  "https://m.en.limecosmetic.com/web/product/extra/big/20200122/6b8f6e41236831352f075203844dad8b.jpg",
+                  "https://m.en.limecosmetic.com/web/product/extra/big/20200122/4278b76cad66a881eeda7ccf7d7f46f5.jpg",
+                  "https://m.en.limecosmetic.com/web/upload/icon_201807041517498300.png",
+                  "https://m.en.limecosmetic.com/web/upload/icon_201807041517527300.png",
+                  "https://img.echosting.cafe24.com/skin/mobile/common/ico_quantity_down.jpg",
+                  "https://img.echosting.cafe24.com/skin/mobile/common/ico_quantity_up.jpg"
+                ]
+              },
+              {
+                "sku": "AUTO-c8cc9e7453fd",
+                "variant_id": "dd6f7abfe5d9",
+                "url": "https://m.en.limecosmetic.com/product/detail.html?product_no=104&item_code=P00000EA000B",
+                "option_name": "Offer",
+                "option_value": "LIME V COLLAGEN AMPLE CUSHION # 20",
+                "price": "11.14",
+                "currency": "USD",
+                "stock": "In Stock",
+                "description": "20g",
+                "image_url": "https://m.en.limecosmetic.com/web/product/big/202012/334621c425548714247a8b008551eb2e.jpg",
+                "image_urls": [
+                  "https://m.en.limecosmetic.com/web/product/big/202012/334621c425548714247a8b008551eb2e.jpg",
+                  "https://m.en.limecosmetic.com/web/product/extra/big/20200122/a0ed0cf2a86edc5b9de8c7323f4db88c.jpg",
+                  "https://m.en.limecosmetic.com/web/product/extra/big/20200122/852c5ed490476570ecbe9aa29d1a73c5.jpg",
+                  "https://m.en.limecosmetic.com/web/product/extra/big/20200122/6b8f6e41236831352f075203844dad8b.jpg",
+                  "https://m.en.limecosmetic.com/web/product/extra/big/20200122/4278b76cad66a881eeda7ccf7d7f46f5.jpg",
+                  "https://m.en.limecosmetic.com/web/upload/icon_201807041517498300.png",
+                  "https://m.en.limecosmetic.com/web/upload/icon_201807041517527300.png",
+                  "https://img.echosting.cafe24.com/skin/mobile/common/ico_quantity_down.jpg",
+                  "https://img.echosting.cafe24.com/skin/mobile/common/ico_quantity_up.jpg"
+                ]
+              }
+            ],
+            "diagnostics": {
+              "requested_domain": "m.en.limecosmetic.com",
+              "resolved_base_url": "https://m.en.limecosmetic.com",
+              "discovery_strategy": "seed_page",
+              "failure_category": null,
+              "block_provider": null,
+              "http_trace": [
+                {
+                  "url": "https://m.en.limecosmetic.com/products/lime-v-collagen-ample-cushion.js",
+                  "status": 404
+                },
+                {
+                  "url": "https://m.en.limecosmetic.com/products.json?limit=250&page=1",
+                  "status": 404
+                },
+                {
+                  "url": "https://m.en.limecosmetic.com/product/lime-v-collagen-ample-cushion/104/",
+                  "status": 200
+                },
+                {
+                  "url": "https://m.en.limecosmetic.com/product/lime-v-collagen-ample-cushion/104/",
+                  "status": 200
+                },
+                {
+                  "url": "https://m.en.limecosmetic.com/product/lime-v-collagen-ample-cushion/104/",
+                  "status": 200
+                }
+              ]
+            },
+            "search_aliases": [
+              "LIME V COLLAGEN AMPLE CUSHION"
+            ],
+            "authority_source": {
+              "source_url": "https://m.en.limecosmetic.com/product/lime-v-collagen-ample-cushion/104/",
+              "source_role": "primary",
+              "matched_preferred_titles": []
+            },
+            "source_validation": {
+              "source_type": "brand_owned",
+              "requires_multi_offer_merge_validation": false,
+              "source_host": "m.en.limecosmetic.com"
+            },
+            "commerce_facts_v1": {
+              "contract_version": "commerce_facts.v1",
+              "market_id": "US",
+              "country": "US",
+              "currency_target": "USD",
+              "source_authority": "catalog_extract_v2",
+              "captured_at": "2026-05-25T01:41:24.392Z",
+              "evidence_url": "https://en.limecosmetic.com/product/lime-v-collagen-ample-cushion/104/",
+              "sellable_region": {
+                "status": "unknown",
+                "countries": [],
+                "evidence_source": "catalog_extract_v2",
+                "confidence": "medium",
+                "checked_at": "2026-05-25T01:41:24.392Z",
+                "reason_codes": [
+                  "market_currency_observed",
+                  "shipping_destination_not_verified",
+                  "external_checkout_not_queried"
+                ],
+                "evidence_url": "https://en.limecosmetic.com/product/lime-v-collagen-ample-cushion/104/"
+              },
+              "regional_price": {
+                "amount": 11.14,
+                "currency": "USD",
+                "display_raw": "11.14",
+                "price_type": "list",
+                "compare_at_amount": null,
+                "compare_at_currency": null,
+                "compare_at_display_raw": null,
+                "tax_included": "unknown",
+                "confidence": "high",
+                "market_switch_status": "ok",
+                "observed_currency": "USD",
+                "source_url": "https://en.limecosmetic.com/product/lime-v-collagen-ample-cushion/104/",
+                "captured_at": "2026-05-25T01:41:24.392Z"
+              },
+              "availability": {
+                "status": "in_stock",
+                "source": "catalog_extract_v2",
+                "confidence": "medium",
+                "captured_at": "2026-05-25T01:41:24.392Z"
+              },
+              "shipping": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_checkout_not_queried"
+                ],
+                "checked_at": "2026-05-25T01:41:24.392Z"
+              },
+              "promotions": [],
+              "returns": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_returns_not_extracted"
+                ],
+                "checked_at": "2026-05-25T01:41:24.392Z"
+              }
+            },
+            "commerce_facts_gate": {
+              "status": "pass",
+              "market_id": "US",
+              "expected_currency": "USD",
+              "observed_currency": "USD",
+              "market_switch_status": "ok",
+              "sellable_region_status": "unknown",
+              "shipping_status": "unknown",
+              "promotions_status": "unknown",
+              "availability_status": "in_stock",
+              "problems": []
+            }
+          },
+          "search_aliases": [
+            "LIME V COLLAGEN AMPLE CUSHION"
+          ],
+          "authority_source": {
+            "source_url": "https://m.en.limecosmetic.com/product/lime-v-collagen-ample-cushion/104/",
+            "source_role": "primary",
+            "matched_preferred_titles": []
+          },
+          "source_validation": {
+            "source_type": "brand_owned",
+            "requires_multi_offer_merge_validation": false,
+            "source_host": "m.en.limecosmetic.com"
+          },
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-25T01:41:24.392Z",
+            "evidence_url": "https://en.limecosmetic.com/product/lime-v-collagen-ample-cushion/104/",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-25T01:41:24.392Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://en.limecosmetic.com/product/lime-v-collagen-ample-cushion/104/"
+            },
+            "regional_price": {
+              "amount": 11.14,
+              "currency": "USD",
+              "display_raw": "11.14",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "high",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://en.limecosmetic.com/product/lime-v-collagen-ample-cushion/104/",
+              "captured_at": "2026-05-25T01:41:24.392Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T01:41:24.392Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T01:41:24.392Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T01:41:24.392Z"
+            }
+          },
+          "commerce_facts_gate": {
+            "status": "pass",
+            "market_id": "US",
+            "expected_currency": "USD",
+            "observed_currency": "USD",
+            "market_switch_status": "ok",
+            "sellable_region_status": "unknown",
+            "shipping_status": "unknown",
+            "promotions_status": "unknown",
+            "availability_status": "in_stock",
+            "problems": []
+          }
+        }
+      }
+    }
+  ]
+}

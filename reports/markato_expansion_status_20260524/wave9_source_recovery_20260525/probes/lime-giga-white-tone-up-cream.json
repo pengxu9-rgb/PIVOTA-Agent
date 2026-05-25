@@ -1,0 +1,410 @@
+{
+  "generated_at": "2026-05-25T01:40:44.327Z",
+  "brand": "LIME",
+  "domain": "https://en.limecosmetic.com/product/lime-giga-white-tone-up-cream/70",
+  "fallback_domains": [],
+  "market": "US",
+  "preferred_titles": [],
+  "matched_preferred_titles": [],
+  "extracted_product_count": 1,
+  "excluded_bundle_like_count": 0,
+  "excluded_non_product_page_count": 0,
+  "excluded_incomplete_transaction_count": 0,
+  "excluded_brand_scope_mismatch_count": 0,
+  "matched_preferred_title_count": 0,
+  "item_count": 1,
+  "fallback_used": false,
+  "source_attempts": [
+    {
+      "source_url": "https://en.limecosmetic.com/product/lime-giga-white-tone-up-cream/70",
+      "source_role": "primary",
+      "extracted_product_count": 1,
+      "item_count": 1,
+      "matched_preferred_title_count": 0,
+      "matched_preferred_titles": [],
+      "diagnostics_summary": {
+        "discovery_strategy": "seed_page",
+        "failure_category": null,
+        "block_provider": null
+      },
+      "used_in_manifest": true,
+      "added_item_count": 1,
+      "added_matched_preferred_titles": [],
+      "skip_reason": null
+    }
+  ],
+  "items": [
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "target_brand": "LIME",
+      "target_url": "https://en.limecosmetic.com/product/lime-giga-white-tone-up-cream/70/",
+      "extract_status": "brand_catalog_extract",
+      "market": "US",
+      "source_domain": "https://en.limecosmetic.com/product/lime-giga-white-tone-up-cream/70",
+      "source_role": "primary",
+      "matched_preferred_titles": [],
+      "alias_preferred_titles": [],
+      "seed_row": {
+        "ingredient_id": null,
+        "ingredient_name": null,
+        "seed_id": "eps_ce4ca08ca16a4f1e79f74887",
+        "brand": "LIME",
+        "market": "US",
+        "tool": "creator_agents",
+        "status": "active",
+        "domain": "en.limecosmetic.com",
+        "external_product_id": "ext_ef9930ea4e8bf403866dc73d",
+        "canonical_url": "https://en.limecosmetic.com/product/lime-giga-white-tone-up-cream/70",
+        "destination_url": "https://en.limecosmetic.com/product/lime-giga-white-tone-up-cream/70",
+        "title": "LIME GIGA WHITE TONE-UP CREAM",
+        "image_url": "https://en.limecosmetic.com/web/product/big/202406/aa1d5eca8737a427c3729e5aab48b6ad.jpg",
+        "price_amount": 27.84,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "attached_product_key": null,
+        "requires_seed_correction": false,
+        "seed_data": {
+          "brand": "LIME",
+          "title": "LIME GIGA WHITE TONE-UP CREAM",
+          "description": "",
+          "external_product_id": "ext_ef9930ea4e8bf403866dc73d",
+          "canonical_url": "https://en.limecosmetic.com/product/lime-giga-white-tone-up-cream/70",
+          "destination_url": "https://en.limecosmetic.com/product/lime-giga-white-tone-up-cream/70",
+          "price_amount": 27.84,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://en.limecosmetic.com/web/product/big/202406/aa1d5eca8737a427c3729e5aab48b6ad.jpg",
+          "image_urls": [
+            "https://en.limecosmetic.com/web/product/big/202406/aa1d5eca8737a427c3729e5aab48b6ad.jpg",
+            "https://en.limecosmetic.com/web/product/extra/big/202406/c0aadde6f1cd22b9acf3f54af42b343d.jpg",
+            "https://en.limecosmetic.com/web/product/extra/big/202406/c912f23a6aaffc99c3a1bda1a19811f4.jpg",
+            "https://en.limecosmetic.com/web/product/extra/big/202406/c559a953fe3f19fce90abf86397ba5a8.jpg",
+            "https://img.cafe24.com/img/common/global/ko_KR_32x24.png",
+            "https://img.cafe24.com/img/common/global/en_US_32x24.png",
+            "https://img.cafe24.com/img/common/global/ja_JP_32x24.png",
+            "https://en.limecosmetic.com/web/product/small/202406/2c80a2a4be262ea50da34a6d2895dc98.jpg",
+            "https://en.limecosmetic.com/web/product/extra/small/202406/c0aadde6f1cd22b9acf3f54af42b343d.jpg",
+            "https://en.limecosmetic.com/web/product/extra/small/202406/c912f23a6aaffc99c3a1bda1a19811f4.jpg",
+            "https://en.limecosmetic.com/web/product/extra/small/202406/c559a953fe3f19fce90abf86397ba5a8.jpg",
+            "https://img.echosting.cafe24.com/skin/base_en_US/product/txt_naver.gif"
+          ],
+          "images": [
+            "https://en.limecosmetic.com/web/product/big/202406/aa1d5eca8737a427c3729e5aab48b6ad.jpg",
+            "https://en.limecosmetic.com/web/product/extra/big/202406/c0aadde6f1cd22b9acf3f54af42b343d.jpg",
+            "https://en.limecosmetic.com/web/product/extra/big/202406/c912f23a6aaffc99c3a1bda1a19811f4.jpg",
+            "https://en.limecosmetic.com/web/product/extra/big/202406/c559a953fe3f19fce90abf86397ba5a8.jpg",
+            "https://img.cafe24.com/img/common/global/ko_KR_32x24.png",
+            "https://img.cafe24.com/img/common/global/en_US_32x24.png",
+            "https://img.cafe24.com/img/common/global/ja_JP_32x24.png",
+            "https://en.limecosmetic.com/web/product/small/202406/2c80a2a4be262ea50da34a6d2895dc98.jpg",
+            "https://en.limecosmetic.com/web/product/extra/small/202406/c0aadde6f1cd22b9acf3f54af42b343d.jpg",
+            "https://en.limecosmetic.com/web/product/extra/small/202406/c912f23a6aaffc99c3a1bda1a19811f4.jpg",
+            "https://en.limecosmetic.com/web/product/extra/small/202406/c559a953fe3f19fce90abf86397ba5a8.jpg",
+            "https://img.echosting.cafe24.com/skin/base_en_US/product/txt_naver.gif"
+          ],
+          "variants": [
+            {
+              "sku": "AUTO-0b3a85d2b7a7",
+              "variant_id": "140c7f2559cc",
+              "url": "https://en.limecosmetic.com/product/lime-giga-white-tone-up-cream/70",
+              "option_name": "Offer",
+              "option_value": "AUTO-0b3a85d2b7a7",
+              "price": "27.84",
+              "currency": "USD",
+              "stock": "In Stock",
+              "description": "",
+              "image_url": "https://en.limecosmetic.com/web/product/big/202406/aa1d5eca8737a427c3729e5aab48b6ad.jpg",
+              "image_urls": [
+                "https://en.limecosmetic.com/web/product/big/202406/aa1d5eca8737a427c3729e5aab48b6ad.jpg",
+                "https://en.limecosmetic.com/web/product/extra/big/202406/c0aadde6f1cd22b9acf3f54af42b343d.jpg",
+                "https://en.limecosmetic.com/web/product/extra/big/202406/c912f23a6aaffc99c3a1bda1a19811f4.jpg",
+                "https://en.limecosmetic.com/web/product/extra/big/202406/c559a953fe3f19fce90abf86397ba5a8.jpg",
+                "https://img.cafe24.com/img/common/global/ko_KR_32x24.png",
+                "https://img.cafe24.com/img/common/global/en_US_32x24.png",
+                "https://img.cafe24.com/img/common/global/ja_JP_32x24.png",
+                "https://en.limecosmetic.com/web/product/small/202406/2c80a2a4be262ea50da34a6d2895dc98.jpg",
+                "https://en.limecosmetic.com/web/product/extra/small/202406/c0aadde6f1cd22b9acf3f54af42b343d.jpg",
+                "https://en.limecosmetic.com/web/product/extra/small/202406/c912f23a6aaffc99c3a1bda1a19811f4.jpg",
+                "https://en.limecosmetic.com/web/product/extra/small/202406/c559a953fe3f19fce90abf86397ba5a8.jpg",
+                "https://img.echosting.cafe24.com/skin/base_en_US/product/txt_naver.gif"
+              ]
+            }
+          ],
+          "snapshot": {
+            "source": "catalog_intelligence_seed_creation_manifest",
+            "extracted_at": "2026-05-25T01:40:44.322Z",
+            "canonical_url": "https://en.limecosmetic.com/product/lime-giga-white-tone-up-cream/70",
+            "destination_url": "https://en.limecosmetic.com/product/lime-giga-white-tone-up-cream/70",
+            "title": "LIME GIGA WHITE TONE-UP CREAM",
+            "description": "",
+            "image_url": "https://en.limecosmetic.com/web/product/big/202406/aa1d5eca8737a427c3729e5aab48b6ad.jpg",
+            "image_urls": [
+              "https://en.limecosmetic.com/web/product/big/202406/aa1d5eca8737a427c3729e5aab48b6ad.jpg",
+              "https://en.limecosmetic.com/web/product/extra/big/202406/c0aadde6f1cd22b9acf3f54af42b343d.jpg",
+              "https://en.limecosmetic.com/web/product/extra/big/202406/c912f23a6aaffc99c3a1bda1a19811f4.jpg",
+              "https://en.limecosmetic.com/web/product/extra/big/202406/c559a953fe3f19fce90abf86397ba5a8.jpg",
+              "https://img.cafe24.com/img/common/global/ko_KR_32x24.png",
+              "https://img.cafe24.com/img/common/global/en_US_32x24.png",
+              "https://img.cafe24.com/img/common/global/ja_JP_32x24.png",
+              "https://en.limecosmetic.com/web/product/small/202406/2c80a2a4be262ea50da34a6d2895dc98.jpg",
+              "https://en.limecosmetic.com/web/product/extra/small/202406/c0aadde6f1cd22b9acf3f54af42b343d.jpg",
+              "https://en.limecosmetic.com/web/product/extra/small/202406/c912f23a6aaffc99c3a1bda1a19811f4.jpg",
+              "https://en.limecosmetic.com/web/product/extra/small/202406/c559a953fe3f19fce90abf86397ba5a8.jpg",
+              "https://img.echosting.cafe24.com/skin/base_en_US/product/txt_naver.gif"
+            ],
+            "images": [
+              "https://en.limecosmetic.com/web/product/big/202406/aa1d5eca8737a427c3729e5aab48b6ad.jpg",
+              "https://en.limecosmetic.com/web/product/extra/big/202406/c0aadde6f1cd22b9acf3f54af42b343d.jpg",
+              "https://en.limecosmetic.com/web/product/extra/big/202406/c912f23a6aaffc99c3a1bda1a19811f4.jpg",
+              "https://en.limecosmetic.com/web/product/extra/big/202406/c559a953fe3f19fce90abf86397ba5a8.jpg",
+              "https://img.cafe24.com/img/common/global/ko_KR_32x24.png",
+              "https://img.cafe24.com/img/common/global/en_US_32x24.png",
+              "https://img.cafe24.com/img/common/global/ja_JP_32x24.png",
+              "https://en.limecosmetic.com/web/product/small/202406/2c80a2a4be262ea50da34a6d2895dc98.jpg",
+              "https://en.limecosmetic.com/web/product/extra/small/202406/c0aadde6f1cd22b9acf3f54af42b343d.jpg",
+              "https://en.limecosmetic.com/web/product/extra/small/202406/c912f23a6aaffc99c3a1bda1a19811f4.jpg",
+              "https://en.limecosmetic.com/web/product/extra/small/202406/c559a953fe3f19fce90abf86397ba5a8.jpg",
+              "https://img.echosting.cafe24.com/skin/base_en_US/product/txt_naver.gif"
+            ],
+            "variants": [
+              {
+                "sku": "AUTO-0b3a85d2b7a7",
+                "variant_id": "140c7f2559cc",
+                "url": "https://en.limecosmetic.com/product/lime-giga-white-tone-up-cream/70",
+                "option_name": "Offer",
+                "option_value": "AUTO-0b3a85d2b7a7",
+                "price": "27.84",
+                "currency": "USD",
+                "stock": "In Stock",
+                "description": "",
+                "image_url": "https://en.limecosmetic.com/web/product/big/202406/aa1d5eca8737a427c3729e5aab48b6ad.jpg",
+                "image_urls": [
+                  "https://en.limecosmetic.com/web/product/big/202406/aa1d5eca8737a427c3729e5aab48b6ad.jpg",
+                  "https://en.limecosmetic.com/web/product/extra/big/202406/c0aadde6f1cd22b9acf3f54af42b343d.jpg",
+                  "https://en.limecosmetic.com/web/product/extra/big/202406/c912f23a6aaffc99c3a1bda1a19811f4.jpg",
+                  "https://en.limecosmetic.com/web/product/extra/big/202406/c559a953fe3f19fce90abf86397ba5a8.jpg",
+                  "https://img.cafe24.com/img/common/global/ko_KR_32x24.png",
+                  "https://img.cafe24.com/img/common/global/en_US_32x24.png",
+                  "https://img.cafe24.com/img/common/global/ja_JP_32x24.png",
+                  "https://en.limecosmetic.com/web/product/small/202406/2c80a2a4be262ea50da34a6d2895dc98.jpg",
+                  "https://en.limecosmetic.com/web/product/extra/small/202406/c0aadde6f1cd22b9acf3f54af42b343d.jpg",
+                  "https://en.limecosmetic.com/web/product/extra/small/202406/c912f23a6aaffc99c3a1bda1a19811f4.jpg",
+                  "https://en.limecosmetic.com/web/product/extra/small/202406/c559a953fe3f19fce90abf86397ba5a8.jpg",
+                  "https://img.echosting.cafe24.com/skin/base_en_US/product/txt_naver.gif"
+                ]
+              }
+            ],
+            "diagnostics": {
+              "requested_domain": "en.limecosmetic.com",
+              "resolved_base_url": "https://en.limecosmetic.com",
+              "discovery_strategy": "seed_page",
+              "failure_category": null,
+              "block_provider": null,
+              "http_trace": [
+                {
+                  "url": "https://en.limecosmetic.com/products/lime-giga-white-tone-up-cream.js",
+                  "status": 404
+                },
+                {
+                  "url": "https://en.limecosmetic.com/products.json?limit=250&page=1",
+                  "status": 404
+                },
+                {
+                  "url": "https://en.limecosmetic.com/product/lime-giga-white-tone-up-cream/70",
+                  "status": 200
+                },
+                {
+                  "url": "https://en.limecosmetic.com/product/lime-giga-white-tone-up-cream/70",
+                  "status": 200
+                },
+                {
+                  "url": "https://en.limecosmetic.com/product/lime-giga-white-tone-up-cream/70",
+                  "status": 200
+                },
+                {
+                  "url": "https://en.limecosmetic.com/product/lime-giga-white-tone-up-cream/70",
+                  "status": 200
+                }
+              ]
+            },
+            "search_aliases": [
+              "LIME GIGA WHITE TONE-UP CREAM"
+            ],
+            "authority_source": {
+              "source_url": "https://en.limecosmetic.com/product/lime-giga-white-tone-up-cream/70",
+              "source_role": "primary",
+              "matched_preferred_titles": []
+            },
+            "source_validation": {
+              "source_type": "brand_owned",
+              "requires_multi_offer_merge_validation": false,
+              "source_host": "en.limecosmetic.com"
+            },
+            "commerce_facts_v1": {
+              "contract_version": "commerce_facts.v1",
+              "market_id": "US",
+              "country": "US",
+              "currency_target": "USD",
+              "source_authority": "catalog_extract_v2",
+              "captured_at": "2026-05-25T01:40:37.855Z",
+              "evidence_url": "https://en.limecosmetic.com/product/lime-giga-white-tone-up-cream/70/",
+              "sellable_region": {
+                "status": "unknown",
+                "countries": [],
+                "evidence_source": "catalog_extract_v2",
+                "confidence": "medium",
+                "checked_at": "2026-05-25T01:40:37.855Z",
+                "reason_codes": [
+                  "market_currency_observed",
+                  "shipping_destination_not_verified",
+                  "external_checkout_not_queried"
+                ],
+                "evidence_url": "https://en.limecosmetic.com/product/lime-giga-white-tone-up-cream/70/"
+              },
+              "regional_price": {
+                "amount": 27.84,
+                "currency": "USD",
+                "display_raw": "27.84",
+                "price_type": "list",
+                "compare_at_amount": null,
+                "compare_at_currency": null,
+                "compare_at_display_raw": null,
+                "tax_included": "unknown",
+                "confidence": "high",
+                "market_switch_status": "ok",
+                "observed_currency": "USD",
+                "source_url": "https://en.limecosmetic.com/product/lime-giga-white-tone-up-cream/70/",
+                "captured_at": "2026-05-25T01:40:37.855Z"
+              },
+              "availability": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "captured_at": "2026-05-25T01:40:37.855Z"
+              },
+              "shipping": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_checkout_not_queried"
+                ],
+                "checked_at": "2026-05-25T01:40:37.855Z"
+              },
+              "promotions": [],
+              "returns": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_returns_not_extracted"
+                ],
+                "checked_at": "2026-05-25T01:40:37.855Z"
+              }
+            },
+            "commerce_facts_gate": {
+              "status": "pass",
+              "market_id": "US",
+              "expected_currency": "USD",
+              "observed_currency": "USD",
+              "market_switch_status": "ok",
+              "sellable_region_status": "unknown",
+              "shipping_status": "unknown",
+              "promotions_status": "unknown",
+              "availability_status": "unknown",
+              "problems": []
+            }
+          },
+          "search_aliases": [
+            "LIME GIGA WHITE TONE-UP CREAM"
+          ],
+          "authority_source": {
+            "source_url": "https://en.limecosmetic.com/product/lime-giga-white-tone-up-cream/70",
+            "source_role": "primary",
+            "matched_preferred_titles": []
+          },
+          "source_validation": {
+            "source_type": "brand_owned",
+            "requires_multi_offer_merge_validation": false,
+            "source_host": "en.limecosmetic.com"
+          },
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-25T01:40:37.855Z",
+            "evidence_url": "https://en.limecosmetic.com/product/lime-giga-white-tone-up-cream/70/",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-25T01:40:37.855Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://en.limecosmetic.com/product/lime-giga-white-tone-up-cream/70/"
+            },
+            "regional_price": {
+              "amount": 27.84,
+              "currency": "USD",
+              "display_raw": "27.84",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "high",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://en.limecosmetic.com/product/lime-giga-white-tone-up-cream/70/",
+              "captured_at": "2026-05-25T01:40:37.855Z"
+            },
+            "availability": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "captured_at": "2026-05-25T01:40:37.855Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T01:40:37.855Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T01:40:37.855Z"
+            }
+          },
+          "commerce_facts_gate": {
+            "status": "pass",
+            "market_id": "US",
+            "expected_currency": "USD",
+            "observed_currency": "USD",
+            "market_switch_status": "ok",
+            "sellable_region_status": "unknown",
+            "shipping_status": "unknown",
+            "promotions_status": "unknown",
+            "availability_status": "unknown",
+            "problems": []
+          }
+        }
+      }
+    }
+  ]
+}

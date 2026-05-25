@@ -1,0 +1,37 @@
+{
+  "generated_at": "2026-05-25T01:40:51.370Z",
+  "brand": "Apiceuticals",
+  "domain": "https://www.apiceuticals.com/shop/propowax-antioxidant-shampoo/",
+  "fallback_domains": [],
+  "market": "US",
+  "preferred_titles": [],
+  "matched_preferred_titles": [],
+  "extracted_product_count": 0,
+  "excluded_bundle_like_count": 0,
+  "excluded_non_product_page_count": 0,
+  "excluded_incomplete_transaction_count": 0,
+  "excluded_brand_scope_mismatch_count": 0,
+  "matched_preferred_title_count": 0,
+  "item_count": 0,
+  "fallback_used": false,
+  "source_attempts": [
+    {
+      "source_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-shampoo/",
+      "source_role": "primary",
+      "extracted_product_count": 0,
+      "item_count": 0,
+      "matched_preferred_title_count": 0,
+      "matched_preferred_titles": [],
+      "diagnostics_summary": {
+        "discovery_strategy": "seed_page",
+        "failure_category": "product_schema_missing",
+        "block_provider": null
+      },
+      "used_in_manifest": false,
+      "added_item_count": 0,
+      "added_matched_preferred_titles": [],
+      "skip_reason": null
+    }
+  ],
+  "items": []
+}

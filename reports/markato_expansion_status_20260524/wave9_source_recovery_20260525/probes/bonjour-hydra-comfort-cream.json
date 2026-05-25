@@ -1,0 +1,352 @@
+{
+  "generated_at": "2026-05-25T01:39:15.255Z",
+  "brand": "Bonjour La Vie",
+  "domain": "https://bonjourlavie.it/products/hydra-comfort-cream",
+  "fallback_domains": [],
+  "market": "US",
+  "preferred_titles": [],
+  "matched_preferred_titles": [],
+  "extracted_product_count": 1,
+  "excluded_bundle_like_count": 0,
+  "excluded_non_product_page_count": 0,
+  "excluded_incomplete_transaction_count": 0,
+  "excluded_brand_scope_mismatch_count": 0,
+  "matched_preferred_title_count": 0,
+  "item_count": 1,
+  "fallback_used": false,
+  "source_attempts": [
+    {
+      "source_url": "https://bonjourlavie.it/products/hydra-comfort-cream",
+      "source_role": "primary",
+      "extracted_product_count": 1,
+      "item_count": 1,
+      "matched_preferred_title_count": 0,
+      "matched_preferred_titles": [],
+      "diagnostics_summary": {
+        "discovery_strategy": "shopify_json",
+        "failure_category": null,
+        "block_provider": null
+      },
+      "used_in_manifest": true,
+      "added_item_count": 1,
+      "added_matched_preferred_titles": [],
+      "skip_reason": null
+    }
+  ],
+  "items": [
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "target_brand": "Bonjour La Vie",
+      "target_url": "https://bonjourlavie.it/products/hydra-comfort-cream",
+      "extract_status": "brand_catalog_extract",
+      "market": "US",
+      "source_domain": "https://bonjourlavie.it/products/hydra-comfort-cream",
+      "source_role": "primary",
+      "matched_preferred_titles": [],
+      "alias_preferred_titles": [],
+      "seed_row": {
+        "ingredient_id": null,
+        "ingredient_name": null,
+        "seed_id": "eps_36944c58fdeb1f8fbf8cbf28",
+        "brand": "Bonjour La Vie",
+        "market": "US",
+        "tool": "creator_agents",
+        "status": "active",
+        "domain": "bonjourlavie.it",
+        "external_product_id": "ext_41ebb421d85f81357a8cd831",
+        "canonical_url": "https://bonjourlavie.it/products/hydra-comfort-cream",
+        "destination_url": "https://bonjourlavie.it/products/hydra-comfort-cream",
+        "title": "Hydra Comfort Cream",
+        "image_url": "https://cdn.shopify.com/s/files/1/0603/3775/0259/files/Bonjour_La_Vie_Hydra_Comfort_Cream_50ml_vaso_e_scatola.jpg?v=1727509933",
+        "price_amount": 55,
+        "price_currency": "EUR",
+        "availability": "in_stock",
+        "attached_product_key": null,
+        "requires_seed_correction": false,
+        "seed_data": {
+          "brand": "Bonjour La Vie",
+          "title": "Hydra Comfort Cream",
+          "description": "",
+          "external_product_id": "ext_41ebb421d85f81357a8cd831",
+          "canonical_url": "https://bonjourlavie.it/products/hydra-comfort-cream",
+          "destination_url": "https://bonjourlavie.it/products/hydra-comfort-cream",
+          "price_amount": 55,
+          "price_currency": "EUR",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0603/3775/0259/files/Bonjour_La_Vie_Hydra_Comfort_Cream_50ml_vaso_e_scatola.jpg?v=1727509933",
+          "image_urls": [
+            "https://cdn.shopify.com/s/files/1/0603/3775/0259/files/Bonjour_La_Vie_Hydra_Comfort_Cream_50ml_vaso_e_scatola.jpg?v=1727509933",
+            "https://cdn.shopify.com/s/files/1/0603/3775/0259/files/Bonjour_La_Vie_Hydra_Comfort_Cream_50ml_vaso.jpg?v=1727509933",
+            "https://cdn.shopify.com/s/files/1/0603/3775/0259/files/Bonjour_La_Vie_Hydra_Comfort_Cream_texture.jpg?v=1730737633"
+          ],
+          "images": [
+            "https://cdn.shopify.com/s/files/1/0603/3775/0259/files/Bonjour_La_Vie_Hydra_Comfort_Cream_50ml_vaso_e_scatola.jpg?v=1727509933",
+            "https://cdn.shopify.com/s/files/1/0603/3775/0259/files/Bonjour_La_Vie_Hydra_Comfort_Cream_50ml_vaso.jpg?v=1727509933",
+            "https://cdn.shopify.com/s/files/1/0603/3775/0259/files/Bonjour_La_Vie_Hydra_Comfort_Cream_texture.jpg?v=1730737633"
+          ],
+          "variants": [
+            {
+              "sku": "VOJ 008",
+              "variant_id": "43213679231219",
+              "url": "https://bonjourlavie.it/products/hydra-comfort-cream",
+              "option_name": "Size",
+              "option_value": "50ml",
+              "price": "55",
+              "currency": "EUR",
+              "stock": "In Stock",
+              "description": "",
+              "image_url": "https://cdn.shopify.com/s/files/1/0603/3775/0259/files/Bonjour_La_Vie_Hydra_Comfort_Cream_50ml_vaso_e_scatola.jpg?v=1727509933",
+              "image_urls": [
+                "https://cdn.shopify.com/s/files/1/0603/3775/0259/files/Bonjour_La_Vie_Hydra_Comfort_Cream_50ml_vaso_e_scatola.jpg?v=1727509933",
+                "https://cdn.shopify.com/s/files/1/0603/3775/0259/files/Bonjour_La_Vie_Hydra_Comfort_Cream_50ml_vaso.jpg?v=1727509933",
+                "https://cdn.shopify.com/s/files/1/0603/3775/0259/files/Bonjour_La_Vie_Hydra_Comfort_Cream_texture.jpg?v=1730737633"
+              ]
+            }
+          ],
+          "snapshot": {
+            "source": "catalog_intelligence_seed_creation_manifest",
+            "extracted_at": "2026-05-25T01:39:15.251Z",
+            "canonical_url": "https://bonjourlavie.it/products/hydra-comfort-cream",
+            "destination_url": "https://bonjourlavie.it/products/hydra-comfort-cream",
+            "title": "Hydra Comfort Cream",
+            "description": "",
+            "image_url": "https://cdn.shopify.com/s/files/1/0603/3775/0259/files/Bonjour_La_Vie_Hydra_Comfort_Cream_50ml_vaso_e_scatola.jpg?v=1727509933",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0603/3775/0259/files/Bonjour_La_Vie_Hydra_Comfort_Cream_50ml_vaso_e_scatola.jpg?v=1727509933",
+              "https://cdn.shopify.com/s/files/1/0603/3775/0259/files/Bonjour_La_Vie_Hydra_Comfort_Cream_50ml_vaso.jpg?v=1727509933",
+              "https://cdn.shopify.com/s/files/1/0603/3775/0259/files/Bonjour_La_Vie_Hydra_Comfort_Cream_texture.jpg?v=1730737633"
+            ],
+            "images": [
+              "https://cdn.shopify.com/s/files/1/0603/3775/0259/files/Bonjour_La_Vie_Hydra_Comfort_Cream_50ml_vaso_e_scatola.jpg?v=1727509933",
+              "https://cdn.shopify.com/s/files/1/0603/3775/0259/files/Bonjour_La_Vie_Hydra_Comfort_Cream_50ml_vaso.jpg?v=1727509933",
+              "https://cdn.shopify.com/s/files/1/0603/3775/0259/files/Bonjour_La_Vie_Hydra_Comfort_Cream_texture.jpg?v=1730737633"
+            ],
+            "variants": [
+              {
+                "sku": "VOJ 008",
+                "variant_id": "43213679231219",
+                "url": "https://bonjourlavie.it/products/hydra-comfort-cream",
+                "option_name": "Size",
+                "option_value": "50ml",
+                "price": "55",
+                "currency": "EUR",
+                "stock": "In Stock",
+                "description": "",
+                "image_url": "https://cdn.shopify.com/s/files/1/0603/3775/0259/files/Bonjour_La_Vie_Hydra_Comfort_Cream_50ml_vaso_e_scatola.jpg?v=1727509933",
+                "image_urls": [
+                  "https://cdn.shopify.com/s/files/1/0603/3775/0259/files/Bonjour_La_Vie_Hydra_Comfort_Cream_50ml_vaso_e_scatola.jpg?v=1727509933",
+                  "https://cdn.shopify.com/s/files/1/0603/3775/0259/files/Bonjour_La_Vie_Hydra_Comfort_Cream_50ml_vaso.jpg?v=1727509933",
+                  "https://cdn.shopify.com/s/files/1/0603/3775/0259/files/Bonjour_La_Vie_Hydra_Comfort_Cream_texture.jpg?v=1730737633"
+                ]
+              }
+            ],
+            "diagnostics": {
+              "requested_domain": "bonjourlavie.it",
+              "resolved_base_url": "https://bonjourlavie.it",
+              "discovery_strategy": "shopify_json",
+              "failure_category": null,
+              "block_provider": null,
+              "http_trace": [
+                {
+                  "url": "https://www.bonjourlavie.it/products/hydra-comfort-cream.js",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.bonjourlavie.it/products/hydra-comfort-cream",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.bonjourlavie.it/products/hydra-comfort-cream",
+                  "status": 200
+                }
+              ]
+            },
+            "search_aliases": [
+              "Hydra Comfort Cream"
+            ],
+            "authority_source": {
+              "source_url": "https://bonjourlavie.it/products/hydra-comfort-cream",
+              "source_role": "primary",
+              "matched_preferred_titles": []
+            },
+            "source_validation": {
+              "source_type": "brand_owned",
+              "requires_multi_offer_merge_validation": false,
+              "source_host": "bonjourlavie.it"
+            },
+            "commerce_facts_v1": {
+              "contract_version": "commerce_facts.v1",
+              "market_id": "US",
+              "country": "US",
+              "currency_target": "USD",
+              "source_authority": "catalog_extract_v2",
+              "captured_at": "2026-05-25T01:39:15.385Z",
+              "evidence_url": "https://bonjourlavie.it/products/hydra-comfort-cream",
+              "sellable_region": {
+                "status": "unknown",
+                "countries": [],
+                "evidence_source": "catalog_extract_v2",
+                "confidence": "low",
+                "checked_at": "2026-05-25T01:39:15.385Z",
+                "reason_codes": [
+                  "market_currency_not_verified",
+                  "shipping_destination_not_verified",
+                  "external_checkout_not_queried"
+                ],
+                "evidence_url": "https://bonjourlavie.it/products/hydra-comfort-cream"
+              },
+              "regional_price": {
+                "amount": 55,
+                "currency": "EUR",
+                "display_raw": "55.00",
+                "price_type": "list",
+                "compare_at_amount": null,
+                "compare_at_currency": null,
+                "compare_at_display_raw": null,
+                "tax_included": "unknown",
+                "confidence": "medium",
+                "market_switch_status": "mismatch",
+                "observed_currency": "EUR",
+                "source_url": "https://bonjourlavie.it/products/hydra-comfort-cream",
+                "captured_at": "2026-05-25T01:39:15.385Z"
+              },
+              "availability": {
+                "status": "in_stock",
+                "source": "catalog_extract_v2",
+                "confidence": "medium",
+                "captured_at": "2026-05-25T01:39:15.385Z"
+              },
+              "shipping": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_checkout_not_queried"
+                ],
+                "checked_at": "2026-05-25T01:39:15.385Z"
+              },
+              "promotions": [],
+              "returns": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_returns_not_extracted"
+                ],
+                "checked_at": "2026-05-25T01:39:15.385Z"
+              }
+            },
+            "commerce_facts_gate": {
+              "status": "hold",
+              "market_id": "US",
+              "expected_currency": "USD",
+              "observed_currency": "EUR",
+              "market_switch_status": "mismatch",
+              "sellable_region_status": "unknown",
+              "shipping_status": "unknown",
+              "promotions_status": "unknown",
+              "availability_status": "in_stock",
+              "problems": [
+                "market_currency_mismatch",
+                "commerce_facts_currency_mismatch",
+                "commerce_facts_market_switch_not_ok"
+              ]
+            }
+          },
+          "search_aliases": [
+            "Hydra Comfort Cream"
+          ],
+          "authority_source": {
+            "source_url": "https://bonjourlavie.it/products/hydra-comfort-cream",
+            "source_role": "primary",
+            "matched_preferred_titles": []
+          },
+          "source_validation": {
+            "source_type": "brand_owned",
+            "requires_multi_offer_merge_validation": false,
+            "source_host": "bonjourlavie.it"
+          },
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-25T01:39:15.385Z",
+            "evidence_url": "https://bonjourlavie.it/products/hydra-comfort-cream",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "low",
+              "checked_at": "2026-05-25T01:39:15.385Z",
+              "reason_codes": [
+                "market_currency_not_verified",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://bonjourlavie.it/products/hydra-comfort-cream"
+            },
+            "regional_price": {
+              "amount": 55,
+              "currency": "EUR",
+              "display_raw": "55.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "mismatch",
+              "observed_currency": "EUR",
+              "source_url": "https://bonjourlavie.it/products/hydra-comfort-cream",
+              "captured_at": "2026-05-25T01:39:15.385Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T01:39:15.385Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T01:39:15.385Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T01:39:15.385Z"
+            }
+          },
+          "commerce_facts_gate": {
+            "status": "hold",
+            "market_id": "US",
+            "expected_currency": "USD",
+            "observed_currency": "EUR",
+            "market_switch_status": "mismatch",
+            "sellable_region_status": "unknown",
+            "shipping_status": "unknown",
+            "promotions_status": "unknown",
+            "availability_status": "in_stock",
+            "problems": [
+              "market_currency_mismatch",
+              "commerce_facts_currency_mismatch",
+              "commerce_facts_market_switch_not_ok"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

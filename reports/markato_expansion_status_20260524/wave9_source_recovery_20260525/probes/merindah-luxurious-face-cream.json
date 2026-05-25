@@ -1,0 +1,412 @@
+{
+  "generated_at": "2026-05-25T01:39:12.528Z",
+  "brand": "Merindah Botanicals",
+  "domain": "https://merindahbotanicals.com.au/products/luxurious-face-cream",
+  "fallback_domains": [],
+  "market": "US",
+  "preferred_titles": [],
+  "matched_preferred_titles": [],
+  "extracted_product_count": 1,
+  "excluded_bundle_like_count": 0,
+  "excluded_non_product_page_count": 0,
+  "excluded_incomplete_transaction_count": 0,
+  "excluded_brand_scope_mismatch_count": 0,
+  "matched_preferred_title_count": 0,
+  "item_count": 1,
+  "fallback_used": false,
+  "source_attempts": [
+    {
+      "source_url": "https://merindahbotanicals.com.au/products/luxurious-face-cream",
+      "source_role": "primary",
+      "extracted_product_count": 1,
+      "item_count": 1,
+      "matched_preferred_title_count": 0,
+      "matched_preferred_titles": [],
+      "diagnostics_summary": {
+        "discovery_strategy": "shopify_json",
+        "failure_category": null,
+        "block_provider": null
+      },
+      "used_in_manifest": true,
+      "added_item_count": 1,
+      "added_matched_preferred_titles": [],
+      "skip_reason": null
+    }
+  ],
+  "items": [
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "target_brand": "Merindah Botanicals",
+      "target_url": "https://merindahbotanicals.com.au/products/luxurious-face-cream",
+      "extract_status": "brand_catalog_extract",
+      "market": "US",
+      "source_domain": "https://merindahbotanicals.com.au/products/luxurious-face-cream",
+      "source_role": "primary",
+      "matched_preferred_titles": [],
+      "alias_preferred_titles": [],
+      "seed_row": {
+        "ingredient_id": null,
+        "ingredient_name": null,
+        "seed_id": "eps_e1c4e54758d0255bc4c8e0e6",
+        "brand": "Merindah Botanicals",
+        "market": "US",
+        "tool": "creator_agents",
+        "status": "active",
+        "domain": "merindahbotanicals.com.au",
+        "external_product_id": "ext_704cae0bbc2c8f1ff59e12c5",
+        "canonical_url": "https://merindahbotanicals.com.au/products/luxurious-face-cream",
+        "destination_url": "https://merindahbotanicals.com.au/products/luxurious-face-cream",
+        "title": "Luxurious Face Cream",
+        "image_url": "https://www.merindahbotanicals.com.au/cdn/shop/files/luxurious-face-cream-merindah-botanicals.png?v=1704343180&width=1920",
+        "price_amount": 44.95,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "attached_product_key": null,
+        "requires_seed_correction": false,
+        "seed_data": {
+          "brand": "Merindah Botanicals",
+          "title": "Luxurious Face Cream",
+          "description": "A natural face moisturiser that feels as luxurious as it looks. \n\nOur Luxurious Face Cream is enriched with Kakadu Plum, Quandong, and Tasmanian Pepperberry to hydrate and restore your skin’s natural glow — the perfect daily ritual for radiant, nourished skin.\n\nLightweight, Deep Hydration \n\nMoisture Retention \n\nCruelty-Free &amp; Vegan \n\nNatural Ingredients, Real Results",
+          "external_product_id": "ext_704cae0bbc2c8f1ff59e12c5",
+          "canonical_url": "https://merindahbotanicals.com.au/products/luxurious-face-cream",
+          "destination_url": "https://merindahbotanicals.com.au/products/luxurious-face-cream",
+          "price_amount": 44.95,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://www.merindahbotanicals.com.au/cdn/shop/files/luxurious-face-cream-merindah-botanicals.png?v=1704343180&width=1920",
+          "image_urls": [
+            "https://www.merindahbotanicals.com.au/cdn/shop/files/luxurious-face-cream-merindah-botanicals.png?v=1704343180&width=1920",
+            "https://www.merindahbotanicals.com.au/cdn/shop/files/natural-face-cream-merindah-botanicals.png?v=1767925684",
+            "https://www.merindahbotanicals.com.au/cdn/shop/files/natural-moisturiser-merindah-botanicals.jpg?v=1767925684",
+            "https://www.merindahbotanicals.com.au/cdn/shop/files/Key-Ingredients-Luxurious-Face-Cream-Merindah-Botanicals.jpg?v=1767925684",
+            "https://www.merindahbotanicals.com.au/cdn/shop/files/luxe-face-cream-go-to-skincare.jpg?v=1773121301",
+            "https://www.merindahbotanicals.com.au/cdn/shop/files/hydrating-face-cream-merindah-botanicals.png?v=1767926891",
+            "https://www.merindahbotanicals.com.au/cdn/shop/files/natural-moisturiser-merindah-botanicals.png?v=1767926891",
+            "https://cdn.shopify.com/s/files/1/0441/1922/8577/files/hydrating-face-moisturiser-merindah-botanicals.png?v=1767926864",
+            "https://www.merindahbotanicals.com.au/cdn/shop/files/Natural_Skincare_Not_Tested_On_Animals.png?v=1683258127&width=375",
+            "https://www.merindahbotanicals.com.au/cdn/shop/files/Australian_Certified_Toxic-Free_Natural_Skincare.png?v=1683258127&width=375",
+            "https://www.merindahbotanicals.com.au/cdn/shop/files/PETA_certified_cruelty_free_and_vegan_Natural_Skincare.png?v=1683258128&width=375",
+            "https://www.merindahbotanicals.com.au/cdn/shop/files/Australian_Allergy_Certified_Natural_Skincare.png?v=1683258128&width=375"
+          ],
+          "images": [
+            "https://www.merindahbotanicals.com.au/cdn/shop/files/luxurious-face-cream-merindah-botanicals.png?v=1704343180&width=1920",
+            "https://www.merindahbotanicals.com.au/cdn/shop/files/natural-face-cream-merindah-botanicals.png?v=1767925684",
+            "https://www.merindahbotanicals.com.au/cdn/shop/files/natural-moisturiser-merindah-botanicals.jpg?v=1767925684",
+            "https://www.merindahbotanicals.com.au/cdn/shop/files/Key-Ingredients-Luxurious-Face-Cream-Merindah-Botanicals.jpg?v=1767925684",
+            "https://www.merindahbotanicals.com.au/cdn/shop/files/luxe-face-cream-go-to-skincare.jpg?v=1773121301",
+            "https://www.merindahbotanicals.com.au/cdn/shop/files/hydrating-face-cream-merindah-botanicals.png?v=1767926891",
+            "https://www.merindahbotanicals.com.au/cdn/shop/files/natural-moisturiser-merindah-botanicals.png?v=1767926891",
+            "https://cdn.shopify.com/s/files/1/0441/1922/8577/files/hydrating-face-moisturiser-merindah-botanicals.png?v=1767926864",
+            "https://www.merindahbotanicals.com.au/cdn/shop/files/Natural_Skincare_Not_Tested_On_Animals.png?v=1683258127&width=375",
+            "https://www.merindahbotanicals.com.au/cdn/shop/files/Australian_Certified_Toxic-Free_Natural_Skincare.png?v=1683258127&width=375",
+            "https://www.merindahbotanicals.com.au/cdn/shop/files/PETA_certified_cruelty_free_and_vegan_Natural_Skincare.png?v=1683258128&width=375",
+            "https://www.merindahbotanicals.com.au/cdn/shop/files/Australian_Allergy_Certified_Natural_Skincare.png?v=1683258128&width=375"
+          ],
+          "variants": [
+            {
+              "sku": "LUFA",
+              "variant_id": "35294944428193",
+              "url": "https://merindahbotanicals.com.au/products/luxurious-face-cream",
+              "option_name": "Offer",
+              "option_value": "LUFA",
+              "price": "44.95",
+              "currency": "USD",
+              "stock": "In Stock",
+              "description": "A natural face moisturiser that feels as luxurious as it looks. \n\nOur Luxurious Face Cream is enriched with Kakadu Plum, Quandong, and Tasmanian Pepperberry to hydrate and restore your skin’s natural glow — the perfect daily ritual for radiant, nourished skin.\n\nLightweight, Deep Hydration \n\nMoisture Retention \n\nCruelty-Free &amp; Vegan \n\nNatural Ingredients, Real Results",
+              "image_url": "https://www.merindahbotanicals.com.au/cdn/shop/files/luxurious-face-cream-merindah-botanicals.png?v=1704343180&width=1920",
+              "image_urls": [
+                "https://www.merindahbotanicals.com.au/cdn/shop/files/luxurious-face-cream-merindah-botanicals.png?v=1704343180&width=1920",
+                "https://www.merindahbotanicals.com.au/cdn/shop/files/natural-face-cream-merindah-botanicals.png?v=1767925684",
+                "https://www.merindahbotanicals.com.au/cdn/shop/files/natural-moisturiser-merindah-botanicals.jpg?v=1767925684",
+                "https://www.merindahbotanicals.com.au/cdn/shop/files/Key-Ingredients-Luxurious-Face-Cream-Merindah-Botanicals.jpg?v=1767925684",
+                "https://www.merindahbotanicals.com.au/cdn/shop/files/luxe-face-cream-go-to-skincare.jpg?v=1773121301",
+                "https://www.merindahbotanicals.com.au/cdn/shop/files/hydrating-face-cream-merindah-botanicals.png?v=1767926891",
+                "https://www.merindahbotanicals.com.au/cdn/shop/files/natural-moisturiser-merindah-botanicals.png?v=1767926891",
+                "https://cdn.shopify.com/s/files/1/0441/1922/8577/files/hydrating-face-moisturiser-merindah-botanicals.png?v=1767926864",
+                "https://www.merindahbotanicals.com.au/cdn/shop/files/Natural_Skincare_Not_Tested_On_Animals.png?v=1683258127&width=375",
+                "https://www.merindahbotanicals.com.au/cdn/shop/files/Australian_Certified_Toxic-Free_Natural_Skincare.png?v=1683258127&width=375",
+                "https://www.merindahbotanicals.com.au/cdn/shop/files/PETA_certified_cruelty_free_and_vegan_Natural_Skincare.png?v=1683258128&width=375",
+                "https://www.merindahbotanicals.com.au/cdn/shop/files/Australian_Allergy_Certified_Natural_Skincare.png?v=1683258128&width=375"
+              ]
+            }
+          ],
+          "snapshot": {
+            "source": "catalog_intelligence_seed_creation_manifest",
+            "extracted_at": "2026-05-25T01:39:12.525Z",
+            "canonical_url": "https://merindahbotanicals.com.au/products/luxurious-face-cream",
+            "destination_url": "https://merindahbotanicals.com.au/products/luxurious-face-cream",
+            "title": "Luxurious Face Cream",
+            "description": "A natural face moisturiser that feels as luxurious as it looks. \n\nOur Luxurious Face Cream is enriched with Kakadu Plum, Quandong, and Tasmanian Pepperberry to hydrate and restore your skin’s natural glow — the perfect daily ritual for radiant, nourished skin.\n\nLightweight, Deep Hydration \n\nMoisture Retention \n\nCruelty-Free &amp; Vegan \n\nNatural Ingredients, Real Results",
+            "image_url": "https://www.merindahbotanicals.com.au/cdn/shop/files/luxurious-face-cream-merindah-botanicals.png?v=1704343180&width=1920",
+            "image_urls": [
+              "https://www.merindahbotanicals.com.au/cdn/shop/files/luxurious-face-cream-merindah-botanicals.png?v=1704343180&width=1920",
+              "https://www.merindahbotanicals.com.au/cdn/shop/files/natural-face-cream-merindah-botanicals.png?v=1767925684",
+              "https://www.merindahbotanicals.com.au/cdn/shop/files/natural-moisturiser-merindah-botanicals.jpg?v=1767925684",
+              "https://www.merindahbotanicals.com.au/cdn/shop/files/Key-Ingredients-Luxurious-Face-Cream-Merindah-Botanicals.jpg?v=1767925684",
+              "https://www.merindahbotanicals.com.au/cdn/shop/files/luxe-face-cream-go-to-skincare.jpg?v=1773121301",
+              "https://www.merindahbotanicals.com.au/cdn/shop/files/hydrating-face-cream-merindah-botanicals.png?v=1767926891",
+              "https://www.merindahbotanicals.com.au/cdn/shop/files/natural-moisturiser-merindah-botanicals.png?v=1767926891",
+              "https://cdn.shopify.com/s/files/1/0441/1922/8577/files/hydrating-face-moisturiser-merindah-botanicals.png?v=1767926864",
+              "https://www.merindahbotanicals.com.au/cdn/shop/files/Natural_Skincare_Not_Tested_On_Animals.png?v=1683258127&width=375",
+              "https://www.merindahbotanicals.com.au/cdn/shop/files/Australian_Certified_Toxic-Free_Natural_Skincare.png?v=1683258127&width=375",
+              "https://www.merindahbotanicals.com.au/cdn/shop/files/PETA_certified_cruelty_free_and_vegan_Natural_Skincare.png?v=1683258128&width=375",
+              "https://www.merindahbotanicals.com.au/cdn/shop/files/Australian_Allergy_Certified_Natural_Skincare.png?v=1683258128&width=375"
+            ],
+            "images": [
+              "https://www.merindahbotanicals.com.au/cdn/shop/files/luxurious-face-cream-merindah-botanicals.png?v=1704343180&width=1920",
+              "https://www.merindahbotanicals.com.au/cdn/shop/files/natural-face-cream-merindah-botanicals.png?v=1767925684",
+              "https://www.merindahbotanicals.com.au/cdn/shop/files/natural-moisturiser-merindah-botanicals.jpg?v=1767925684",
+              "https://www.merindahbotanicals.com.au/cdn/shop/files/Key-Ingredients-Luxurious-Face-Cream-Merindah-Botanicals.jpg?v=1767925684",
+              "https://www.merindahbotanicals.com.au/cdn/shop/files/luxe-face-cream-go-to-skincare.jpg?v=1773121301",
+              "https://www.merindahbotanicals.com.au/cdn/shop/files/hydrating-face-cream-merindah-botanicals.png?v=1767926891",
+              "https://www.merindahbotanicals.com.au/cdn/shop/files/natural-moisturiser-merindah-botanicals.png?v=1767926891",
+              "https://cdn.shopify.com/s/files/1/0441/1922/8577/files/hydrating-face-moisturiser-merindah-botanicals.png?v=1767926864",
+              "https://www.merindahbotanicals.com.au/cdn/shop/files/Natural_Skincare_Not_Tested_On_Animals.png?v=1683258127&width=375",
+              "https://www.merindahbotanicals.com.au/cdn/shop/files/Australian_Certified_Toxic-Free_Natural_Skincare.png?v=1683258127&width=375",
+              "https://www.merindahbotanicals.com.au/cdn/shop/files/PETA_certified_cruelty_free_and_vegan_Natural_Skincare.png?v=1683258128&width=375",
+              "https://www.merindahbotanicals.com.au/cdn/shop/files/Australian_Allergy_Certified_Natural_Skincare.png?v=1683258128&width=375"
+            ],
+            "variants": [
+              {
+                "sku": "LUFA",
+                "variant_id": "35294944428193",
+                "url": "https://merindahbotanicals.com.au/products/luxurious-face-cream",
+                "option_name": "Offer",
+                "option_value": "LUFA",
+                "price": "44.95",
+                "currency": "USD",
+                "stock": "In Stock",
+                "description": "A natural face moisturiser that feels as luxurious as it looks. \n\nOur Luxurious Face Cream is enriched with Kakadu Plum, Quandong, and Tasmanian Pepperberry to hydrate and restore your skin’s natural glow — the perfect daily ritual for radiant, nourished skin.\n\nLightweight, Deep Hydration \n\nMoisture Retention \n\nCruelty-Free &amp; Vegan \n\nNatural Ingredients, Real Results",
+                "image_url": "https://www.merindahbotanicals.com.au/cdn/shop/files/luxurious-face-cream-merindah-botanicals.png?v=1704343180&width=1920",
+                "image_urls": [
+                  "https://www.merindahbotanicals.com.au/cdn/shop/files/luxurious-face-cream-merindah-botanicals.png?v=1704343180&width=1920",
+                  "https://www.merindahbotanicals.com.au/cdn/shop/files/natural-face-cream-merindah-botanicals.png?v=1767925684",
+                  "https://www.merindahbotanicals.com.au/cdn/shop/files/natural-moisturiser-merindah-botanicals.jpg?v=1767925684",
+                  "https://www.merindahbotanicals.com.au/cdn/shop/files/Key-Ingredients-Luxurious-Face-Cream-Merindah-Botanicals.jpg?v=1767925684",
+                  "https://www.merindahbotanicals.com.au/cdn/shop/files/luxe-face-cream-go-to-skincare.jpg?v=1773121301",
+                  "https://www.merindahbotanicals.com.au/cdn/shop/files/hydrating-face-cream-merindah-botanicals.png?v=1767926891",
+                  "https://www.merindahbotanicals.com.au/cdn/shop/files/natural-moisturiser-merindah-botanicals.png?v=1767926891",
+                  "https://cdn.shopify.com/s/files/1/0441/1922/8577/files/hydrating-face-moisturiser-merindah-botanicals.png?v=1767926864",
+                  "https://www.merindahbotanicals.com.au/cdn/shop/files/Natural_Skincare_Not_Tested_On_Animals.png?v=1683258127&width=375",
+                  "https://www.merindahbotanicals.com.au/cdn/shop/files/Australian_Certified_Toxic-Free_Natural_Skincare.png?v=1683258127&width=375",
+                  "https://www.merindahbotanicals.com.au/cdn/shop/files/PETA_certified_cruelty_free_and_vegan_Natural_Skincare.png?v=1683258128&width=375",
+                  "https://www.merindahbotanicals.com.au/cdn/shop/files/Australian_Allergy_Certified_Natural_Skincare.png?v=1683258128&width=375"
+                ]
+              }
+            ],
+            "diagnostics": {
+              "requested_domain": "merindahbotanicals.com.au",
+              "resolved_base_url": "https://merindahbotanicals.com.au",
+              "discovery_strategy": "shopify_json",
+              "failure_category": null,
+              "block_provider": null,
+              "http_trace": [
+                {
+                  "url": "https://www.merindahbotanicals.com.au/products/luxurious-face-cream.js",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.merindahbotanicals.com.au/products/luxurious-face-cream",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.merindahbotanicals.com.au/",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.merindahbotanicals.com.au/products/luxurious-face-cream",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.merindahbotanicals.com.au/products/luxurious-face-cream",
+                  "status": 200
+                }
+              ]
+            },
+            "search_aliases": [
+              "Luxurious Face Cream"
+            ],
+            "authority_source": {
+              "source_url": "https://merindahbotanicals.com.au/products/luxurious-face-cream",
+              "source_role": "primary",
+              "matched_preferred_titles": []
+            },
+            "source_validation": {
+              "source_type": "brand_owned",
+              "requires_multi_offer_merge_validation": false,
+              "source_host": "merindahbotanicals.com.au"
+            },
+            "commerce_facts_v1": {
+              "contract_version": "commerce_facts.v1",
+              "market_id": "US",
+              "country": "US",
+              "currency_target": "USD",
+              "source_authority": "catalog_extract_v2",
+              "captured_at": "2026-05-25T01:39:12.661Z",
+              "evidence_url": "https://merindahbotanicals.com.au/products/luxurious-face-cream",
+              "sellable_region": {
+                "status": "unknown",
+                "countries": [],
+                "evidence_source": "catalog_extract_v2",
+                "confidence": "low",
+                "checked_at": "2026-05-25T01:39:12.661Z",
+                "reason_codes": [
+                  "market_currency_not_verified",
+                  "shipping_destination_not_verified",
+                  "external_checkout_not_queried"
+                ],
+                "evidence_url": "https://merindahbotanicals.com.au/products/luxurious-face-cream"
+              },
+              "regional_price": {
+                "amount": 44.95,
+                "currency": "AUD",
+                "display_raw": "44.95",
+                "price_type": "list",
+                "compare_at_amount": null,
+                "compare_at_currency": null,
+                "compare_at_display_raw": null,
+                "tax_included": "unknown",
+                "confidence": "medium",
+                "market_switch_status": "mismatch",
+                "observed_currency": "AUD",
+                "source_url": "https://merindahbotanicals.com.au/products/luxurious-face-cream",
+                "captured_at": "2026-05-25T01:39:12.661Z"
+              },
+              "availability": {
+                "status": "in_stock",
+                "source": "catalog_extract_v2",
+                "confidence": "medium",
+                "captured_at": "2026-05-25T01:39:12.661Z"
+              },
+              "shipping": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_checkout_not_queried"
+                ],
+                "checked_at": "2026-05-25T01:39:12.661Z"
+              },
+              "promotions": [],
+              "returns": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_returns_not_extracted"
+                ],
+                "checked_at": "2026-05-25T01:39:12.661Z"
+              }
+            },
+            "commerce_facts_gate": {
+              "status": "hold",
+              "market_id": "US",
+              "expected_currency": "USD",
+              "observed_currency": "AUD",
+              "market_switch_status": "mismatch",
+              "sellable_region_status": "unknown",
+              "shipping_status": "unknown",
+              "promotions_status": "unknown",
+              "availability_status": "in_stock",
+              "problems": [
+                "commerce_facts_currency_mismatch",
+                "commerce_facts_market_switch_not_ok"
+              ]
+            }
+          },
+          "search_aliases": [
+            "Luxurious Face Cream"
+          ],
+          "authority_source": {
+            "source_url": "https://merindahbotanicals.com.au/products/luxurious-face-cream",
+            "source_role": "primary",
+            "matched_preferred_titles": []
+          },
+          "source_validation": {
+            "source_type": "brand_owned",
+            "requires_multi_offer_merge_validation": false,
+            "source_host": "merindahbotanicals.com.au"
+          },
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-25T01:39:12.661Z",
+            "evidence_url": "https://merindahbotanicals.com.au/products/luxurious-face-cream",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "low",
+              "checked_at": "2026-05-25T01:39:12.661Z",
+              "reason_codes": [
+                "market_currency_not_verified",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://merindahbotanicals.com.au/products/luxurious-face-cream"
+            },
+            "regional_price": {
+              "amount": 44.95,
+              "currency": "AUD",
+              "display_raw": "44.95",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "mismatch",
+              "observed_currency": "AUD",
+              "source_url": "https://merindahbotanicals.com.au/products/luxurious-face-cream",
+              "captured_at": "2026-05-25T01:39:12.661Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T01:39:12.661Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T01:39:12.661Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T01:39:12.661Z"
+            }
+          },
+          "commerce_facts_gate": {
+            "status": "hold",
+            "market_id": "US",
+            "expected_currency": "USD",
+            "observed_currency": "AUD",
+            "market_switch_status": "mismatch",
+            "sellable_region_status": "unknown",
+            "shipping_status": "unknown",
+            "promotions_status": "unknown",
+            "availability_status": "in_stock",
+            "problems": [
+              "commerce_facts_currency_mismatch",
+              "commerce_facts_market_switch_not_ok"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

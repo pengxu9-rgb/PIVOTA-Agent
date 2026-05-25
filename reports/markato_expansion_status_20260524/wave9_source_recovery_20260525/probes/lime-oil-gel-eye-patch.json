@@ -1,0 +1,514 @@
+{
+  "generated_at": "2026-05-25T01:41:40.643Z",
+  "brand": "LIME",
+  "domain": "https://en.limecosmetic.com/product/lime-oil-gel-eye-patch/72",
+  "fallback_domains": [],
+  "market": "US",
+  "preferred_titles": [],
+  "matched_preferred_titles": [],
+  "extracted_product_count": 1,
+  "excluded_bundle_like_count": 0,
+  "excluded_non_product_page_count": 0,
+  "excluded_incomplete_transaction_count": 0,
+  "excluded_brand_scope_mismatch_count": 0,
+  "matched_preferred_title_count": 0,
+  "item_count": 1,
+  "fallback_used": false,
+  "source_attempts": [
+    {
+      "source_url": "https://en.limecosmetic.com/product/lime-oil-gel-eye-patch/72",
+      "source_role": "primary",
+      "extracted_product_count": 1,
+      "item_count": 1,
+      "matched_preferred_title_count": 0,
+      "matched_preferred_titles": [],
+      "diagnostics_summary": {
+        "discovery_strategy": "seed_page",
+        "failure_category": null,
+        "block_provider": null
+      },
+      "used_in_manifest": true,
+      "added_item_count": 1,
+      "added_matched_preferred_titles": [],
+      "skip_reason": null
+    }
+  ],
+  "items": [
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "target_brand": "LIME",
+      "target_url": "https://en.limecosmetic.com/product/lime-oil-gel-eye-patch/72/",
+      "extract_status": "brand_catalog_extract",
+      "market": "US",
+      "source_domain": "https://en.limecosmetic.com/product/lime-oil-gel-eye-patch/72",
+      "source_role": "primary",
+      "matched_preferred_titles": [],
+      "alias_preferred_titles": [],
+      "seed_row": {
+        "ingredient_id": null,
+        "ingredient_name": null,
+        "seed_id": "eps_b2347cc7657be040bc1dee85",
+        "brand": "LIME",
+        "market": "US",
+        "tool": "creator_agents",
+        "status": "active",
+        "domain": "en.limecosmetic.com",
+        "external_product_id": "ext_ba4570b613069031f940d9b2",
+        "canonical_url": "https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000A",
+        "destination_url": "https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000A",
+        "title": "LIME OIL GEL EYE PATCH",
+        "image_url": "https://en.limecosmetic.com/web/product/big/202406/4f67fe7722cee02c519f8fc2039f3a86.jpg",
+        "price_amount": 18.37,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "attached_product_key": null,
+        "requires_seed_correction": false,
+        "seed_data": {
+          "brand": "LIME",
+          "title": "LIME OIL GEL EYE PATCH",
+          "description": "",
+          "external_product_id": "ext_ba4570b613069031f940d9b2",
+          "canonical_url": "https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000A",
+          "destination_url": "https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000A",
+          "price_amount": 18.37,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://en.limecosmetic.com/web/product/big/202406/4f67fe7722cee02c519f8fc2039f3a86.jpg",
+          "image_urls": [
+            "https://en.limecosmetic.com/web/product/big/202406/4f67fe7722cee02c519f8fc2039f3a86.jpg",
+            "https://en.limecosmetic.com/web/product/extra/big/202406/f05158ec957409ad8197671d57ea2d3c.jpg",
+            "https://en.limecosmetic.com/web/product/extra/big/202406/fbb6b9f01100a2ec3871c855f2573aac.jpg",
+            "https://en.limecosmetic.com/web/product/extra/big/202406/fff6dc87bdd5d24ce6ba011232e79c60.jpg",
+            "https://en.limecosmetic.com/web/product/extra/big/202406/e3226dee47923243b18465215fa394cb.jpg",
+            "https://en.limecosmetic.com/web/product/extra/big/202406/3a5f6c0c8bd302b5093114a88962183e.jpg",
+            "https://img.cafe24.com/img/common/global/ko_KR_32x24.png",
+            "https://img.cafe24.com/img/common/global/en_US_32x24.png",
+            "https://img.cafe24.com/img/common/global/ja_JP_32x24.png",
+            "https://en.limecosmetic.com/web/product/small/202406/ecb10cc4c244e95f0778604e5883eb0f.jpg",
+            "https://en.limecosmetic.com/web/product/extra/small/202406/f05158ec957409ad8197671d57ea2d3c.jpg",
+            "https://en.limecosmetic.com/web/product/extra/small/202406/fbb6b9f01100a2ec3871c855f2573aac.jpg"
+          ],
+          "images": [
+            "https://en.limecosmetic.com/web/product/big/202406/4f67fe7722cee02c519f8fc2039f3a86.jpg",
+            "https://en.limecosmetic.com/web/product/extra/big/202406/f05158ec957409ad8197671d57ea2d3c.jpg",
+            "https://en.limecosmetic.com/web/product/extra/big/202406/fbb6b9f01100a2ec3871c855f2573aac.jpg",
+            "https://en.limecosmetic.com/web/product/extra/big/202406/fff6dc87bdd5d24ce6ba011232e79c60.jpg",
+            "https://en.limecosmetic.com/web/product/extra/big/202406/e3226dee47923243b18465215fa394cb.jpg",
+            "https://en.limecosmetic.com/web/product/extra/big/202406/3a5f6c0c8bd302b5093114a88962183e.jpg",
+            "https://img.cafe24.com/img/common/global/ko_KR_32x24.png",
+            "https://img.cafe24.com/img/common/global/en_US_32x24.png",
+            "https://img.cafe24.com/img/common/global/ja_JP_32x24.png",
+            "https://en.limecosmetic.com/web/product/small/202406/ecb10cc4c244e95f0778604e5883eb0f.jpg",
+            "https://en.limecosmetic.com/web/product/extra/small/202406/f05158ec957409ad8197671d57ea2d3c.jpg",
+            "https://en.limecosmetic.com/web/product/extra/small/202406/fbb6b9f01100a2ec3871c855f2573aac.jpg"
+          ],
+          "variants": [
+            {
+              "sku": "AUTO-a459bc88512c",
+              "variant_id": "a7b5e2ffa5e4",
+              "url": "https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000A",
+              "option_name": "Offer",
+              "option_value": "LIME OIL GEL EYE PATCH 20 TWENTY",
+              "price": "18.37",
+              "currency": "USD",
+              "stock": "In Stock",
+              "description": "",
+              "image_url": "https://en.limecosmetic.com/web/product/big/202406/4f67fe7722cee02c519f8fc2039f3a86.jpg",
+              "image_urls": [
+                "https://en.limecosmetic.com/web/product/big/202406/4f67fe7722cee02c519f8fc2039f3a86.jpg",
+                "https://en.limecosmetic.com/web/product/extra/big/202406/f05158ec957409ad8197671d57ea2d3c.jpg",
+                "https://en.limecosmetic.com/web/product/extra/big/202406/fbb6b9f01100a2ec3871c855f2573aac.jpg",
+                "https://en.limecosmetic.com/web/product/extra/big/202406/fff6dc87bdd5d24ce6ba011232e79c60.jpg",
+                "https://en.limecosmetic.com/web/product/extra/big/202406/e3226dee47923243b18465215fa394cb.jpg",
+                "https://en.limecosmetic.com/web/product/extra/big/202406/3a5f6c0c8bd302b5093114a88962183e.jpg",
+                "https://img.cafe24.com/img/common/global/ko_KR_32x24.png",
+                "https://img.cafe24.com/img/common/global/en_US_32x24.png",
+                "https://img.cafe24.com/img/common/global/ja_JP_32x24.png",
+                "https://en.limecosmetic.com/web/product/small/202406/ecb10cc4c244e95f0778604e5883eb0f.jpg",
+                "https://en.limecosmetic.com/web/product/extra/small/202406/f05158ec957409ad8197671d57ea2d3c.jpg",
+                "https://en.limecosmetic.com/web/product/extra/small/202406/fbb6b9f01100a2ec3871c855f2573aac.jpg"
+              ]
+            },
+            {
+              "sku": "AUTO-616e54b8a140",
+              "variant_id": "0a99ffa83b59",
+              "url": "https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000B",
+              "option_name": "Offer",
+              "option_value": "LIME OIL GEL EYE PATCH 30 THIRTY",
+              "price": "18.37",
+              "currency": "USD",
+              "stock": "In Stock",
+              "description": "",
+              "image_url": "https://en.limecosmetic.com/web/product/big/202406/4f67fe7722cee02c519f8fc2039f3a86.jpg",
+              "image_urls": [
+                "https://en.limecosmetic.com/web/product/big/202406/4f67fe7722cee02c519f8fc2039f3a86.jpg",
+                "https://en.limecosmetic.com/web/product/extra/big/202406/f05158ec957409ad8197671d57ea2d3c.jpg",
+                "https://en.limecosmetic.com/web/product/extra/big/202406/fbb6b9f01100a2ec3871c855f2573aac.jpg",
+                "https://en.limecosmetic.com/web/product/extra/big/202406/fff6dc87bdd5d24ce6ba011232e79c60.jpg",
+                "https://en.limecosmetic.com/web/product/extra/big/202406/e3226dee47923243b18465215fa394cb.jpg",
+                "https://en.limecosmetic.com/web/product/extra/big/202406/3a5f6c0c8bd302b5093114a88962183e.jpg",
+                "https://img.cafe24.com/img/common/global/ko_KR_32x24.png",
+                "https://img.cafe24.com/img/common/global/en_US_32x24.png",
+                "https://img.cafe24.com/img/common/global/ja_JP_32x24.png",
+                "https://en.limecosmetic.com/web/product/small/202406/ecb10cc4c244e95f0778604e5883eb0f.jpg",
+                "https://en.limecosmetic.com/web/product/extra/small/202406/f05158ec957409ad8197671d57ea2d3c.jpg",
+                "https://en.limecosmetic.com/web/product/extra/small/202406/fbb6b9f01100a2ec3871c855f2573aac.jpg"
+              ]
+            },
+            {
+              "sku": "AUTO-a6eeff18c1af",
+              "variant_id": "7a2e60a1c783",
+              "url": "https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000C",
+              "option_name": "Offer",
+              "option_value": "LIME OIL GEL EYE PATCH 40 FORTY",
+              "price": "18.37",
+              "currency": "USD",
+              "stock": "In Stock",
+              "description": "",
+              "image_url": "https://en.limecosmetic.com/web/product/big/202406/4f67fe7722cee02c519f8fc2039f3a86.jpg",
+              "image_urls": [
+                "https://en.limecosmetic.com/web/product/big/202406/4f67fe7722cee02c519f8fc2039f3a86.jpg",
+                "https://en.limecosmetic.com/web/product/extra/big/202406/f05158ec957409ad8197671d57ea2d3c.jpg",
+                "https://en.limecosmetic.com/web/product/extra/big/202406/fbb6b9f01100a2ec3871c855f2573aac.jpg",
+                "https://en.limecosmetic.com/web/product/extra/big/202406/fff6dc87bdd5d24ce6ba011232e79c60.jpg",
+                "https://en.limecosmetic.com/web/product/extra/big/202406/e3226dee47923243b18465215fa394cb.jpg",
+                "https://en.limecosmetic.com/web/product/extra/big/202406/3a5f6c0c8bd302b5093114a88962183e.jpg",
+                "https://img.cafe24.com/img/common/global/ko_KR_32x24.png",
+                "https://img.cafe24.com/img/common/global/en_US_32x24.png",
+                "https://img.cafe24.com/img/common/global/ja_JP_32x24.png",
+                "https://en.limecosmetic.com/web/product/small/202406/ecb10cc4c244e95f0778604e5883eb0f.jpg",
+                "https://en.limecosmetic.com/web/product/extra/small/202406/f05158ec957409ad8197671d57ea2d3c.jpg",
+                "https://en.limecosmetic.com/web/product/extra/small/202406/fbb6b9f01100a2ec3871c855f2573aac.jpg"
+              ]
+            }
+          ],
+          "snapshot": {
+            "source": "catalog_intelligence_seed_creation_manifest",
+            "extracted_at": "2026-05-25T01:41:40.639Z",
+            "canonical_url": "https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000A",
+            "destination_url": "https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000A",
+            "title": "LIME OIL GEL EYE PATCH",
+            "description": "",
+            "image_url": "https://en.limecosmetic.com/web/product/big/202406/4f67fe7722cee02c519f8fc2039f3a86.jpg",
+            "image_urls": [
+              "https://en.limecosmetic.com/web/product/big/202406/4f67fe7722cee02c519f8fc2039f3a86.jpg",
+              "https://en.limecosmetic.com/web/product/extra/big/202406/f05158ec957409ad8197671d57ea2d3c.jpg",
+              "https://en.limecosmetic.com/web/product/extra/big/202406/fbb6b9f01100a2ec3871c855f2573aac.jpg",
+              "https://en.limecosmetic.com/web/product/extra/big/202406/fff6dc87bdd5d24ce6ba011232e79c60.jpg",
+              "https://en.limecosmetic.com/web/product/extra/big/202406/e3226dee47923243b18465215fa394cb.jpg",
+              "https://en.limecosmetic.com/web/product/extra/big/202406/3a5f6c0c8bd302b5093114a88962183e.jpg",
+              "https://img.cafe24.com/img/common/global/ko_KR_32x24.png",
+              "https://img.cafe24.com/img/common/global/en_US_32x24.png",
+              "https://img.cafe24.com/img/common/global/ja_JP_32x24.png",
+              "https://en.limecosmetic.com/web/product/small/202406/ecb10cc4c244e95f0778604e5883eb0f.jpg",
+              "https://en.limecosmetic.com/web/product/extra/small/202406/f05158ec957409ad8197671d57ea2d3c.jpg",
+              "https://en.limecosmetic.com/web/product/extra/small/202406/fbb6b9f01100a2ec3871c855f2573aac.jpg"
+            ],
+            "images": [
+              "https://en.limecosmetic.com/web/product/big/202406/4f67fe7722cee02c519f8fc2039f3a86.jpg",
+              "https://en.limecosmetic.com/web/product/extra/big/202406/f05158ec957409ad8197671d57ea2d3c.jpg",
+              "https://en.limecosmetic.com/web/product/extra/big/202406/fbb6b9f01100a2ec3871c855f2573aac.jpg",
+              "https://en.limecosmetic.com/web/product/extra/big/202406/fff6dc87bdd5d24ce6ba011232e79c60.jpg",
+              "https://en.limecosmetic.com/web/product/extra/big/202406/e3226dee47923243b18465215fa394cb.jpg",
+              "https://en.limecosmetic.com/web/product/extra/big/202406/3a5f6c0c8bd302b5093114a88962183e.jpg",
+              "https://img.cafe24.com/img/common/global/ko_KR_32x24.png",
+              "https://img.cafe24.com/img/common/global/en_US_32x24.png",
+              "https://img.cafe24.com/img/common/global/ja_JP_32x24.png",
+              "https://en.limecosmetic.com/web/product/small/202406/ecb10cc4c244e95f0778604e5883eb0f.jpg",
+              "https://en.limecosmetic.com/web/product/extra/small/202406/f05158ec957409ad8197671d57ea2d3c.jpg",
+              "https://en.limecosmetic.com/web/product/extra/small/202406/fbb6b9f01100a2ec3871c855f2573aac.jpg"
+            ],
+            "variants": [
+              {
+                "sku": "AUTO-a459bc88512c",
+                "variant_id": "a7b5e2ffa5e4",
+                "url": "https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000A",
+                "option_name": "Offer",
+                "option_value": "LIME OIL GEL EYE PATCH 20 TWENTY",
+                "price": "18.37",
+                "currency": "USD",
+                "stock": "In Stock",
+                "description": "",
+                "image_url": "https://en.limecosmetic.com/web/product/big/202406/4f67fe7722cee02c519f8fc2039f3a86.jpg",
+                "image_urls": [
+                  "https://en.limecosmetic.com/web/product/big/202406/4f67fe7722cee02c519f8fc2039f3a86.jpg",
+                  "https://en.limecosmetic.com/web/product/extra/big/202406/f05158ec957409ad8197671d57ea2d3c.jpg",
+                  "https://en.limecosmetic.com/web/product/extra/big/202406/fbb6b9f01100a2ec3871c855f2573aac.jpg",
+                  "https://en.limecosmetic.com/web/product/extra/big/202406/fff6dc87bdd5d24ce6ba011232e79c60.jpg",
+                  "https://en.limecosmetic.com/web/product/extra/big/202406/e3226dee47923243b18465215fa394cb.jpg",
+                  "https://en.limecosmetic.com/web/product/extra/big/202406/3a5f6c0c8bd302b5093114a88962183e.jpg",
+                  "https://img.cafe24.com/img/common/global/ko_KR_32x24.png",
+                  "https://img.cafe24.com/img/common/global/en_US_32x24.png",
+                  "https://img.cafe24.com/img/common/global/ja_JP_32x24.png",
+                  "https://en.limecosmetic.com/web/product/small/202406/ecb10cc4c244e95f0778604e5883eb0f.jpg",
+                  "https://en.limecosmetic.com/web/product/extra/small/202406/f05158ec957409ad8197671d57ea2d3c.jpg",
+                  "https://en.limecosmetic.com/web/product/extra/small/202406/fbb6b9f01100a2ec3871c855f2573aac.jpg"
+                ]
+              },
+              {
+                "sku": "AUTO-616e54b8a140",
+                "variant_id": "0a99ffa83b59",
+                "url": "https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000B",
+                "option_name": "Offer",
+                "option_value": "LIME OIL GEL EYE PATCH 30 THIRTY",
+                "price": "18.37",
+                "currency": "USD",
+                "stock": "In Stock",
+                "description": "",
+                "image_url": "https://en.limecosmetic.com/web/product/big/202406/4f67fe7722cee02c519f8fc2039f3a86.jpg",
+                "image_urls": [
+                  "https://en.limecosmetic.com/web/product/big/202406/4f67fe7722cee02c519f8fc2039f3a86.jpg",
+                  "https://en.limecosmetic.com/web/product/extra/big/202406/f05158ec957409ad8197671d57ea2d3c.jpg",
+                  "https://en.limecosmetic.com/web/product/extra/big/202406/fbb6b9f01100a2ec3871c855f2573aac.jpg",
+                  "https://en.limecosmetic.com/web/product/extra/big/202406/fff6dc87bdd5d24ce6ba011232e79c60.jpg",
+                  "https://en.limecosmetic.com/web/product/extra/big/202406/e3226dee47923243b18465215fa394cb.jpg",
+                  "https://en.limecosmetic.com/web/product/extra/big/202406/3a5f6c0c8bd302b5093114a88962183e.jpg",
+                  "https://img.cafe24.com/img/common/global/ko_KR_32x24.png",
+                  "https://img.cafe24.com/img/common/global/en_US_32x24.png",
+                  "https://img.cafe24.com/img/common/global/ja_JP_32x24.png",
+                  "https://en.limecosmetic.com/web/product/small/202406/ecb10cc4c244e95f0778604e5883eb0f.jpg",
+                  "https://en.limecosmetic.com/web/product/extra/small/202406/f05158ec957409ad8197671d57ea2d3c.jpg",
+                  "https://en.limecosmetic.com/web/product/extra/small/202406/fbb6b9f01100a2ec3871c855f2573aac.jpg"
+                ]
+              },
+              {
+                "sku": "AUTO-a6eeff18c1af",
+                "variant_id": "7a2e60a1c783",
+                "url": "https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000C",
+                "option_name": "Offer",
+                "option_value": "LIME OIL GEL EYE PATCH 40 FORTY",
+                "price": "18.37",
+                "currency": "USD",
+                "stock": "In Stock",
+                "description": "",
+                "image_url": "https://en.limecosmetic.com/web/product/big/202406/4f67fe7722cee02c519f8fc2039f3a86.jpg",
+                "image_urls": [
+                  "https://en.limecosmetic.com/web/product/big/202406/4f67fe7722cee02c519f8fc2039f3a86.jpg",
+                  "https://en.limecosmetic.com/web/product/extra/big/202406/f05158ec957409ad8197671d57ea2d3c.jpg",
+                  "https://en.limecosmetic.com/web/product/extra/big/202406/fbb6b9f01100a2ec3871c855f2573aac.jpg",
+                  "https://en.limecosmetic.com/web/product/extra/big/202406/fff6dc87bdd5d24ce6ba011232e79c60.jpg",
+                  "https://en.limecosmetic.com/web/product/extra/big/202406/e3226dee47923243b18465215fa394cb.jpg",
+                  "https://en.limecosmetic.com/web/product/extra/big/202406/3a5f6c0c8bd302b5093114a88962183e.jpg",
+                  "https://img.cafe24.com/img/common/global/ko_KR_32x24.png",
+                  "https://img.cafe24.com/img/common/global/en_US_32x24.png",
+                  "https://img.cafe24.com/img/common/global/ja_JP_32x24.png",
+                  "https://en.limecosmetic.com/web/product/small/202406/ecb10cc4c244e95f0778604e5883eb0f.jpg",
+                  "https://en.limecosmetic.com/web/product/extra/small/202406/f05158ec957409ad8197671d57ea2d3c.jpg",
+                  "https://en.limecosmetic.com/web/product/extra/small/202406/fbb6b9f01100a2ec3871c855f2573aac.jpg"
+                ]
+              }
+            ],
+            "diagnostics": {
+              "requested_domain": "en.limecosmetic.com",
+              "resolved_base_url": "https://en.limecosmetic.com",
+              "discovery_strategy": "seed_page",
+              "failure_category": null,
+              "block_provider": null,
+              "http_trace": [
+                {
+                  "url": "https://en.limecosmetic.com/products/lime-oil-gel-eye-patch.js",
+                  "status": 404
+                },
+                {
+                  "url": "https://en.limecosmetic.com/products.json?limit=250&page=1",
+                  "status": 404
+                },
+                {
+                  "url": "https://en.limecosmetic.com/product/lime-oil-gel-eye-patch/72",
+                  "status": 200
+                },
+                {
+                  "url": "https://en.limecosmetic.com/product/lime-oil-gel-eye-patch/72",
+                  "status": 200
+                },
+                {
+                  "url": "https://en.limecosmetic.com/product/lime-oil-gel-eye-patch/72",
+                  "status": 200
+                },
+                {
+                  "url": "https://en.limecosmetic.com/product/lime-oil-gel-eye-patch/72",
+                  "status": 200
+                }
+              ]
+            },
+            "search_aliases": [
+              "LIME OIL GEL EYE PATCH"
+            ],
+            "authority_source": {
+              "source_url": "https://en.limecosmetic.com/product/lime-oil-gel-eye-patch/72",
+              "source_role": "primary",
+              "matched_preferred_titles": []
+            },
+            "source_validation": {
+              "source_type": "brand_owned",
+              "requires_multi_offer_merge_validation": false,
+              "source_host": "en.limecosmetic.com"
+            },
+            "commerce_facts_v1": {
+              "contract_version": "commerce_facts.v1",
+              "market_id": "US",
+              "country": "US",
+              "currency_target": "USD",
+              "source_authority": "catalog_extract_v2",
+              "captured_at": "2026-05-25T01:41:34.454Z",
+              "evidence_url": "https://en.limecosmetic.com/product/lime-oil-gel-eye-patch/72/",
+              "sellable_region": {
+                "status": "unknown",
+                "countries": [],
+                "evidence_source": "catalog_extract_v2",
+                "confidence": "medium",
+                "checked_at": "2026-05-25T01:41:34.454Z",
+                "reason_codes": [
+                  "market_currency_observed",
+                  "shipping_destination_not_verified",
+                  "external_checkout_not_queried"
+                ],
+                "evidence_url": "https://en.limecosmetic.com/product/lime-oil-gel-eye-patch/72/"
+              },
+              "regional_price": {
+                "amount": 18.37,
+                "currency": "USD",
+                "display_raw": "18.37",
+                "price_type": "list",
+                "compare_at_amount": null,
+                "compare_at_currency": null,
+                "compare_at_display_raw": null,
+                "tax_included": "unknown",
+                "confidence": "high",
+                "market_switch_status": "ok",
+                "observed_currency": "USD",
+                "source_url": "https://en.limecosmetic.com/product/lime-oil-gel-eye-patch/72/",
+                "captured_at": "2026-05-25T01:41:34.454Z"
+              },
+              "availability": {
+                "status": "in_stock",
+                "source": "catalog_extract_v2",
+                "confidence": "medium",
+                "captured_at": "2026-05-25T01:41:34.454Z"
+              },
+              "shipping": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_checkout_not_queried"
+                ],
+                "checked_at": "2026-05-25T01:41:34.454Z"
+              },
+              "promotions": [],
+              "returns": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_returns_not_extracted"
+                ],
+                "checked_at": "2026-05-25T01:41:34.454Z"
+              }
+            },
+            "commerce_facts_gate": {
+              "status": "pass",
+              "market_id": "US",
+              "expected_currency": "USD",
+              "observed_currency": "USD",
+              "market_switch_status": "ok",
+              "sellable_region_status": "unknown",
+              "shipping_status": "unknown",
+              "promotions_status": "unknown",
+              "availability_status": "in_stock",
+              "problems": []
+            }
+          },
+          "search_aliases": [
+            "LIME OIL GEL EYE PATCH"
+          ],
+          "authority_source": {
+            "source_url": "https://en.limecosmetic.com/product/lime-oil-gel-eye-patch/72",
+            "source_role": "primary",
+            "matched_preferred_titles": []
+          },
+          "source_validation": {
+            "source_type": "brand_owned",
+            "requires_multi_offer_merge_validation": false,
+            "source_host": "en.limecosmetic.com"
+          },
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-25T01:41:34.454Z",
+            "evidence_url": "https://en.limecosmetic.com/product/lime-oil-gel-eye-patch/72/",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-25T01:41:34.454Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://en.limecosmetic.com/product/lime-oil-gel-eye-patch/72/"
+            },
+            "regional_price": {
+              "amount": 18.37,
+              "currency": "USD",
+              "display_raw": "18.37",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "high",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://en.limecosmetic.com/product/lime-oil-gel-eye-patch/72/",
+              "captured_at": "2026-05-25T01:41:34.454Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T01:41:34.454Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T01:41:34.454Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T01:41:34.454Z"
+            }
+          },
+          "commerce_facts_gate": {
+            "status": "pass",
+            "market_id": "US",
+            "expected_currency": "USD",
+            "observed_currency": "USD",
+            "market_switch_status": "ok",
+            "sellable_region_status": "unknown",
+            "shipping_status": "unknown",
+            "promotions_status": "unknown",
+            "availability_status": "in_stock",
+            "problems": []
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,172 @@
+{
+  "run_id": "wave9_source_recovery_20260525",
+  "generated_date": "2026-05-25",
+  "scope": "Markato US cooperation coverage expansion through direct official PDP source recovery",
+  "decision": {
+    "production_db_apply_ready_count": 0,
+    "production_db_apply": "hold",
+    "reason": "No reviewed candidate is both US-commerce-ready and PDP-content-quality-ready. LIME passed commerce checks but extracted empty or size-only descriptions; OILUJ, KHUS KHUS, and Apiceuticals need source or extractor remediation first."
+  },
+  "counts": {
+    "brands_reviewed": 10,
+    "direct_probe_files": 10,
+    "engineering_recovery_candidates": 4,
+    "market_or_policy_holds": 5,
+    "access_hold": 1,
+    "db_ready_products": 0
+  },
+  "brand_findings": [
+    {
+      "brand": "OILUJ",
+      "route": "engineering_recovery_candidate",
+      "status": "hold",
+      "primary_blocker": "Official Weebly PDP is still classified as channel_or_retailer and requires multi-offer validation.",
+      "evidence": [
+        "probes/oiluj-life-oil-sandalwood.json"
+      ],
+      "candidate_urls": [
+        "https://www.oiluj.com/store/p5/OIL%C3%99J%2C_Life_Oil.html",
+        "https://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+        "https://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+        "https://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+        "https://www.oiluj.com/store/p17/OIL%C3%99J%2C_%22Lip_Life%22.html"
+      ],
+      "next_step": "Repair official Weebly source validation only if the extractor can reliably capture add-to-cart, fulfillment context, availability, and usable PDP content."
+    },
+    {
+      "brand": "Bonjour La Vie",
+      "route": "market_hold",
+      "status": "hold",
+      "primary_blocker": "Official English PDP remains EUR/Italy commerce, not US/USD.",
+      "evidence": [
+        "probes/bonjour-hydra-comfort-cream.json"
+      ],
+      "candidate_urls": [
+        "https://bonjourlavie.it/products/hydra-comfort-cream"
+      ],
+      "next_step": "Do not seed for US catalog unless a source-backed USD or US fulfillment path is found."
+    },
+    {
+      "brand": "Merindah Botanicals",
+      "route": "market_hold",
+      "status": "hold",
+      "primary_blocker": "Official PDP extracts content but commerce facts are AUD and fail US market switch.",
+      "evidence": [
+        "probes/merindah-luxurious-face-cream.json"
+      ],
+      "candidate_urls": [
+        "https://merindahbotanicals.com.au/products/luxurious-face-cream"
+      ],
+      "next_step": "Keep out of US PDP catalog until a USD/US commerce path is confirmed."
+    },
+    {
+      "brand": "NIMBUS CO",
+      "route": "market_hold",
+      "status": "hold",
+      "primary_blocker": "Official PDP extracts content but commerce facts are AUD and fail US market switch.",
+      "evidence": [
+        "probes/nimbus-face-oil.json"
+      ],
+      "candidate_urls": [
+        "https://nimbusco.com.au/products/the-face-oil"
+      ],
+      "next_step": "Keep out of US PDP catalog until a USD/US commerce path is confirmed."
+    },
+    {
+      "brand": "MANISANTE",
+      "route": "market_hold",
+      "status": "hold",
+      "primary_blocker": "English storefront remains EUR/Italy or Europe-oriented commerce; no confirmed US/USD path.",
+      "evidence": [
+        "agent source review"
+      ],
+      "candidate_urls": [],
+      "next_step": "Do not seed for US catalog unless a source-backed USD or US fulfillment path is found."
+    },
+    {
+      "brand": "KHUS KHUS",
+      "route": "engineering_recovery_candidate",
+      "status": "hold",
+      "primary_blocker": "Official US/USD PDPs exist, but current extractor returns product_schema_missing.",
+      "evidence": [
+        "probes/khus-khus-c-drops-serum.json"
+      ],
+      "candidate_urls": [
+        "https://khus-khus.com/products/bleu-body-serum/",
+        "https://khus-khus.com/products/copious-body-serum/",
+        "https://khus-khus.com/products/fix-face-potion/",
+        "https://khus-khus.com/products/kai-repair-balm/",
+        "https://khus-khus.com/products/c-drops-serum/",
+        "https://khus-khus.com/products/d-drop-humectant-factor/",
+        "https://khus-khus.com/products/sans-anti-wrinkle-face-serum/",
+        "https://khus-khus.com/products/surya-body-elixir/"
+      ],
+      "next_step": "Add or repair official WooCommerce-style PDP extraction, then re-run dry-run and avoid therapeutic disease claims."
+    },
+    {
+      "brand": "Apiceuticals",
+      "route": "engineering_recovery_candidate",
+      "status": "hold",
+      "primary_blocker": "Official shop pages appear US-shippable and USD-selectable, but current extractor returns product_schema_missing.",
+      "evidence": [
+        "probes/apiceuticals-propowax-shampoo.json"
+      ],
+      "candidate_urls": [
+        "https://www.apiceuticals.com/shop/propowax-antioxidant-shampoo/",
+        "https://www.apiceuticals.com/shop/propowax-antioxidant-conditioner/",
+        "https://www.apiceuticals.com/shop/propowax-antioxidant-shower-gel/",
+        "https://www.apiceuticals.com/shop/propowax-antioxidant-body-lotion/",
+        "https://www.apiceuticals.com/shop/propowax-antioxidant-dry-oil/",
+        "https://www.apiceuticals.com/shop/honey-balm-age-rescue-antiaging/"
+      ],
+      "next_step": "Add or repair official WooCommerce-style PDP extraction, then re-run source-backed seed dry-run before any DB write."
+    },
+    {
+      "brand": "Pairfum",
+      "route": "access_hold",
+      "status": "hold",
+      "primary_blocker": "Official PDP path remains Cloudflare/access gated and tested URL is travel-size, which is not a clean first coverage candidate.",
+      "evidence": [
+        "probes/pairfum-ginger-elemi-vetiver.json"
+      ],
+      "candidate_urls": [
+        "https://www.pairfum.com/product/travel-size-30ml-ginger-elemi-vetiver-eau-de-parfum-intense/"
+      ],
+      "next_step": "Hold until a non-bundle, non-travel-size official PDP can be extracted without access blocks."
+    },
+    {
+      "brand": "LIME",
+      "route": "engineering_recovery_candidate",
+      "status": "hold",
+      "primary_blocker": "Cafe24 official English PDPs pass commerce facts, but extracted descriptions are empty or size-only, so public PDP quality would be thin.",
+      "evidence": [
+        "probes/lime-giga-white-tone-up-cream.json",
+        "probes/lime-oil-gel-eye-patch.json",
+        "probes/lime-v-collagen-ample-cushion.json"
+      ],
+      "candidate_urls": [
+        "https://en.limecosmetic.com/product/lime-giga-white-tone-up-cream/70",
+        "https://en.limecosmetic.com/product/lime-oil-gel-eye-patch/72",
+        "https://m.en.limecosmetic.com/product/lime-v-collagen-ample-cushion/104/"
+      ],
+      "next_step": "Add Cafe24 detail-content extraction or source-backed content recovery before seed apply."
+    },
+    {
+      "brand": "Lazy Society",
+      "route": "policy_hold",
+      "status": "hold",
+      "primary_blocker": "Strict brand domain is Korean/KRW; official-linked Cafe24 English/USD subdomain needs policy acceptance before use.",
+      "evidence": [
+        "agent source review"
+      ],
+      "candidate_urls": [],
+      "next_step": "Keep out of catalog unless official-linked Cafe24 subdomain is explicitly accepted as brand-owned for this program."
+    }
+  ],
+  "next_engineering_sequence": [
+    "WooCommerce-style official PDP extraction for KHUS KHUS and Apiceuticals.",
+    "Weebly official source validation for OILUJ, gated on reliable commerce and content parsing.",
+    "Cafe24 detail-content extraction for LIME, with a hard hold on empty or size-only descriptions.",
+    "Re-run seed dry-runs, seed-content audit, production DB apply only for source-backed rows, then live PDP audit."
+  ]
+}

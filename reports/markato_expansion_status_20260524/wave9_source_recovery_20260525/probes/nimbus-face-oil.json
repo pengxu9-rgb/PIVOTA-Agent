@@ -1,0 +1,400 @@
+{
+  "generated_at": "2026-05-25T01:39:08.372Z",
+  "brand": "NIMBUS CO",
+  "domain": "https://nimbusco.com.au/products/the-face-oil",
+  "fallback_domains": [],
+  "market": "US",
+  "preferred_titles": [],
+  "matched_preferred_titles": [],
+  "extracted_product_count": 1,
+  "excluded_bundle_like_count": 0,
+  "excluded_non_product_page_count": 0,
+  "excluded_incomplete_transaction_count": 0,
+  "excluded_brand_scope_mismatch_count": 0,
+  "matched_preferred_title_count": 0,
+  "item_count": 1,
+  "fallback_used": false,
+  "source_attempts": [
+    {
+      "source_url": "https://nimbusco.com.au/products/the-face-oil",
+      "source_role": "primary",
+      "extracted_product_count": 1,
+      "item_count": 1,
+      "matched_preferred_title_count": 0,
+      "matched_preferred_titles": [],
+      "diagnostics_summary": {
+        "discovery_strategy": "shopify_json",
+        "failure_category": null,
+        "block_provider": null
+      },
+      "used_in_manifest": true,
+      "added_item_count": 1,
+      "added_matched_preferred_titles": [],
+      "skip_reason": null
+    }
+  ],
+  "items": [
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "target_brand": "NIMBUS CO",
+      "target_url": "https://nimbusco.com.au/products/the-face-oil",
+      "extract_status": "brand_catalog_extract",
+      "market": "US",
+      "source_domain": "https://nimbusco.com.au/products/the-face-oil",
+      "source_role": "primary",
+      "matched_preferred_titles": [],
+      "alias_preferred_titles": [],
+      "seed_row": {
+        "ingredient_id": null,
+        "ingredient_name": null,
+        "seed_id": "eps_2dd228aa5171b85595a29d0a",
+        "brand": "NIMBUS CO",
+        "market": "US",
+        "tool": "creator_agents",
+        "status": "active",
+        "domain": "nimbusco.com.au",
+        "external_product_id": "ext_84b1b9596adc95d6f35e94cd",
+        "canonical_url": "https://nimbusco.com.au/products/the-face-oil",
+        "destination_url": "https://nimbusco.com.au/products/the-face-oil",
+        "title": "Face Oil",
+        "image_url": "https://nimbusco.com.au/cdn/shop/files/e-com_imagery_update-3.png?v=1756185839&width=2048",
+        "price_amount": 59,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "attached_product_key": null,
+        "requires_seed_correction": false,
+        "seed_data": {
+          "brand": "NIMBUS CO",
+          "title": "Face Oil",
+          "description": "A lightweight, nutrient-rich botanical oil designed to support skin hydration, barrier function, and overall skin balance. Suitable for all skin types, this fast-absorbing formula delivers essential fatty acids and antioxidants to help nourish and soften the skin without heaviness or congestion. Designed for daily use, it absorbs easily to leave skin feeling smooth, hydrated, and naturally radiant.",
+          "external_product_id": "ext_84b1b9596adc95d6f35e94cd",
+          "canonical_url": "https://nimbusco.com.au/products/the-face-oil",
+          "destination_url": "https://nimbusco.com.au/products/the-face-oil",
+          "price_amount": 59,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://nimbusco.com.au/cdn/shop/files/e-com_imagery_update-3.png?v=1756185839&width=2048",
+          "image_urls": [
+            "https://nimbusco.com.au/cdn/shop/files/e-com_imagery_update-3.png?v=1756185839&width=2048",
+            "https://nimbusco.com.au/cdn/shop/files/Screenshot2026-05-04at3.29.06pm.png?v=1778586521&width=246",
+            "https://nimbusco.com.au/cdn/shop/files/NimbusFaceOil3x4Artboard14.jpg?v=1756185839&width=246",
+            "https://nimbusco.com.au/cdn/shop/files/NimbusFaceOil3x4Artboard20.jpg?v=1756185839&width=246",
+            "https://nimbusco.com.au/cdn/shop/files/FACEOILINGREDIENTS.jpg?v=1756185839&width=246",
+            "https://nimbusco.com.au/cdn/shop/files/e-com_imagery_update-3.png?crop=center&height=84&v=1756185839&width=84",
+            "https://nimbusco.com.au/cdn/shop/files/Screenshot2026-05-04at3.29.06pm.png?crop=center&height=84&v=1778586521&width=84",
+            "https://nimbusco.com.au/cdn/shop/files/NimbusFaceOil3x4Artboard14.jpg?crop=center&height=84&v=1756185839&width=84",
+            "https://nimbusco.com.au/cdn/shop/files/NimbusFaceOil3x4Artboard20.jpg?crop=center&height=84&v=1756185839&width=84",
+            "https://nimbusco.com.au/cdn/shop/files/FACEOILINGREDIENTS.jpg?crop=center&height=84&v=1756185839&width=84"
+          ],
+          "images": [
+            "https://nimbusco.com.au/cdn/shop/files/e-com_imagery_update-3.png?v=1756185839&width=2048",
+            "https://nimbusco.com.au/cdn/shop/files/Screenshot2026-05-04at3.29.06pm.png?v=1778586521&width=246",
+            "https://nimbusco.com.au/cdn/shop/files/NimbusFaceOil3x4Artboard14.jpg?v=1756185839&width=246",
+            "https://nimbusco.com.au/cdn/shop/files/NimbusFaceOil3x4Artboard20.jpg?v=1756185839&width=246",
+            "https://nimbusco.com.au/cdn/shop/files/FACEOILINGREDIENTS.jpg?v=1756185839&width=246",
+            "https://nimbusco.com.au/cdn/shop/files/e-com_imagery_update-3.png?crop=center&height=84&v=1756185839&width=84",
+            "https://nimbusco.com.au/cdn/shop/files/Screenshot2026-05-04at3.29.06pm.png?crop=center&height=84&v=1778586521&width=84",
+            "https://nimbusco.com.au/cdn/shop/files/NimbusFaceOil3x4Artboard14.jpg?crop=center&height=84&v=1756185839&width=84",
+            "https://nimbusco.com.au/cdn/shop/files/NimbusFaceOil3x4Artboard20.jpg?crop=center&height=84&v=1756185839&width=84",
+            "https://nimbusco.com.au/cdn/shop/files/FACEOILINGREDIENTS.jpg?crop=center&height=84&v=1756185839&width=84"
+          ],
+          "variants": [
+            {
+              "sku": "NW-SK-FO-50",
+              "variant_id": "41337458393268",
+              "url": "https://nimbusco.com.au/products/the-face-oil",
+              "option_name": "Offer",
+              "option_value": "NW-SK-FO-50",
+              "price": "59",
+              "currency": "USD",
+              "stock": "In Stock",
+              "description": "A lightweight, nutrient-rich botanical oil designed to support skin hydration, barrier function, and overall skin balance. Suitable for all skin types, this fast-absorbing formula delivers essential fatty acids and antioxidants to help nourish and soften the skin without heaviness or congestion. Designed for daily use, it absorbs easily to leave skin feeling smooth, hydrated, and naturally radiant.",
+              "image_url": "https://nimbusco.com.au/cdn/shop/files/e-com_imagery_update-3.png?v=1756185839&width=2048",
+              "image_urls": [
+                "https://nimbusco.com.au/cdn/shop/files/e-com_imagery_update-3.png?v=1756185839&width=2048",
+                "https://nimbusco.com.au/cdn/shop/files/Screenshot2026-05-04at3.29.06pm.png?v=1778586521&width=246",
+                "https://nimbusco.com.au/cdn/shop/files/NimbusFaceOil3x4Artboard14.jpg?v=1756185839&width=246",
+                "https://nimbusco.com.au/cdn/shop/files/NimbusFaceOil3x4Artboard20.jpg?v=1756185839&width=246",
+                "https://nimbusco.com.au/cdn/shop/files/FACEOILINGREDIENTS.jpg?v=1756185839&width=246",
+                "https://nimbusco.com.au/cdn/shop/files/e-com_imagery_update-3.png?crop=center&height=84&v=1756185839&width=84",
+                "https://nimbusco.com.au/cdn/shop/files/Screenshot2026-05-04at3.29.06pm.png?crop=center&height=84&v=1778586521&width=84",
+                "https://nimbusco.com.au/cdn/shop/files/NimbusFaceOil3x4Artboard14.jpg?crop=center&height=84&v=1756185839&width=84",
+                "https://nimbusco.com.au/cdn/shop/files/NimbusFaceOil3x4Artboard20.jpg?crop=center&height=84&v=1756185839&width=84",
+                "https://nimbusco.com.au/cdn/shop/files/FACEOILINGREDIENTS.jpg?crop=center&height=84&v=1756185839&width=84"
+              ]
+            }
+          ],
+          "snapshot": {
+            "source": "catalog_intelligence_seed_creation_manifest",
+            "extracted_at": "2026-05-25T01:39:08.362Z",
+            "canonical_url": "https://nimbusco.com.au/products/the-face-oil",
+            "destination_url": "https://nimbusco.com.au/products/the-face-oil",
+            "title": "Face Oil",
+            "description": "A lightweight, nutrient-rich botanical oil designed to support skin hydration, barrier function, and overall skin balance. Suitable for all skin types, this fast-absorbing formula delivers essential fatty acids and antioxidants to help nourish and soften the skin without heaviness or congestion. Designed for daily use, it absorbs easily to leave skin feeling smooth, hydrated, and naturally radiant.",
+            "image_url": "https://nimbusco.com.au/cdn/shop/files/e-com_imagery_update-3.png?v=1756185839&width=2048",
+            "image_urls": [
+              "https://nimbusco.com.au/cdn/shop/files/e-com_imagery_update-3.png?v=1756185839&width=2048",
+              "https://nimbusco.com.au/cdn/shop/files/Screenshot2026-05-04at3.29.06pm.png?v=1778586521&width=246",
+              "https://nimbusco.com.au/cdn/shop/files/NimbusFaceOil3x4Artboard14.jpg?v=1756185839&width=246",
+              "https://nimbusco.com.au/cdn/shop/files/NimbusFaceOil3x4Artboard20.jpg?v=1756185839&width=246",
+              "https://nimbusco.com.au/cdn/shop/files/FACEOILINGREDIENTS.jpg?v=1756185839&width=246",
+              "https://nimbusco.com.au/cdn/shop/files/e-com_imagery_update-3.png?crop=center&height=84&v=1756185839&width=84",
+              "https://nimbusco.com.au/cdn/shop/files/Screenshot2026-05-04at3.29.06pm.png?crop=center&height=84&v=1778586521&width=84",
+              "https://nimbusco.com.au/cdn/shop/files/NimbusFaceOil3x4Artboard14.jpg?crop=center&height=84&v=1756185839&width=84",
+              "https://nimbusco.com.au/cdn/shop/files/NimbusFaceOil3x4Artboard20.jpg?crop=center&height=84&v=1756185839&width=84",
+              "https://nimbusco.com.au/cdn/shop/files/FACEOILINGREDIENTS.jpg?crop=center&height=84&v=1756185839&width=84"
+            ],
+            "images": [
+              "https://nimbusco.com.au/cdn/shop/files/e-com_imagery_update-3.png?v=1756185839&width=2048",
+              "https://nimbusco.com.au/cdn/shop/files/Screenshot2026-05-04at3.29.06pm.png?v=1778586521&width=246",
+              "https://nimbusco.com.au/cdn/shop/files/NimbusFaceOil3x4Artboard14.jpg?v=1756185839&width=246",
+              "https://nimbusco.com.au/cdn/shop/files/NimbusFaceOil3x4Artboard20.jpg?v=1756185839&width=246",
+              "https://nimbusco.com.au/cdn/shop/files/FACEOILINGREDIENTS.jpg?v=1756185839&width=246",
+              "https://nimbusco.com.au/cdn/shop/files/e-com_imagery_update-3.png?crop=center&height=84&v=1756185839&width=84",
+              "https://nimbusco.com.au/cdn/shop/files/Screenshot2026-05-04at3.29.06pm.png?crop=center&height=84&v=1778586521&width=84",
+              "https://nimbusco.com.au/cdn/shop/files/NimbusFaceOil3x4Artboard14.jpg?crop=center&height=84&v=1756185839&width=84",
+              "https://nimbusco.com.au/cdn/shop/files/NimbusFaceOil3x4Artboard20.jpg?crop=center&height=84&v=1756185839&width=84",
+              "https://nimbusco.com.au/cdn/shop/files/FACEOILINGREDIENTS.jpg?crop=center&height=84&v=1756185839&width=84"
+            ],
+            "variants": [
+              {
+                "sku": "NW-SK-FO-50",
+                "variant_id": "41337458393268",
+                "url": "https://nimbusco.com.au/products/the-face-oil",
+                "option_name": "Offer",
+                "option_value": "NW-SK-FO-50",
+                "price": "59",
+                "currency": "USD",
+                "stock": "In Stock",
+                "description": "A lightweight, nutrient-rich botanical oil designed to support skin hydration, barrier function, and overall skin balance. Suitable for all skin types, this fast-absorbing formula delivers essential fatty acids and antioxidants to help nourish and soften the skin without heaviness or congestion. Designed for daily use, it absorbs easily to leave skin feeling smooth, hydrated, and naturally radiant.",
+                "image_url": "https://nimbusco.com.au/cdn/shop/files/e-com_imagery_update-3.png?v=1756185839&width=2048",
+                "image_urls": [
+                  "https://nimbusco.com.au/cdn/shop/files/e-com_imagery_update-3.png?v=1756185839&width=2048",
+                  "https://nimbusco.com.au/cdn/shop/files/Screenshot2026-05-04at3.29.06pm.png?v=1778586521&width=246",
+                  "https://nimbusco.com.au/cdn/shop/files/NimbusFaceOil3x4Artboard14.jpg?v=1756185839&width=246",
+                  "https://nimbusco.com.au/cdn/shop/files/NimbusFaceOil3x4Artboard20.jpg?v=1756185839&width=246",
+                  "https://nimbusco.com.au/cdn/shop/files/FACEOILINGREDIENTS.jpg?v=1756185839&width=246",
+                  "https://nimbusco.com.au/cdn/shop/files/e-com_imagery_update-3.png?crop=center&height=84&v=1756185839&width=84",
+                  "https://nimbusco.com.au/cdn/shop/files/Screenshot2026-05-04at3.29.06pm.png?crop=center&height=84&v=1778586521&width=84",
+                  "https://nimbusco.com.au/cdn/shop/files/NimbusFaceOil3x4Artboard14.jpg?crop=center&height=84&v=1756185839&width=84",
+                  "https://nimbusco.com.au/cdn/shop/files/NimbusFaceOil3x4Artboard20.jpg?crop=center&height=84&v=1756185839&width=84",
+                  "https://nimbusco.com.au/cdn/shop/files/FACEOILINGREDIENTS.jpg?crop=center&height=84&v=1756185839&width=84"
+                ]
+              }
+            ],
+            "diagnostics": {
+              "requested_domain": "nimbusco.com.au",
+              "resolved_base_url": "https://nimbusco.com.au",
+              "discovery_strategy": "shopify_json",
+              "failure_category": null,
+              "block_provider": null,
+              "http_trace": [
+                {
+                  "url": "https://nimbusco.com.au/products/the-face-oil.js",
+                  "status": 200
+                },
+                {
+                  "url": "https://nimbusco.com.au/products/the-face-oil",
+                  "status": 200
+                },
+                {
+                  "url": "https://nimbusco.com.au/",
+                  "status": 200
+                },
+                {
+                  "url": "https://nimbusco.com.au/products/the-face-oil",
+                  "status": 200
+                },
+                {
+                  "url": "https://nimbusco.com.au/products/the-face-oil",
+                  "status": 200
+                }
+              ]
+            },
+            "search_aliases": [
+              "Face Oil"
+            ],
+            "authority_source": {
+              "source_url": "https://nimbusco.com.au/products/the-face-oil",
+              "source_role": "primary",
+              "matched_preferred_titles": []
+            },
+            "source_validation": {
+              "source_type": "brand_owned",
+              "requires_multi_offer_merge_validation": false,
+              "source_host": "nimbusco.com.au"
+            },
+            "commerce_facts_v1": {
+              "contract_version": "commerce_facts.v1",
+              "market_id": "US",
+              "country": "US",
+              "currency_target": "USD",
+              "source_authority": "catalog_extract_v2",
+              "captured_at": "2026-05-25T01:39:08.501Z",
+              "evidence_url": "https://nimbusco.com.au/products/the-face-oil",
+              "sellable_region": {
+                "status": "unknown",
+                "countries": [],
+                "evidence_source": "catalog_extract_v2",
+                "confidence": "low",
+                "checked_at": "2026-05-25T01:39:08.501Z",
+                "reason_codes": [
+                  "market_currency_not_verified",
+                  "shipping_destination_not_verified",
+                  "external_checkout_not_queried"
+                ],
+                "evidence_url": "https://nimbusco.com.au/products/the-face-oil"
+              },
+              "regional_price": {
+                "amount": 59,
+                "currency": "AUD",
+                "display_raw": "59.00",
+                "price_type": "list",
+                "compare_at_amount": 0,
+                "compare_at_currency": "AUD",
+                "compare_at_display_raw": "0.00",
+                "tax_included": "unknown",
+                "confidence": "medium",
+                "market_switch_status": "mismatch",
+                "observed_currency": "AUD",
+                "source_url": "https://nimbusco.com.au/products/the-face-oil",
+                "captured_at": "2026-05-25T01:39:08.501Z"
+              },
+              "availability": {
+                "status": "in_stock",
+                "source": "catalog_extract_v2",
+                "confidence": "medium",
+                "captured_at": "2026-05-25T01:39:08.501Z"
+              },
+              "shipping": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_checkout_not_queried"
+                ],
+                "checked_at": "2026-05-25T01:39:08.501Z"
+              },
+              "promotions": [],
+              "returns": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_returns_not_extracted"
+                ],
+                "checked_at": "2026-05-25T01:39:08.501Z"
+              }
+            },
+            "commerce_facts_gate": {
+              "status": "hold",
+              "market_id": "US",
+              "expected_currency": "USD",
+              "observed_currency": "AUD",
+              "market_switch_status": "mismatch",
+              "sellable_region_status": "unknown",
+              "shipping_status": "unknown",
+              "promotions_status": "unknown",
+              "availability_status": "in_stock",
+              "problems": [
+                "commerce_facts_currency_mismatch",
+                "commerce_facts_market_switch_not_ok"
+              ]
+            }
+          },
+          "search_aliases": [
+            "Face Oil"
+          ],
+          "authority_source": {
+            "source_url": "https://nimbusco.com.au/products/the-face-oil",
+            "source_role": "primary",
+            "matched_preferred_titles": []
+          },
+          "source_validation": {
+            "source_type": "brand_owned",
+            "requires_multi_offer_merge_validation": false,
+            "source_host": "nimbusco.com.au"
+          },
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-25T01:39:08.501Z",
+            "evidence_url": "https://nimbusco.com.au/products/the-face-oil",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "low",
+              "checked_at": "2026-05-25T01:39:08.501Z",
+              "reason_codes": [
+                "market_currency_not_verified",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://nimbusco.com.au/products/the-face-oil"
+            },
+            "regional_price": {
+              "amount": 59,
+              "currency": "AUD",
+              "display_raw": "59.00",
+              "price_type": "list",
+              "compare_at_amount": 0,
+              "compare_at_currency": "AUD",
+              "compare_at_display_raw": "0.00",
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "mismatch",
+              "observed_currency": "AUD",
+              "source_url": "https://nimbusco.com.au/products/the-face-oil",
+              "captured_at": "2026-05-25T01:39:08.501Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T01:39:08.501Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T01:39:08.501Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T01:39:08.501Z"
+            }
+          },
+          "commerce_facts_gate": {
+            "status": "hold",
+            "market_id": "US",
+            "expected_currency": "USD",
+            "observed_currency": "AUD",
+            "market_switch_status": "mismatch",
+            "sellable_region_status": "unknown",
+            "shipping_status": "unknown",
+            "promotions_status": "unknown",
+            "availability_status": "in_stock",
+            "problems": [
+              "commerce_facts_currency_mismatch",
+              "commerce_facts_market_switch_not_ok"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}
