@@ -2274,6 +2274,11 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
       'https://media.ulta.com/i/ulta/2615437_alt02?w=1000&h=1000&fmt=auto',
     ]);
     expect(galleryUrls.join('\n')).not.toMatch(/(?:2650610|2632648)/);
+    expect(payload.product.variants[0].image_url).toBe('https://media.ultainc.com/i/ulta/2615437?w=1000&h=1000');
+    expect(payload.product.variants[0].image_urls).toEqual([
+      'https://media.ultainc.com/i/ulta/2615437?w=1000&h=1000',
+      'https://media.ulta.com/i/ulta/2615437?w=1000&h=1000&fmt=auto',
+    ]);
   });
 
   test('suppresses active ingredient module for external seed skincare sets with formula category path', () => {

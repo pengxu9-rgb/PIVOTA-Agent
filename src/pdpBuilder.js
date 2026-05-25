@@ -1917,7 +1917,7 @@ function buildVariants(product) {
           : {}),
         price: { current: { amount: normalizeAmount(product.price), currency } },
         availability,
-        image_url: normalizePdpImageUrl(product.image_url) || undefined,
+        image_url: normalizePdpDisplayImageUrl(product.image_url) || undefined,
         ...pickSavingsPresentationFields(product),
       },
     ];
@@ -2004,7 +2004,9 @@ function buildVariants(product) {
       v.image,
       ...(Array.isArray(v.images) ? v.images : []),
       ...(Array.isArray(v.image_urls) ? v.image_urls : []),
-    ]);
+    ])
+      .map((url) => normalizePdpDisplayImageUrl(url))
+      .filter(Boolean);
 
     let filteredOptions = filterBuilderDisplayableVariantOptions(options);
     const normalizedTitle = asNonEmptyString(title);
