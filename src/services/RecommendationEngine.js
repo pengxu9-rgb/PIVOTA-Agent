@@ -74,7 +74,7 @@ const PDP_RECS_CATALOG_FETCH_TIMEOUT_MS = Math.max(
   parseTimeoutMs(
     process.env.PDP_SIMILAR_CATALOG_FETCH_TIMEOUT_MS ||
       process.env.PDP_RECS_CATALOG_FETCH_TIMEOUT_MS,
-    1200,
+    3000,
   ),
 );
 const PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS = Math.max(
@@ -2244,6 +2244,7 @@ async function fetchCatalogCandidates({
   categoryPathHint = '',
   verticalHint = '',
   intentFamilyHint = '',
+  sourceMerchantHint = '',
   limit,
   minFocusedCandidates = 6,
   queryTimeoutCapMs = null,
@@ -2263,6 +2264,8 @@ async function fetchCatalogCandidates({
   const brandAliases = buildNormalizedAliases(brandHint).map((value) => value.replace(/\s+/g, ''));
   const verticalPathPatterns = buildCatalogVerticalPathPatterns(verticalHint);
   const intentFamily = String(intentFamilyHint || '').trim();
+  const sourceMerchant = String(sourceMerchantHint || '').trim();
+  const externalSeedSourceOnly = sourceMerchant === EXTERNAL_SEED_MERCHANT_ID;
   const intentFamilyLikePatterns = getSimilarIntentFamilySqlLikePatterns(intentFamily);
   const params = [];
   const addParam = (value) => {
@@ -2281,6 +2284,7 @@ async function fetchCatalogCandidates({
     category_path_hint: catalogCategoryPath || null,
     vertical_hint: normalizeStoredSemanticVertical(verticalHint) || null,
     intent_family_hint: intentFamily || null,
+    source_merchant_hint: sourceMerchant || null,
     timed_out: false,
     aborted: false,
   };
@@ -2366,7 +2370,7 @@ async function fetchCatalogCandidates({
 
   const effectiveTimeoutMs =
     queryTimeoutCapMs != null
-      ? Math.min(normalizeRecsDbTimeoutMs(PDP_RECS_CATALOG_FETCH_TIMEOUT_MS), normalizeRecsDbTimeoutMs(queryTimeoutCapMs))
+      ? normalizeRecsDbTimeoutMs(queryTimeoutCapMs)
       : PDP_RECS_CATALOG_FETCH_TIMEOUT_MS;
   const limitParam = addParam(Math.min(safeLimit * 3, Math.max(safeLimit, safeMinFocusedCandidates * 3)));
 
@@ -2381,32 +2385,28 @@ async function fetchCatalogCandidates({
             cp.platform,
             cp.source_product_id,
             cp.title AS product_title,
-            cp.description AS product_description,
+            '' AS product_description,
             cp.brand,
             cp.product_type,
             cp.category,
             cp.category_path,
             cp.canonical_url,
             cp.image_url AS product_image_url,
-            cp.product_payload,
+            '{}'::jsonb AS product_payload,
             cp.pivota_signature_id,
             cp.pivota_canonical_url,
             cp.updated_at
           FROM catalog_products cp
-          LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id
+          ${externalSeedSourceOnly ? '' : 'LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id'}
           INNER JOIN index_pipeline_state ips
             ON ips.content_key = cp.content_key
            AND ips.serving_eligible = TRUE
           WHERE cp.sync_status = 'live'
+            AND ${externalSeedSourceOnly ? `cp.merchant_id = '${EXTERNAL_SEED_MERCHANT_ID}'` : activeCatalogProductSourceWhere('cp', 'cm')}
             AND cp.pivota_signature_id IS NOT NULL
             AND cp.pivota_signature_id LIKE 'sig\\_%' ESCAPE '\\'
             AND coalesce(nullif(trim(cp.title), ''), '') <> ''
-            AND coalesce(
-              nullif(trim(cp.image_url), ''),
-              nullif(trim(cp.product_payload->>'image_url'), ''),
-              nullif(trim(cp.product_payload->>'image'), '')
-            ) <> ''
-            AND ${activeCatalogProductSourceWhere('cp', 'cm')}
+            AND coalesce(nullif(trim(cp.image_url), ''), '') <> ''
             AND (${matchClauses.join(' OR ')})
           ORDER BY
             ${orderClauses.length ? `${orderClauses.join(',\n            ')},` : ''}
@@ -5406,6 +5406,7 @@ async function recommend({
         categoryPathHint: baseCategoryPath,
         verticalHint: baseSemantic?.vertical || '',
         intentFamilyHint: baseIntentFamily,
+        sourceMerchantHint: baseProductIsExternal ? EXTERNAL_SEED_MERCHANT_ID : '',
         limit: externalFetchLimit,
         minFocusedCandidates: externalFocusedRecallTarget,
         queryTimeoutCapMs: effectiveCatalogFetchTimeoutMs,

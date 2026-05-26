@@ -177,6 +177,8 @@ describe('RecommendationEngine external candidate fetch', () => {
       expect(text).toContain('index_pipeline_state ips');
       expect(text).toContain('ips.serving_eligible = TRUE');
       expect(text).toContain('cp.category_path = $1');
+      expect(text).toContain("cp.merchant_id = 'external_seed'");
+      expect(text).not.toContain('LEFT JOIN catalog_merchants');
       expect(text).not.toContain("lower(coalesce(cp.title, '')) LIKE");
       expect(text).not.toContain("regexp_replace(lower(coalesce(cp.brand");
       return {
