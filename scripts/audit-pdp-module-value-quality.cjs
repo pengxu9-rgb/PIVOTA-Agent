@@ -57,6 +57,29 @@ function parsePositiveInt(value, fallback, { allowZero = false } = {}) {
   return Math.floor(parsed);
 }
 
+function parseFiniteNumber(value) {
+  if (value === null || value === undefined) return NaN;
+  if (typeof value === 'string' && value.trim() === '') return NaN;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : NaN;
+}
+
+function isTerminalCommerceHold(...sources) {
+  return sources.some((source) => {
+    const obj = asObject(source);
+    const blocker = asObject(obj.transaction_readiness_blocker_v1);
+    const nonMerchHold = asObject(obj.non_merch_terminal_hold_v1);
+    const family = asString(obj.product_family || obj.external_seed_product_family || obj.product_kind).toLowerCase();
+    const transactionReady = asString(obj.transaction_ready).toLowerCase();
+    return (
+      transactionReady === 'false' ||
+      family === 'non_merch' ||
+      /terminal_hold|non_merch_terminal_hold|source_unavailable/.test(asString(blocker.status).toLowerCase()) ||
+      /terminal_hold|non_merch_terminal_hold/.test(asString(nonMerchHold.status).toLowerCase())
+    );
+  });
+}
+
 function inc(map, key, amount = 1) {
   const normalized = asString(key) || 'unknown';
   map[normalized] = (map[normalized] || 0) + amount;
@@ -462,6 +485,7 @@ function analyzeRow(row) {
   const howToTexts = collectHowToTexts(seedData, snapshot, payload);
   const detailSections = collectDetailSections(seedData, snapshot, payload);
   const intel = findIntel(row);
+  const terminalCommerceHold = isTerminalCommerceHold(seedData, snapshot, payload);
 
   const issues = [];
   const add = (module, reason_code, severity, evidence, recommended_action = '') => {
@@ -572,10 +596,12 @@ function analyzeRow(row) {
     add('details', 'details_heading_or_badge_as_body', 'high', headingOnlySections.slice(0, 8), 'quarantine headings/badges that were captured as section body');
   }
 
-  const priceAmount = Number(payload.price_amount ?? seedData.price_amount ?? row.seed_price_amount);
+  const priceAmount = parseFiniteNumber(
+    payload.price_amount ?? seedData.price_amount ?? row.seed_price_amount,
+  );
   const currency = asString(payload.price_currency || seedData.price_currency || row.seed_price_currency);
   const market = asString(row.market || payload.market_id || 'US');
-  if (Number.isFinite(priceAmount) && priceAmount <= 0) {
+  if (!terminalCommerceHold && Number.isFinite(priceAmount) && priceAmount <= 0) {
     add('offer', 'offer_non_positive_price', 'critical', { price_amount: priceAmount }, 'refresh commerce facts from source');
   }
   if (market === 'US' && currency && currency !== 'USD') {
@@ -642,6 +668,7 @@ function analyzeRow(row) {
       intel_kb_key: intel.kb_key,
       review_count: Number(row.review_count || 0),
       qna_count: Number(row.qna_count || 0),
+      terminal_commerce_hold: terminalCommerceHold,
     },
     issues,
   };
