@@ -579,8 +579,8 @@ const SIMILAR_INTENT_FAMILY_RULES = Object.freeze([
   },
   {
     id: 'eye_cream',
-    js: /\b(?:(?:under\s*-?\s*eye|undereye|eye)\s+(?:brightener|cream|creme|cr[eè]me|serum|treatment|gel|balm|patch)|eye\s*brightener)\b/i,
-    sql: '\\m((under\\s*-?\\s*eye|undereye|eye)\\s+(brightener|cream|creme|cr[eè]me|serum|treatment|gel|balm|patch)|eye\\s*brightener)\\M',
+    js: /\b(?:(?:under\s*-?\s*eye|undereye|eye)\s+(?:brightener|cream|creme|cr[eè]me|serum|treatment|gel|balm|patch|concentrate|fluid)|eye\s*brightener)\b/i,
+    sql: '\\m((under\\s*-?\\s*eye|undereye|eye)\\s+(brightener|cream|creme|cr[eè]me|serum|treatment|gel|balm|patch|concentrate|fluid)|eye\\s*brightener)\\M',
   },
   {
     id: 'blemish_patch',
@@ -3510,6 +3510,8 @@ function getSimilarIntentFamilySqlLikePatterns(intentFamily) {
       '%eye gel%',
       '%eye balm%',
       '%eye patch%',
+      '%eye concentrate%',
+      '%eye fluid%',
       '%eye brightener%',
       '%under eye%',
       '%undereye%',

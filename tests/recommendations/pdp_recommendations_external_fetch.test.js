@@ -455,7 +455,7 @@ describe('RecommendationEngine external candidate fetch', () => {
       if (!text.includes('FROM catalog_products cp')) return { rows: [] };
       expect(text).toContain("lower(coalesce(cp.category_path, '')) LIKE '%eye%'");
       expect(params[0]).toBe('beauty/skincare/treat/serum');
-      expect(params[1]).toEqual(expect.arrayContaining(['%eye serum%', '%under eye%']));
+      expect(params[1]).toEqual(expect.arrayContaining(['%eye serum%', '%eye concentrate%', '%under eye%']));
       expect(params[2]).toEqual(expect.arrayContaining(['beauty/skincare/%']));
       return {
         rows: [
@@ -2569,6 +2569,7 @@ describe('RecommendationEngine external candidate fetch', () => {
     expect(_internals.getSimilarIntentFamilyFromText('Rose Body Lotion')).toBe('body_oil');
     expect(_internals.getSimilarIntentFamilyFromText('Herbal Recovery Eye Cream')).toBe('eye_cream');
     expect(_internals.getSimilarIntentFamilyFromText('C-Vit Undereye Brightener')).toBe('eye_cream');
+    expect(_internals.getSimilarIntentFamilyFromText('Super Serum [10] Eyes, The Universal Age-Defying Eye Concentrate')).toBe('eye_cream');
     expect(_internals.getSimilarIntentFamilyFromText('Moisture Replenishing Day Cream')).toBe('moisturizer');
     expect(_internals.getSimilarIntentFamilyFromText('My Glow Black Honey Lip Oil')).toBe('lip_oil');
     expect(_internals.getSimilarIntentFamilyFromText('Skin Tint Blurring Elixir')).toBe('foundation');
