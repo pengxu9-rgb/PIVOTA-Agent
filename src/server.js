@@ -2826,6 +2826,14 @@ const PDP_SIMILAR_SYNC_BUDGET_MS = Math.min(
     ),
   ),
 );
+const PDP_SIMILAR_FIRST_PAINT_INLINE_ENABLED = parseBooleanEnv(
+  process.env.PDP_SIMILAR_FIRST_PAINT_INLINE_ENABLED,
+  false,
+);
+const PDP_SIMILAR_FIRST_PAINT_PREWARM_ENABLED = parseBooleanEnv(
+  process.env.PDP_SIMILAR_FIRST_PAINT_PREWARM_ENABLED,
+  true,
+);
 const PDP_SIMILAR_BACKGROUND_SYNC_BUDGET_MS = Math.min(
   8000,
   Math.max(
@@ -13289,22 +13297,41 @@ async function resolvePdpSimilarWithBudget(
   const requestMode = String(options?.requestMode || 'first_paint').trim() || 'first_paint';
   return await withStageBudget(promise, budgetMs, 'pdp_similar').catch((err) => {
     if (err?.code === 'STAGE_TIMEOUT') {
-      return {
-        status: 'deferred',
-        strategy: 'related_products',
-        reason_code: reasonCode,
-        items: [],
-        metadata: {
-          similar_status: 'deferred',
-          reason_code: reasonCode,
-          timeout_reason_code: 'SIMILAR_STAGE_BUDGET_EXCEEDED',
-          request_mode: requestMode,
-          sync_budget_ms: Math.max(1, Number(budgetMs || 0) || 0),
-        },
-      };
+      return buildPdpSimilarDeferredEnvelope({
+        reasonCode,
+        requestMode,
+        syncBudgetMs: Math.max(1, Number(budgetMs || 0) || 0),
+        timeoutReasonCode: 'SIMILAR_STAGE_BUDGET_EXCEEDED',
+      });
     }
     throw err;
   });
+}
+
+function buildPdpSimilarDeferredEnvelope({
+  reasonCode = 'SIMILAR_DEFERRED_FIRST_PAINT',
+  requestMode = 'first_paint',
+  syncBudgetMs = 0,
+  timeoutReasonCode = 'SIMILAR_STAGE_BUDGET_EXCEEDED',
+  directDeferred = false,
+} = {}) {
+  const normalizedReasonCode =
+    String(reasonCode || 'SIMILAR_DEFERRED_FIRST_PAINT').trim() || 'SIMILAR_DEFERRED_FIRST_PAINT';
+  const normalizedRequestMode = String(requestMode || 'first_paint').trim() || 'first_paint';
+  return {
+    status: 'deferred',
+    strategy: 'related_products',
+    reason_code: normalizedReasonCode,
+    items: [],
+    metadata: {
+      similar_status: 'deferred',
+      reason_code: normalizedReasonCode,
+      timeout_reason_code: String(timeoutReasonCode || 'SIMILAR_STAGE_BUDGET_EXCEEDED').trim(),
+      request_mode: normalizedRequestMode,
+      sync_budget_ms: Math.max(0, Number(syncBudgetMs || 0) || 0),
+      ...(directDeferred ? { direct_deferred: true } : {}),
+    },
+  };
 }
 
 function extractSearchProductId(product) {
@@ -25041,6 +25068,7 @@ async function prewarmPdpSimilarForProduct({
     canonicalProduct,
     bypassCache: false,
     debug: false,
+    requestMode: 'background',
   });
   const relatedProductsEnvelope = await fetchSimilarProductsDeduped(fetchArgs);
   const relatedProducts = Array.isArray(relatedProductsEnvelope?.items)
@@ -35727,6 +35755,36 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   },
                 };
               }
+              if (
+                similarRequestMode !== 'background' &&
+                !PDP_SIMILAR_FIRST_PAINT_INLINE_ENABLED
+              ) {
+                if (PDP_SIMILAR_FIRST_PAINT_PREWARM_ENABLED && !similarCacheBypass) {
+                  void prewarmPdpSimilarForProduct({
+                    payload,
+                    canonicalProductForPdp,
+                    canonicalProductRef,
+                    canonicalProduct,
+                    checkoutToken,
+                    bypassCache: false,
+                  }).catch((err) => {
+                    logger.debug?.(
+                      {
+                        err: err?.message || String(err),
+                        product_id: canonicalProductRef?.product_id || null,
+                      },
+                      'PDP first-paint similar prewarm failed',
+                    );
+                  });
+                }
+                return buildPdpSimilarDeferredEnvelope({
+                  reasonCode: 'SIMILAR_DEFERRED_FIRST_PAINT',
+                  requestMode: similarRequestMode,
+                  syncBudgetMs: 0,
+                  timeoutReasonCode: 'SIMILAR_FIRST_PAINT_DIRECT_DEFERRED',
+                  directDeferred: true,
+                });
+              }
               const { fetchArgs } = buildPdpSimilarFetchArgs({
                 payload,
                 canonicalProductForPdp,
@@ -44286,6 +44344,7 @@ module.exports._debug = {
   resolvePdpSimilarRequestMode,
   hasSimilarCardImage,
   resolvePdpSimilarWithBudget,
+  buildPdpSimilarDeferredEnvelope,
   mergeRecommendationModuleWithEnvelope,
   sanitizePdpSimilarResponseModules,
   applyPivotBeautyContractToInvokeSearchResponse,

@@ -68,6 +68,34 @@ describeIfRuntimeDeps('PDP similar first-paint budget', () => {
     );
   });
 
+  test('builds a direct first-paint deferred envelope without consuming sync budget', () => {
+    jest.resetModules();
+    const app = require('../../src/server');
+
+    const envelope = app._debug.buildPdpSimilarDeferredEnvelope({
+      reasonCode: 'SIMILAR_DEFERRED_FIRST_PAINT',
+      requestMode: 'first_paint',
+      syncBudgetMs: 0,
+      timeoutReasonCode: 'SIMILAR_FIRST_PAINT_DIRECT_DEFERRED',
+      directDeferred: true,
+    });
+
+    expect(envelope).toEqual(
+      expect.objectContaining({
+        status: 'deferred',
+        reason_code: 'SIMILAR_DEFERRED_FIRST_PAINT',
+        items: [],
+        metadata: expect.objectContaining({
+          similar_status: 'deferred',
+          request_mode: 'first_paint',
+          sync_budget_ms: 0,
+          timeout_reason_code: 'SIMILAR_FIRST_PAINT_DIRECT_DEFERRED',
+          direct_deferred: true,
+        }),
+      }),
+    );
+  });
+
   test('uses background mode for standalone/post-core similar requests only', () => {
     jest.resetModules();
     const app = require('../../src/server');
