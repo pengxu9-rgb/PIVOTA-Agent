@@ -1,0 +1,47 @@
+{
+  "generated_at": "2026-05-26T11:49:47.841Z",
+  "dry_run": true,
+  "manifest": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/markato_remaining_content_repair_20260526/delicate_daisys_cleansing_face_milk_how_to_manifest.json",
+  "summary": {
+    "scanned_rows": 1,
+    "missing_rows": 0,
+    "blocked_rows": 0,
+    "change_candidates": 1,
+    "updated_rows": 0,
+    "catalog_product_updates": 0,
+    "identity_updates": 0
+  },
+  "apply_results": [],
+  "plans": [
+    {
+      "external_product_id": "ext_99b5d36c01c7614a5de71fa1",
+      "seed_id": "eps_bfe66983319825686ed76f14",
+      "title": "Cleansing Face Milk Bulgarian Rose",
+      "canonical_url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose",
+      "status": "ready",
+      "changed": true,
+      "blockers": [],
+      "skipped_fields": [],
+      "patched_fields": [
+        "pdp_how_to_use_raw"
+      ],
+      "before": {
+        "description": "With this gentle, waterless cleansing milk, you can effectively cleanse, refresh, and soothe your face and neck without stripping your skin of important oils. Made with Organic Damask Rose Water and Oil, this product has the added benefits of pore-tightening, skin irritation relief, and protection against cell damage. Simply pump onto a cotton wipe or pad, massage, and wipe away for convenient and effective facial cleansing that can be done anytime and anywhere. Cleanse gently, then follow with our Rose Water Spray to calm and tone. Perfect for sensitive skin or minimalist routines. Directions for use: Use a cotton wipe or pad to clean the face and eyes in the morning and evening. No rinse is necessary. Suitable for all skin types and gentle enough for daily use.",
+        "pdp_description_raw": "With this gentle, waterless cleansing milk, you can effectively cleanse, refresh, and soothe your face and neck without stripping your skin of important oils. Made with Organic Damask Rose Water and Oil, this product has the added benefits of pore-tightening, skin irritation relief, and protection against cell damage. Simply pump onto a cotton wipe or pad, massage, and wipe away for convenient and effective facial cleansing that can be done anytime and anywhere. Cleanse gently, then follow with our Rose Water Spray to calm and tone. Perfect for sensitive skin or minimalist routines. Directions for use: Use a cotton wipe or pad to clean the face and eyes in the morning and evening. No rinse is necessary. Suitable for all skin types and gentle enough for daily use.",
+        "pdp_ingredients_raw": "Aqua (Water), Simmondsia Chinensis (Jojoba) Oil, Rosa Damascena (Damask Rose) Flower Water, Butyrospermum Parkii (Shea) Butter, Cera Alba (Beeswax), Persea Gratissima (Avocado) Oil, Chamomilla Recutita(Chamomile) Extract, Cetearyl Olivate (Fatty Acids derived from Olive Oil), Sorbitan Olivate (Fatty Acids derived from Olive Oil), Lactobacillus Ferment (Vegan Probiotic), Rosa Damascena (Damask Rose) Flower Oil",
+        "pdp_how_to_use_raw": "",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "With this gentle, waterless cleansing milk, you can effectively cleanse, refresh, and soothe your face and neck without stripping your skin of important oils. Made with Organic Damask Rose Water and Oil, this product has the added benefits of pore-tightening, skin irritation relief, and protection against cell damage. Simply pump onto a cotton wipe or pad, massage, and wipe away for convenient and effective facial cleansing that can be done anytime and anywhere.\n\nCleanse gently, then follow with our Rose Water Spray to calm and tone. Perfect for sensitive skin or minimalist routines.\n\nDirections for use: Use a cotton wipe or pad to clean the face and eyes in the morning and evening. No rinse is necessary. Suitable for all skin types and gentle enough for daily use.",
+        "pdp_description_raw": "With this gentle, waterless cleansing milk, you can effectively cleanse, refresh, and soothe your face and neck without stripping your skin of important oils. Made with Organic Damask Rose Water and Oil, this product has the added benefits of pore-tightening, skin irritation relief, and protection against cell damage. Simply pump onto a cotton wipe or pad, massage, and wipe away for convenient and effective facial cleansing that can be done anytime and anywhere.\n\nCleanse gently, then follow with our Rose Water Spray to calm and tone. Perfect for sensitive skin or minimalist routines.\n\nDirections for use: Use a cotton wipe or pad to clean the face and eyes in the morning and evening. No rinse is necessary. Suitable for all skin types and gentle enough for daily use.",
+        "pdp_how_to_use_raw": "Use a cotton wipe or pad to clean the face and eyes in the morning and evening. No rinse is necessary.",
+        "pdp_ingredients_raw": "Aqua (Water), Simmondsia Chinensis (Jojoba) Oil, Rosa Damascena (Damask Rose) Flower Water, Butyrospermum Parkii (Shea) Butter, Cera Alba (Beeswax), Persea Gratissima (Avocado) Oil, Chamomilla Recutita(Chamomile) Extract, Cetearyl Olivate (Fatty Acids derived from Olive Oil), Sorbitan Olivate (Fatty Acids derived from Olive Oil), Lactobacillus Ferment (Vegan Probiotic), Rosa Damascena (Damask Rose) Flower Oil",
+        "ingredients_polluted": false,
+        "detail_section_count": 0,
+        "polluted_detail_section_count": 0
+      }
+    }
+  ]
+}

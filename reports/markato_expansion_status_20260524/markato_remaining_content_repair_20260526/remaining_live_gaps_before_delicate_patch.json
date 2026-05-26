@@ -1,0 +1,165 @@
+{
+  "generated_at": "2026-05-26T11:48:51.552Z",
+  "rows": [
+    {
+      "domain": "delicatedaisys.com",
+      "external_product_id": "ext_99b5d36c01c7614a5de71fa1",
+      "title": "Cleansing Face Milk Bulgarian Rose",
+      "canonical_url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose",
+      "live_status": "thin",
+      "blockers": [
+        "missing_how_to"
+      ]
+    },
+    {
+      "domain": "activedrip.com",
+      "external_product_id": "ext_94e9169cdf21031b65f760c9",
+      "title": "HA + PEPTIDES EYE CARE",
+      "canonical_url": "https://activedrip.com/products/hyaluronic-acid-peptides-eye-contour",
+      "live_status": "thin",
+      "blockers": [
+        "missing_ingredients"
+      ]
+    },
+    {
+      "domain": "activedrip.com",
+      "external_product_id": "ext_833660ffbf5c744869351463",
+      "title": "R-Q10 EYE CARE",
+      "canonical_url": "https://activedrip.com/products/retinol-q10-anti-age-eye-contour",
+      "live_status": "thin",
+      "blockers": [
+        "missing_ingredients"
+      ]
+    },
+    {
+      "domain": "activedrip.com",
+      "external_product_id": "ext_daba06ea03080351d96dd6f9",
+      "title": "CICA MILK DRIP",
+      "canonical_url": "https://activedrip.com/products/cica-b5-recovery-serum",
+      "live_status": "thin",
+      "blockers": [
+        "missing_ingredients"
+      ]
+    },
+    {
+      "domain": "activedrip.com",
+      "external_product_id": "ext_eea9ddc94177c421b32a1ed5",
+      "title": "C + E DRIP",
+      "canonical_url": "https://activedrip.com/products/vitamin-c-e-serum",
+      "live_status": "thin",
+      "blockers": [
+        "missing_ingredients"
+      ]
+    },
+    {
+      "domain": "activedrip.com",
+      "external_product_id": "ext_edef015844086dd8eaa792b2",
+      "title": "RETINOL DRIP",
+      "canonical_url": "https://activedrip.com/products/retinol-anti-wrinkle-serum",
+      "live_status": "thin",
+      "blockers": [
+        "missing_ingredients"
+      ]
+    },
+    {
+      "domain": "activedrip.com",
+      "external_product_id": "ext_11509e4feaf83a2419d8c77d",
+      "title": "KOJIC DRIP",
+      "canonical_url": "https://activedrip.com/products/niacinamide-kojic-acid-glow-and-corrective-serum",
+      "live_status": "thin",
+      "blockers": [
+        "missing_ingredients"
+      ]
+    },
+    {
+      "domain": "activedrip.com",
+      "external_product_id": "ext_441b5d142009ef8ae5082262",
+      "title": "HYDRATE DRIP",
+      "canonical_url": "https://activedrip.com/products/hyaluronic-acid-b12-b5-serum",
+      "live_status": "thin",
+      "blockers": [
+        "missing_ingredients"
+      ]
+    },
+    {
+      "domain": "activedrip.com",
+      "external_product_id": "ext_7e270c8cb635a23a446a76f9",
+      "title": "THE ICONIC MOISTURISER",
+      "canonical_url": "https://activedrip.com/products/vitamin-c-hyaluronic-acid-moisturising-and-antioxidant-cream",
+      "live_status": "thin",
+      "blockers": [
+        "missing_ingredients"
+      ]
+    },
+    {
+      "domain": "coconutmatter.com",
+      "external_product_id": "ext_fda8be630c6dc79ef599df3c",
+      "title": "NOURISHING HAND BALM",
+      "canonical_url": "https://coconutmatter.com/products/nourishing-hand-balm",
+      "live_status": "not_conversion_ready",
+      "blockers": [
+        "gallery_missing_or_bloated",
+        "missing_or_weak_insights",
+        "missing_ingredients",
+        "missing_how_to",
+        "missing_overview",
+        "missing_details"
+      ]
+    },
+    {
+      "domain": "coconutmatter.com",
+      "external_product_id": "ext_c840771410198f627d75673a",
+      "title": "TINTED COCONUT LIP BALM",
+      "canonical_url": "https://coconutmatter.com/products/tinted-coconut-lip-balm",
+      "live_status": "thin",
+      "blockers": [
+        "missing_ingredients",
+        "missing_how_to"
+      ]
+    },
+    {
+      "domain": "coconutmatter.com",
+      "external_product_id": "ext_a7f414cda657f8c5857fafe8",
+      "title": "Goji Shake Shampoo Concentrate | For Treated Hair",
+      "canonical_url": "https://coconutmatter.com/products/goji-shake-shampoo-concentrate",
+      "live_status": "thin",
+      "blockers": [
+        "missing_ingredients",
+        "missing_how_to"
+      ]
+    },
+    {
+      "domain": "coconutmatter.com",
+      "external_product_id": "ext_9518e81076efc5c5138214ee",
+      "title": "Matcha Shake Shampoo Concentrate | For All Hair Types",
+      "canonical_url": "https://coconutmatter.com/products/matcha-shake-shampoo-concentrate",
+      "live_status": "thin",
+      "blockers": [
+        "missing_ingredients",
+        "missing_how_to"
+      ]
+    },
+    {
+      "domain": "coconutmatter.com",
+      "external_product_id": "ext_57fe66e03e7b47b972b78c30",
+      "title": "Oaty Shake Body Wash Concentrate",
+      "canonical_url": "https://coconutmatter.com/products/oaty-shake-body-wash-concentrate",
+      "live_status": "thin",
+      "blockers": [
+        "missing_ingredients",
+        "missing_how_to"
+      ]
+    },
+    {
+      "domain": "coconutmatter.com",
+      "external_product_id": "ext_8982e4384c3bd70a5718c899",
+      "title": "CLEAR LIP CARE",
+      "canonical_url": "https://coconutmatter.com/products/clear-lip-care",
+      "live_status": "thin",
+      "blockers": [
+        "missing_ingredients",
+        "missing_how_to"
+      ]
+    }
+  ]
+}

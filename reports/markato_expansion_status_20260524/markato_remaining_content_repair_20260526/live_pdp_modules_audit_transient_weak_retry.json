@@ -1,0 +1,253 @@
+{
+  "generated_at": "2026-05-26T11:54:25.519Z",
+  "source": "external_seed_live_pdp_modules_audit",
+  "query": {
+    "market": "US",
+    "domain": null,
+    "brand": null,
+    "external_product_id": null,
+    "external_product_ids": [
+      "ext_794deab047eb4a75225329df",
+      "ext_acff84a9f77766e338b83f44"
+    ],
+    "include_attached": true,
+    "limit": 5,
+    "offset": 0,
+    "include_similar": true,
+    "use_sig": false
+  },
+  "summary": {
+    "scanned": 2,
+    "ready": 2,
+    "thin": 0,
+    "not_conversion_ready": 0,
+    "by_domain": [
+      {
+        "key": "joocyee.com",
+        "count": 1
+      },
+      {
+        "key": "nubest.com",
+        "count": 1
+      }
+    ],
+    "blocker_counts": [],
+    "weak_insights_ids": [],
+    "seller_only_insights_ids": [],
+    "force_filled_ids": [],
+    "content_gap_ids": []
+  },
+  "rows": [
+    {
+      "external_product_id": "ext_794deab047eb4a75225329df",
+      "pivota_signature_id": "sig_6c0ec349bd054178a2d4de2e237c7b1f",
+      "probed_product_id": "ext_794deab047eb4a75225329df",
+      "probed_id_type": "ext",
+      "seed_id": "eps_ebb12bb4d8f9c3e65b57a8f3",
+      "market": "US",
+      "domain": "joocyee.com",
+      "title": "Color-correcting Primer",
+      "canonical_url": "https://joocyee.com/products/color-correcting-primer",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "319054e15f45",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 1,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "joocyee.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 2,
+        "label_count": 4,
+        "labels": [
+          "Color: Soft Light Purple",
+          "Color: Soft Light Green",
+          "Soft Light Purple",
+          "Soft Light Green"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Primer identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 45,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 5,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 22
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_acff84a9f77766e338b83f44",
+      "pivota_signature_id": "sig_ede8efb8e75e43519dbf3987",
+      "probed_product_id": "ext_acff84a9f77766e338b83f44",
+      "probed_id_type": "ext",
+      "seed_id": "eps_31d729ede0a776565b6fcaac",
+      "market": "US",
+      "domain": "nubest.com",
+      "title": "NuBest Tall Kids – Berry Multivitamin Chewables for Ages 2–9, 60 Count",
+      "canonical_url": "https://www.nubest.com/products/shopping-nubest-tall-kids-multivitamins-berry-flavor-ages-2-9-60-chewables",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "319054e15f45",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 9,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 3,
+        "label_count": 6,
+        "labels": [
+          "Size: 1-pack",
+          "Size: 3-pack",
+          "Size: 6-pack",
+          "1-pack",
+          "3-pack",
+          "6-pack"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Wellness supplement identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 14,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": true,
+        "active_ingredients_source_origin": "active_block",
+        "active_ingredients_source_quality_status": "authoritative",
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 8,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 16
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_family_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    }
+  ]
+}

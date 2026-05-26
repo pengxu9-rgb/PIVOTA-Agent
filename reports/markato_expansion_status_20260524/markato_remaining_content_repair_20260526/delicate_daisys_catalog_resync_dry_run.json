@@ -1,0 +1,262 @@
+{
+  "generated_at": "2026-05-26T11:50:45.845Z",
+  "mode": "dry_run",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": false,
+  "requested_ids": 1,
+  "fetched_rows": 1,
+  "mirror_rows": 1,
+  "planned_sku_rows": 1,
+  "planned_offer_rows": 1,
+  "planned_index_state_rows": 1,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "dry_run",
+    "existing_before": {
+      "catalog_products": 1,
+      "catalog_skus": 1,
+      "catalog_offers": 1,
+      "product_group_members": 1
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 1
+    },
+    "product_upserts": 0,
+    "sku_upserts": 0,
+    "offer_upserts": 0,
+    "group_member_upserts": 0,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 0,
+    "identity_live_read_updates": 0
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_99b5d36c01c7614a5de71fa1",
+      "product_key": "prod::external_seed::external_seed::ext_99b5d36c01c7614a5de71fa1",
+      "product_group_id": "sig_344eafc02c8931679c020a25",
+      "title": "Cleansing Face Milk Bulgarian Rose",
+      "brand": "Delicate Daisys Botanical Beauty",
+      "product_type": "Cleanser",
+      "category": "Cleanser",
+      "category_path": "beauty/skincare/cleansers",
+      "canonical_url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose",
+      "pivota_signature_id": "sig_344eafc02c8931679c020a25",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_99b5d36c01c7614a5de71fa1::sku_082013546404bc8a5686",
+        "product_key": "prod::external_seed::external_seed::ext_99b5d36c01c7614a5de71fa1",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_99b5d36c01c7614a5de71fa1",
+        "source_variant_id": "ext_99b5d36c01c7614a5de71fa1:47818391847186",
+        "source_domain": "delicatedaisys.com",
+        "sku": "860008494009",
+        "barcode": null,
+        "title": "Default Title",
+        "currency": "USD",
+        "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3349.jpg?v=1779411477",
+        "visible_attributes": {
+          "Shade": "Default Title"
+        },
+        "visible_option_labels": {
+          "Shade": "Default Title"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_99b5d36c01c7614a5de71fa1",
+          "raw_variant_id": "47818391847186",
+          "source_variant_id": "ext_99b5d36c01c7614a5de71fa1:47818391847186",
+          "variant_sku": "860008494009",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose",
+          "external_redirect_url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose",
+          "price": "39.99",
+          "price_amount": 39.99,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3349.jpg?v=1779411477",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Shade": "Default Title"
+          },
+          "raw_variant": {
+            "sku": "860008494009",
+            "url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose?variant=47818391847186&utm_source=pivota&utm_medium=affiliate",
+            "price": "39.99",
+            "stock": "In Stock",
+            "title": "Default Title",
+            "options": [],
+            "currency": "USD",
+            "deep_link": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose?variant=47818391847186&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3349.jpg?v=1779411477",
+            "image_urls": [
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3349.jpg?v=1779411477",
+              "https://delicatedaisys.com/cdn/shop/files/cleansing-face-milk-bulgarian-rose-353063.jpg?v=1725349381",
+              "https://delicatedaisys.com/cdn/shop/files/cleansing-face-milk-bulgarian-rose-783357.jpg?v=1725349381",
+              "https://delicatedaisys.com/cdn/shop/files/cleansing-face-milk-bulgarian-rose-349638.jpg?v=1725349381",
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3351.png?v=1779411776",
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3243.png?v=1779317759",
+              "https://delicatedaisys.com/cdn/shop/files/cleansing-face-milk-bulgarian-rose-139536.jpg?v=1725312396"
+            ],
+            "variant_id": "47818391847186",
+            "product_url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:e6d1d0a16eb6fb323c779bad17b0e44b",
+        "sku_key": "prod::external_seed::external_seed::ext_99b5d36c01c7614a5de71fa1::sku_082013546404bc8a5686",
+        "product_key": "prod::external_seed::external_seed::ext_99b5d36c01c7614a5de71fa1",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 39.99,
+        "merchant_effective_price": 39.99,
+        "estimated_best_price": 39.99,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_bfe66983319825686ed76f14",
+        "source_domain": "delicatedaisys.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_bfe66983319825686ed76f14",
+          "external_product_id": "ext_99b5d36c01c7614a5de71fa1",
+          "domain": "delicatedaisys.com",
+          "market": "US",
+          "product_title": "Cleansing Face Milk Bulgarian Rose",
+          "variant_title": "Default Title",
+          "variant_sku": "860008494009",
+          "raw_variant_id": "47818391847186",
+          "url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose",
+          "offer_url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose",
+          "canonical_url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose",
+          "destination_url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose",
+          "external_redirect_url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose",
+          "merchant_display_name": "Delicate Daisys Botanical Beauty",
+          "price": "39.99",
+          "price_amount": 39.99,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T00:24:58.123Z",
+            "evidence_url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T00:24:58.123Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose"
+            },
+            "regional_price": {
+              "amount": 39.99,
+              "currency": "USD",
+              "display_raw": "39.99",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose",
+              "captured_at": "2026-05-23T00:24:58.123Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:24:58.123Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T00:24:58.123Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T00:24:58.123Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 39.99,
+              "currency": "USD",
+              "display_raw": "39.99",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose",
+              "captured_at": "2026-05-23T00:24:58.123Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:24:58.123Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 775
+      }
+    }
+  ]
+}
