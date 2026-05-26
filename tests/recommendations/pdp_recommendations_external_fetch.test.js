@@ -176,6 +176,9 @@ describe('RecommendationEngine external candidate fetch', () => {
       if (!text.includes('FROM catalog_products cp')) return { rows: [] };
       expect(text).toContain('index_pipeline_state ips');
       expect(text).toContain('ips.serving_eligible = TRUE');
+      expect(text).toContain('cp.category_path = $1');
+      expect(text).not.toContain("lower(coalesce(cp.title, '')) LIKE");
+      expect(text).not.toContain("regexp_replace(lower(coalesce(cp.brand");
       return {
         rows: [
           makeCatalogRow({

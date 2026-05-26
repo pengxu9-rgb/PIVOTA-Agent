@@ -2312,7 +2312,12 @@ async function fetchCatalogCandidates({
     orderClauses.push(`CASE WHEN cp.category_path = ${p} THEN 0 ELSE 1 END`);
   }
 
-  if (categoryAliases.length) {
+  // Keep the live PDP path narrow. When the canonical catalog path is known,
+  // broad OR recall (category aliases + vertical + title intent + brand scope)
+  // can force a wide catalog scan and time out the optional similar module.
+  // Wider catalog expansion should be offline/backfill work, not the first
+  // runtime query.
+  if (!catalogCategoryPath && categoryAliases.length) {
     categoryAliasParam = addParam(categoryAliases);
     matchClauses.push(`(
       lower(coalesce(cp.category, '')) = ANY(${categoryAliasParam}::text[])
@@ -2324,17 +2329,17 @@ async function fetchCatalogCandidates({
   }
 
   let verticalParam = '';
-  if (verticalPathPatterns.length) {
+  if (!catalogCategoryPath && verticalPathPatterns.length) {
     verticalParam = addParam(verticalPathPatterns);
     matchClauses.push(`lower(coalesce(cp.category_path, '')) LIKE ANY(${verticalParam}::text[])`);
   }
 
-  if (intentFamilyLikePatterns.length) {
+  if (!catalogCategoryPath && intentFamilyLikePatterns.length) {
     const p = addParam(intentFamilyLikePatterns);
     matchClauses.push(`lower(coalesce(cp.title, '')) LIKE ANY(${p}::text[])`);
   }
 
-  if (brandAliases.length && (categoryAliasParam || verticalParam || catalogCategoryPath)) {
+  if (!catalogCategoryPath && brandAliases.length && (categoryAliasParam || verticalParam)) {
     const brandParam = addParam(brandAliases);
     const scopedClauses = [];
     if (categoryAliasParam) {
@@ -2346,10 +2351,6 @@ async function fetchCatalogCandidates({
     }
     if (verticalParam) {
       scopedClauses.push(`lower(coalesce(cp.category_path, '')) LIKE ANY(${verticalParam}::text[])`);
-    }
-    if (catalogCategoryPath) {
-      const p = addParam(catalogCategoryPath);
-      scopedClauses.push(`cp.category_path = ${p}`);
     }
     matchClauses.push(`(
       regexp_replace(lower(coalesce(cp.brand, cp.product_payload->>'brand', cp.product_payload->>'vendor', '')), '[^a-z0-9]+', '', 'g') = ANY(${brandParam}::text[])
