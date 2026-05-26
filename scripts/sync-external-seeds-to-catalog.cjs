@@ -387,7 +387,69 @@ function explicitCategoryShape(row) {
   };
 }
 
+function seedLooksSetOrBundle(row) {
+  const seedData = pickSeedData(row);
+  const snapshot = pickSnapshot(row);
+  const productKind = asString(
+    seedData.product_kind ||
+      snapshot.product_kind ||
+      seedData.product_family ||
+      snapshot.product_family ||
+      seedData.pdp_schema_profile ||
+      snapshot.pdp_schema_profile,
+  ).toLowerCase();
+  if (['bundle', 'set', 'set_or_collection', 'collection'].includes(productKind)) return true;
+
+  const componentCount = Math.max(
+    asArray(seedData.bundle_components).length,
+    asArray(seedData.bundle_component_refs).length,
+    asArray(snapshot.bundle_components).length,
+    asArray(snapshot.bundle_component_refs).length,
+  );
+  if (componentCount > 0) return true;
+
+  const haystack = titleCategoryText(row);
+  return /\b(?:set|sets|kit|kits|bundle|bundles|duo|trio|routine|regimen|discovery|collection|pair|gift\s+set|bauble)\b/.test(haystack);
+}
+
+function inferSetOrBundleCategoryShape(row) {
+  if (!seedLooksSetOrBundle(row)) return null;
+  const seedData = pickSeedData(row);
+  const snapshot = pickSnapshot(row);
+  const haystack = [
+    row.title,
+    seedData.title,
+    seedData.category,
+    seedData.leaf_category,
+    seedData.product_type,
+    snapshot.title,
+    snapshot.category,
+    snapshot.leaf_category,
+    snapshot.product_type,
+  ]
+    .map(asString)
+    .join(' ')
+    .toLowerCase();
+
+  if (/\b(?:fragrance|perfume|parfum|eau\s+de\s+parfum|eau\s+de\s+toilette|scent)\b/.test(haystack)) {
+    return { productType: 'Fragrance Set', category: 'Fragrance Set', categoryPath: 'beauty/fragrance/sets' };
+  }
+  if (/\b(?:shampoo|conditioner|hair|scalp)\b/.test(haystack)) {
+    return { productType: 'Haircare Set', category: 'Haircare Set', categoryPath: 'beauty/haircare/sets' };
+  }
+  if (/\b(?:skin|skincare|face|facial|cleanse|cleansing|moisturi[sz]er|moisturi[sz]ing|serum|oil|cream|mask|spf|sunscreen|toner|eye)\b/.test(haystack)) {
+    return { productType: 'Skincare Set', category: 'Skincare Set', categoryPath: 'beauty/skincare/sets' };
+  }
+  if (/\b(?:body|hand|lotion|wash|deodorant|soap)\b/.test(haystack)) {
+    return { productType: 'Bodycare Set', category: 'Bodycare Set', categoryPath: 'beauty/bodycare/sets' };
+  }
+  return { productType: 'Beauty Set', category: 'Beauty Set', categoryPath: 'beauty/sets' };
+}
+
 function inferCatalogMirrorCategory(row) {
+  const setOrBundleShape = inferSetOrBundleCategoryShape(row);
+  if (setOrBundleShape) return setOrBundleShape;
+
   const explicitShape = explicitCategoryShape(row);
   if (explicitShape) return explicitShape;
 
@@ -481,20 +543,64 @@ function variantOptionMap(variant) {
     const name = asString(option?.name || option?.label || option?.axis || 'Option');
     const value = asString(option?.value || option?.label || option?.name);
     if (!name || !value) continue;
-    attrs[name] = value;
-    labels[name] = value;
+    const visibleAxis = inferVisibleVariantAxis(value, name);
+    if (!visibleAxis) continue;
+    attrs[visibleAxis] = value;
+    labels[visibleAxis] = value;
   }
   for (const [key, value] of Object.entries(asObject(variant.option_values))) {
     if (!asString(value)) continue;
-    attrs[key] = asString(value);
-    labels[key] = asString(value);
+    const visibleAxis = inferVisibleVariantAxis(value, key);
+    if (!visibleAxis) continue;
+    attrs[visibleAxis] = asString(value);
+    labels[visibleAxis] = asString(value);
   }
   const title = asString(variant.title || variant.name || variant.variant_title);
-  if (!Object.keys(attrs).length && title) {
-    attrs.Shade = title;
-    labels.Shade = title;
+  const titleAxis = inferVisibleVariantAxis(title, variant.option_name || variant.option_label || 'Title');
+  if (!Object.keys(attrs).length && title && titleAxis) {
+    attrs[titleAxis] = title;
+    labels[titleAxis] = title;
   }
   return { attrs, labels };
+}
+
+function inferVisibleVariantAxis(value, axis = '') {
+  const label = asString(value);
+  if (isNonUserFacingVariantLabel(label, axis)) return '';
+  const axisLabel = asString(axis);
+  const axisNorm = axisLabel.toLowerCase();
+  if (axisLabel && !/^(?:title|option|default|name)$/i.test(axisLabel)) return axisLabel;
+  if (/\b\d+(?:\.\d+)?\s*(?:ml|mL|l|oz|fl\.?\s*oz|g|kg|lb|lbs|ct|count|pack|pcs?|pieces?|capsules?|tablets?)\b/i.test(label)) {
+    return 'Size';
+  }
+  if (
+    /^(?:\d{1,3}\s*)?(?:fair|light|medium|tan|deep|dark|black|brown|blonde|brunette|red|pink|rose|coral|nude|beige|ivory|porcelain|almond|espresso|caramel|berry|plum|mauve|clear|white|blue|green|purple|gold|silver|bronze)(?:\b|[\s-])/i.test(
+      label
+    )
+  ) {
+    return 'Shade';
+  }
+  if (axisNorm === 'shade' || axisNorm === 'color' || axisNorm === 'colour') return axisLabel || 'Shade';
+  return '';
+}
+
+function isNonUserFacingVariantLabel(value, axis = '') {
+  const label = asString(value);
+  if (!label) return true;
+  const normalized = label.toLowerCase();
+  const axisNorm = asString(axis).toLowerCase();
+  if (/^(?:default(?:\s+title)?|single|one\s+size|title)$/i.test(label)) return true;
+  if (/\b(?:repeat\s+order|subscription|subscribe|auto[-\s]*ship|autoship|purchase\s+option)\b/i.test(label)) {
+    return true;
+  }
+  if (
+    axisNorm === 'title' &&
+    /\b(?:save|free|sale|discount|off|worth|bundle\s+deal|regular\s+price|compare\s+at|limited\s+time)\b/i.test(label)
+  ) {
+    return true;
+  }
+  if (/\$\s*\d|\b\d+\s*%\s*off\b|\bsave\s+\d+\s*%/i.test(label)) return true;
+  return normalized === 'n/a' || normalized === 'na';
 }
 
 function pickVariantId(variant, fallback) {
@@ -513,7 +619,8 @@ function pickVariantSku(variant, fallback) {
 }
 
 function pickVariantTitle(variant, fallbackTitle) {
-  return asString(variant.title || variant.name || variant.variant_title || fallbackTitle);
+  const title = asString(variant.title || variant.name || variant.variant_title);
+  return isNonUserFacingVariantLabel(title, 'Title') ? asString(fallbackTitle) : title || asString(fallbackTitle);
 }
 
 function pickReviewedRegionalPrice(row) {
@@ -1086,6 +1193,9 @@ async function applyMirrors(
     seed_attachment_updates: 0,
     index_state_upserts: 0,
     identity_live_read_updates: 0,
+    catalog_row_trust_upserts: 0,
+    stale_offer_deletes: 0,
+    stale_sku_deletes: 0,
   };
   if (dryRun) return totals;
   if (!mirrors.length) return totals;
@@ -1435,6 +1545,31 @@ async function applyMirrors(
           totals.offer_upserts += Number(offerRes.rowCount || 0);
         }
 
+        const plannedSkuKeys = mirror.skus.map((skuMirror) => skuMirror.sku.sku_key).filter(Boolean);
+        const plannedOfferIds = mirror.skus.map((skuMirror) => skuMirror.offer.offer_id).filter(Boolean);
+        const staleOfferRes = await client.query(
+          `
+            DELETE FROM catalog_offers
+            WHERE product_key = $1
+              AND merchant_id = $2
+              AND source_system = $3
+              AND NOT (offer_id = ANY($4::text[]))
+          `,
+          [p.product_key, MERCHANT_ID, SOURCE_SYSTEM, plannedOfferIds],
+        );
+        totals.stale_offer_deletes += Number(staleOfferRes.rowCount || 0);
+        const staleSkuRes = await client.query(
+          `
+            DELETE FROM catalog_skus
+            WHERE product_key = $1
+              AND merchant_id = $2
+              AND platform = $3
+              AND NOT (sku_key = ANY($4::text[]))
+          `,
+          [p.product_key, MERCHANT_ID, PLATFORM, plannedSkuKeys],
+        );
+        totals.stale_sku_deletes += Number(staleSkuRes.rowCount || 0);
+
         const groupRes = await client.query(
           `
             INSERT INTO product_group_members (
@@ -1476,11 +1611,11 @@ async function applyMirrors(
       }
     });
 
-    // C1 Phase 2: recompute trust for all product_keys in this batch.
-    // Fire-and-forget after the transaction commits. Errors logged inside.
+    // C1 Phase 2: recompute trust for all product_keys in this batch after commit.
+    // This must be awaited so the shared pool is still open when the process exits.
     const batchProductKeys = batch.map((m) => m.product.product_key).filter(Boolean);
     if (batchProductKeys.length) {
-      upsertCatalogRowTrustMany(getPool(), batchProductKeys).catch(() => {});
+      totals.catalog_row_trust_upserts += await upsertCatalogRowTrustMany(getPool(), batchProductKeys);
     }
 
     processed += batch.length;

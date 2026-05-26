@@ -80,6 +80,64 @@ describe('sync-external-seeds-to-catalog category inference', () => {
       categoryPath: 'beauty/haircare/styling-cream',
     });
   });
+
+  test('keeps skincare bundles out of single-formula skincare categories', () => {
+    const category = inferCatalogMirrorCategory({
+      title: 'The Daily Duo: Foaming Face Wash + Moisturiser',
+      domain: 'upcirclebeauty.com',
+      seed_data: {
+        product_kind: 'bundle',
+        category: 'Skincare Set',
+        description:
+          'A daily bundle including Powder to Foam Face Wash and Face Moisturiser.',
+        variants: [{ title: '60ml' }],
+      },
+    });
+
+    expect(category).toEqual({
+      productType: 'Skincare Set',
+      category: 'Skincare Set',
+      categoryPath: 'beauty/skincare/sets',
+    });
+  });
+
+  test('keeps fragrance pairs in fragrance set category', () => {
+    const category = inferCatalogMirrorCategory({
+      title: 'Eau De Parfum Set - Flaura + Santelle',
+      domain: 'upcirclebeauty.com',
+      seed_data: {
+        category: 'Beauty Product',
+        description: 'A pair of eau de parfum scents in one set.',
+        snapshot: {},
+      },
+    });
+
+    expect(category).toEqual({
+      productType: 'Fragrance Set',
+      category: 'Fragrance Set',
+      categoryPath: 'beauty/fragrance/sets',
+    });
+  });
+
+  test('does not classify fragrance-free skincare set copy as fragrance', () => {
+    const category = inferCatalogMirrorCategory({
+      title: 'The Sensitive Skin Bundle',
+      domain: 'upcirclebeauty.com',
+      seed_data: {
+        product_kind: 'bundle',
+        category: 'Skincare Set',
+        description:
+          'A gentle skincare routine for sensitive skin. The formulas are fragrance-free.',
+        snapshot: {},
+      },
+    });
+
+    expect(category).toEqual({
+      productType: 'Skincare Set',
+      category: 'Skincare Set',
+      categoryPath: 'beauty/skincare/sets',
+    });
+  });
 });
 
 describe('sync-external-seeds-to-catalog signature preservation', () => {
@@ -260,6 +318,112 @@ describe('sync-external-seeds-to-catalog barcode capture', () => {
 });
 
 describe('sync-external-seeds-to-catalog variant prices', () => {
+  test('does not surface promo copy as a single-SKU option label', () => {
+    const mirror = buildMirror({
+      id: 'eps_upcircle_hydration',
+      external_product_id: 'ext_upcircle_hydration',
+      market: 'US',
+      domain: 'upcirclebeauty.com',
+      title: 'Hydration Skincare Set',
+      image_url: 'https://cdn.example.com/hydration.jpg',
+      price_amount: 53,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      canonical_url: 'https://upcirclebeauty.com/products/the-hydration-bundle',
+      status: 'active',
+      identity_listing: {
+        identity_status: 'approved',
+        live_read_enabled: false,
+        review_required: false,
+        sellable_item_group_id: 'sig_dddddddddddddddddddddddddddddddd',
+        source_tier: 'brand',
+      },
+      seed_data: {
+        brand: 'UpCircle Beauty',
+        description:
+          'A reviewed hydration skincare bundle with source-backed product content and current commerce details.',
+        category: 'Skincare Set',
+        product_kind: 'bundle',
+        variants: [
+          {
+            variant_id: '39618230288550',
+            sku: 'THB',
+            title: 'Save 10% On Oil + Moisturiser Bundle',
+            option_name: 'Title',
+            option_value: 'Save 10% On Oil + Moisturiser Bundle',
+            options: [
+              {
+                name: 'Title',
+                value: 'Save 10% On Oil + Moisturiser Bundle',
+              },
+            ],
+            price: '53.00',
+            currency: 'USD',
+            image_url: 'https://cdn.example.com/hydration.jpg',
+          },
+        ],
+      },
+    });
+
+    expect(mirror.skus[0].sku.title).toBe('Hydration Skincare Set');
+    expect(mirror.skus[0].sku.visible_attributes).toEqual({});
+    expect(mirror.skus[0].sku.visible_option_labels).toEqual({});
+    expect(mirror.skus[0].offer.offer_payload.variant_title).toBe('Hydration Skincare Set');
+  });
+
+  test('does not surface purchase-flow labels as shade options', () => {
+    const mirror = buildMirror({
+      id: 'eps_upcircle_repeat',
+      external_product_id: 'ext_upcircle_repeat',
+      market: 'US',
+      domain: 'upcirclebeauty.com',
+      title: 'Hydration Skincare Set',
+      image_url: 'https://cdn.example.com/hydration.jpg',
+      price_amount: 53,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      canonical_url: 'https://upcirclebeauty.com/products/the-hydration-bundle',
+      status: 'active',
+      identity_listing: {
+        identity_status: 'approved',
+        live_read_enabled: false,
+        review_required: false,
+        sellable_item_group_id: 'sig_dddddddddddddddddddddddddddddddd',
+        source_tier: 'brand',
+      },
+      seed_data: {
+        brand: 'UpCircle Beauty',
+        description:
+          'A reviewed hydration skincare bundle with source-backed product content and current commerce details.',
+        category: 'Skincare Set',
+        product_kind: 'bundle',
+        variants: [
+          {
+            variant_id: '39618376269990',
+            sku: 'THB-REFILL',
+            title: 'Plastic Free Repeat Order',
+            option_name: 'Title',
+            option_value: 'Plastic Free Repeat Order',
+            options: [
+              {
+                name: 'Title',
+                value: 'Plastic Free Repeat Order',
+              },
+            ],
+            price: '53.00',
+            currency: 'USD',
+            image_url: 'https://cdn.example.com/hydration.jpg',
+          },
+        ],
+      },
+    });
+
+    expect(mirror.skus[0].sku.title).toBe('Hydration Skincare Set');
+    expect(mirror.skus[0].sku.visible_attributes).toEqual({});
+    expect(mirror.skus[0].sku.visible_option_labels).toEqual({});
+    expect(mirror.skus[0].offer.offer_payload.variant_title).toBe('Hydration Skincare Set');
+  });
+
   test('preserves reviewed multi-size variant prices when top-level price is the minimum price', () => {
     const mirror = buildMirror({
       id: 'eps_multisize',

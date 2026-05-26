@@ -4697,7 +4697,9 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     existingValue: clearSyntheticLegacyDescription ? '' : fallbackSeedDescription,
     incomingSummary: incomingPdpFieldQualitySummary,
     existingSummary: existingPdpFieldQualitySummary,
-    assetField: existingPdpContentAsset?.fields?.description,
+    assetField:
+      existingPdpContentAsset?.fields?.description ||
+      approvedSnapshotAssetFallback(existingPdpFieldQualitySummary, 'description_raw', hasApprovedSnapshotContract),
   });
   if (displayDescriptionDecision.preserve && hasPdpContentAssetValue('description', normalizeNonEmptyString(liveExtractedDescription || nextPdpDescriptionRaw || surfaceableProductDescriptionRaw))) {
     snapshotQuarantine = appendPreservedContentCandidateToSnapshotQuarantine(snapshotQuarantine, {

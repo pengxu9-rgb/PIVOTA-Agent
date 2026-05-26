@@ -176,6 +176,71 @@ describe('backfill-external-product-seeds-catalog', () => {
     expect(payload.nextRow.seed_data.variants[0].description).toBeUndefined();
   });
 
+  test('preserves approved snapshot display description when incoming catalog description is empty', () => {
+    const canonicalUrl = 'https://upcirclebeauty.com/products/double-cleansing-set';
+    const existingDescription =
+      'A complete double cleansing routine that pairs an oil-based first cleanse with a water-based second cleanse to remove makeup, SPF, and daily buildup without stripping skin.';
+
+    const payload = buildSeedUpdatePayload(
+      {
+        id: 'eps_upcircle_double_cleanse',
+        external_product_id: 'ext_upcircle_double_cleanse',
+        title: 'Double Cleansing Set',
+        canonical_url: canonicalUrl,
+        destination_url: canonicalUrl,
+        image_url: 'https://cdn.example.com/double-cleanse.jpg',
+        price_amount: 51,
+        price_currency: 'USD',
+        availability: 'in_stock',
+        seed_data: {
+          title: 'Double Cleansing Set',
+          description: existingDescription,
+          external_seed_snapshot_contract: {
+            authoritative: true,
+            legacy_fields_quarantined: true,
+          },
+          snapshot: {
+            canonical_url: canonicalUrl,
+            title: 'Double Cleansing Set',
+            description: existingDescription,
+            external_seed_snapshot_contract: {
+              authoritative: true,
+              legacy_fields_quarantined: true,
+            },
+          },
+        },
+      },
+      {
+        mode: 'puppeteer',
+        products: [
+          {
+            title: 'Double Cleansing Set',
+            url: canonicalUrl,
+            image_url: 'https://cdn.example.com/double-cleanse.jpg',
+            image_urls: ['https://cdn.example.com/double-cleanse.jpg'],
+            variants: [
+              {
+                id: 'default',
+                sku: 'DOUBLE-CLEANSE',
+                price: '51.00',
+                currency: 'USD',
+                stock: 'In Stock',
+                image_url: 'https://cdn.example.com/double-cleanse.jpg',
+              },
+            ],
+          },
+        ],
+        variants: [],
+        diagnostics: {},
+      },
+      canonicalUrl,
+    );
+
+    expect(payload.nextRow.seed_data.description).toBe(existingDescription);
+    expect(payload.nextRow.seed_data.snapshot.description).toBe(existingDescription);
+    expect(payload.nextRow.seed_data.snapshot.description).not.toBe('');
+  });
+
   test('drops unsafe incoming seed descriptions when no safe existing copy is available', () => {
     const canonicalUrl = 'https://fentybeauty.com/products/sold-out-sample';
     const payload = buildSeedUpdatePayload(
