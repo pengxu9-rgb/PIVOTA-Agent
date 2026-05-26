@@ -168,6 +168,27 @@ describe('externalSeedPdpQuality', () => {
     );
   });
 
+  test('exempts reviewed terminal holds from extractor probe failures', () => {
+    const result = buildExternalSeedQualityResult({
+      seedId: 'eps_terminal_dns',
+      externalProductId: 'ext_terminal_dns',
+      seedGate: { status: 'passed', failure_reasons: [] },
+      extractorGate: { status: 'failed', failure_reasons: ['extractor_failure'] },
+      identityGate: { status: 'skipped', failure_reasons: [] },
+      productIntelGate: { status: 'skipped', failure_reasons: [] },
+      livePdpGate: { status: 'failed', failure_reasons: ['live_pdp_probe_failed'] },
+      similarGate: { status: 'exempt', failure_reasons: [] },
+      variantGate: { status: 'passed', failure_reasons: [] },
+      terminalHold: true,
+    });
+
+    expect(result.status).toBe('passed');
+    expect(result.failure_reasons).toEqual([]);
+    expect(result.suppressed_failure_reasons).toEqual(
+      expect.arrayContaining(['extractor_failure', 'live_pdp_probe_failed']),
+    );
+  });
+
   test('flags polluted live description and details independently from facts', () => {
     const livePdpGate = buildLivePdpGate({
       extractorProduct: {

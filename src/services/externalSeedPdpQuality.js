@@ -1498,6 +1498,7 @@ function buildExternalSeedQualityResult({
     ? rawFailureReasons.filter((reason) =>
       [
         'missing_pdp_identity',
+        'extractor_failure',
         'missing_product_intel',
         'product_intel_module_empty_or_blocked',
         'live_pdp_probe_failed',
