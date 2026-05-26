@@ -1,0 +1,59 @@
+{
+  "generated_at": "2026-05-26T11:06:53.465Z",
+  "dry_run": false,
+  "manifest": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/wave5_cactus_nectar_reviewed_inci_manifest.json",
+  "summary": {
+    "scanned_rows": 1,
+    "missing_rows": 0,
+    "blocked_rows": 0,
+    "change_candidates": 1,
+    "updated_rows": 1,
+    "catalog_product_updates": 1,
+    "identity_updates": 1
+  },
+  "apply_results": [
+    {
+      "external_product_id": "ext_ab1e091b3576e74f9c8c69a4",
+      "seed_updates": 1,
+      "catalog_product_updates": 1,
+      "identity_updates": 1
+    }
+  ],
+  "plans": [
+    {
+      "external_product_id": "ext_ab1e091b3576e74f9c8c69a4",
+      "seed_id": "eps_674f798ae274232b30f8bc02",
+      "title": "CACTUS NECTAR Hydrating Cream Mist",
+      "canonical_url": "https://joujoubotanicals.com/products/cactus-nectar-hydrating-cream-mist",
+      "status": "ready",
+      "changed": true,
+      "blockers": [],
+      "skipped_fields": [
+        "blocked_protect_high_quality_pdp_how_to_use_raw"
+      ],
+      "patched_fields": [
+        "pdp_details_sections",
+        "pdp_ingredients_raw",
+        "raw_ingredient_text_clean",
+        "ingredients_inci"
+      ],
+      "before": {
+        "description": "A soothing milky mist, naturally rich in PHAs, that hydrates, renews, and strengthens the skin’s barrier leaving your complexion soft, dewy, and perfectly balanced. Consumer Results: 100% experienced instant hydration* 100% agreed skin felt radiant after first use* 100% noticed skin is soothed and calm* *Observed results from a 7 days study with 16 subjects. Self-assessed by scoring. Safe for sensitive skin, Dermatologically tested formula, Cruelty free, Vegan, No silicones, No mineral oils, No synthetic colors",
+        "pdp_description_raw": "",
+        "pdp_ingredients_raw": "",
+        "pdp_how_to_use_raw": "Apply to clean skinFollow with Face Oil and MoisturizersCan be used as a makeup primer, body & hair mist or refreshment during the day",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "A soothing milky mist, naturally rich in PHAs, that hydrates, renews, and strengthens the skin’s barrier leaving your complexion soft, dewy, and perfectly balanced. \n\nConsumer Results:\n100% experienced instant hydration* \n100% agreed skin felt radiant after first use*\n100% noticed skin is soothed and calm*\n*Observed results from a 7 days study with 16 subjects. Self-assessed by scoring. \n\nSafe for sensitive skin, Dermatologically tested formula, Cruelty free, Vegan, No silicones, No mineral oils, No synthetic colors",
+        "pdp_description_raw": "",
+        "pdp_how_to_use_raw": "Apply to clean skinFollow with Face Oil and MoisturizersCan be used as a makeup primer, body & hair mist or refreshment during the day",
+        "pdp_ingredients_raw": "AQUA, BETAINE, PROPANEDIOL, ETHYLHEXYL PELARGONATE, GLYCERYL CITRATE/LACTATE/LINOLEATE/OLEATE, GLYCERYL CAPRYLATE, POLYGLYCERYL-3 CAPRATE, POLYGLYCERYL-4 COCOATE, BENZYL ALCOHOL, ECTOIN, OPUNTIA FICUS-INDICA FRUIT EXTRACT, PARFUM (natural identical), DEHYDROACETIC ACID, LACTOBACILLUS FERMENT",
+        "ingredients_polluted": false,
+        "detail_section_count": 2,
+        "polluted_detail_section_count": 0
+      }
+    }
+  ]
+}

@@ -1,0 +1,570 @@
+{
+  "ext_1e27467ab07ddb83ad74c213": [
+    "wave11_apiceuticals_seed_apply_20260525/candidate_manifest.json",
+    "wave11_apiceuticals_seed_apply_20260525/official_seed_product_intel_report_1.json",
+    "wave11_apiceuticals_seed_apply_20260525/prod_db_apply.json"
+  ],
+  "ext_4e95b920b4c6a5295d55aa46": [
+    "wave12_apiceuticals_batch_20260525/candidate_manifest.json",
+    "wave12_apiceuticals_batch_20260525/official_seed_product_intel_report_4.json",
+    "wave12_apiceuticals_batch_20260525/prod_db_apply.json"
+  ],
+  "ext_d17dfc05f98d0400d5129f1c": [
+    "wave12_apiceuticals_batch_20260525/candidate_manifest.json",
+    "wave12_apiceuticals_batch_20260525/official_seed_product_intel_report_4.json",
+    "wave12_apiceuticals_batch_20260525/prod_db_apply.json"
+  ],
+  "ext_c0e5209513c083e2c649c1a1": [
+    "wave12_apiceuticals_batch_20260525/candidate_manifest.json",
+    "wave12_apiceuticals_batch_20260525/official_seed_product_intel_report_4.json",
+    "wave12_apiceuticals_batch_20260525/prod_db_apply.json"
+  ],
+  "ext_d3d708f481903ba2a6f9b732": [
+    "wave12_apiceuticals_batch_20260525/candidate_manifest.json",
+    "wave12_apiceuticals_batch_20260525/official_seed_product_intel_report_4.json",
+    "wave12_apiceuticals_batch_20260525/prod_db_apply.json"
+  ],
+  "ext_96a7ecc1003f0f94e5b6805c": [
+    "wave13_direct_pdp_recovery_20260525/db_ready_candidate_manifest.json",
+    "wave13_direct_pdp_recovery_20260525/masami_candidate_manifest.json",
+    "wave13_direct_pdp_recovery_20260525/official_seed_product_intel_report_4.json",
+    "wave13_direct_pdp_recovery_20260525/prod_db_apply.json"
+  ],
+  "ext_a1bb997d38b6823e83f23948": [
+    "wave13_direct_pdp_recovery_20260525/db_ready_candidate_manifest.json",
+    "wave13_direct_pdp_recovery_20260525/masami_candidate_manifest.json",
+    "wave13_direct_pdp_recovery_20260525/official_seed_product_intel_report_4.json",
+    "wave13_direct_pdp_recovery_20260525/prod_db_apply.json"
+  ],
+  "ext_53cf4f0ee46873d280f632db": [
+    "wave13_direct_pdp_recovery_20260525/db_ready_candidate_manifest.json",
+    "wave13_direct_pdp_recovery_20260525/masami_candidate_manifest.json",
+    "wave13_direct_pdp_recovery_20260525/official_seed_product_intel_report_4.json",
+    "wave13_direct_pdp_recovery_20260525/prod_db_apply.json"
+  ],
+  "ext_fe9ef8f2a6343901489fe63e": [
+    "wave13_direct_pdp_recovery_20260525/db_ready_candidate_manifest.json",
+    "wave13_direct_pdp_recovery_20260525/masami_candidate_manifest.json",
+    "wave13_direct_pdp_recovery_20260525/official_seed_product_intel_report_4.json",
+    "wave13_direct_pdp_recovery_20260525/prod_db_apply.json"
+  ],
+  "ext_65f9a9219685ffc820a9eee8": [
+    "wave14_khuskhus_direct_pdp_20260525/candidate_manifest.json",
+    "wave14_khuskhus_direct_pdp_20260525/catalog_sync_apply.json",
+    "wave14_khuskhus_direct_pdp_20260525/db_ready_candidate_manifest.json",
+    "wave14_khuskhus_direct_pdp_20260525/official_seed_product_intel_report_8.json",
+    "wave14_khuskhus_direct_pdp_20260525/official_seed_product_intel_report_8_v2.json",
+    "wave14_khuskhus_direct_pdp_20260525/prod_db_apply.json"
+  ],
+  "ext_290f05b3b8bfbfdb4e079d09": [
+    "wave14_khuskhus_direct_pdp_20260525/candidate_manifest.json",
+    "wave14_khuskhus_direct_pdp_20260525/catalog_sync_apply.json",
+    "wave14_khuskhus_direct_pdp_20260525/db_ready_candidate_manifest.json",
+    "wave14_khuskhus_direct_pdp_20260525/official_seed_product_intel_report_8.json",
+    "wave14_khuskhus_direct_pdp_20260525/official_seed_product_intel_report_8_v2.json",
+    "wave14_khuskhus_direct_pdp_20260525/prod_db_apply.json"
+  ],
+  "ext_f27f918bac908cf6ba236b83": [
+    "wave14_khuskhus_direct_pdp_20260525/candidate_manifest.json",
+    "wave14_khuskhus_direct_pdp_20260525/catalog_sync_apply.json",
+    "wave14_khuskhus_direct_pdp_20260525/db_ready_candidate_manifest.json",
+    "wave14_khuskhus_direct_pdp_20260525/official_seed_product_intel_report_8.json",
+    "wave14_khuskhus_direct_pdp_20260525/official_seed_product_intel_report_8_v2.json",
+    "wave14_khuskhus_direct_pdp_20260525/prod_db_apply.json"
+  ],
+  "ext_45cabf70e20e807f1ea5d63e": [
+    "wave14_khuskhus_direct_pdp_20260525/candidate_manifest.json",
+    "wave14_khuskhus_direct_pdp_20260525/catalog_sync_apply.json",
+    "wave14_khuskhus_direct_pdp_20260525/db_ready_candidate_manifest.json",
+    "wave14_khuskhus_direct_pdp_20260525/official_seed_product_intel_report_8.json",
+    "wave14_khuskhus_direct_pdp_20260525/official_seed_product_intel_report_8_v2.json",
+    "wave14_khuskhus_direct_pdp_20260525/prod_db_apply.json"
+  ],
+  "ext_f86a3606bf6dc20fc810f99d": [
+    "wave14_khuskhus_direct_pdp_20260525/candidate_manifest.json",
+    "wave14_khuskhus_direct_pdp_20260525/catalog_sync_apply.json",
+    "wave14_khuskhus_direct_pdp_20260525/db_ready_candidate_manifest.json",
+    "wave14_khuskhus_direct_pdp_20260525/official_seed_product_intel_report_8.json",
+    "wave14_khuskhus_direct_pdp_20260525/official_seed_product_intel_report_8_v2.json",
+    "wave14_khuskhus_direct_pdp_20260525/prod_db_apply.json"
+  ],
+  "ext_4dace0e8a2fe70b378b91c2c": [
+    "wave14_khuskhus_direct_pdp_20260525/candidate_manifest.json",
+    "wave14_khuskhus_direct_pdp_20260525/catalog_sync_apply.json",
+    "wave14_khuskhus_direct_pdp_20260525/db_ready_candidate_manifest.json",
+    "wave14_khuskhus_direct_pdp_20260525/official_seed_product_intel_report_8.json",
+    "wave14_khuskhus_direct_pdp_20260525/official_seed_product_intel_report_8_v2.json",
+    "wave14_khuskhus_direct_pdp_20260525/prod_db_apply.json"
+  ],
+  "ext_b30bcf26cdb534ef9538a3f7": [
+    "wave14_khuskhus_direct_pdp_20260525/candidate_manifest.json",
+    "wave14_khuskhus_direct_pdp_20260525/catalog_sync_apply.json",
+    "wave14_khuskhus_direct_pdp_20260525/db_ready_candidate_manifest.json",
+    "wave14_khuskhus_direct_pdp_20260525/official_seed_product_intel_report_8.json",
+    "wave14_khuskhus_direct_pdp_20260525/official_seed_product_intel_report_8_v2.json",
+    "wave14_khuskhus_direct_pdp_20260525/prod_db_apply.json"
+  ],
+  "ext_6ae70ce8a0cf2d0f8615d4dc": [
+    "wave14_khuskhus_direct_pdp_20260525/candidate_manifest.json",
+    "wave14_khuskhus_direct_pdp_20260525/catalog_sync_apply.json",
+    "wave14_khuskhus_direct_pdp_20260525/db_ready_candidate_manifest.json",
+    "wave14_khuskhus_direct_pdp_20260525/official_seed_product_intel_report_8.json",
+    "wave14_khuskhus_direct_pdp_20260525/official_seed_product_intel_report_8_v2.json",
+    "wave14_khuskhus_direct_pdp_20260525/prod_db_apply.json"
+  ],
+  "ext_299e2dc017565ab3081f8c26": [
+    "wave15_7journeys_direct_pdp_20260525/candidate_manifest.json",
+    "wave15_7journeys_direct_pdp_20260525/catalog_sync_apply.json",
+    "wave15_7journeys_direct_pdp_20260525/db_ready_candidate_manifest.json",
+    "wave15_7journeys_direct_pdp_20260525/official_seed_product_intel_report_5.json",
+    "wave15_7journeys_direct_pdp_20260525/prod_db_apply.json"
+  ],
+  "ext_1e7b8274600d0395757a3b60": [
+    "wave15_7journeys_direct_pdp_20260525/candidate_manifest.json",
+    "wave15_7journeys_direct_pdp_20260525/catalog_sync_apply.json",
+    "wave15_7journeys_direct_pdp_20260525/db_ready_candidate_manifest.json",
+    "wave15_7journeys_direct_pdp_20260525/official_seed_product_intel_report_5.json",
+    "wave15_7journeys_direct_pdp_20260525/prod_db_apply.json"
+  ],
+  "ext_d55c93a9feb384ac9e0bde40": [
+    "wave15_7journeys_direct_pdp_20260525/candidate_manifest.json",
+    "wave15_7journeys_direct_pdp_20260525/catalog_sync_apply.json",
+    "wave15_7journeys_direct_pdp_20260525/db_ready_candidate_manifest.json",
+    "wave15_7journeys_direct_pdp_20260525/official_seed_product_intel_report_5.json",
+    "wave15_7journeys_direct_pdp_20260525/prod_db_apply.json"
+  ],
+  "ext_718736656c3aa82e74546c28": [
+    "wave15_7journeys_direct_pdp_20260525/candidate_manifest.json",
+    "wave15_7journeys_direct_pdp_20260525/catalog_sync_apply.json",
+    "wave15_7journeys_direct_pdp_20260525/db_ready_candidate_manifest.json",
+    "wave15_7journeys_direct_pdp_20260525/official_seed_product_intel_report_5.json",
+    "wave15_7journeys_direct_pdp_20260525/prod_db_apply.json"
+  ],
+  "ext_2da51d2f8d19211c89fb2a30": [
+    "wave15_7journeys_direct_pdp_20260525/candidate_manifest.json",
+    "wave15_7journeys_direct_pdp_20260525/catalog_sync_apply.json",
+    "wave15_7journeys_direct_pdp_20260525/db_ready_candidate_manifest.json",
+    "wave15_7journeys_direct_pdp_20260525/official_seed_product_intel_report_5.json",
+    "wave15_7journeys_direct_pdp_20260525/prod_db_apply.json"
+  ],
+  "ext_74a7dddbe9cfad5b36ea4bc1": [
+    "wave16_lucamar_remainder_20260525/candidate_manifest.json",
+    "wave16_lucamar_remainder_20260525/db_ready_candidate_manifest.json"
+  ],
+  "ext_cfdd4c8d3521fe733d0fc75d": [
+    "wave16_lucamar_remainder_20260525/candidate_manifest.json",
+    "wave16_lucamar_remainder_20260525/db_ready_candidate_manifest.json"
+  ],
+  "ext_c26547ca63d530592ed62d63": [
+    "wave16_lucamar_remainder_20260525/candidate_manifest.json",
+    "wave16_lucamar_remainder_20260525/catalog_sync_apply.json",
+    "wave16_lucamar_remainder_20260525/db_ready_candidate_manifest.json",
+    "wave16_lucamar_remainder_20260525/official_seed_product_intel_report_3.json",
+    "wave16_lucamar_remainder_20260525/prod_db_apply.json"
+  ],
+  "ext_0836525e72365da8ecbcc3b5": [
+    "wave16_lucamar_remainder_20260525/candidate_manifest.json",
+    "wave16_lucamar_remainder_20260525/catalog_sync_apply.json",
+    "wave16_lucamar_remainder_20260525/db_ready_candidate_manifest.json",
+    "wave16_lucamar_remainder_20260525/official_seed_product_intel_report_3.json",
+    "wave16_lucamar_remainder_20260525/prod_db_apply.json"
+  ],
+  "ext_edcf7e510314384ac432b385": [
+    "wave16_lucamar_remainder_20260525/candidate_manifest.json",
+    "wave16_lucamar_remainder_20260525/catalog_sync_apply.json",
+    "wave16_lucamar_remainder_20260525/db_ready_candidate_manifest.json",
+    "wave16_lucamar_remainder_20260525/official_seed_product_intel_report_3.json",
+    "wave16_lucamar_remainder_20260525/prod_db_apply.json"
+  ],
+  "ext_dc5435087d1453b6958f9ec9": [
+    "wave17_source_probe_20260525/candidate_manifest.json",
+    "wave17_source_probe_20260525/catalog_sync_apply.json",
+    "wave17_source_probe_20260525/db_ready_candidate_manifest.json",
+    "wave17_source_probe_20260525/official_seed_product_intel_report_6.json",
+    "wave17_source_probe_20260525/official_seed_product_intel_report_6_after_public_repair.json",
+    "wave17_source_probe_20260525/prod_db_apply.json"
+  ],
+  "ext_5a82b869bc04dc2a7dac84af": [
+    "wave17_source_probe_20260525/candidate_manifest.json",
+    "wave17_source_probe_20260525/catalog_sync_apply.json",
+    "wave17_source_probe_20260525/db_ready_candidate_manifest.json",
+    "wave17_source_probe_20260525/official_seed_product_intel_report_6.json",
+    "wave17_source_probe_20260525/official_seed_product_intel_report_6_after_public_repair.json",
+    "wave17_source_probe_20260525/prod_db_apply.json"
+  ],
+  "ext_44acbd72aedbea7735234e44": [
+    "wave17_source_probe_20260525/candidate_manifest.json",
+    "wave17_source_probe_20260525/catalog_sync_apply.json",
+    "wave17_source_probe_20260525/db_ready_candidate_manifest.json",
+    "wave17_source_probe_20260525/official_seed_product_intel_report_6.json",
+    "wave17_source_probe_20260525/official_seed_product_intel_report_6_after_public_repair.json",
+    "wave17_source_probe_20260525/prod_db_apply.json"
+  ],
+  "ext_3f98c2d64d8e5f0c183261a1": [
+    "wave17_source_probe_20260525/candidate_manifest.json",
+    "wave17_source_probe_20260525/catalog_sync_apply.json",
+    "wave17_source_probe_20260525/db_ready_candidate_manifest.json",
+    "wave17_source_probe_20260525/official_seed_product_intel_report_6.json",
+    "wave17_source_probe_20260525/official_seed_product_intel_report_6_after_public_repair.json",
+    "wave17_source_probe_20260525/prod_db_apply.json"
+  ],
+  "ext_d15df7e8e28d8f5a9aa9a170": [
+    "wave17_source_probe_20260525/candidate_manifest.json",
+    "wave17_source_probe_20260525/catalog_sync_apply.json",
+    "wave17_source_probe_20260525/db_ready_candidate_manifest.json",
+    "wave17_source_probe_20260525/official_seed_product_intel_report_6.json",
+    "wave17_source_probe_20260525/official_seed_product_intel_report_6_after_public_repair.json",
+    "wave17_source_probe_20260525/prod_db_apply.json"
+  ],
+  "ext_28e7f21f6b18d6378601ce06": [
+    "wave17_source_probe_20260525/candidate_manifest.json",
+    "wave17_source_probe_20260525/catalog_sync_apply.json",
+    "wave17_source_probe_20260525/db_ready_candidate_manifest.json",
+    "wave17_source_probe_20260525/official_seed_product_intel_report_6.json",
+    "wave17_source_probe_20260525/official_seed_product_intel_report_6_after_public_repair.json",
+    "wave17_source_probe_20260525/prod_db_apply.json"
+  ],
+  "ext_3916e5e378df1e75041a1b68": [
+    "wave18_direct_source_probe_20260525/candidate_manifest.json",
+    "wave18_direct_source_probe_20260525/catalog_sync_apply.json",
+    "wave18_direct_source_probe_20260525/db_ready_candidate_manifest.json",
+    "wave18_direct_source_probe_20260525/official_seed_product_intel_report_6.json",
+    "wave18_direct_source_probe_20260525/prod_db_apply.json"
+  ],
+  "ext_3508560cf76c6d564d97f6d0": [
+    "wave18_direct_source_probe_20260525/candidate_manifest.json",
+    "wave18_direct_source_probe_20260525/catalog_sync_apply.json",
+    "wave18_direct_source_probe_20260525/db_ready_candidate_manifest.json",
+    "wave18_direct_source_probe_20260525/official_seed_product_intel_report_6.json",
+    "wave18_direct_source_probe_20260525/prod_db_apply.json"
+  ],
+  "ext_6cb55d2964fca74dbcade8e7": [
+    "wave18_direct_source_probe_20260525/candidate_manifest.json",
+    "wave18_direct_source_probe_20260525/catalog_sync_apply.json",
+    "wave18_direct_source_probe_20260525/db_ready_candidate_manifest.json",
+    "wave18_direct_source_probe_20260525/official_seed_product_intel_report_6.json",
+    "wave18_direct_source_probe_20260525/prod_db_apply.json"
+  ],
+  "ext_d8737399fc72ef06c147bd0c": [
+    "wave18_direct_source_probe_20260525/candidate_manifest.json",
+    "wave18_direct_source_probe_20260525/catalog_sync_apply.json",
+    "wave18_direct_source_probe_20260525/db_ready_candidate_manifest.json",
+    "wave18_direct_source_probe_20260525/official_seed_product_intel_report_6.json",
+    "wave18_direct_source_probe_20260525/prod_db_apply.json"
+  ],
+  "ext_443039d2322b0af440c1ce9a": [
+    "wave18_direct_source_probe_20260525/candidate_manifest.json",
+    "wave18_direct_source_probe_20260525/catalog_sync_apply.json",
+    "wave18_direct_source_probe_20260525/db_ready_candidate_manifest.json",
+    "wave18_direct_source_probe_20260525/official_seed_product_intel_report_6.json",
+    "wave18_direct_source_probe_20260525/prod_db_apply.json"
+  ],
+  "ext_ac6c6e795d7f3efe5cc22f7c": [
+    "wave18_direct_source_probe_20260525/candidate_manifest.json",
+    "wave18_direct_source_probe_20260525/catalog_sync_apply.json",
+    "wave18_direct_source_probe_20260525/db_ready_candidate_manifest.json",
+    "wave18_direct_source_probe_20260525/official_seed_product_intel_report_6.json",
+    "wave18_direct_source_probe_20260525/prod_db_apply.json"
+  ],
+  "ext_684249c7a94a1a6f43fdbd77": [
+    "wave19_direct_source_probe_20260525/candidate_manifest.json",
+    "wave19_direct_source_probe_20260525/catalog_sync_apply.json",
+    "wave19_direct_source_probe_20260525/db_ready_candidate_manifest.json",
+    "wave19_direct_source_probe_20260525/official_seed_product_intel_report_4.json",
+    "wave19_direct_source_probe_20260525/prod_db_apply.json",
+    "wave19_direct_source_probe_20260525/product_intel_publish_apply.json"
+  ],
+  "ext_e1c4eb330321ebc6e9672d73": [
+    "wave19_direct_source_probe_20260525/candidate_manifest.json",
+    "wave19_direct_source_probe_20260525/catalog_sync_apply.json",
+    "wave19_direct_source_probe_20260525/db_ready_candidate_manifest.json",
+    "wave19_direct_source_probe_20260525/official_seed_product_intel_report_4.json",
+    "wave19_direct_source_probe_20260525/prod_db_apply.json",
+    "wave19_direct_source_probe_20260525/product_intel_publish_apply.json"
+  ],
+  "ext_81f5ddbf0c3ba5da04eabf9b": [
+    "wave19_direct_source_probe_20260525/candidate_manifest.json",
+    "wave19_direct_source_probe_20260525/catalog_sync_apply.json",
+    "wave19_direct_source_probe_20260525/db_ready_candidate_manifest.json",
+    "wave19_direct_source_probe_20260525/official_seed_product_intel_report_4.json",
+    "wave19_direct_source_probe_20260525/prod_db_apply.json",
+    "wave19_direct_source_probe_20260525/product_intel_publish_apply.json"
+  ],
+  "ext_4a50d003cfa7b0e4c7fc2f01": [
+    "wave19_direct_source_probe_20260525/candidate_manifest.json",
+    "wave19_direct_source_probe_20260525/catalog_sync_apply.json",
+    "wave19_direct_source_probe_20260525/db_ready_candidate_manifest.json",
+    "wave19_direct_source_probe_20260525/official_seed_product_intel_report_4.json",
+    "wave19_direct_source_probe_20260525/prod_db_apply.json",
+    "wave19_direct_source_probe_20260525/product_intel_publish_apply.json"
+  ],
+  "ext_d6eb3ee536ac3d49561aaa5f": [
+    "wave20_nubest_official_pdp_20260526/catalog_sync_apply.json",
+    "wave20_nubest_official_pdp_20260526/official_seed_product_intel_report_10.json",
+    "wave20_nubest_official_pdp_20260526/prod_db_apply.json",
+    "wave20_nubest_official_pdp_20260526/product_intel_publish_apply.json",
+    "wave20_nubest_official_pdp_20260526/wave20_nubest_official_candidate_manifest.json"
+  ],
+  "ext_97ffa9c22f3a8ea415454e83": [
+    "wave20_nubest_official_pdp_20260526/catalog_sync_apply.json",
+    "wave20_nubest_official_pdp_20260526/official_seed_product_intel_report_10.json",
+    "wave20_nubest_official_pdp_20260526/prod_db_apply.json",
+    "wave20_nubest_official_pdp_20260526/product_intel_publish_apply.json",
+    "wave20_nubest_official_pdp_20260526/wave20_nubest_official_candidate_manifest.json"
+  ],
+  "ext_d6f78ec76732918fef0b7d5b": [
+    "wave20_nubest_official_pdp_20260526/catalog_sync_apply.json",
+    "wave20_nubest_official_pdp_20260526/official_seed_product_intel_report_10.json",
+    "wave20_nubest_official_pdp_20260526/prod_db_apply.json",
+    "wave20_nubest_official_pdp_20260526/product_intel_publish_apply.json",
+    "wave20_nubest_official_pdp_20260526/wave20_nubest_official_candidate_manifest.json"
+  ],
+  "ext_461efc4478853cf6cac8d4e9": [
+    "wave20_nubest_official_pdp_20260526/catalog_sync_apply.json",
+    "wave20_nubest_official_pdp_20260526/official_seed_product_intel_report_10.json",
+    "wave20_nubest_official_pdp_20260526/prod_db_apply.json",
+    "wave20_nubest_official_pdp_20260526/product_intel_publish_apply.json",
+    "wave20_nubest_official_pdp_20260526/wave20_nubest_official_candidate_manifest.json"
+  ],
+  "ext_fb76b45f22e546e331d4904f": [
+    "wave20_nubest_official_pdp_20260526/catalog_sync_apply.json",
+    "wave20_nubest_official_pdp_20260526/official_seed_product_intel_report_10.json",
+    "wave20_nubest_official_pdp_20260526/prod_db_apply.json",
+    "wave20_nubest_official_pdp_20260526/product_intel_publish_apply.json",
+    "wave20_nubest_official_pdp_20260526/wave20_nubest_official_candidate_manifest.json"
+  ],
+  "ext_1030e828c320440354e98895": [
+    "wave20_nubest_official_pdp_20260526/catalog_sync_apply.json",
+    "wave20_nubest_official_pdp_20260526/official_seed_product_intel_report_10.json",
+    "wave20_nubest_official_pdp_20260526/prod_db_apply.json",
+    "wave20_nubest_official_pdp_20260526/product_intel_publish_apply.json",
+    "wave20_nubest_official_pdp_20260526/wave20_nubest_official_candidate_manifest.json"
+  ],
+  "ext_acff84a9f77766e338b83f44": [
+    "wave20_nubest_official_pdp_20260526/catalog_sync_apply.json",
+    "wave20_nubest_official_pdp_20260526/official_seed_product_intel_report_10.json",
+    "wave20_nubest_official_pdp_20260526/prod_db_apply.json",
+    "wave20_nubest_official_pdp_20260526/product_intel_publish_apply.json",
+    "wave20_nubest_official_pdp_20260526/wave20_nubest_official_candidate_manifest.json"
+  ],
+  "ext_9fbfa632c4a275917f5a0da0": [
+    "wave20_nubest_official_pdp_20260526/catalog_sync_apply.json",
+    "wave20_nubest_official_pdp_20260526/official_seed_product_intel_report_10.json",
+    "wave20_nubest_official_pdp_20260526/prod_db_apply.json",
+    "wave20_nubest_official_pdp_20260526/product_intel_publish_apply.json",
+    "wave20_nubest_official_pdp_20260526/wave20_nubest_official_candidate_manifest.json"
+  ],
+  "ext_2da6f7615154860df7bdb07b": [
+    "wave20_nubest_official_pdp_20260526/catalog_sync_apply.json",
+    "wave20_nubest_official_pdp_20260526/official_seed_product_intel_report_10.json",
+    "wave20_nubest_official_pdp_20260526/prod_db_apply.json",
+    "wave20_nubest_official_pdp_20260526/product_intel_publish_apply.json",
+    "wave20_nubest_official_pdp_20260526/wave20_nubest_official_candidate_manifest.json"
+  ],
+  "ext_4e7ae04d68622ea157a494da": [
+    "wave20_nubest_official_pdp_20260526/catalog_sync_apply.json",
+    "wave20_nubest_official_pdp_20260526/official_seed_product_intel_report_10.json",
+    "wave20_nubest_official_pdp_20260526/prod_db_apply.json",
+    "wave20_nubest_official_pdp_20260526/product_intel_publish_apply.json",
+    "wave20_nubest_official_pdp_20260526/wave20_nubest_official_candidate_manifest.json"
+  ],
+  "ext_0d844fc65fd3348e35a09c80": [
+    "wave21_786cosmetics_identity_refresh_20260526/catalog_sync_apply.json",
+    "wave21_786cosmetics_identity_refresh_20260526/official_seed_product_intel_report_10.json",
+    "wave21_786cosmetics_identity_refresh_20260526/product_intel_publish_apply.json"
+  ],
+  "ext_151aebc5b6246b8d2d9a877b": [
+    "wave21_786cosmetics_identity_refresh_20260526/catalog_sync_apply.json",
+    "wave21_786cosmetics_identity_refresh_20260526/official_seed_product_intel_report_10.json",
+    "wave21_786cosmetics_identity_refresh_20260526/product_intel_publish_apply.json"
+  ],
+  "ext_2c4793f5f96ec2d4680fd55b": [
+    "wave21_786cosmetics_identity_refresh_20260526/catalog_sync_apply.json",
+    "wave21_786cosmetics_identity_refresh_20260526/official_seed_product_intel_report_10.json",
+    "wave21_786cosmetics_identity_refresh_20260526/product_intel_publish_apply.json"
+  ],
+  "ext_2fc7cc1ac3370464b4b923d3": [
+    "wave21_786cosmetics_identity_refresh_20260526/catalog_sync_apply.json",
+    "wave21_786cosmetics_identity_refresh_20260526/official_seed_product_intel_report_10.json",
+    "wave21_786cosmetics_identity_refresh_20260526/product_intel_publish_apply.json"
+  ],
+  "ext_33fa1a749060cefdd3e0dc2b": [
+    "wave21_786cosmetics_identity_refresh_20260526/catalog_sync_apply.json",
+    "wave21_786cosmetics_identity_refresh_20260526/official_seed_product_intel_report_10.json",
+    "wave21_786cosmetics_identity_refresh_20260526/product_intel_publish_apply.json"
+  ],
+  "ext_36b452da1e0dde5c19bd2ed0": [
+    "wave21_786cosmetics_identity_refresh_20260526/catalog_sync_apply.json",
+    "wave21_786cosmetics_identity_refresh_20260526/official_seed_product_intel_report_10.json",
+    "wave21_786cosmetics_identity_refresh_20260526/product_intel_publish_apply.json"
+  ],
+  "ext_41aeeb470016979417c8637d": [
+    "wave21_786cosmetics_identity_refresh_20260526/catalog_sync_apply.json",
+    "wave21_786cosmetics_identity_refresh_20260526/official_seed_product_intel_report_10.json",
+    "wave21_786cosmetics_identity_refresh_20260526/product_intel_publish_apply.json"
+  ],
+  "ext_55b774d3c57906a77a7167f0": [
+    "wave21_786cosmetics_identity_refresh_20260526/catalog_sync_apply.json",
+    "wave21_786cosmetics_identity_refresh_20260526/official_seed_product_intel_report_10.json",
+    "wave21_786cosmetics_identity_refresh_20260526/product_intel_publish_apply.json"
+  ],
+  "ext_69dcb156e335cb9756e016b2": [
+    "wave21_786cosmetics_identity_refresh_20260526/catalog_sync_apply.json",
+    "wave21_786cosmetics_identity_refresh_20260526/official_seed_product_intel_report_10.json",
+    "wave21_786cosmetics_identity_refresh_20260526/product_intel_publish_apply.json"
+  ],
+  "ext_8573685e1cc94840934c764d": [
+    "wave21_786cosmetics_identity_refresh_20260526/catalog_sync_apply.json",
+    "wave21_786cosmetics_identity_refresh_20260526/official_seed_product_intel_report_10.json",
+    "wave21_786cosmetics_identity_refresh_20260526/product_intel_publish_apply.json"
+  ],
+  "ext_21216a67b62b16d88661367f": [
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/catalog_sync_apply.json",
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/official_seed_product_intel_report_17.json",
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/product_intel_publish_apply.json"
+  ],
+  "ext_2ef1955968e55d0bfdf5fe78": [
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/catalog_sync_apply.json",
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/official_seed_product_intel_report_17.json",
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/product_intel_publish_apply.json"
+  ],
+  "ext_446a5f126507ff6adba46258": [
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/catalog_sync_apply.json",
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/official_seed_product_intel_report_17.json",
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/product_intel_publish_apply.json"
+  ],
+  "ext_5975f96c1d90b02d02329960": [
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/catalog_sync_apply.json",
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/official_seed_product_intel_report_17.json",
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/product_intel_publish_apply.json"
+  ],
+  "ext_8136f11be69e6c18781a7f02": [
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/catalog_sync_apply.json",
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/official_seed_product_intel_report_17.json",
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/product_intel_publish_apply.json"
+  ],
+  "ext_b36935c92dc89857bf62f25e": [
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/catalog_sync_apply.json",
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/official_seed_product_intel_report_17.json",
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/product_intel_publish_apply.json"
+  ],
+  "ext_e08d2e62205f1691dfe30753": [
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/catalog_sync_apply.json",
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/official_seed_product_intel_report_17.json",
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/product_intel_publish_apply.json"
+  ],
+  "ext_e5f66cf29d6c516775bb0fce": [
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/catalog_sync_apply.json",
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/official_seed_product_intel_report_17.json",
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/product_intel_publish_apply.json"
+  ],
+  "ext_31b732e4e40c0579c5f4c554": [
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/catalog_sync_apply.json",
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/official_seed_product_intel_report_17.json",
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/product_intel_publish_apply.json"
+  ],
+  "ext_3405f1b2b381c9a5e0941c20": [
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/catalog_sync_apply.json",
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/official_seed_product_intel_report_17.json",
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/product_intel_publish_apply.json"
+  ],
+  "ext_770904b0a8a54583347cea85": [
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/catalog_sync_apply.json",
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/official_seed_product_intel_report_17.json",
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/product_intel_publish_apply.json"
+  ],
+  "ext_9695064b5f7d76303f88beb1": [
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/catalog_sync_apply.json",
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/official_seed_product_intel_report_17.json",
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/product_intel_publish_apply.json"
+  ],
+  "ext_99b5d36c01c7614a5de71fa1": [
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/catalog_sync_apply.json",
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/official_seed_product_intel_report_17.json",
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/product_intel_publish_apply.json"
+  ],
+  "ext_b344f028268229b02a16d0cb": [
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/catalog_sync_apply.json",
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/official_seed_product_intel_report_17.json",
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/product_intel_publish_apply.json"
+  ],
+  "ext_b5dafedce57973dfcca9fb5b": [
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/catalog_sync_apply.json",
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/official_seed_product_intel_report_17.json",
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/product_intel_publish_apply.json"
+  ],
+  "ext_794deab047eb4a75225329df": [
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/catalog_sync_apply.json",
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/official_seed_product_intel_report_17.json",
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/product_intel_publish_apply.json"
+  ],
+  "ext_bb9685457f5a919c945ee9ce": [
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/catalog_sync_apply.json",
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/official_seed_product_intel_report_17.json",
+    "wave22_nala_delicate_joocyee_identity_refresh_20260526/product_intel_publish_apply.json"
+  ],
+  "ext_ab1e091b3576e74f9c8c69a4": [
+    "wave5_cactus_nectar_reviewed_inci_manifest.json",
+    "wave5_official_source_gap_sheet_20260524.csv"
+  ],
+  "ext_94e9169cdf21031b65f760c9": [
+    "wave5_official_source_gap_sheet_20260524.csv"
+  ],
+  "ext_833660ffbf5c744869351463": [
+    "wave5_official_source_gap_sheet_20260524.csv"
+  ],
+  "ext_daba06ea03080351d96dd6f9": [
+    "wave5_official_source_gap_sheet_20260524.csv"
+  ],
+  "ext_eea9ddc94177c421b32a1ed5": [
+    "wave5_official_source_gap_sheet_20260524.csv"
+  ],
+  "ext_edef015844086dd8eaa792b2": [
+    "wave5_official_source_gap_sheet_20260524.csv"
+  ],
+  "ext_11509e4feaf83a2419d8c77d": [
+    "wave5_official_source_gap_sheet_20260524.csv"
+  ],
+  "ext_441b5d142009ef8ae5082262": [
+    "wave5_official_source_gap_sheet_20260524.csv"
+  ],
+  "ext_7e270c8cb635a23a446a76f9": [
+    "wave5_official_source_gap_sheet_20260524.csv"
+  ],
+  "ext_c840771410198f627d75673a": [
+    "wave5_official_source_gap_sheet_20260524.csv"
+  ],
+  "ext_a7f414cda657f8c5857fafe8": [
+    "wave5_official_source_gap_sheet_20260524.csv"
+  ],
+  "ext_9518e81076efc5c5138214ee": [
+    "wave5_official_source_gap_sheet_20260524.csv"
+  ],
+  "ext_57fe66e03e7b47b972b78c30": [
+    "wave5_official_source_gap_sheet_20260524.csv"
+  ],
+  "ext_8982e4384c3bd70a5718c899": [
+    "wave5_official_source_gap_sheet_20260524.csv"
+  ],
+  "ext_df8aac07d6c970d4c213b43f": [
+    "wave6_prod_apply_candidate_manifest.json"
+  ],
+  "ext_438058253d57a2c8d75f5906": [
+    "wave6_prod_apply_candidate_manifest.json"
+  ],
+  "ext_0d4ffd13b899460cabb1f392": [
+    "wave6_prod_apply_candidate_manifest.json"
+  ],
+  "ext_065337312a937f0f26d50865": [
+    "wave6_prod_apply_candidate_manifest.json"
+  ],
+  "ext_05c5a41a67fb37dcf352853e": [
+    "wave6_prod_apply_candidate_manifest.json"
+  ],
+  "ext_c463dcd674e1138b1284ff37": [
+    "wave6_prod_apply_candidate_manifest.json"
+  ],
+  "ext_1b95875bc9bdeee751d0cee1": [
+    "wave6_prod_apply_candidate_manifest.json"
+  ]
+}

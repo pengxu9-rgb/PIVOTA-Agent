@@ -1,0 +1,257 @@
+{
+  "generated_at": "2026-05-26T11:06:05.756Z",
+  "dry_run": true,
+  "manifest": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/markato_quality_repair_20260526/nala_reviewed_how_to_manifest.json",
+  "summary": {
+    "scanned_rows": 8,
+    "missing_rows": 0,
+    "blocked_rows": 0,
+    "change_candidates": 8,
+    "updated_rows": 0,
+    "catalog_product_updates": 0,
+    "identity_updates": 0
+  },
+  "apply_results": [],
+  "plans": [
+    {
+      "external_product_id": "ext_e08d2e62205f1691dfe30753",
+      "seed_id": "eps_18d393cf24840b4bbe6b1a52",
+      "title": "Coastal Waters, Extra Strength Natural Deodorant",
+      "canonical_url": "https://nalacare.com/products/coastal-waters-natural-deodorant-extra-strength",
+      "status": "ready",
+      "changed": true,
+      "blockers": [],
+      "skipped_fields": [],
+      "patched_fields": [
+        "pdp_how_to_use_raw"
+      ],
+      "before": {
+        "description": "A rugged but energizing blend of natural elements, this deodorant embodies life by the ocean. A heavier, woody scent that comes from Frankincense essential oil is balanced with lighter hints of citrus and swirls of fresh mint. The final touch in this blend is a hint of salt, reminiscent of a cool, ocean breeze. 60 g",
+        "pdp_description_raw": "A rugged but energizing blend of natural elements, this deodorant embodies life by the ocean. A heavier, woody scent that comes from Frankincense essential oil is balanced with lighter hints of citrus and swirls of fresh mint. The final touch in this blend is a hint of salt, reminiscent of a cool, ocean breeze. 60 g",
+        "pdp_ingredients_raw": "Camellia Oleifera Seed Oil, Tapioca Starch*, Caprylic/Capric Triglyceride, Candelilla Wax, Maranta Arundinacea Root Powder, Sodium Bicarbonate, Butyrospermum Parkii (Shea) Butter*, Theobroma Cacao (Cocoa) Seed Butter, Magnesium Hydroxide, Tocopherol, Cedrus Atlantica Bark Oil*, Boswellia Serrata Oil*, Citrus Sinensis (Orange) Peel Oil Expressed*, Citrus Aurantifolia (Lime) Oil*, Rosmarinus Officinalis, Jasminum Sambac, Copaifera Officinalis (Balsam Copaiba) Resin, Salvia Officinalis (Sage) Oil, Lavandula Angustifolia (Lavender) Oil*, Pinus Sylvestris Leaf Oil*, Helichrysum Italicum Flower Oil*, Tanacetum Annuum Flower Oil, Mentha Arvensis Leaf Oil*. Naturally occurring in essential oils: Linalool, Limonene. *ORGANIC",
+        "pdp_how_to_use_raw": "",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "A rugged but energizing blend of natural elements, this deodorant embodies life by the ocean. A heavier, woody scent that comes from Frankincense essential oil is balanced with lighter hints of citrus and swirls of fresh mint. The final touch in this blend is a hint of salt, reminiscent of a cool, ocean breeze.\n\n60 g",
+        "pdp_description_raw": "A rugged but energizing blend of natural elements, this deodorant embodies life by the ocean. A heavier, woody scent that comes from Frankincense essential oil is balanced with lighter hints of citrus and swirls of fresh mint. The final touch in this blend is a hint of salt, reminiscent of a cool, ocean breeze.\n\n60 g",
+        "pdp_how_to_use_raw": "A little goes a long way. 2 swipes is all it takes. In the beginning reapply as necessary.",
+        "pdp_ingredients_raw": "Camellia Oleifera Seed Oil, Tapioca Starch*, Caprylic/Capric Triglyceride, Candelilla Wax, Maranta Arundinacea Root Powder, Sodium Bicarbonate, Butyrospermum Parkii (Shea) Butter*, Theobroma Cacao (Cocoa) Seed Butter, Magnesium Hydroxide, Tocopherol, Cedrus Atlantica Bark Oil*, Boswellia Serrata Oil*, Citrus Sinensis (Orange) Peel Oil Expressed*, Citrus Aurantifolia (Lime) Oil*, Rosmarinus Officinalis, Jasminum Sambac, Copaifera Officinalis (Balsam Copaiba) Resin, Salvia Officinalis (Sage) Oil, Lavandula Angustifolia (Lavender) Oil*, Pinus Sylvestris Leaf Oil*, Helichrysum Italicum Flower Oil*, Tanacetum Annuum Flower Oil, Mentha Arvensis Leaf Oil*.\nNaturally occurring in essential oils: Linalool, Limonene. *ORGANIC",
+        "ingredients_polluted": false,
+        "detail_section_count": 3,
+        "polluted_detail_section_count": 0
+      }
+    },
+    {
+      "external_product_id": "ext_e5f66cf29d6c516775bb0fce",
+      "seed_id": "eps_2a694bb944824411ac2da0a2",
+      "title": "Essence of Rosewood, Extra Strength Natural Deodorant",
+      "canonical_url": "https://nalacare.com/products/essence-of-rosewood-extra-strength-deodorant",
+      "status": "ready",
+      "changed": true,
+      "blockers": [],
+      "skipped_fields": [],
+      "patched_fields": [
+        "pdp_how_to_use_raw"
+      ],
+      "before": {
+        "description": "Rosewood is renowned for its sophisticated scent as well as its harmonizing and relaxing properties on the mind. Imagine a wood smelling rose that's more wood than rose and you can begin to appreciate one of the most complex scents in perfumery. All Nala deodorants are made with organic essential oils for a subtle, not overpowering, scent. As always, free-from carcinogens, free-from aluminum, free-from cruelty. 60 g",
+        "pdp_description_raw": "Rosewood is renowned for its sophisticated scent as well as its harmonizing and relaxing properties on the mind. Imagine a wood smelling rose that's more wood than rose and you can begin to appreciate one of the most complex scents in perfumery. All Nala deodorants are made with organic essential oils for a subtle, not overpowering, scent. As always, free-from carcinogens, free-from aluminum, free-from cruelty. 60 g",
+        "pdp_ingredients_raw": "Camellia Oleifera Seed Oil, Tapioca Starch*, Caprylic/Capric Triglyceride, Candelilla Wax, Maranta Arundinacea Root Powder, Sodium Bicarbonate, Butyrospermum Parkii (Shea) Butter, Theobroma Cacao (Cocoa) Seed Butter, Magnesium Hydroxide, Tocopherol, Rosa Damascena Flower Oil, Lavandula Angustifolia (Lavender) Oil*, Melaleuca Alternifolia (Tea Tree) Leaf Oil*, Citrus Paradis (Grapefruit) Peel Oil*, Pelargonium Roseum Leaf Oil*, Copaifera Officinalis (Balsam Copaiba) Resin, Commiphora Myrrha Oil, Santalum Spicatum*, Cinnamomum Camphora (Camphor) Bark Oil*, Backhousia Citriodora Leaf Oil*, Pelargonium Graveolens Flower Oil*. Naturally occurring in essential oils: Linalool, Limonene, Geraniol, Citronellol, Citral *ORGANIC",
+        "pdp_how_to_use_raw": "",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "Rosewood is renowned for its sophisticated scent as well as its harmonizing and relaxing properties on the mind. Imagine a wood smelling rose that's more wood than rose and you can begin to appreciate one of the most complex scents in perfumery.\n\nAll Nala deodorants are made with organic essential oils for a subtle, not overpowering, scent.\n\nAs always, free-from carcinogens, free-from aluminum, free-from cruelty.\n\n60 g",
+        "pdp_description_raw": "Rosewood is renowned for its sophisticated scent as well as its harmonizing and relaxing properties on the mind. Imagine a wood smelling rose that's more wood than rose and you can begin to appreciate one of the most complex scents in perfumery.\n\nAll Nala deodorants are made with organic essential oils for a subtle, not overpowering, scent.\n\nAs always, free-from carcinogens, free-from aluminum, free-from cruelty.\n\n60 g",
+        "pdp_how_to_use_raw": "A little goes a long way. 2 swipes is all it takes. In the beginning reapply as necessary.",
+        "pdp_ingredients_raw": "Camellia Oleifera Seed Oil, Tapioca Starch*, Caprylic/Capric Triglyceride, Candelilla Wax, Maranta Arundinacea Root Powder, Sodium Bicarbonate, Butyrospermum Parkii (Shea) Butter, Theobroma Cacao (Cocoa) Seed Butter, Magnesium Hydroxide, Tocopherol, Rosa Damascena Flower Oil, Lavandula Angustifolia (Lavender) Oil*, Melaleuca Alternifolia (Tea Tree) Leaf Oil*, Citrus Paradis (Grapefruit) Peel Oil*, Pelargonium Roseum Leaf Oil*, Copaifera Officinalis (Balsam Copaiba) Resin, Commiphora Myrrha Oil, Santalum Spicatum*, Cinnamomum Camphora (Camphor) Bark Oil*, Backhousia Citriodora Leaf Oil*, Pelargonium Graveolens Flower Oil*.\nNaturally occurring in essential oils: Linalool, Limonene, Geraniol, Citronellol, Citral *ORGANIC",
+        "ingredients_polluted": false,
+        "detail_section_count": 3,
+        "polluted_detail_section_count": 0
+      }
+    },
+    {
+      "external_product_id": "ext_446a5f126507ff6adba46258",
+      "seed_id": "eps_f71587e76c7f38fd91249f6b",
+      "title": "Eucalyptus & Champa, Extra Strength Natural Deodorant",
+      "canonical_url": "https://nalacare.com/products/eucalyptus-natural-deodorant",
+      "status": "ready",
+      "changed": true,
+      "blockers": [],
+      "skipped_fields": [],
+      "patched_fields": [
+        "pdp_how_to_use_raw"
+      ],
+      "before": {
+        "description": "For a spa-like escape baked into your daily routine, reach for this refreshing and restorative eucalyptus blend. Promote relaxation before your day even begins, this unique blend of essential oils is naturally stress relieving.",
+        "pdp_description_raw": "For a spa-like escape baked into your daily routine, reach for this refreshing and restorative eucalyptus blend. Promote relaxation before your day even begins, this unique blend of essential oils is naturally stress relieving.",
+        "pdp_ingredients_raw": "Camellia Oleifera Seed Oil, Tapioca Starch*, Caprylic/Capric Triglyceride, Candelilla Wax, Maranta Arundinacea Root Powder, Sodium Bicarbonate, Butyrospermum Parkii (Shea) Butter, Theobroma Cacao (Cocoa) Seed Butter, Magnesium Hydroxide, Tocopherol, Eucalyptus Radiata Leaf/Stem Oil*, Melaleuca Ericifolia Leaf Oil, Magnolia Champaca Flower Oil, Salvia Officinalis (Sage) Oil, Rosmarinus Officinalis (Rosemary) Extract*, Chamomilla Recutita (Matricaria) Flower Oil*, Lavandula Angustifolia (Lavender) Oil*. Naturally occurring in essential oils: Linalool, Benzyl Benzoate, Limonene, Eugenol, Citronellol, Coumarin, Citral, Geraniol. *ORGANIC",
+        "pdp_how_to_use_raw": "",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "For a spa-like escape baked into your daily routine, reach for this refreshing and restorative eucalyptus blend. Promote relaxation before your day even begins, this unique blend of essential oils is naturally stress relieving.",
+        "pdp_description_raw": "For a spa-like escape baked into your daily routine, reach for this refreshing and restorative eucalyptus blend. Promote relaxation before your day even begins, this unique blend of essential oils is naturally stress relieving.",
+        "pdp_how_to_use_raw": "A little goes a long way. 2 swipes is all it takes. In the beginning reapply as necessary.",
+        "pdp_ingredients_raw": "Camellia Oleifera Seed Oil, Tapioca Starch*, Caprylic/Capric Triglyceride, Candelilla Wax, Maranta Arundinacea Root Powder, Sodium Bicarbonate, Butyrospermum Parkii (Shea) Butter, Theobroma Cacao (Cocoa) Seed Butter, Magnesium Hydroxide, Tocopherol, Eucalyptus Radiata Leaf/Stem Oil*, Melaleuca Ericifolia Leaf Oil, Magnolia Champaca Flower Oil, Salvia Officinalis (Sage) Oil, Rosmarinus Officinalis (Rosemary) Extract*, Chamomilla Recutita (Matricaria) Flower Oil*, Lavandula Angustifolia (Lavender) Oil*. Naturally occurring in essential oils: Linalool, Benzyl Benzoate, Limonene, Eugenol, Citronellol, Coumarin, Citral, Geraniol. *ORGANIC",
+        "ingredients_polluted": false,
+        "detail_section_count": 2,
+        "polluted_detail_section_count": 0
+      }
+    },
+    {
+      "external_product_id": "ext_b36935c92dc89857bf62f25e",
+      "seed_id": "eps_4e147a8448a969b3bd3c46a9",
+      "title": "Grapefruit & Neroli, Extra Strength Natural Deodorant",
+      "canonical_url": "https://nalacare.com/products/grapefruit-neroli-natural-deodorant",
+      "status": "ready",
+      "changed": true,
+      "blockers": [],
+      "skipped_fields": [],
+      "patched_fields": [
+        "pdp_how_to_use_raw"
+      ],
+      "before": {
+        "description": "An intoxicating blend of pink grapefruit, neroli flower oil, basil, and black peppercorn. Black peppercorn gives a subtle but sharp contrast to the bright blend of citrus & floral, elevating the whole. Made with luxurious camellia seed oil, organic botanical extracts, and scientifically-validated ingredients of the highest quality, this natural deodorant neutralizes underarm odor and nourishes delicate underarm skin. Scented with organic essential oils, no artificial fragrance. Free-from aluminum, parabens, pthalates, petroleum, carcinogens.",
+        "pdp_description_raw": "An intoxicating blend of pink grapefruit, neroli flower oil, basil, and black peppercorn. Black peppercorn gives a subtle but sharp contrast to the bright blend of citrus & floral, elevating the whole. Made with luxurious camellia seed oil, organic botanical extracts, and scientifically-validated ingredients of the highest quality, this natural deodorant neutralizes underarm odor and nourishes delicate underarm skin. Scented with organic essential oils, no artificial fragrance. Free-from aluminum, parabens, pthalates, petroleum, carcinogens.",
+        "pdp_ingredients_raw": "Camellia Oleifera Seed Oil, Tapioca Starch*, Caprylic/Capric Triglyceride, Candelilla Wax, Maranta Arundinacea Root Powder, Sodium Bicarbonate, Butyrospermum Parkii (Shea) Butter*, Theobroma Cacao (Cocoa) Seed Butter, Magnesium Hydroxide, Tocopherol, Citrus Paradisi (Grapefruit) Peel Oil, Citrus Aurantium Flower Oil, Piper Nigrum (Pepper) Seed Oil*, Ocimum basilicum (Basil) Oil*. Naturally occurring in essential oils : Linalool, Limonene, Geraniol. *ORGANIC",
+        "pdp_how_to_use_raw": "",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "An intoxicating blend of pink grapefruit, neroli flower oil, basil, and black peppercorn. Black peppercorn gives a subtle but sharp contrast to the bright blend of citrus & floral, elevating the whole.\n\nMade with luxurious camellia seed oil, organic botanical extracts, and scientifically-validated ingredients of the highest quality, this natural deodorant neutralizes underarm odor and nourishes delicate underarm skin.\n\nScented with organic essential oils, no artificial fragrance.\n\nFree-from aluminum, parabens, pthalates, petroleum, carcinogens.",
+        "pdp_description_raw": "An intoxicating blend of pink grapefruit, neroli flower oil, basil, and black peppercorn. Black peppercorn gives a subtle but sharp contrast to the bright blend of citrus & floral, elevating the whole.\n\nMade with luxurious camellia seed oil, organic botanical extracts, and scientifically-validated ingredients of the highest quality, this natural deodorant neutralizes underarm odor and nourishes delicate underarm skin.\n\nScented with organic essential oils, no artificial fragrance.\n\nFree-from aluminum, parabens, pthalates, petroleum, carcinogens.",
+        "pdp_how_to_use_raw": "A little goes a long way. 2 swipes is all it takes. In the beginning reapply as necessary.",
+        "pdp_ingredients_raw": "Camellia Oleifera Seed Oil, Tapioca Starch*, Caprylic/Capric Triglyceride, Candelilla Wax, Maranta Arundinacea Root Powder, Sodium Bicarbonate, Butyrospermum Parkii (Shea) Butter*, Theobroma Cacao (Cocoa) Seed Butter, Magnesium Hydroxide, Tocopherol, Citrus Paradisi (Grapefruit) Peel Oil, Citrus Aurantium Flower Oil, Piper Nigrum (Pepper) Seed Oil*, Ocimum basilicum (Basil) Oil*.\nNaturally occurring in essential oils : Linalool, Limonene, Geraniol. *ORGANIC",
+        "ingredients_polluted": false,
+        "detail_section_count": 1,
+        "polluted_detail_section_count": 0
+      }
+    },
+    {
+      "external_product_id": "ext_21216a67b62b16d88661367f",
+      "seed_id": "eps_397f9fecae5c0008b37ef970",
+      "title": "Lavender & Vetiver, Sensitive Skin Natural Deodorant",
+      "canonical_url": "https://nalacare.com/products/lavender-and-vetiver-charcoal-natural-deodorant",
+      "status": "ready",
+      "changed": true,
+      "blockers": [],
+      "skipped_fields": [],
+      "patched_fields": [
+        "pdp_how_to_use_raw"
+      ],
+      "before": {
+        "description": "This one is for all you lavender lovers. It smells like the purest of lavenders, a grounding and soothing blend of lavender, vetiver, sage, and fir. Soft and delicate notes of lavender connect with earthy and smoky hints of vetiver. This relaxing fragrance is balanced with the light citrusy scent of fir needle oil and crisp sage.",
+        "pdp_description_raw": "This one is for all you lavender lovers. It smells like the purest of lavenders, a grounding and soothing blend of lavender, vetiver, sage, and fir. Soft and delicate notes of lavender connect with earthy and smoky hints of vetiver. This relaxing fragrance is balanced with the light citrusy scent of fir needle oil and crisp sage.",
+        "pdp_ingredients_raw": "Camellia Oleifera Seed Oil, Tapioca Starch*, Caprylic/Capric Triglyceride, Candelilla Wax, Maranta Arundinacea Root Powder, Magnesium Hydroxide, Butyrospermum Parkii (Shea) Butter, Theobroma Cacao (Cocoa) Seed Butter, Tocopherol, Zinc Oxide, Hydroxypropyl Cyclodextrin, Lavandula Angustifolia (Lavender) Oil*, Vetiveria Zizanoides Root Oil*, Abies Sibirica Oil, Eucalyptus Radiata Leaf/Stem Oil*, Hyssopus Officinalis Leaf Oil*, Salvia Officinalis (Sage) Oil. Naturally occurring in essential oils: Linalool, Limonene, Geraniol, Isoeugenol, Citral *ORGANIC",
+        "pdp_how_to_use_raw": "",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "This one is for all you lavender lovers. It smells like the purest of lavenders, a grounding and soothing blend of lavender, vetiver, sage, and fir. Soft and delicate notes of lavender connect with earthy and smoky hints of vetiver. This relaxing fragrance is balanced with the light citrusy scent of fir needle oil and crisp sage.",
+        "pdp_description_raw": "This one is for all you lavender lovers. It smells like the purest of lavenders, a grounding and soothing blend of lavender, vetiver, sage, and fir. Soft and delicate notes of lavender connect with earthy and smoky hints of vetiver. This relaxing fragrance is balanced with the light citrusy scent of fir needle oil and crisp sage.",
+        "pdp_how_to_use_raw": "A little goes a long way. 2 swipes is all it takes. In the beginning reapply as necessary.",
+        "pdp_ingredients_raw": "Camellia Oleifera Seed Oil, Tapioca Starch*, Caprylic/Capric Triglyceride, Candelilla Wax, Maranta Arundinacea Root Powder, Magnesium Hydroxide, Butyrospermum Parkii (Shea) Butter, Theobroma Cacao (Cocoa) Seed Butter, Tocopherol, Zinc Oxide, Hydroxypropyl Cyclodextrin, Lavandula Angustifolia (Lavender) Oil*, Vetiveria Zizanoides Root Oil*, Abies Sibirica Oil, Eucalyptus Radiata Leaf/Stem Oil*, Hyssopus Officinalis Leaf Oil*, Salvia Officinalis (Sage) Oil.\nNaturally occurring in essential oils: Linalool, Limonene, Geraniol, Isoeugenol, Citral *ORGANIC",
+        "ingredients_polluted": false,
+        "detail_section_count": 2,
+        "polluted_detail_section_count": 0
+      }
+    },
+    {
+      "external_product_id": "ext_2ef1955968e55d0bfdf5fe78",
+      "seed_id": "eps_ea734087361e2bc8116864de",
+      "title": "Palo Santo & Sage, Sensitive Skin Natural Deodorant",
+      "canonical_url": "https://nalacare.com/products/palo-santo-sage-natural-deodorant",
+      "status": "ready",
+      "changed": true,
+      "blockers": [],
+      "skipped_fields": [],
+      "patched_fields": [
+        "pdp_how_to_use_raw"
+      ],
+      "before": {
+        "description": "Reminiscent of ancient forests and smoky rituals, Nala's Palo Santo & Sage deodorant is a grounding and meditative woodsy blend that is balanced by light floral notes of lavender and refreshing hints of sage. Palo santo and cedarwood are both soothing with anti-inflammatory properties. Palo Santo is a spiritual tree that is thought to help cleanse negative energy and restore positive well-being. This deodorant reduces undesirable underarm odor as cedarwood and sage in it are both natural astringents that tighten your pores and reduce sweating. Primary Notes: palo santo, sage Secondary Notes: lavender Base Notes: cedarwood, palo santo",
+        "pdp_description_raw": "Reminiscent of ancient forests and smoky rituals, Nala's Palo Santo & Sage deodorant is a grounding and meditative woodsy blend that is balanced by light floral notes of lavender and refreshing hints of sage. Palo santo and cedarwood are both soothing with anti-inflammatory properties. Palo Santo is a spiritual tree that is thought to help cleanse negative energy and restore positive well-being. This deodorant reduces undesirable underarm odor as cedarwood and sage in it are both natural astringents that tighten your pores and reduce sweating. Primary Notes: palo santo, sage Secondary Notes: lavender Base Notes: cedarwood, palo santo",
+        "pdp_ingredients_raw": "Camellia Oleifera Seed Oil, Tapioca Starch*, Caprylic/Capric Triglyceride, Candelilla Wax, Maranta Arundinacea Root Powder, Magnesium Hydroxide, Butyrospermum Parkii (Shea) Butter, Theobroma Cacao (Cocoa) Seed Butter, Tocopherol, Zinc Oxide, Hydroxypropyl Cyclodextrin, Lavandula Angustifolia (Lavender) Oil, Bursera Graveolens Wood Oil, Salvia Officinalis (Sage) Oil, Cedrus Atlantica Bark Oil*, Pelargonium Roseum Leaf Oil, Citrus Sinensis (Orange) Peel Oil Expressed, Pogostemon Cablin Leaf Oil, Citrus Aurantium Bergamia (Bergamot) Peel Oil, Pelargonium Graveolens Flower Oil*. Naturally occurring in essential oils: Limonene, Linalool, Citronellol, Geraniol, Linalyl Acetate, Pinene *ORGANIC",
+        "pdp_how_to_use_raw": "",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "Reminiscent of ancient forests and smoky rituals, Nala's Palo Santo & Sage deodorant is a grounding and meditative woodsy blend that is balanced by light floral notes of lavender and refreshing hints of sage.\n\nPalo santo and cedarwood are both soothing with anti-inflammatory properties. Palo Santo is a spiritual tree that is thought to help cleanse negative energy and restore positive well-being. This deodorant reduces undesirable underarm odor as cedarwood and sage in it are both natural astringents that tighten your pores and reduce sweating.\n\nPrimary Notes: palo santo, sage\nSecondary Notes: lavender\nBase Notes: cedarwood, palo santo",
+        "pdp_description_raw": "Reminiscent of ancient forests and smoky rituals, Nala's Palo Santo & Sage deodorant is a grounding and meditative woodsy blend that is balanced by light floral notes of lavender and refreshing hints of sage.\n\nPalo santo and cedarwood are both soothing with anti-inflammatory properties. Palo Santo is a spiritual tree that is thought to help cleanse negative energy and restore positive well-being. This deodorant reduces undesirable underarm odor as cedarwood and sage in it are both natural astringents that tighten your pores and reduce sweating.\n\nPrimary Notes: palo santo, sage\nSecondary Notes: lavender\nBase Notes: cedarwood, palo santo",
+        "pdp_how_to_use_raw": "A little goes a long way. 2 swipes is all it takes. In the beginning reapply as necessary.",
+        "pdp_ingredients_raw": "Camellia Oleifera Seed Oil, Tapioca Starch*, Caprylic/Capric Triglyceride, Candelilla Wax, Maranta Arundinacea Root Powder, Magnesium Hydroxide, Butyrospermum Parkii (Shea) Butter, Theobroma Cacao (Cocoa) Seed Butter, Tocopherol, Zinc Oxide, Hydroxypropyl Cyclodextrin, Lavandula Angustifolia (Lavender) Oil, Bursera Graveolens Wood Oil, Salvia Officinalis (Sage) Oil, Cedrus Atlantica Bark Oil*, Pelargonium Roseum Leaf Oil, Citrus Sinensis (Orange) Peel Oil Expressed, Pogostemon Cablin Leaf Oil, Citrus Aurantium Bergamia (Bergamot) Peel Oil, Pelargonium Graveolens Flower Oil*. Naturally occurring in essential oils: Limonene, Linalool, Citronellol, Geraniol, Linalyl Acetate, Pinene *ORGANIC",
+        "ingredients_polluted": false,
+        "detail_section_count": 2,
+        "polluted_detail_section_count": 0
+      }
+    },
+    {
+      "external_product_id": "ext_8136f11be69e6c18781a7f02",
+      "seed_id": "eps_3f6b17eb288ce4725cbd191a",
+      "title": "Peppermint & Activated Charcoal, Natural Deodorant",
+      "canonical_url": "https://nalacare.com/products/natural-deodorant-peppermint-charcoal",
+      "status": "ready",
+      "changed": true,
+      "blockers": [],
+      "skipped_fields": [],
+      "patched_fields": [
+        "pdp_how_to_use_raw"
+      ],
+      "before": {
+        "description": "Make the easy switch from conventional deodorants with the Peppermint & Activated Charcoal Deodorant. An effective formula that is both refreshing and eliminating. Neutralize odour and wetness naturally with our pairing of energizing peppermint and detoxing charcoal. Safe and",
+        "pdp_description_raw": "Make the easy switch from conventional deodorants with the Peppermint & Activated Charcoal Deodorant. An effective formula that is both refreshing and eliminating. Neutralize odour and wetness naturally with our pairing of energizing peppermint and detoxing charcoal. Safe and",
+        "pdp_ingredients_raw": "Camellia Oleifera Seed Oil, Tapioca Starch*, Caprylic/Capric Triglyceride, Candelilla Wax, Maranta Arundinacea Root Powder, Magnesium Hydroxide, Butyrospermum Parkii (Shea) Butter, Theobroma Cacao (Cocoa) Seed Butter, Tocopherol, Sodium Bicarbonate, Zinc Oxide, Hydroxypropyl Cyclodextrin, Charcoal Powder, Mentha Arvensis Leaf Oil*, Lavandula Angustifolia (Lavender) Oil*, Melaleuca Alternifolia (Tea Tree) Leaf Oil*, Rosmarinus Officinalis (Rosemary) Leaf Extract*, Rosmarinus Officinalis (Rosemary) Leaf Oil*. Naturally occurring in essential oils: Linalool, Limonene, Geraniol *ORGANIC",
+        "pdp_how_to_use_raw": "",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "Make the easy switch from conventional deodorants with the Peppermint & Activated Charcoal Deodorant.\n\nAn effective formula that is both refreshing and eliminating. Neutralize odour and wetness naturally with our pairing of energizing peppermint and detoxing charcoal. Safe and",
+        "pdp_description_raw": "Make the easy switch from conventional deodorants with the Peppermint & Activated Charcoal Deodorant.\n\nAn effective formula that is both refreshing and eliminating. Neutralize odour and wetness naturally with our pairing of energizing peppermint and detoxing charcoal. Safe and",
+        "pdp_how_to_use_raw": "A little goes a long way. 2 swipes is all it takes. In the beginning reapply as necessary.",
+        "pdp_ingredients_raw": "Camellia Oleifera Seed Oil, Tapioca Starch*, Caprylic/Capric Triglyceride, Candelilla Wax, Maranta Arundinacea Root Powder, Magnesium Hydroxide, Butyrospermum Parkii (Shea) Butter, Theobroma Cacao (Cocoa) Seed Butter, Tocopherol, Sodium Bicarbonate, Zinc Oxide, Hydroxypropyl Cyclodextrin, Charcoal Powder, Mentha Arvensis Leaf Oil*, Lavandula Angustifolia (Lavender) Oil*, Melaleuca Alternifolia (Tea Tree) Leaf Oil*, Rosmarinus Officinalis (Rosemary) Leaf Extract*, Rosmarinus Officinalis (Rosemary) Leaf Oil*. Naturally occurring in essential oils: Linalool, Limonene, Geraniol *ORGANIC",
+        "ingredients_polluted": false,
+        "detail_section_count": 2,
+        "polluted_detail_section_count": 0
+      }
+    },
+    {
+      "external_product_id": "ext_5975f96c1d90b02d02329960",
+      "seed_id": "eps_70cc3400fbd348ddea653644",
+      "title": "Unscented, Sensitive Skin Natural Deodorant",
+      "canonical_url": "https://nalacare.com/products/unscented-natural-deodorant",
+      "status": "ready",
+      "changed": true,
+      "blockers": [],
+      "skipped_fields": [],
+      "patched_fields": [
+        "pdp_how_to_use_raw"
+      ],
+      "before": {
+        "description": "All the moisture absorbing, odor reducing and protective properties of our base formula without any of the scent. Perfect for those who work in scent-free environments or prefer to keep their routine simple and bare.",
+        "pdp_description_raw": "All the moisture absorbing, odor reducing and protective properties of our base formula without any of the scent. Perfect for those who work in scent-free environments or prefer to keep their routine simple and bare.",
+        "pdp_ingredients_raw": "Camellia Oleifera Seed Oil, Tapioca Starch*, Caprylic/Capric Triglyceride, Candelilla Wax, Maranta Arundinacea Root Powder, Butyrospermum Parkii (Shea) Butter*, Magnesium Hydroxide, Theobroma Cacao (Cocoa) Seed Butter, Hydroxypropyl Cyclodextrin, Zinc Oxide, Tocopherol, Melaleuca Alternifolia (Tea Tree) Leaf Oil *ORGANIC",
+        "pdp_how_to_use_raw": "",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "All the moisture absorbing, odor reducing and protective properties of our base formula without any of the scent. Perfect for those who work in scent-free environments or prefer to keep their routine simple and bare.",
+        "pdp_description_raw": "All the moisture absorbing, odor reducing and protective properties of our base formula without any of the scent. Perfect for those who work in scent-free environments or prefer to keep their routine simple and bare.",
+        "pdp_how_to_use_raw": "A little goes a long way. 2 swipes is all it takes. In the beginning reapply as necessary.",
+        "pdp_ingredients_raw": "Camellia Oleifera Seed Oil, Tapioca Starch*, Caprylic/Capric Triglyceride, Candelilla Wax, Maranta Arundinacea Root Powder, Butyrospermum Parkii (Shea) Butter*, Magnesium Hydroxide, Theobroma Cacao (Cocoa) Seed Butter, Hydroxypropyl Cyclodextrin, Zinc Oxide, Tocopherol, Melaleuca Alternifolia (Tea Tree) Leaf Oil *ORGANIC",
+        "ingredients_polluted": false,
+        "detail_section_count": 2,
+        "polluted_detail_section_count": 0
+      }
+    }
+  ]
+}
