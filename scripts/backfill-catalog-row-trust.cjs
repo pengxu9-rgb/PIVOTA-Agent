@@ -58,6 +58,41 @@ async function loadActiveQuarantines(pool) {
 //   merchant_stores         ↔ catalog_products via (merchant_id, platform)
 //   pdp_identity_override   ↔ pdp_identity_listing via source_listing_ref
 const PRODUCT_DRIVER_SQL = `
+  WITH external_seed_one AS (
+    SELECT DISTINCT ON (external_product_id)
+      id, external_product_id, status, domain, attached_product_key, updated_at
+    FROM external_product_seeds
+    ORDER BY
+      external_product_id,
+      (status = 'active') DESC,
+      updated_at DESC NULLS LAST,
+      created_at DESC NULLS LAST,
+      id DESC
+  ),
+  merchant_store_one AS (
+    SELECT DISTINCT ON (merchant_id, platform)
+      merchant_id, platform, domain, status, last_sync
+    FROM merchant_stores
+    ORDER BY
+      merchant_id,
+      platform,
+      (status = 'active') DESC,
+      is_primary DESC NULLS LAST,
+      last_sync DESC NULLS LAST,
+      created_at DESC NULLS LAST,
+      store_id DESC
+  ),
+  identity_override_one AS (
+    SELECT DISTINCT ON (source_listing_ref)
+      id, source_listing_ref, action_type, active
+    FROM pdp_identity_override
+    WHERE active = TRUE
+    ORDER BY
+      source_listing_ref,
+      updated_at DESC NULLS LAST,
+      created_at DESC NULLS LAST,
+      id DESC
+  )
   SELECT
     cp.product_key,
     cp.content_key,
@@ -91,7 +126,7 @@ const PRODUCT_DRIVER_SQL = `
     eps.status        AS eps_status,
     eps.domain        AS eps_domain,
     eps.attached_product_key AS eps_attached_product_key,
-    eps.last_seen_at  AS eps_last_seen_at,
+    eps.updated_at    AS eps_last_seen_at,
 
     ms.merchant_id    AS ms_merchant_id,
     ms.platform       AS ms_platform,
@@ -109,13 +144,13 @@ const PRODUCT_DRIVER_SQL = `
   LEFT JOIN pdp_identity_listing pil
     ON pil.merchant_id = cp.merchant_id
    AND pil.product_id = cp.source_product_id
-  LEFT JOIN external_product_seeds eps
+  LEFT JOIN external_seed_one eps
     ON cp.merchant_id = 'external_seed'
    AND cp.source_system = 'external_product_seeds_mirror_v1'
    AND eps.external_product_id = cp.source_product_id
-  LEFT JOIN merchant_stores ms
+  LEFT JOIN merchant_store_one ms
     ON ms.merchant_id = cp.merchant_id AND ms.platform = cp.platform
-  LEFT JOIN pdp_identity_override pio
+  LEFT JOIN identity_override_one pio
     ON pio.source_listing_ref = pil.source_listing_ref AND pio.active = TRUE
   WHERE ($1::text IS NULL OR cp.product_key > $1)
   ORDER BY cp.product_key

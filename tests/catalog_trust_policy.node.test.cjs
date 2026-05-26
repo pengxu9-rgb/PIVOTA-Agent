@@ -197,11 +197,12 @@ test('suppressed offer blocks', () => {
 
 // ---- SHADOW (the 580-violation gate) ----------------------------------------
 
-test('no identity row → shadow with IDENTITY_CONFIDENCE_NULL... wait, unknown', () => {
+test('no identity row → shadow with IDENTITY_CONFIDENCE_NULL', () => {
   // 504 of audit's 580 — IPS-eligible external mirror rows without identity row.
   const trust = call({ identity: null });
   assert.equal(trust.serving_decision, 'shadow');
   assert.equal(trust.identity_status, 'unknown');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.IDENTITY_CONFIDENCE_NULL));
 });
 
 test('review_required with live_read_enabled → shadow (audit\'s 60 cases)', () => {

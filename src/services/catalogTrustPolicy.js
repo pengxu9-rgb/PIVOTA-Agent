@@ -18,7 +18,7 @@
 // Versioning: POLICY_VERSION must bump on any change to derivation logic.
 // The backfill job uses POLICY_VERSION to detect stale rows.
 
-const POLICY_VERSION = 'c1.v0.1';
+const POLICY_VERSION = 'c1.v0.2';
 
 // ---- Reason codes (authoritative vocabulary) -------------------------------
 //
@@ -269,17 +269,21 @@ function isQuarantined({ product, externalSeed, merchantStore, activeQuarantines
 function deriveIdentity({ identity, override, reasons }) {
   // Manual override of identity wins (rare but authoritative).
   if (override?.action_type === 'force_exact_group' && override?.active) {
-    return { status: 'approved', confidence: 1.0 };
+    return { status: 'approved', confidence: 1.0, liveRead: true, reviewRequired: false };
   }
   if (override?.action_type === 'force_review_required' && override?.active) {
-    reasons.push(REASON_CODES.IDENTITY_REVIEW_REQUIRED_LIVE_READ);
-    return { status: 'review_required', confidence: identity?.identity_confidence ?? null };
+    return {
+      status: 'review_required',
+      confidence: identity?.identity_confidence ?? null,
+      liveRead: identity?.live_read_enabled === true,
+      reviewRequired: true,
+    };
   }
 
   if (!identity) {
     // No identity row at all. The 504 external-mirror cases in the audit
     // largely fall here.
-    return { status: 'unknown', confidence: null };
+    return { status: 'unknown', confidence: null, liveRead: null, reviewRequired: null };
   }
 
   const status = String(identity.identity_status ?? '').toLowerCase();
@@ -292,35 +296,24 @@ function deriveIdentity({ identity, override, reasons }) {
 
   if (status === 'conflict') {
     reasons.push(REASON_CODES.IDENTITY_CONFLICT);
-    return { status: 'conflict', confidence };
+    return { status: 'conflict', confidence, liveRead, reviewRequired };
   }
 
   if (status === 'approved') {
-    if (!liveRead) {
-      reasons.push(REASON_CODES.IDENTITY_LIVE_READ_DISABLED);
-    }
     if (reviewRequired) {
       // Approved but flagged for review — degrade to review_required so
       // downstream readers don't treat as fully trusted.
-      reasons.push(REASON_CODES.IDENTITY_REVIEW_REQUIRED_LIVE_READ);
-      return { status: 'review_required', confidence };
+      return { status: 'review_required', confidence, liveRead, reviewRequired };
     }
-    if (confidence == null) {
-      reasons.push(REASON_CODES.IDENTITY_CONFIDENCE_NULL);
-    }
-    return { status: 'approved', confidence };
+    return { status: 'approved', confidence, liveRead, reviewRequired };
   }
 
   if (status === 'review_required') {
-    if (liveRead) {
-      // Audit's 60 'serving despite review_required' rows land here.
-      reasons.push(REASON_CODES.IDENTITY_REVIEW_REQUIRED_LIVE_READ);
-    }
-    return { status: 'review_required', confidence };
+    return { status: 'review_required', confidence, liveRead, reviewRequired };
   }
 
   // Any other value — treat as unknown.
-  return { status: 'unknown', confidence };
+  return { status: 'unknown', confidence, liveRead, reviewRequired };
 }
 
 // ---- Freshness -------------------------------------------------------------
@@ -410,6 +403,19 @@ function deriveServingDecision({
 
   // Shadow conditions — would have served under legacy gates, but the
   // contract gates them out of public reads.
+  if (identityDecision.status === 'review_required') {
+    reasons.push(REASON_CODES.IDENTITY_REVIEW_REQUIRED_LIVE_READ);
+  }
+  if (identityDecision.status === 'unknown' && identityDecision.confidence == null) {
+    reasons.push(REASON_CODES.IDENTITY_CONFIDENCE_NULL);
+  }
+  if (identityDecision.status === 'approved' && identityDecision.confidence == null) {
+    reasons.push(REASON_CODES.IDENTITY_CONFIDENCE_NULL);
+  }
+  if (identityDecision.status === 'approved' && identityDecision.liveRead === false) {
+    reasons.push(REASON_CODES.IDENTITY_LIVE_READ_DISABLED);
+  }
+
   if (identityDecision.status === 'review_required' ||
       identityDecision.status === 'unknown' ||
       reasons.includes(REASON_CODES.IDENTITY_CONFIDENCE_NULL) ||

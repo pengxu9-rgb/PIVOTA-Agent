@@ -2,7 +2,7 @@
 
 **Status:** Phase 1 (schema + policy v0). No readers cut over yet.
 **Migration:** `pivota-backend-quality-gate/db/migrations/136_catalog_row_trust.sql`
-**Policy:** `src/services/catalogTrustPolicy.js` (POLICY_VERSION = `c1.v0.1`)
+**Policy:** `src/services/catalogTrustPolicy.js` (POLICY_VERSION = `c1.v0.2`)
 **Backfill:** `scripts/backfill-catalog-row-trust.cjs`
 
 ## What this contract is
@@ -42,7 +42,7 @@ Authoritative source: `src/services/catalogTrustPolicy.js` (`REASON_CODES`).
 |-------------------------------------|-----------------|------------------------------------------------------------------------------------------------|
 | `PUBLIC_PASSTHROUGH`                | public          | Row passed every gate; emitted for traceability.                                               |
 | `IDENTITY_REVIEW_REQUIRED_LIVE_READ`| shadow          | `pdp_identity_listing.review_required=true` (audit's 60-row cohort).                           |
-| `IDENTITY_CONFIDENCE_NULL`          | shadow          | IPS eligible, identity present, but `identity_confidence IS NULL` (audit's 504-row cohort).    |
+| `IDENTITY_CONFIDENCE_NULL`          | shadow          | IPS eligible, but no identity row or `identity_confidence IS NULL` (audit's 504-row cohort).   |
 | `IDENTITY_LIVE_READ_DISABLED`       | shadow          | identity approved but `live_read_enabled=false`.                                               |
 | `FRESHNESS_UNVERIFIED`              | advisory        | No verification timestamp anywhere; advisory only — does not flip decision.                    |
 | `SOURCE_QUARANTINED`                | blocked         | `catalog_source_quarantine` active match (PR #663 / migration 134).                            |
