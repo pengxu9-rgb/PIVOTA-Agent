@@ -2440,6 +2440,18 @@ function buildCatalogProductRecommendationCandidate(row, options = {}) {
     leafCategory,
     options.fallbackCategory,
   );
+  const description = firstNonEmptyText(
+    row.product_description,
+    row.description,
+    productPayload.description,
+    productPayload.summary,
+    seedData.description,
+    seedData.summary,
+    seedData.pdp_description_raw,
+    snapshot.description,
+    snapshot.summary,
+    snapshot.pdp_description_raw,
+  );
   const semanticVertical = normalizeStoredSemanticVertical(
     firstNonEmptyText(recall.vertical, semanticVerticalFromCatalogCategoryPath(catalogCategoryPath)),
   );
@@ -2454,6 +2466,11 @@ function buildCatalogProductRecommendationCandidate(row, options = {}) {
     Array.isArray(snapshot.images) ? snapshot.images[0] : null,
   );
   const rawPriceAmount =
+    row.price_amount ??
+    row.seed_price_amount ??
+    row.seed_price ??
+    row.snapshot_price_amount ??
+    row.snapshot_price ??
     productPayload.price_amount ??
     productPayload.price ??
     seedData.price_amount ??
@@ -2464,12 +2481,18 @@ function buildCatalogProductRecommendationCandidate(row, options = {}) {
   const priceAmount =
     rawPriceAmount == null || rawPriceAmount === '' ? null : normalizeAmount(rawPriceAmount);
   const priceCurrency = firstNonEmptyText(
+    row.price_currency,
+    row.seed_price_currency,
+    row.snapshot_price_currency,
     productPayload.price_currency,
     seedData.price_currency,
     snapshot.price_currency,
     'USD',
   ).toUpperCase();
   const availability = firstNonEmptyText(
+    row.availability,
+    row.seed_availability,
+    row.snapshot_availability,
     productPayload.availability,
     seedData.availability,
     snapshot.availability,
@@ -2505,6 +2528,7 @@ function buildCatalogProductRecommendationCandidate(row, options = {}) {
     ...(brand ? { brand, vendor: brand } : {}),
     ...(category ? { category, product_type: firstNonEmptyText(row.product_type, category) } : {}),
     ...(catalogCategoryPath ? { category_path: catalogCategoryPath, catalog_category_path: catalogCategoryPath } : {}),
+    ...(description ? { description } : {}),
     ...(imageUrl ? { image_url: imageUrl, image: imageUrl } : {}),
     ...(priceAmount != null ? { price: priceAmount, price_amount: priceAmount } : {}),
     ...(priceCurrency ? { currency: priceCurrency, price_currency: priceCurrency } : {}),
@@ -2712,19 +2736,26 @@ async function fetchCatalogCandidates({
         cp.platform,
         cp.source_product_id,
         cp.title AS product_title,
-        '' AS product_description,
+        left(coalesce(cp.description, ''), 500) AS product_description,
         cp.brand,
         cp.product_type,
         cp.category,
         cp.category_path,
         cp.canonical_url,
         cp.image_url AS product_image_url,
+        eps_catalog.price_amount,
+        eps_catalog.price_currency,
+        eps_catalog.availability,
         '{}'::jsonb AS product_payload,
         cp.pivota_signature_id,
         cp.pivota_canonical_url,
         cp.updated_at
       FROM catalog_products cp
       ${externalSeedSourceOnly ? '' : 'LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id'}
+      LEFT JOIN external_product_seeds eps_catalog
+        ON eps_catalog.external_product_id = cp.source_product_id
+       AND eps_catalog.status = 'active'
+       AND cp.merchant_id = '${EXTERNAL_SEED_MERCHANT_ID}'
       INNER JOIN index_pipeline_state ips
         ON ips.content_key = cp.content_key
        AND ips.serving_eligible = TRUE

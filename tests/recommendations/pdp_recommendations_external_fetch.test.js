@@ -46,6 +46,11 @@ function makeCatalogRow({
   image_url = 'https://kravebeauty.com/catalog-image.jpg',
   merchant_id = 'external_seed',
   platform = 'external_seed',
+  description = 'Catalog-live serum candidate',
+  price_amount = 28,
+  price_currency = 'USD',
+  availability = 'in_stock',
+  product_payload = null,
 } = {}) {
   return {
     product_key,
@@ -54,27 +59,33 @@ function makeCatalogRow({
     platform,
     source_product_id,
     product_title: title,
-    product_description: 'Catalog-live serum candidate',
+    product_description: description,
     brand,
     product_type: category,
     category,
     category_path,
     canonical_url: `https://kravebeauty.com/products/${source_product_id}`,
     product_image_url: image_url,
-    product_payload: {
-      price_amount: 28,
-      price_currency: 'USD',
-      availability: 'in_stock',
-      seed_data: {
-        brand,
-        category,
-        snapshot: {
-          brand,
-          product_type: category,
-          image_url,
-        },
-      },
-    },
+    price_amount,
+    price_currency,
+    availability,
+    product_payload:
+      product_payload === null
+        ? {
+            price_amount,
+            price_currency,
+            availability,
+            seed_data: {
+              brand,
+              category,
+              snapshot: {
+                brand,
+                product_type: category,
+                image_url,
+              },
+            },
+          }
+        : product_payload,
     pivota_signature_id,
     pivota_canonical_url: `https://agent.pivota.cc/products/${pivota_signature_id}`,
     updated_at: new Date().toISOString(),
@@ -288,7 +299,7 @@ describe('RecommendationEngine external candidate fetch', () => {
 
     const queryMock = jest.fn(async (sql) => {
       const text = String(sql);
-      if (text.includes('products_cache') || text.includes('external_product_seeds')) {
+      if (text.includes('products_cache') || /\bFROM\s+external_product_seeds\b/i.test(text)) {
         throw new Error(`legacy fallback query should not be used: ${text.slice(0, 160)}`);
       }
       if (!text.includes('FROM catalog_products cp')) return { rows: [] };
@@ -296,6 +307,8 @@ describe('RecommendationEngine external candidate fetch', () => {
       expect(text).toContain('ips.serving_eligible = TRUE');
       expect(text).toContain('cp.category_path = $1');
       expect(text).toContain("cp.merchant_id = 'external_seed'");
+      expect(text).toContain('LEFT JOIN external_product_seeds eps_catalog');
+      expect(text).toContain('eps_catalog.price_amount');
       expect(text).not.toContain('LEFT JOIN catalog_merchants');
       expect(text).not.toContain("lower(coalesce(cp.title, '')) LIKE");
       expect(text).not.toContain("regexp_replace(lower(coalesce(cp.brand");
@@ -371,13 +384,75 @@ describe('RecommendationEngine external candidate fetch', () => {
     expect(result.items.map((item) => item.pivota_signature_id)).toEqual(['sig_serum_1', 'sig_serum_2']);
   });
 
+  test('catalog-only recall keeps rows whose commerce facts come from joined external seeds', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+    delete process.env.PDP_SIMILAR_CATALOG_ONLY;
+
+    const queryMock = jest.fn(async (sql) => {
+      const text = String(sql);
+      if (!text.includes('FROM catalog_products cp')) return { rows: [] };
+      expect(text).toContain('LEFT JOIN external_product_seeds eps_catalog');
+      expect(text).toContain('eps_catalog.price_amount');
+      expect(text).toContain('eps_catalog.availability');
+      expect(text).toContain("left(coalesce(cp.description, ''), 500) AS product_description");
+      return {
+        rows: [
+          makeCatalogRow({
+            product_key: 'cat_to_serum_joined_seed',
+            source_product_id: 'ext_to_serum_joined_seed',
+            pivota_signature_id: 'sig_to_serum_joined_seed',
+            title: 'The Ordinary Balancing & Clarifying Serum',
+            brand: 'The Ordinary',
+            category: 'Serum',
+            category_path: 'beauty/skincare/treat/serum',
+            description: 'A clarifying serum for visible shine and congestion.',
+            price_amount: 15.32,
+            price_currency: 'USD',
+            availability: 'in_stock',
+            product_payload: {},
+          }),
+        ],
+      };
+    });
+
+    jest.doMock('../../src/db', () => ({
+      query: queryMock,
+      queryWithStatementTimeout: jest.fn(async () => ({ rows: [] })),
+    }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const products = await _internals.fetchCatalogCandidates({
+      brandHint: 'The Ordinary',
+      categoryHint: 'Serum',
+      categoryPathHint: 'beauty/skincare/treat/serum',
+      verticalHint: 'skincare',
+      sourceMerchantHint: 'external_seed',
+      limit: 6,
+      overfetchMultiplier: 1,
+    });
+
+    expect(products).toHaveLength(1);
+    expect(products[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'ext_to_serum_joined_seed',
+        pivota_signature_id: 'sig_to_serum_joined_seed',
+        price_amount: 15.32,
+        price: 15.32,
+        price_currency: 'USD',
+        availability: 'in_stock',
+        description: 'A clarifying serum for visible shine and congestion.',
+      }),
+    );
+  });
+
   test('catalog-only recall honors explicit fetch limit without runtime overfetch', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
     delete process.env.PDP_SIMILAR_CATALOG_ONLY;
 
     const queryMock = jest.fn(async (sql, params) => {
       const text = String(sql);
-      if (text.includes('products_cache') || text.includes('external_product_seeds')) {
+      if (text.includes('products_cache') || /\bFROM\s+external_product_seeds\b/i.test(text)) {
         throw new Error(`legacy fallback query should not be used: ${text.slice(0, 160)}`);
       }
       if (!text.includes('FROM catalog_products cp')) return { rows: [] };
