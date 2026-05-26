@@ -1,6 +1,6 @@
 const { createHash, randomUUID } = require('crypto');
 const logger = require('../logger');
-const { query, withClient } = require('../db');
+const { getPool, query, withClient } = require('../db');
 const {
   EXTERNAL_SEED_MERCHANT_ID,
   buildExternalSeedProduct,
@@ -21,6 +21,9 @@ const { activeProductsCacheSourceWhere } = require('./activeCatalogSourceSql');
 const {
   summarizePdpPayloadContract,
 } = require('./pdpIdentityPayloadDrift');
+const {
+  upsertCatalogRowTrustForSourceListingRefs,
+} = require('./catalogRowTrustUpserter');
 
 const normalizeResolverText =
   typeof productGroundingResolverInternals.normalizeTextForResolver === 'function'
@@ -4189,6 +4192,12 @@ async function promotePdpIdentityLiveRead({
       }
     });
 
+    // C1 Phase 2: recompute trust for all promoted rows.
+    // Fire-and-forget — trust failure must not break the promotion result.
+    if (sourceRefsToEnable.length) {
+      upsertCatalogRowTrustForSourceListingRefs(getPool(), sourceRefsToEnable).catch(() => {});
+    }
+
     return {
       dry_run: false,
       candidate_rows_scanned: candidateRows.length,
@@ -5224,7 +5233,15 @@ async function applyPdpIdentityOverride({
       );
     }
 
-    return result?.rows?.[0] || null;
+    const overrideRow = result?.rows?.[0] || null;
+
+    // C1 Phase 2: recompute trust for catalog rows linked to this identity
+    // listing. Fire-and-forget — trust failure must never break override ops.
+    if (sourceRef) {
+      upsertCatalogRowTrustForSourceListingRefs(getPool(), [sourceRef]).catch(() => {});
+    }
+
+    return overrideRow;
   } catch (err) {
     if (looksLikeRelationMissing(err)) {
       const missing = new Error('PDP_IDENTITY_TABLES_NOT_READY');

@@ -5,7 +5,8 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { closePool, query, withClient } = require('../src/db');
+const { closePool, getPool, query, withClient } = require('../src/db');
+const { upsertCatalogRowTrustMany } = require('../src/services/catalogRowTrustUpserter');
 const {
   buildAgentSafeCommerceFacts,
   readCommerceFactsV1,
@@ -1474,6 +1475,14 @@ async function applyMirrors(
         throw err;
       }
     });
+
+    // C1 Phase 2: recompute trust for all product_keys in this batch.
+    // Fire-and-forget after the transaction commits. Errors logged inside.
+    const batchProductKeys = batch.map((m) => m.product.product_key).filter(Boolean);
+    if (batchProductKeys.length) {
+      upsertCatalogRowTrustMany(getPool(), batchProductKeys).catch(() => {});
+    }
+
     processed += batch.length;
     if (batches.length > 1) {
       process.stderr.write(
