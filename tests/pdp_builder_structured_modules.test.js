@@ -1885,6 +1885,53 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     ]);
   });
 
+  test('uses reviewed product spec for a single external-seed variant with empty title', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_theordinary_soothing_barrier',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Soothing & Barrier Support Serum for Sensitive Skin & Hydration',
+        category: 'Serum',
+        image_url: 'https://example.com/soothing-barrier.png',
+        price: { amount: 17, currency: 'USD' },
+        size_detail_label: '30 mL',
+        reviewed_product_specs_v1: {
+          contract_version: 'external_seed.reviewed_product_specs.v1',
+          source_origin: 'reviewed_seed_map',
+          source_quality_status: 'high',
+        },
+        variants: [
+          {
+            id: 'v_single_empty_title',
+            title: '',
+            options: [],
+            source_quality_status: 'blocked',
+            price: { amount: 17, currency: 'USD' },
+          },
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const variantSelector = payload.modules.find((module) => module.type === 'variant_selector');
+    expect(variantSelector?.data?.variants).toEqual([
+      expect.objectContaining({
+        title: '30 mL',
+        display_label: 'Size: 30 mL',
+        options: [{ name: 'Size', value: '30 mL', axis_kind: 'size' }],
+      }),
+    ]);
+    expect(payload.product.variants).toEqual([
+      expect.objectContaining({
+        variant_id: 'v_single_empty_title',
+        title: '30 mL',
+        options: [{ name: 'Size', value: '30 mL', axis_kind: 'size' }],
+      }),
+    ]);
+  });
+
   test('preserves structured ingredient items without re-splitting numeric INCI commas', () => {
     const payload = buildPdpPayload({
       product: {

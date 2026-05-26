@@ -1960,11 +1960,12 @@ function buildVariants(product) {
     ]);
 
     let filteredOptions = filterBuilderDisplayableVariantOptions(options);
+    const normalizedTitle = asNonEmptyString(title);
     const hasReviewedSingleSkuSpecFallback =
       rawVariants.length === 1 &&
       singleSkuSizeOption &&
       !filteredOptions.length &&
-      /^(default|default title|variant \d+|single item)$/i.test(asNonEmptyString(title));
+      (!normalizedTitle || /^(default|default title|variant \d+|single item)$/i.test(normalizedTitle));
     if (hasReviewedSingleSkuSpecFallback) {
       filteredOptions = [singleSkuSizeOption];
     }
