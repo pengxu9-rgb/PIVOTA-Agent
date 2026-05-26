@@ -2309,6 +2309,137 @@ describe('external seed product detail hydration', () => {
     expect(servingGateCall?.[1]?.[3]).toBe(channelSig);
   });
 
+  test.each([
+    ['approved external siblings', 2, 3],
+    ['empty sibling group', 0, 1],
+  ])('get_pdp_v2 preserves review-required internal self-offer and hydrates %s', async (
+    _label,
+    siblingCount,
+    expectedOfferCount,
+  ) => {
+    const { app, db } = loadServerWithDb({
+      PIVOTA_API_BASE: 'https://backend.test',
+      PIVOTA_API_KEY: 'test-token',
+      PDP_IDENTITY_GRAPH_ENABLED: 'false',
+    });
+    const sigId = 'sig_1c7611cfd2520d64ad08f3c36b2ef016';
+    const groupId = sigId;
+    const internalProductId = '10064558194985';
+    const internalMerchantId = 'merch_efbc46b4619cfbdf';
+    const externalProductIds = ['ext_ordinary_niacinamide_official', 'ext_ordinary_niacinamide_ulta'];
+    const exactCatalogRow = {
+      merchant_id: internalMerchantId,
+      platform: 'shopify',
+      source_product_id: internalProductId,
+      product_key: 'prod::merch_efbc46b4619cfbdf::shopify::10064558194985',
+      pivota_signature_id: sigId,
+      content_key: 'content::ordinary::niacinamide',
+      category_path: 'beauty/skincare/serum',
+    };
+    const internalIdentityRow = {
+      ...exactCatalogRow,
+      sellable_item_group_id: groupId,
+      product_line_id: 'pl_ordinary_niacinamide',
+      review_family_id: 'rf_ordinary_niacinamide',
+      identity_status: 'review_required',
+      live_read_enabled: false,
+      review_required: true,
+      identity_confidence: 0.91,
+      match_basis: ['needs_operator_review'],
+    };
+    const siblingRows = externalProductIds.map((productId, index) => ({
+      source_listing_ref: `external_seed:${productId}`,
+      merchant_id: 'external_seed',
+      product_id: productId,
+      source_kind: 'external_seed',
+      source_tier: index === 0 ? 'brand' : 'merchant',
+      sellable_item_group_id: groupId,
+      identity_status: 'approved',
+      live_read_enabled: true,
+      review_required: false,
+      identity_confidence: 0.99 - index / 100,
+      source_payload: {
+        title: index === 0 ? 'Niacinamide 10% + Zinc 1%' : 'The Ordinary Niacinamide 10% + Zinc 1%',
+        brand: 'The Ordinary',
+        source_url:
+          index === 0
+            ? 'https://theordinary.com/en-us/niacinamide-10-zinc-1-serum.html'
+            : 'https://www.ulta.com/p/niacinamide-10-zinc-1-serum-pimprod2007111',
+      },
+      catalog_title: index === 0 ? 'Niacinamide 10% + Zinc 1%' : 'Niacinamide 10% + Zinc 1% at Ulta',
+      catalog_brand: 'The Ordinary',
+      catalog_canonical_url:
+        index === 0
+          ? 'https://theordinary.com/en-us/niacinamide-10-zinc-1-serum.html'
+          : 'https://www.ulta.com/p/niacinamide-10-zinc-1-serum-pimprod2007111',
+      catalog_image_url: 'https://cdn.example.com/ordinary-niacinamide.jpg',
+      catalog_offer_id: `offer_${productId}`,
+      catalog_sku_key: `sku_${productId}`,
+      catalog_offer_currency: 'USD',
+      catalog_offer_price: index === 0 ? '6.0' : '6.5',
+      catalog_offer_source_system: 'catalog_offers',
+      catalog_offer_source_ref: `co_${productId}`,
+    })).slice(0, siblingCount);
+    db.query.mockImplementation((sql) => {
+      const text = String(sql || '').replace(/\s+/g, ' ');
+      if (text.includes('FROM catalog_products cp') && text.includes('LEFT JOIN index_pipeline_state ips')) {
+        return Promise.resolve({ rows: [eligibleServingRow({ ...exactCatalogRow, serving_eligible: true })] });
+      }
+      if (text.includes('FROM catalog_products cp') && text.includes('WHERE cp.pivota_signature_id = $1')) {
+        return Promise.resolve({ rows: [exactCatalogRow] });
+      }
+      if (text.includes('FROM catalog_products cp') && text.includes('LEFT JOIN pdp_identity_listing pil')) {
+        return Promise.resolve({ rows: [internalIdentityRow] });
+      }
+      if (text.includes('FROM pdp_identity_listing pil') && text.includes('offer_row.offer_id')) {
+        return Promise.resolve({ rows: siblingRows });
+      }
+      if (text.includes('FROM products_cache')) {
+        return Promise.resolve({
+          rows: [{
+            product_data: {
+              merchant_id: internalMerchantId,
+              product_id: internalProductId,
+              title: 'The Ordinary Niacinamide 10% + Zinc 1%',
+              brand: 'The Ordinary',
+              currency: 'USD',
+              price: { amount: 5.9, currency: 'USD' },
+              in_stock: true,
+              platform: 'shopify',
+              platform_product_id: internalProductId,
+            },
+          }],
+        });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'get_pdp_v2',
+        payload: {
+          include: ['offers'],
+          product_ref: { merchant_id: 'external_seed', product_id: sigId },
+        },
+      })
+      .expect(200);
+
+    const offersModule = res.body.modules?.find((module) => module?.type === 'offers');
+    expect(offersModule?.data?.offers_count).toBe(expectedOfferCount);
+    expect(offersModule?.data?.offers).toHaveLength(expectedOfferCount);
+    expect(offersModule?.data?.offers?.[0]).toEqual(expect.objectContaining({
+      merchant_id: internalMerchantId,
+      product_id: internalProductId,
+      price: { amount: 5.9, currency: 'USD' },
+    }));
+    for (const productId of externalProductIds.slice(0, siblingCount)) {
+      expect(offersModule?.data?.offers).toEqual(expect.arrayContaining([
+        expect.objectContaining({ merchant_id: 'external_seed', product_id: productId }),
+      ]));
+    }
+  });
+
   test('get_pdp_v2 skips live identity graph for rich direct external_seed same-merchant groups', async () => {
     const { app, db } = loadServerWithDb({
       PIVOTA_API_BASE: 'https://backend.test',
