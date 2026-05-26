@@ -157,6 +157,24 @@ function recordRecsTimeout(stage) {
   }
 }
 
+function isAbortSignalAborted(signal) {
+  return Boolean(signal && signal.aborted === true);
+}
+
+function createSoftTimeoutAbortController() {
+  if (typeof AbortController !== 'function') return null;
+  return new AbortController();
+}
+
+function abortSoftTimeoutController(controller, reason) {
+  if (!controller || !controller.signal || controller.signal.aborted) return;
+  try {
+    controller.abort(reason);
+  } catch {
+    controller.abort();
+  }
+}
+
 function visibleFallbacksEnabled() {
   return String(process.env.PDP_RECS_VISIBLE_FALLBACKS_ENABLED || '').trim().toLowerCase() === 'true';
 }
@@ -269,12 +287,18 @@ function stableHashShort(input) {
   return crypto.createHash('sha256').update(String(input || ''), 'utf8').digest('hex').slice(0, 12);
 }
 
-async function withSoftTimeout(promise, timeoutMs, fallbackValue, onTimeout) {
+async function withSoftTimeout(promise, timeoutMs, fallbackValue, onTimeout, options = {}) {
   const timeout = Number(timeoutMs);
+  const signal = options?.signal || null;
+  if (isAbortSignalAborted(signal)) {
+    return fallbackValue;
+  }
   if (!Number.isFinite(timeout) || timeout <= 0) {
     return promise;
   }
   let timer = null;
+  let abortHandler = null;
+  const racers = [promise];
   const timeoutPromise = new Promise((resolve) => {
     timer = setTimeout(() => {
       if (typeof onTimeout === 'function') {
@@ -287,10 +311,20 @@ async function withSoftTimeout(promise, timeoutMs, fallbackValue, onTimeout) {
       resolve(fallbackValue);
     }, timeout);
   });
+  racers.push(timeoutPromise);
+  if (signal && typeof signal.addEventListener === 'function') {
+    racers.push(new Promise((resolve) => {
+      abortHandler = () => resolve(fallbackValue);
+      signal.addEventListener('abort', abortHandler, { once: true });
+    }));
+  }
   try {
-    return await Promise.race([promise, timeoutPromise]);
+    return await Promise.race(racers);
   } finally {
     if (timer) clearTimeout(timer);
+    if (signal && abortHandler && typeof signal.removeEventListener === 'function') {
+      signal.removeEventListener('abort', abortHandler);
+    }
   }
 }
 
@@ -3567,7 +3601,7 @@ function pickLayeredRecommendations({
   };
 }
 
-async function fetchInternalCandidates({ merchantId, limit, excludeMerchantId, categoryHint }) {
+async function fetchInternalCandidates({ merchantId, limit, excludeMerchantId, categoryHint, signal = null }) {
   const mid = String(merchantId || '').trim();
   const safeLimit = Math.min(Math.max(1, Number(limit || 120)), 400);
   const categoryAliases = buildNormalizedAliases(categoryHint);
@@ -3578,6 +3612,10 @@ async function fetchInternalCandidates({ merchantId, limit, excludeMerchantId, c
   }
   const out = [];
   const activeCacheWhere = activeProductsCacheSourceWhere('products_cache');
+  const finish = () =>
+    uniqueByKey(out.filter(Boolean), (p) => `${getMerchantId(p)}::${getProductId(p)}`)
+      .slice(0, safeLimit * 4);
+  if (isAbortSignalAborted(signal)) return [];
 
   try {
     if (mid && mid !== EXTERNAL_SEED_MERCHANT_ID && categoryAliases.length) {
@@ -3612,6 +3650,7 @@ async function fetchInternalCandidates({ merchantId, limit, excludeMerchantId, c
       'recommendations internal focused query failed',
     );
   }
+  if (isAbortSignalAborted(signal)) return finish();
 
   try {
     if (mid && mid !== EXTERNAL_SEED_MERCHANT_ID) {
@@ -3635,6 +3674,7 @@ async function fetchInternalCandidates({ merchantId, limit, excludeMerchantId, c
   } catch (err) {
     logger.warn({ err: err?.message || String(err), merchantId: mid }, 'recommendations internal merchant query failed');
   }
+  if (isAbortSignalAborted(signal)) return finish();
 
   if (allowVisibleFallbacks) {
     try {
@@ -3667,7 +3707,7 @@ async function fetchInternalCandidates({ merchantId, limit, excludeMerchantId, c
     }
   }
 
-  return uniqueByKey(out.filter(Boolean), (p) => `${getMerchantId(p)}::${getProductId(p)}`).slice(0, safeLimit * 4);
+  return finish();
 }
 
 async function fetchExternalCandidates({
@@ -3681,6 +3721,7 @@ async function fetchExternalCandidates({
   minFocusedCandidates = 6,
   deepDomainRecall = false,
   queryTimeoutCapMs = null,
+  signal = null,
 }) {
   if (!process.env.DATABASE_URL) {
     throw buildDatabaseNotConfiguredError('pdp_recommendations_external_candidates');
@@ -3798,6 +3839,7 @@ async function fetchExternalCandidates({
       total_returned_count: out.length,
       total_elapsed_ms: fetchStats.stages.reduce((sum, stage) => sum + (Number(stage.elapsed_ms) || 0), 0),
       timed_out_count: fetchStats.stages.filter((stage) => stage.timed_out).length,
+      aborted: isAbortSignalAborted(signal),
     };
     try {
       Object.defineProperty(out, '__externalFetchStats', {
@@ -4109,6 +4151,17 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
 
   async function runTimedExternalQuery(queryName, task, timeoutMs = PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS) {
     const startedAt = Date.now();
+    if (isAbortSignalAborted(signal)) {
+      fetchStats.stages.push({
+        name: queryName,
+        elapsed_ms: 0,
+        returned_count: 0,
+        timed_out: false,
+        timeout_ms: timeoutMs,
+        aborted: true,
+      });
+      return [];
+    }
     let timedOut = false;
     const effectiveTimeoutMs =
       queryTimeoutCapMs != null
@@ -4119,6 +4172,7 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
       effectiveTimeoutMs,
       [],
       (timeoutMs) => {
+        if (isAbortSignalAborted(signal)) return;
         timedOut = true;
         recordRecsTimeout(queryName);
         logger.warn(
@@ -4126,15 +4180,18 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
           'recommendations external query timed out',
         );
       },
+      { signal },
     );
+    const aborted = isAbortSignalAborted(signal);
     fetchStats.stages.push({
       name: queryName,
       elapsed_ms: Math.max(0, Date.now() - startedAt),
-      returned_count: Array.isArray(products) ? products.length : 0,
+      returned_count: aborted ? 0 : Array.isArray(products) ? products.length : 0,
       timed_out: timedOut,
       timeout_ms: effectiveTimeoutMs,
+      aborted,
     });
-    return products;
+    return aborted ? [] : products;
   }
 
   const loadCategoryMatches = () =>
@@ -5042,6 +5099,8 @@ async function recommend({
 
   let internalTimedOut = false;
   let externalTimedOut = false;
+  const internalCandidatesAbortController = createSoftTimeoutAbortController();
+  const externalCandidatesAbortController = createSoftTimeoutAbortController();
   const internalCandidatesTask = withSoftTimeout(
     providedInternal
       ? Promise.resolve(providedInternal)
@@ -5051,12 +5110,14 @@ async function recommend({
             limit: Math.max(60, candidateK * 10),
             excludeMerchantId: getMerchantId(baseProduct),
             categoryHint: baseLeaf,
+            signal: internalCandidatesAbortController?.signal || null,
           })
         : Promise.resolve([]),
     PDP_RECS_INTERNAL_FETCH_TIMEOUT_MS,
     [],
     () => {
       internalTimedOut = true;
+      abortSoftTimeoutController(internalCandidatesAbortController, 'pdp_recs_internal_fetch_timeout');
       logger.warn(
         {
           product_id: baseProductId,
@@ -5080,11 +5141,13 @@ async function recommend({
           minFocusedCandidates: externalFocusedRecallTarget,
           deepDomainRecall: baseProductIsExternal,
           queryTimeoutCapMs: effectiveExternalFetchTimeoutMs,
+          signal: externalCandidatesAbortController?.signal || null,
         }),
     effectiveExternalFetchTimeoutMs,
     [],
     () => {
       externalTimedOut = true;
+      abortSoftTimeoutController(externalCandidatesAbortController, 'pdp_recs_external_fetch_timeout');
       logger.warn(
         {
           product_id: baseProductId,

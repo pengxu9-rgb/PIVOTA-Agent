@@ -81,6 +81,35 @@ describe('RecommendationEngine external candidate fetch', () => {
     }
   });
 
+  test('external recall stops before DB work when candidate fetch is already aborted', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const queryWithStatementTimeoutMock = jest.fn(async () => ({ rows: [] }));
+
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async () => ({ rows: [] })),
+      queryWithStatementTimeout: queryWithStatementTimeoutMock,
+    }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const controller = new AbortController();
+    controller.abort('test_timeout');
+
+    const products = await _internals.fetchExternalCandidates({
+      brandHint: 'Krave Beauty',
+      categoryHint: 'Serum',
+      limit: 12,
+      signal: controller.signal,
+    });
+
+    expect(products).toEqual([]);
+    expect(queryWithStatementTimeoutMock).not.toHaveBeenCalled();
+    expect(products.__externalFetchStats.aborted).toBe(true);
+    expect(products.__externalFetchStats.stages.length).toBeGreaterThan(0);
+    expect(products.__externalFetchStats.stages.every((stage) => stage.aborted === true)).toBe(true);
+  });
+
   test('external recall filters a small same-domain lip pool before slow broad stages', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 
