@@ -773,6 +773,49 @@ describe('find_similar_products mainline wrapper', () => {
     expect(dbQueryMock).toHaveBeenCalledTimes(1);
   });
 
+  it('skips catalog hydration queries for card-ready candidates that already expose a sig id', async () => {
+    process.env.DATABASE_URL = 'postgres://test';
+    const dbQueryMock = jest.fn().mockResolvedValue({ rows: [] });
+    jest.doMock('../src/db', () => ({
+      query: dbQueryMock,
+    }));
+    const app = require('../src/server');
+
+    const out = await app._debug.hydrateVisibleSimilarProductSigIdsFromCatalog(
+      [
+        {
+          product_id: 'ext_ready_1',
+          external_product_id: 'ext_ready_1',
+          merchant_id: 'external_seed',
+          platform: 'external_seed',
+          pivota_signature_id: 'sig_ready1',
+          title: 'Ready External Product',
+          image_url: 'https://cdn.example.test/ready.jpg',
+          canonical_url: 'https://merchant.example.test/ready',
+          card_highlight: 'Reviewed public-facing card copy.',
+          card_highlight_source: 'official_external_seed_card',
+        },
+      ],
+      { bypassCache: true },
+    );
+
+    expect(dbQueryMock).not.toHaveBeenCalled();
+    expect(out[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'sig_ready1',
+        id: 'sig_ready1',
+        pivota_signature_id: 'sig_ready1',
+        signature_id: 'sig_ready1',
+        source_product_id: 'ext_ready_1',
+        external_product_id: 'ext_ready_1',
+        canonical_url: 'https://agent.pivota.cc/products/sig_ready1',
+        pivota_canonical_url: 'https://agent.pivota.cc/products/sig_ready1',
+        url: 'https://agent.pivota.cc/products/sig_ready1',
+        merchant_canonical_url: 'https://merchant.example.test/ready',
+      }),
+    );
+  });
+
   it('collects only reviewed external seed component refs for PDP similar', async () => {
     const app = require('../src/server');
 
