@@ -2873,8 +2873,8 @@ const PDP_SIMILAR_CARD_ENRICH_BUDGET_MS = Math.max(
   parseTimeoutMs(process.env.PDP_SIMILAR_CARD_ENRICH_BUDGET_MS, 900),
 );
 const PDP_SIMILAR_CARD_PRODUCT_INTEL_BUDGET_MS = Math.max(
-  2000,
-  parseTimeoutMs(process.env.PDP_SIMILAR_CARD_PRODUCT_INTEL_BUDGET_MS, 2000),
+  100,
+  parseTimeoutMs(process.env.PDP_SIMILAR_CARD_PRODUCT_INTEL_BUDGET_MS, 500),
 );
 const PDP_SIMILAR_CARD_DETAIL_BUDGET_MS = Math.max(
   50,
@@ -3862,6 +3862,15 @@ function resolvePdpSimilarCandidateLimit(displayLimit) {
   const limit = Math.max(1, Math.min(PDP_SIMILAR_MAX_DISPLAY_LIMIT, Number(displayLimit) || PDP_SIMILAR_DEFAULT_DISPLAY_LIMIT));
   const expanded = Math.max(limit + 12, limit * 3);
   return Math.max(limit, Math.min(PDP_SIMILAR_MAX_CANDIDATE_LIMIT, expanded));
+}
+
+function resolvePdpSimilarCardEnrichmentLimit(displayLimit, candidateLimit) {
+  const visibleLimit = Math.max(
+    1,
+    Math.min(PDP_SIMILAR_MAX_DISPLAY_LIMIT, Number(displayLimit) || PDP_SIMILAR_DEFAULT_DISPLAY_LIMIT),
+  );
+  const maxCandidateLimit = Math.max(visibleLimit, Number(candidateLimit) || visibleLimit);
+  return Math.max(visibleLimit, Math.min(maxCandidateLimit, visibleLimit + 6));
 }
 
 function isTruthyCacheBypassFlag(value) {
@@ -25468,7 +25477,7 @@ async function prewarmPdpSimilarForProduct({
     items: relatedProducts,
     checkoutToken,
     bypassCache: false,
-    maxItems: candidateLimit,
+    maxItems: resolvePdpSimilarCardEnrichmentLimit(resolvePdpSimilarDisplayLimit(payload), candidateLimit),
   });
 }
 
@@ -36404,6 +36413,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        const similarCardEnrichmentStartedAt = Date.now();
 	        const similarLimit = resolvePdpSimilarDisplayLimit(payload);
           const similarCandidateLimit = resolvePdpSimilarCandidateLimit(similarLimit);
+          const similarCardEnrichmentLimit = resolvePdpSimilarCardEnrichmentLimit(
+            similarLimit,
+            similarCandidateLimit,
+          );
         const relatedProductsForEnrichment = dedupeSimilarCandidatesByMerchantProductId([
           ...componentSimilarCandidates,
           ...relatedProducts,
@@ -36412,7 +36425,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	          items: relatedProductsForEnrichment,
 	          checkoutToken,
 	          bypassCache,
-	          maxItems: similarCandidateLimit,
+	          maxItems: similarCardEnrichmentLimit,
 	        });
         const cardEnrichmentMetadata = getSimilarCardEnrichmentMetadata(enrichedRelatedProducts);
         const missingHighlightCount = enrichedRelatedProducts.filter(
@@ -41006,7 +41019,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               items: rawProducts,
               checkoutToken,
               bypassCache,
-              maxItems: directCandidateLimit,
+              maxItems: resolvePdpSimilarCardEnrichmentLimit(limit, directCandidateLimit),
             });
             const cardEnrichmentMetadata = getSimilarCardEnrichmentMetadata(enrichedProducts);
             const visibleSimilarCandidates = filterSimilarProductsWithCardHighlights(enrichedProducts, {
