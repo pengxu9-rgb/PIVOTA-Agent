@@ -3,6 +3,7 @@ const ORIGINAL_ENV = process.env;
 describe('PDP grouped offers', () => {
   beforeEach(() => {
     jest.resetModules();
+    jest.dontMock('../src/db');
     process.env = {
       ...ORIGINAL_ENV,
       NODE_ENV: 'test',
@@ -73,6 +74,202 @@ describe('PDP grouped offers', () => {
         reason: 'member_unavailable',
       }),
     ]);
+  });
+
+  test('filters catalog-source quarantined group members while preserving unquarantined siblings', async () => {
+    process.env = {
+      ...process.env,
+      DATABASE_URL: 'postgres://test',
+    };
+    const dbQuery = jest.fn(async (sql) => {
+      const text = String(sql || '');
+      if (text.includes('surviving_members') && text.includes('catalog_source_quarantine')) {
+        return {
+          rows: [
+            {
+              members: [
+                { merchant_id: 'external_seed', product_id: 'ext_ordinary_official' },
+                { merchant_id: 'external_seed', product_id: 'ext_ordinary_ulta' },
+              ],
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+    jest.doMock('../src/db', () => ({ query: dbQuery }));
+    const app = require('../src/server');
+    const seedMember = ({ productId, url, price }) => ({
+      merchant_id: 'external_seed',
+      product_id: productId,
+      source_kind: 'external_seed',
+      source_payload: {
+        title: 'Niacinamide 10% + Zinc 1%',
+        brand: 'The Ordinary',
+        price: { amount: price, currency: 'USD' },
+        currency: 'USD',
+        canonical_url: url,
+        catalog_offer_v1: {
+          offer_id: `offer_${productId}`,
+          source_system: 'external_product_seeds_mirror_v1',
+          source_ref: productId,
+        },
+      },
+    });
+
+    const offersData = await app._debug.buildOffersFromGroupMembers({
+      productGroupId: 'sig_ordinary_niacinamide',
+      debug: true,
+      members: [
+        seedMember({
+          productId: 'ext_ordinary_official',
+          url: 'https://theordinary.deciem.com/en-us/niacinamide-10-zinc-1-serum.html',
+          price: 6,
+        }),
+        seedMember({
+          productId: 'ext_ordinary_ulta',
+          url: 'https://www.ulta.com/p/niacinamide-10-zinc-1-serum-pimprod2007111',
+          price: 6.5,
+        }),
+        seedMember({
+          productId: 'ext_jwx893_fz',
+          url: 'https://jwx893-fz.myshopify.com/products/moyu-5560894018009',
+          price: 5.99,
+        }),
+      ],
+    });
+
+    expect(offersData.offers.map((offer) => offer.product_id)).toEqual(
+      expect.arrayContaining(['ext_ordinary_official', 'ext_ordinary_ulta']),
+    );
+    expect(offersData.offers.map((offer) => offer.product_id)).not.toContain('ext_jwx893_fz');
+    expect(offersData.diagnostics.source_quarantine_filtered_count).toBe(1);
+    const quarantineCall = dbQuery.mock.calls.find(([sql]) =>
+      String(sql || '').includes('catalog_source_quarantine'),
+    );
+    expect(String(quarantineCall?.[0] || '')).toContain('cp_offer.source_domain');
+    expect(String(quarantineCall?.[0] || '')).toContain("q.match_type = 'merchant_platform'");
+    expect(String(quarantineCall?.[0] || '')).toContain("q.match_type = 'source_system_ref'");
+  });
+
+  test('preserves a single self offer even when its source is quarantined', async () => {
+    process.env = {
+      ...process.env,
+      DATABASE_URL: 'postgres://test',
+    };
+    const dbQuery = jest.fn(async () => ({ rows: [] }));
+    jest.doMock('../src/db', () => ({ query: dbQuery }));
+    const app = require('../src/server');
+
+    const offersData = await app._debug.buildOffersFromGroupMembers({
+      productGroupId: 'sig_jwx_standalone',
+      debug: true,
+      members: [
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ext_jwx_standalone',
+          source_kind: 'external_seed',
+          source_payload: {
+            title: 'Standalone Pivota Market Item',
+            brand: 'Pivota Market',
+            price: { amount: 12, currency: 'EUR' },
+            currency: 'EUR',
+            canonical_url: 'https://jwx893-fz.myshopify.com/products/standalone-item',
+            catalog_offer_v1: {
+              offer_id: 'offer_ext_jwx_standalone',
+              source_system: 'external_product_seeds_mirror_v1',
+              source_ref: 'ext_jwx_standalone',
+            },
+          },
+        },
+      ],
+    });
+
+    expect(dbQuery).not.toHaveBeenCalled();
+    expect(offersData.offers).toHaveLength(1);
+    expect(offersData.offers[0]).toEqual(expect.objectContaining({
+      merchant_id: 'external_seed',
+      product_id: 'ext_jwx_standalone',
+      price: { amount: 12, currency: 'EUR' },
+    }));
+    expect(offersData.diagnostics.source_quarantine_filtered_count).toBe(0);
+  });
+
+  test('hydrates missing internal offer merchant names from catalog_merchants', async () => {
+    process.env = {
+      ...process.env,
+      DATABASE_URL: 'postgres://test',
+    };
+    const merchantId = 'merch_efbc46b4619cfbdf';
+    const productId = '10064558194985';
+    const dbQuery = jest.fn(async (sql) => {
+      const text = String(sql || '');
+      if (text.includes('surviving_members') && text.includes('catalog_source_quarantine')) {
+        return {
+          rows: [{ members: [{ merchant_id: merchantId, product_id: productId }] }],
+        };
+      }
+      if (text.includes('FROM catalog_merchants')) {
+        return { rows: [{ merchant_id: merchantId, merchant_name: 'Chydan' }] };
+      }
+      return { rows: [] };
+    });
+    jest.doMock('../src/db', () => ({ query: dbQuery }));
+    const app = require('../src/server');
+
+    const offersData = await app._debug.buildOffersFromGroupMembers({
+      productGroupId: 'sig_ordinary_niacinamide',
+      members: [{ merchant_id: merchantId, product_id: productId, platform: 'shopify' }],
+      prefetchedProducts: [
+        {
+          merchant_id: merchantId,
+          product_id: productId,
+          title: 'The Ordinary Niacinamide 10% + Zinc 1%',
+          brand: 'The Ordinary',
+          price: { amount: 12, currency: 'USD' },
+          currency: 'USD',
+          in_stock: true,
+        },
+      ],
+    });
+
+    expect(offersData.offers).toHaveLength(1);
+    expect(offersData.offers[0]).toEqual(expect.objectContaining({
+      merchant_id: merchantId,
+      product_id: productId,
+      merchant_name: 'Chydan',
+    }));
+  });
+
+  test('labels Deciem-hosted The Ordinary external seed offers with the canonical seller name', async () => {
+    const app = require('../src/server');
+
+    const offersData = await app._debug.buildOffersFromGroupMembers({
+      productGroupId: 'sig_ordinary_niacinamide',
+      members: [
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ext_ordinary_official',
+          source_kind: 'external_seed',
+          source_payload: {
+            title: 'Niacinamide 10% + Zinc 1%',
+            brand: 'The Ordinary',
+            price: { amount: 6, currency: 'USD' },
+            currency: 'USD',
+            canonical_url: 'https://theordinary.deciem.com/en-us/niacinamide-10-zinc-1-serum.html',
+            catalog_offer_v1: {
+              offer_id: 'offer_ext_ordinary_official',
+              source_system: 'external_product_seeds_mirror_v1',
+              source_ref: 'ext_ordinary_official',
+            },
+          },
+        },
+      ],
+    });
+
+    expect(offersData.offers).toHaveLength(1);
+    expect(offersData.offers[0].merchant_name).toBe('The Ordinary');
+    expect(offersData.offers[0].merchant_name).not.toBe('Theordinary');
   });
 
   test('normalizes cents-style external seed offer prices for beauty identity payloads', async () => {
@@ -602,21 +799,22 @@ describe('PDP grouped offers', () => {
         items: [],
         metadata: expect.objectContaining({
           similar_status: 'deferred',
-          reason_code: 'SIMILAR_STAGE_BUDGET_EXCEEDED',
+          reason_code: 'SIMILAR_DEFERRED_FIRST_PAINT',
+          timeout_reason_code: 'SIMILAR_STAGE_BUDGET_EXCEEDED',
           sync_budget_ms: 40,
         }),
       }),
     );
   });
 
-  test('does not let top-level PDP cache bypass poison similar recommendation cache', () => {
+  test('honors top-level and explicit similar recommendation cache bypass flags', () => {
     const app = require('../src/server');
 
     expect(
       app._debug.resolvePdpSimilarCacheBypass({
         options: { cache_bypass: true },
       }),
-    ).toBe(false);
+    ).toBe(true);
 
     expect(
       app._debug.resolvePdpSimilarCacheBypass({
@@ -657,9 +855,9 @@ describe('PDP grouped offers', () => {
     expect(args.fetchArgs.k).toBe(args.candidateLimit);
     expect(args.fetchArgs.options).toEqual(
       expect.objectContaining({
-        no_cache: false,
-        cache_bypass: false,
-        bypass_cache: false,
+        no_cache: true,
+        cache_bypass: true,
+        bypass_cache: true,
       }),
     );
   });

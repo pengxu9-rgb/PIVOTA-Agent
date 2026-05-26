@@ -2335,6 +2335,9 @@ describe('external seed product detail hydration', () => {
       pivota_signature_id: sigId,
       content_key: 'content::ordinary::niacinamide',
       category_path: 'beauty/skincare/serum',
+      source_domain: 'jwx893-fz.myshopify.com',
+      source_system: 'shopify_products_sync',
+      source_ref: internalProductId,
     };
     const internalIdentityRow = {
       ...exactCatalogRow,
@@ -2394,6 +2397,11 @@ describe('external seed product detail hydration', () => {
       if (text.includes('FROM pdp_identity_listing pil') && text.includes('offer_row.offer_id')) {
         return Promise.resolve({ rows: siblingRows });
       }
+      if (text.includes('FROM catalog_merchants')) {
+        return Promise.resolve({
+          rows: [{ merchant_id: internalMerchantId, merchant_name: 'Chydan' }],
+        });
+      }
       if (text.includes('FROM products_cache')) {
         return Promise.resolve({
           rows: [{
@@ -2428,9 +2436,13 @@ describe('external seed product detail hydration', () => {
     const offersModule = res.body.modules?.find((module) => module?.type === 'offers');
     expect(offersModule?.data?.offers_count).toBe(expectedOfferCount);
     expect(offersModule?.data?.offers).toHaveLength(expectedOfferCount);
-    expect(offersModule?.data?.offers?.[0]).toEqual(expect.objectContaining({
+    const internalOffer = offersModule?.data?.offers?.find(
+      (offer) => offer?.merchant_id === internalMerchantId && offer?.product_id === internalProductId,
+    );
+    expect(internalOffer).toEqual(expect.objectContaining({
       merchant_id: internalMerchantId,
       product_id: internalProductId,
+      merchant_name: 'Chydan',
       price: { amount: 5.9, currency: 'USD' },
     }));
     for (const productId of externalProductIds.slice(0, siblingCount)) {
