@@ -1,0 +1,616 @@
+{
+  "generated_at": "2026-05-26T01:15:49.801Z",
+  "mode": "dry_run",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": true,
+  "requested_ids": 5,
+  "fetched_rows": 5,
+  "mirror_rows": 2,
+  "planned_sku_rows": 12,
+  "planned_offer_rows": 12,
+  "planned_index_state_rows": 2,
+  "missing_ids": [],
+  "skipped": [
+    {
+      "external_product_id": "ext_37711c1df803ce80b791b2c5",
+      "reason": "identity_review_required"
+    },
+    {
+      "external_product_id": "ext_48b334f563d1069621c1508e",
+      "reason": "identity_review_required"
+    },
+    {
+      "external_product_id": "ext_9d97b1e55b4bfb6c13e71289",
+      "reason": "identity_review_required"
+    }
+  ],
+  "applied": {
+    "mode": "dry_run",
+    "existing_before": {
+      "catalog_products": 2,
+      "catalog_skus": 0,
+      "catalog_offers": 0,
+      "product_group_members": 0
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 12
+    },
+    "product_upserts": 0,
+    "sku_upserts": 0,
+    "offer_upserts": 0,
+    "group_member_upserts": 0,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 0,
+    "identity_live_read_updates": 0
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_794deab047eb4a75225329df",
+      "product_key": "prod::external_seed::external_seed::ext_794deab047eb4a75225329df",
+      "product_group_id": "sig_de2c100382224878790af271",
+      "title": "Color-correcting Primer",
+      "brand": "Joocyee",
+      "product_type": "Primer",
+      "category": "Primer",
+      "category_path": "beauty/makeup/face/primer",
+      "canonical_url": "https://joocyee.com/products/color-correcting-primer",
+      "pivota_signature_id": "sig_6c0ec349bd054178a2d4de2e237c7b1f",
+      "sku_rows": 2,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_794deab047eb4a75225329df::sku_c2776b5f9515420165e1",
+        "product_key": "prod::external_seed::external_seed::ext_794deab047eb4a75225329df",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_794deab047eb4a75225329df",
+        "source_variant_id": "ext_794deab047eb4a75225329df:53960867676470",
+        "source_domain": "joocyee.com",
+        "sku": "6978647803329",
+        "barcode": null,
+        "title": "Soft Light Purple",
+        "currency": "USD",
+        "image_url": "https://joocyee.com/cdn/shop/files/01_2f246575-5c52-40b0-b6a5-5a408d7bdb52.jpg?v=1777277719",
+        "visible_attributes": {
+          "Color": "Soft Light Purple"
+        },
+        "visible_option_labels": {
+          "Color": "Soft Light Purple"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_794deab047eb4a75225329df",
+          "raw_variant_id": "53960867676470",
+          "source_variant_id": "ext_794deab047eb4a75225329df:53960867676470",
+          "variant_sku": "6978647803329",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://joocyee.com/products/color-correcting-primer",
+          "external_redirect_url": "https://joocyee.com/products/color-correcting-primer",
+          "price": "18.9",
+          "price_amount": 18.9,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://joocyee.com/cdn/shop/files/01_2f246575-5c52-40b0-b6a5-5a408d7bdb52.jpg?v=1777277719",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Color": "Soft Light Purple"
+          },
+          "raw_variant": {
+            "sku": "6978647803329",
+            "url": "https://joocyee.com/products/color-correcting-primer?variant=53960867676470&utm_source=pivota&utm_medium=affiliate",
+            "price": "18.90",
+            "stock": "In Stock",
+            "title": "Soft Light Purple",
+            "options": [
+              {
+                "name": "Color",
+                "value": "Soft Light Purple"
+              }
+            ],
+            "currency": "USD",
+            "deep_link": "https://joocyee.com/products/color-correcting-primer?variant=53960867676470&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://joocyee.com/cdn/shop/files/01_2f246575-5c52-40b0-b6a5-5a408d7bdb52.jpg?v=1777277719",
+            "image_urls": [
+              "https://joocyee.com/cdn/shop/files/01_2f246575-5c52-40b0-b6a5-5a408d7bdb52.jpg?v=1777277719",
+              "https://joocyee.com/cdn/shop/files/02-id.jpg?v=1777277736",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/b29a020a8b854e14e37563ac56c10b27.jpg?v=1777277765",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/9ae9a560a9e3371478e67f927b81bc89.jpg?v=1777277765",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/0c70a81518926b795fbb78c8b50c785b_a1b00473-fdae-48b5-a1ae-77652c5fede0.jpg?v=1777277765",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/b29a020a8b854e14e37563ac56c10b27_985d8f0f-bc52-49a6-ad77-4f3b30ab3871.jpg?v=1777355163",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/02_f2736478-dcc0-41e3-b415-c9189693db2e.jpg?v=1777277736",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/02_3e08a805-a6d2-43fa-9609-d26c504eef66.jpg?v=1777277736",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/01_0830c177-3ce7-4da8-8a1f-3b1a4fab215d.jpg?v=1777277720",
+              "https://joocyee.com/cdn/shop/files/joocyeelogo_747519d3-70a5-4660-8122-09d597d53a9b.png?v=1741988965",
+              "https://joocyee.com/cdn/shop/files/joocyeelogo_747519d3-70a5-4660-8122-09d597d53a9b.png?crop=center&v=1741988965",
+              "https://joocyee.com/cdn/shop/files/147.jpg?v=1776939601",
+              "https://joocyee.com/cdn/shop/files/147.jpg?crop=center&v=1776939601",
+              "https://joocyee.com/cdn/shop/files/503-1.jpg?v=1774515866",
+              "https://joocyee.com/cdn/shop/files/503-1.jpg?crop=center&v=1774515866",
+              "https://joocyee.com/cdn/shop/files/jelly_eyeshadow_stick-mt10.jpg?v=1773637851",
+              "https://joocyee.com/cdn/shop/files/jelly_eyeshadow_stick-mt10.jpg?crop=center&v=1773637851",
+              "https://joocyee.com/cdn/shop/files/Joocyee-Lookbook-Multi-Palette-01.jpg?v=1761030485",
+              "https://joocyee.com/cdn/shop/files/Joocyee-Lookbook-Multi-Palette-01.jpg?crop=center&v=1761030485",
+              "https://joocyee.com/cdn/shop/files/20-id.jpg?v=1778493026",
+              "https://joocyee.com/cdn/shop/files/20-id.jpg?crop=center&v=1778493026",
+              "https://joocyee.com/cdn/shop/files/800-id.jpg?v=1776669457",
+              "https://joocyee.com/cdn/shop/files/800-id.jpg?crop=center&v=1776669457",
+              "https://joocyee.com/cdn/shop/files/01-id.jpg?v=1777277719",
+              "https://joocyee.com/cdn/shop/files/01-id.jpg?crop=center&v=1777277719",
+              "https://joocyee.com/cdn/shop/files/id_ccf0f866-ef58-4031-8bff-d63f391c253d.jpg?v=1776935136",
+              "https://joocyee.com/cdn/shop/files/id_ccf0f866-ef58-4031-8bff-d63f391c253d.jpg?crop=center&v=1776935136",
+              "https://joocyee.com/cdn/shop/files/712-id.jpg?v=1776320669",
+              "https://joocyee.com/cdn/shop/files/712-id.jpg?crop=center&v=1776320669",
+              "https://joocyee.com/cdn/shop/files/b58ee6f8673b73bcb386257c2d38ca49_cc028632-149d-479e-9d32-2c84cc948b19.jpg?v=1776927461",
+              "https://joocyee.com/cdn/shop/files/b58ee6f8673b73bcb386257c2d38ca49_cc028632-149d-479e-9d32-2c84cc948b19.jpg?crop=center&v=1776927461",
+              "https://joocyee.com/cdn/shop/files/1_9a72da3b-2ca3-4bfa-a362-c8f79ffdb493.jpg?v=1775617031",
+              "https://joocyee.com/cdn/shop/files/1_9a72da3b-2ca3-4bfa-a362-c8f79ffdb493.jpg?crop=center&v=1775617031",
+              "https://joocyee.com/cdn/shop/files/spring-flow-all-in-giftbox-5.jpg?v=1775029889",
+              "https://joocyee.com/cdn/shop/files/spring-flow-all-in-giftbox-5.jpg?crop=center&v=1775029889",
+              "https://joocyee.com/cdn/shop/files/f701c932c3a3ebcf8a6f5eb480e28dc5_cc647997-f212-4f3a-a35d-89c5de991e4d.jpg?v=1765182502",
+              "https://joocyee.com/cdn/shop/files/f701c932c3a3ebcf8a6f5eb480e28dc5_cc647997-f212-4f3a-a35d-89c5de991e4d.jpg?crop=center&v=1765182502",
+              "https://joocyee.com/cdn/shop/files/Tipsy_Night_Gift_Set_01.jpg?v=1764661210",
+              "https://joocyee.com/cdn/shop/files/Tipsy_Night_Gift_Set_01.jpg?crop=center&v=1764661210",
+              "https://joocyee.com/cdn/shop/files/joocyee_spring_mega_sale.jpg?v=1778211515",
+              "https://joocyee.com/cdn/shop/files/joocyee_spring_mega_sale.jpg?crop=center&v=1778211515",
+              "https://joocyee.com/cdn/shop/files/menu-cotd.jpg?v=1775616372",
+              "https://joocyee.com/cdn/shop/files/menu-cotd.jpg?crop=center&v=1775616372",
+              "https://joocyee.com/cdn/shop/files/menu_bb3e61bb-bd0b-4af7-96f0-2205ee0b084d.jpg?v=1772262947",
+              "https://joocyee.com/cdn/shop/files/menu_bb3e61bb-bd0b-4af7-96f0-2205ee0b084d.jpg?crop=center&v=1772262947"
+            ],
+            "variant_id": "53960867676470",
+            "description": "Naturally translucent, no chalky white cast\n\nBlends seamlessly in 3 seconds with bare hand.\n\nFormulated with cactus flower extract to deliver long-lasting hydration and moisture.\n\nExclusive pigment grinding technology blends perfectly with multiple skin types.\n\n0.25μm covering particles refined through 6 grinding processes for a non-caky, undetectable finish.\n\nShade Options:\n\nSoft Light Green\nNeutralizes redness and blemishes to restore a clear, even complexion.\n\nSoft Light Purple\nBrightens dull, sallow skin for a translucent, radiant glow.\n\nNET WT.: 1.01oz / 30g",
+            "option_name": "Color",
+            "product_url": "https://joocyee.com/products/color-correcting-primer",
+            "option_value": "Soft Light Purple"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:b851e0883eff539946963fa71a518103",
+        "sku_key": "prod::external_seed::external_seed::ext_794deab047eb4a75225329df::sku_c2776b5f9515420165e1",
+        "product_key": "prod::external_seed::external_seed::ext_794deab047eb4a75225329df",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 18.9,
+        "merchant_effective_price": 18.9,
+        "estimated_best_price": 18.9,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_ebb12bb4d8f9c3e65b57a8f3",
+        "source_domain": "joocyee.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_ebb12bb4d8f9c3e65b57a8f3",
+          "external_product_id": "ext_794deab047eb4a75225329df",
+          "domain": "joocyee.com",
+          "market": "US",
+          "product_title": "Color-correcting Primer",
+          "variant_title": "Soft Light Purple",
+          "variant_sku": "6978647803329",
+          "raw_variant_id": "53960867676470",
+          "url": "https://joocyee.com/products/color-correcting-primer",
+          "offer_url": "https://joocyee.com/products/color-correcting-primer",
+          "canonical_url": "https://joocyee.com/products/color-correcting-primer",
+          "destination_url": "https://joocyee.com/products/color-correcting-primer",
+          "external_redirect_url": "https://joocyee.com/products/color-correcting-primer",
+          "merchant_display_name": "Joocyee",
+          "price": "18.9",
+          "price_amount": 18.9,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-14T00:47:50.939Z",
+            "evidence_url": "https://joocyee.com/products/color-correcting-primer",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-14T00:47:50.939Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://joocyee.com/products/color-correcting-primer"
+            },
+            "regional_price": {
+              "amount": 18.9,
+              "currency": "USD",
+              "display_raw": "18.90",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://joocyee.com/products/color-correcting-primer",
+              "captured_at": "2026-05-14T00:47:50.939Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-14T00:47:50.939Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-14T00:47:50.939Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-14T00:47:50.939Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 18.9,
+              "currency": "USD",
+              "display_raw": "18.90",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://joocyee.com/products/color-correcting-primer",
+              "captured_at": "2026-05-14T00:47:50.939Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-14T00:47:50.939Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 569
+      }
+    },
+    {
+      "external_product_id": "ext_bb9685457f5a919c945ee9ce",
+      "product_key": "prod::external_seed::external_seed::ext_bb9685457f5a919c945ee9ce",
+      "product_group_id": "sig_40f7c9b410f2e1d61e4e00e4",
+      "title": "Glazed Lip Gloss",
+      "brand": "Joocyee",
+      "product_type": "Lip Color",
+      "category": "Lip Color",
+      "category_path": "beauty/makeup/lip",
+      "canonical_url": "https://joocyee.com/products/glazed-lip-gloss",
+      "pivota_signature_id": "sig_dd7b1e29d9f60d048b5ced2dbdbb9b6b",
+      "sku_rows": 10,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_bb9685457f5a919c945ee9ce::sku_6187dbcde8d590454de7",
+        "product_key": "prod::external_seed::external_seed::ext_bb9685457f5a919c945ee9ce",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_bb9685457f5a919c945ee9ce",
+        "source_variant_id": "ext_bb9685457f5a919c945ee9ce:54012522430774",
+        "source_domain": "joocyee.com",
+        "sku": "6978647803206",
+        "barcode": null,
+        "title": "20 Cherry Blossom Glow",
+        "currency": "USD",
+        "image_url": "https://joocyee.com/cdn/shop/files/20_28b411f6-d59a-4cd6-940f-a17820bf95a8.jpg?v=1778493035",
+        "visible_attributes": {
+          "Color": "20 Cherry Blossom Glow"
+        },
+        "visible_option_labels": {
+          "Color": "20 Cherry Blossom Glow"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_bb9685457f5a919c945ee9ce",
+          "raw_variant_id": "54012522430774",
+          "source_variant_id": "ext_bb9685457f5a919c945ee9ce:54012522430774",
+          "variant_sku": "6978647803206",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://joocyee.com/products/glazed-lip-gloss",
+          "external_redirect_url": "https://joocyee.com/products/glazed-lip-gloss",
+          "price": "19.9",
+          "price_amount": 19.9,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://joocyee.com/cdn/shop/files/20_28b411f6-d59a-4cd6-940f-a17820bf95a8.jpg?v=1778493035",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Color": "20 Cherry Blossom Glow"
+          },
+          "raw_variant": {
+            "sku": "6978647803206",
+            "url": "https://joocyee.com/products/glazed-lip-gloss?variant=54012522430774&utm_source=pivota&utm_medium=affiliate",
+            "price": "19.90",
+            "stock": "In Stock",
+            "title": "20 Cherry Blossom Glow",
+            "options": [
+              {
+                "name": "Color",
+                "value": "20 Cherry Blossom Glow"
+              }
+            ],
+            "currency": "USD",
+            "deep_link": "https://joocyee.com/products/glazed-lip-gloss?variant=54012522430774&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://joocyee.com/cdn/shop/files/20_28b411f6-d59a-4cd6-940f-a17820bf95a8.jpg?v=1778493035",
+            "image_urls": [
+              "https://joocyee.com/cdn/shop/files/20_28b411f6-d59a-4cd6-940f-a17820bf95a8.jpg?v=1778493035",
+              "https://joocyee.com/cdn/shop/files/20-id.jpg?v=1778493026",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/80_90dfa7f7-370c-4a63-9ff5-cf77a2719972.jpg?v=1778493127",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/9_50a92f5a-9013-49d5-b7fb-89bc8297f58d.jpg?v=1778493175",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/4_7a171235-885b-49b4-aa89-16a8ee24fe53.jpg?v=1778493175",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/1_dccae7a8-5940-458b-963a-e4feb9221013.jpg?v=1778493175",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/0c70a81518926b795fbb78c8b50c785b_28ad2a2f-7e2f-4015-bc23-32da42b37721.jpg?v=1778493175",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/20_3867b598-a665-4ec7-b99f-17f27a82f085.jpg?v=1778493036",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/20_6483ac0a-3fcb-4a7a-bc23-0ca069fb6d9b.jpg?v=1778493036",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/22.jpg?v=1778493050",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/22_1450e1b3-b49f-40db-b6fa-3234fcca9fc0.jpg?v=1778493051",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/22_d007c9a6-5112-4382-9e73-60d332ebdaa4.jpg?v=1778493051",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/26.jpg?v=1778493060",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/26_310c6b3e-fb72-4917-8606-f35806826b90.jpg?v=1778493060",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/28.jpg?v=1778493077",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/28_84ead28e-9e97-4a1b-9c63-5a90fae1a496.jpg?v=1778496386",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/60.jpg?v=1778493090",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/60_0e57a02d-9446-41a4-9642-06b98eed49ae.jpg?v=1778493091",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/60_274f2a37-d878-42d5-9fc9-ff0cc0431b3b.jpg?v=1778493091",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/66.jpg?v=1778493104",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/66_a1446e6f-3572-46f5-8296-20f848b45445.jpg?v=1778493105",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/66_200a93c7-cdc7-468e-9d07-a9acdda16b95.jpg?v=1778493104",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/68.jpg?v=1778493116",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/68_baa93462-4b6e-47a8-8694-80cb891e96f0.jpg?v=1778493116",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/80.jpg?v=1778493127",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/80_259fed6c-0dfd-4bbd-839c-d82d034aecd7.jpg?v=1778493127",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/82.jpg?v=1778493137",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/82_46402418-fb16-4b19-b5eb-6b51480291f6.jpg?v=1778493137",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/85.jpg?v=1778493146",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/85_85619c49-b2a4-4755-ad0f-6f11a4370c0c.jpg?v=1778493147",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/85_a1704b30-ab26-42f1-b738-53218a2b43f5.jpg?v=1778493147",
+              "https://judgeme.imgix.net/joocyee/1778659237__img_4382__original.jpeg?auto=format&w=160",
+              "https://judgeme.imgix.net/joocyee/1778658964__img_4379__original.jpeg?auto=format&w=160",
+              "https://joocyee.com/cdn/shop/files/joocyeelogo_747519d3-70a5-4660-8122-09d597d53a9b.png?v=1741988965",
+              "https://joocyee.com/cdn/shop/files/joocyeelogo_747519d3-70a5-4660-8122-09d597d53a9b.png?crop=center&v=1741988965",
+              "https://joocyee.com/cdn/shop/files/147.jpg?v=1776939601",
+              "https://joocyee.com/cdn/shop/files/147.jpg?crop=center&v=1776939601",
+              "https://joocyee.com/cdn/shop/files/503-1.jpg?v=1774515866",
+              "https://joocyee.com/cdn/shop/files/503-1.jpg?crop=center&v=1774515866",
+              "https://joocyee.com/cdn/shop/files/jelly_eyeshadow_stick-mt10.jpg?v=1773637851",
+              "https://joocyee.com/cdn/shop/files/jelly_eyeshadow_stick-mt10.jpg?crop=center&v=1773637851",
+              "https://joocyee.com/cdn/shop/files/Joocyee-Lookbook-Multi-Palette-01.jpg?v=1761030485",
+              "https://joocyee.com/cdn/shop/files/Joocyee-Lookbook-Multi-Palette-01.jpg?crop=center&v=1761030485",
+              "https://joocyee.com/cdn/shop/files/smoky_gloss.jpg?v=1773025772",
+              "https://joocyee.com/cdn/shop/files/smoky_gloss.jpg?crop=center&v=1773025772",
+              "https://joocyee.com/cdn/shop/files/20-id.jpg?crop=center&v=1778493026",
+              "https://joocyee.com/cdn/shop/files/800-id.jpg?v=1776669457",
+              "https://joocyee.com/cdn/shop/files/800-id.jpg?crop=center&v=1776669457",
+              "https://joocyee.com/cdn/shop/files/01-id.jpg?v=1777277719",
+              "https://joocyee.com/cdn/shop/files/01-id.jpg?crop=center&v=1777277719",
+              "https://joocyee.com/cdn/shop/files/id_ccf0f866-ef58-4031-8bff-d63f391c253d.jpg?v=1776935136",
+              "https://joocyee.com/cdn/shop/files/id_ccf0f866-ef58-4031-8bff-d63f391c253d.jpg?crop=center&v=1776935136",
+              "https://joocyee.com/cdn/shop/files/712-id.jpg?v=1776320669",
+              "https://joocyee.com/cdn/shop/files/712-id.jpg?crop=center&v=1776320669",
+              "https://joocyee.com/cdn/shop/files/b58ee6f8673b73bcb386257c2d38ca49_cc028632-149d-479e-9d32-2c84cc948b19.jpg?v=1776927461",
+              "https://joocyee.com/cdn/shop/files/b58ee6f8673b73bcb386257c2d38ca49_cc028632-149d-479e-9d32-2c84cc948b19.jpg?crop=center&v=1776927461",
+              "https://joocyee.com/cdn/shop/files/1_9a72da3b-2ca3-4bfa-a362-c8f79ffdb493.jpg?v=1775617031",
+              "https://joocyee.com/cdn/shop/files/1_9a72da3b-2ca3-4bfa-a362-c8f79ffdb493.jpg?crop=center&v=1775617031",
+              "https://joocyee.com/cdn/shop/files/spring-flow-all-in-giftbox-5.jpg?v=1775029889",
+              "https://joocyee.com/cdn/shop/files/spring-flow-all-in-giftbox-5.jpg?crop=center&v=1775029889",
+              "https://joocyee.com/cdn/shop/files/f701c932c3a3ebcf8a6f5eb480e28dc5_cc647997-f212-4f3a-a35d-89c5de991e4d.jpg?v=1765182502",
+              "https://joocyee.com/cdn/shop/files/f701c932c3a3ebcf8a6f5eb480e28dc5_cc647997-f212-4f3a-a35d-89c5de991e4d.jpg?crop=center&v=1765182502",
+              "https://joocyee.com/cdn/shop/files/Tipsy_Night_Gift_Set_01.jpg?v=1764661210",
+              "https://joocyee.com/cdn/shop/files/Tipsy_Night_Gift_Set_01.jpg?crop=center&v=1764661210",
+              "https://joocyee.com/cdn/shop/files/joocyee_spring_mega_sale.jpg?v=1778211515",
+              "https://joocyee.com/cdn/shop/files/joocyee_spring_mega_sale.jpg?crop=center&v=1778211515",
+              "https://joocyee.com/cdn/shop/files/menu-cotd.jpg?v=1775616372",
+              "https://joocyee.com/cdn/shop/files/menu-cotd.jpg?crop=center&v=1775616372",
+              "https://joocyee.com/cdn/shop/files/menu_bb3e61bb-bd0b-4af7-96f0-2205ee0b084d.jpg?v=1772262947",
+              "https://joocyee.com/cdn/shop/files/menu_bb3e61bb-bd0b-4af7-96f0-2205ee0b084d.jpg?crop=center&v=1772262947"
+            ],
+            "variant_id": "54012522430774",
+            "description": "All-Day Wear, Always Luminous\n\nEvolutionary 「Low Temperature Formulation」 Film-Forming Tech\n\n90% Essence Infusion Creamy-smooth texture on lips\n\nThree trendy shade families Flattering for all skin tones\n\nShade Options:\n\nMuted Pink Tone for Delicate Makeup\n\n22 Rose Glow Sheer Icy Nude Rose\n\n20 Cherry Blossom Glow Fresh Peach Blossom Pink\n\n26 Lilac Glow Low-saturation Grey Pink\n\nVersatile Reddish Shades\n\n66 Oolong Glow Glazed Sienna Red\n\n60 Grape Glow Dewy Plum Glaze\n\n68 Black Tea Glow Intense Brownish Red\n\nStylish Signature Brown Tones\n\n80 Moonlight Glow Sheer Nude Apricot\n\n82 Amber Glow Amber Cashew Yellow Brown\n\n85 Dune Glow Cinnamon Icy Coffee Nude Brown\n\nNet WT.: 0.14oz/4g",
+            "option_name": "Color",
+            "product_url": "https://joocyee.com/products/glazed-lip-gloss",
+            "option_value": "20 Cherry Blossom Glow"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:42b5de46e4fee43c48e4861fd5b5e619",
+        "sku_key": "prod::external_seed::external_seed::ext_bb9685457f5a919c945ee9ce::sku_6187dbcde8d590454de7",
+        "product_key": "prod::external_seed::external_seed::ext_bb9685457f5a919c945ee9ce",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 19.9,
+        "merchant_effective_price": 19.9,
+        "estimated_best_price": 19.9,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_045c86298b3f262f544f3fc3",
+        "source_domain": "joocyee.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_045c86298b3f262f544f3fc3",
+          "external_product_id": "ext_bb9685457f5a919c945ee9ce",
+          "domain": "joocyee.com",
+          "market": "US",
+          "product_title": "Glazed Lip Gloss",
+          "variant_title": "20 Cherry Blossom Glow",
+          "variant_sku": "6978647803206",
+          "raw_variant_id": "54012522430774",
+          "url": "https://joocyee.com/products/glazed-lip-gloss",
+          "offer_url": "https://joocyee.com/products/glazed-lip-gloss",
+          "canonical_url": "https://joocyee.com/products/glazed-lip-gloss",
+          "destination_url": "https://joocyee.com/products/glazed-lip-gloss",
+          "external_redirect_url": "https://joocyee.com/products/glazed-lip-gloss",
+          "merchant_display_name": "Joocyee",
+          "price": "19.9",
+          "price_amount": 19.9,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-14T00:47:08.885Z",
+            "evidence_url": "https://joocyee.com/products/glazed-lip-gloss",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-14T00:47:08.885Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://joocyee.com/products/glazed-lip-gloss"
+            },
+            "regional_price": {
+              "amount": 19.9,
+              "currency": "USD",
+              "display_raw": "19.90",
+              "price_type": "sale",
+              "compare_at_amount": 22.9,
+              "compare_at_currency": "USD",
+              "compare_at_display_raw": "22.90",
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://joocyee.com/products/glazed-lip-gloss",
+              "captured_at": "2026-05-14T00:47:08.885Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-14T00:47:08.885Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-14T00:47:08.885Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-14T00:47:08.885Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 19.9,
+              "currency": "USD",
+              "display_raw": "19.90",
+              "price_type": "sale",
+              "compare_at_amount": 22.9,
+              "compare_at_currency": "USD",
+              "compare_at_display_raw": "22.90",
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://joocyee.com/products/glazed-lip-gloss",
+              "captured_at": "2026-05-14T00:47:08.885Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-14T00:47:08.885Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 684
+      }
+    }
+  ]
+}

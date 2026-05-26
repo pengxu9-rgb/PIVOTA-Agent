@@ -1,0 +1,814 @@
+{
+  "generated_at": "2026-05-26T01:14:18.875Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 14,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_33c22007402df5da28b015c5",
+      "sellable_item_group_id": "sig_33c22007402df5da28b015c5",
+      "product_line_id": "pl_1d2d74b10203faec31b67324",
+      "review_family_id": "rf_1d2d74b10203faec31b67324",
+      "brand_name": "Medicube",
+      "category_paths": [
+        "Toner"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Exosome Cica Calming Toner",
+      "subtitle": "Daily Soothing Toner for balanced hydration & skin texture\n\nSoothing stressed skin and improves skin texture, transforming it into a glowing complexion\n\nLIGHTWEIGHT SOOTHING FACE TONER:\nFor sebum care, Flawless skin, it provides excellent soothing and skin texture improvement with a non-sticky finish to\nachieve glass skin.\n\nEXOSOME CICA:\nMedicube's Exosome Cica is developed in a nano size that is 1/510 smaller than pores, delivering 5.3 times more powerful\nskin texture improvement and soothing effects than traditional Cica.\n\nKEY INGREDIENTS:\nExosome Cica, formulated in a nano size smaller than pores, is effective for soothing and improving skin texture.\nHeartleaf and tea tree, it's low irritating and is effective in balancing oil and moisture while providing hydration.\n\nFOR ALL SKIN TYPES:\nWith low-irritating ingredients, it provides a clear and even skin tone while hydrating the skin, making it suitable for all skin types.\n\nDaily use without artificial colors or fragrances: This toner is the perfect combination with any product, enhancing\nyour skincare routine and addressing any skin concerns to help you achieve your best skin yet\n\n*Results may vary depending on individual skin types.\n\n*Clinical Trial Tested by 'ICBIO Co., Ltd'",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://medicube.us/cdn/shop/files/00_d55ca778-275a-404b-b3a2-f59333c5ee3f.jpg?v=1728374423",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://medicube.us/cdn/shop/files/00_d55ca778-275a-404b-b3a2-f59333c5ee3f.jpg?v=1728374423",
+        "https://medicube.us/cdn/shop/files/01_7cd2de19-ff59-42f2-85e0-addeb38cfcf1.jpg?v=1728374423",
+        "https://medicube.us/cdn/shop/files/02_bcb81abc-5add-4a77-b263-6dd3abc69451.jpg?v=1728374423",
+        "https://medicube.us/cdn/shop/files/03_1df20aa8-428f-4771-a52b-5f55b70d8546.jpg?v=1728374423",
+        "https://medicube.us/cdn/shop/files/04_38d50abe-dbc7-4020-b2ab-9752316b94ae.jpg?v=1728374423",
+        "https://medicube.us/cdn/shop/files/05_77638387-8bc0-4509-8b35-f2b4ac16bd04.jpg?v=1728374423"
+      ],
+      "price_min": 22,
+      "price_max": 22,
+      "default_offer_id": "external_seed:ext_1c7d35c56b316e2dceae281d",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Post-cleanse toner for calming hydration and soft skin prep.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Medicube",
+        "Toner"
+      ],
+      "sort_keys": {
+        "price_min": 22,
+        "price_max": 22,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_1c7d35c56b316e2dceae281d"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_e2a9f8bd084ba6603aaa45d7",
+      "sellable_item_group_id": "sig_e2a9f8bd084ba6603aaa45d7",
+      "product_line_id": "pl_b296b09f39da6d827cc54fb9",
+      "review_family_id": "rf_b296b09f39da6d827cc54fb9",
+      "brand_name": "Medicube",
+      "category_paths": [
+        "Moisturizer"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Collagen Niacinamide Jelly Cream",
+      "subtitle": "A transparent collagen jelly cream that provides anti-aging benefits to enhance facial contours, promote firmness, and achieve a polished and glowing complexion.\nImmediately after application, the skin restores its natural inner radiance with tightened, radiant, volumized 'Korean Glass Glow' effect.\n\nDermatologist-tested\n\nLow-Irritating\n\nSilicon Free\n\nph 5.69-7.69\n\nNo artificial color\n\nSustainable Packaging\n\nNet wt. 1.69 fl.oz. / 50ml & 3.71 fl.oz. / 110ml",
+      "variant_axes": {
+        "size": "110ml",
+        "volume": "110ml",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://medicube.us/cdn/shop/files/jelly50ml_th2_1.jpg?v=1766563329",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://medicube.us/cdn/shop/files/jelly50ml_th2_1.jpg?v=1766563329",
+        "https://medicube.us/cdn/shop/files/01_7838502e-308c-4194-b611-8c01bf07d836.jpg?v=1768382747",
+        "https://medicube.us/cdn/shop/files/06_666784bf-3d94-4e36-8ac1-096c5136b44e.jpg?v=1766563811",
+        "https://medicube.us/cdn/shop/files/03_7a15976c-40a5-41f4-9146-419fe58eeb99.jpg?v=1768382747",
+        "https://medicube.us/cdn/shop/files/04_a2cf8e14-db17-4365-8284-d72e90c8f803.jpg?v=1766563811",
+        "https://medicube.us/cdn/shop/files/05_bfc149e6-44fe-4c80-8bc5-713b56389791.jpg?v=1766563811",
+        "https://medicube.us/cdn/shop/files/jelly50ml_th2_8.jpg?v=1766563811",
+        "https://medicube.us/cdn/shop/files/2_89e6a4be-cc5c-4d8b-ac63-bf2660e43f88.jpg?v=1766563811"
+      ],
+      "price_min": 17,
+      "price_max": 17,
+      "default_offer_id": "external_seed:ext_4b93fc8cebbce7e48cbee1a8",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Jelly moisturizer for glow, firmness look, and a bouncy gel finish.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Medicube",
+        "Moisturizer"
+      ],
+      "sort_keys": {
+        "price_min": 17,
+        "price_max": 17,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_4b93fc8cebbce7e48cbee1a8"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_5359abf6ca7c59e94f6d70bb",
+      "sellable_item_group_id": "sig_5359abf6ca7c59e94f6d70bb",
+      "product_line_id": "pl_9103471f616d02726e230cc4",
+      "review_family_id": "rf_9103471f616d02726e230cc4",
+      "brand_name": "Medicube",
+      "category_paths": [
+        "Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Deep Reviving Bakuchiol Retinol Serum",
+      "subtitle": "Introducing Deep Reviving Bakuchiol Retinol Serum, the solution for\nthose seeking the remarkable benefits of retinol with low irritation.\nCrafted through three years of meticulous research by Medicube, this\nserum is your answer to achieving a smoother, clearer complexion.\nHarnessing the potency of 4th generation retinol, validated by 25 human\ncompatibility tests, our serum guarantees both efficacy and gentleness.\nRich in antioxidant properties, it effectively cares uneven texture and skin tone, post-acne marks, and visible signs of aging.\nOur advanced liposome retinol delivery system ensures swift and profound\nabsorption, refining skin texture while caring for fine lines and uneven\nskin tone. Experience the transformative power of retinol with\nunwavering confidence, with low irritation.\n\nNon-comedogenic\n\nDermatologist-tested\n\nTested to be Low-Irritating\n\nph 6.3\n\nCruelty-Free\n\nGluiten-Free\n\nNo artificial color\n\nSustainable Packaging\n\nNet wt. 1.01 fl.oz. / 30ml",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://medicube.us/cdn/shop/files/MicrosoftTeams-image_1218.jpg?v=1708495756",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://medicube.us/cdn/shop/files/MicrosoftTeams-image_1218.jpg?v=1708495756",
+        "https://medicube.us/cdn/shop/files/MicrosoftTeams-image_1221.jpg?v=1708495756",
+        "https://medicube.us/cdn/shop/files/MicrosoftTeams-image_1222.jpg?v=1708495756",
+        "https://medicube.us/cdn/shop/files/MicrosoftTeams-image_1224.jpg?v=1708496058",
+        "https://medicube.us/cdn/shop/files/MicrosoftTeams-image_1223.jpg?v=1708496058",
+        "https://medicube.us/cdn/shop/files/22221.jpg?v=1709788895"
+      ],
+      "price_min": 27,
+      "price_max": 27,
+      "default_offer_id": "external_seed:ext_50abe9cc5d85a34e24605945",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Bakuchiol-retinol serum for night routines and gradual texture support.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Medicube",
+        "Serum"
+      ],
+      "sort_keys": {
+        "price_min": 27,
+        "price_max": 27,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_50abe9cc5d85a34e24605945"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_1951916e80d2d807713c5f34",
+      "sellable_item_group_id": "sig_1951916e80d2d807713c5f34",
+      "product_line_id": "pl_8897ca7a2596a44f4cbde0e7",
+      "review_family_id": "rf_8897ca7a2596a44f4cbde0e7",
+      "brand_name": "Medicube",
+      "category_paths": [
+        "Cleanser"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "21% Red Succinic Acid Cleansing Booster Serum",
+      "subtitle": "A concentrated rinse-off cleansing booster serum positioned around red succinic acid for acne-prone skin, sebum, dead-skin buildup, and bacteria-related cleansing concerns.",
+      "variant_axes": {
+        "volume": "40g",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://medicube.us/cdn/shop/files/MicrosoftTeams-image_1046_8c944cce-2f41-49ed-a524-8cf13d8d427c.jpg?v=1695346959",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://medicube.us/cdn/shop/files/MicrosoftTeams-image_1046_8c944cce-2f41-49ed-a524-8cf13d8d427c.jpg?v=1695346959",
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/products/img3_1.jpg?v=1695346959",
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/products/img2.jpg?v=1695346959",
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/products/MicrosoftTeams-image_178_581dac3e-77be-45c0-bbde-c42a92f61495.jpg?v=1695346959",
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/products/img4.jpg?v=1695346959",
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/products/MicrosoftTeams-image_636.jpg?v=1695346959",
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/products/img1.jpg?v=1695346959"
+      ],
+      "price_min": 20.5,
+      "price_max": 20.5,
+      "default_offer_id": "external_seed:ext_59522af9624198656cc8881b",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Short-contact acid booster for acne-prone congestion routines.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Medicube",
+        "Cleanser"
+      ],
+      "sort_keys": {
+        "price_min": 20.5,
+        "price_max": 20.5,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_59522af9624198656cc8881b"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_7d75da05fd5acc262706d009",
+      "sellable_item_group_id": "sig_7d75da05fd5acc262706d009",
+      "product_line_id": "pl_70ecf1bc6f9adc40d37b8c2f",
+      "review_family_id": "rf_70ecf1bc6f9adc40d37b8c2f",
+      "brand_name": "Medicube",
+      "category_paths": [
+        "Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "AGE-R Glutathione Glow Serum",
+      "subtitle": "A lightweight glutathione glow serum from Medicube for dull-looking skin, built around glutathione, niacinamide, adenosine, hyaluronic acid, panthenol, and ceramide support in a daily serum step.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://medicube.us/cdn/shop/files/20241029_ME_megawari_96222_copy.jpg?v=1766995900",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://medicube.us/cdn/shop/files/20241029_ME_megawari_96222_copy.jpg?v=1766995900",
+        "https://medicube.us/cdn/shop/files/1d39a9aab136ade1facc4cee95606cff.jpg?v=1766467635",
+        "https://medicube.us/cdn/shop/files/MicrosoftTeams-image_109_58de6ca2-9f3a-4e49-a3c0-45b676beedc9.jpg?v=1766467541",
+        "https://medicube.us/cdn/shop/files/MicrosoftTeams-image_110.jpg?v=1766995900",
+        "https://medicube.us/cdn/shop/files/MicrosoftTeams-image_111.jpg?v=1766995900",
+        "https://medicube.us/cdn/shop/files/MicrosoftTeams-image_112.jpg?v=1766995900",
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/files/20241020.png?v=1737512899",
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/files/Age-R-Glutathione-Glow-Serum01.jpg"
+      ],
+      "price_min": 31.2,
+      "price_max": 31.2,
+      "default_offer_id": "external_seed:ext_621c92c2182c896eaf780642",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Glutathione-positioned serum for glow and radiance routines.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Medicube",
+        "Serum"
+      ],
+      "sort_keys": {
+        "price_min": 31.2,
+        "price_max": 31.2,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_621c92c2182c896eaf780642"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_92b1097507a95f357b9fa076",
+      "sellable_item_group_id": "sig_92b1097507a95f357b9fa076",
+      "product_line_id": "pl_92eccd13bc199621e8c64d46",
+      "review_family_id": "rf_92eccd13bc199621e8c64d46",
+      "brand_name": "Medicube",
+      "category_paths": [
+        "Toner"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "AGE-R Glutathione Glow Milk Toner",
+      "subtitle": "A double-layer milk toner positioned around glutathione and niacinamide glow support, hydration, and a softer milky layer after cleansing.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://medicube.us/cdn/shop/files/00_15a12bed-5de8-4f33-a89f-efdd31f3e5c4.jpg?v=1729230550",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://medicube.us/cdn/shop/files/00_15a12bed-5de8-4f33-a89f-efdd31f3e5c4.jpg?v=1729230550",
+        "https://medicube.us/cdn/shop/files/01_4610b028-2ff3-4d25-a1e6-caf892293e0e.jpg?v=1729230550",
+        "https://medicube.us/cdn/shop/files/03_a3233bbe-37bf-47f1-a90c-af450837ed63.jpg?v=1767166185",
+        "https://medicube.us/cdn/shop/files/02_8ad176f9-2b0b-4678-ad14-80aa3376f7da.jpg?v=1767157779",
+        "https://medicube.us/cdn/shop/files/04_634efac7-0330-4344-884d-399126633504.jpg?v=1767166185",
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/files/20241020.png?v=1737512899",
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/files/20250128.png?v=1737512899",
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/files/20250125.png?v=1737512900"
+      ],
+      "price_min": 27.9,
+      "price_max": 27.9,
+      "default_offer_id": "external_seed:ext_719f2cee39b26d4a7a8253af",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Milky toner for hydration, glow positioning, and a richer first layer.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Medicube",
+        "Toner"
+      ],
+      "sort_keys": {
+        "price_min": 27.9,
+        "price_max": 27.9,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_719f2cee39b26d4a7a8253af"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_e5ae27a486494ffef43222fd",
+      "sellable_item_group_id": "sig_e5ae27a486494ffef43222fd",
+      "product_line_id": "pl_7f52004f040bf3e3b855d66c",
+      "review_family_id": "rf_7f52004f040bf3e3b855d66c",
+      "brand_name": "Medicube",
+      "category_paths": [
+        "Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Deep Vitamin C Capsule Serum",
+      "subtitle": "A capsule serum positioned around high-purity vitamin C, 5% niacinamide, hippophae rhamnoides water, hyaluronic acid, tocopherol, and glutathione for brighter-looking, hydrated skin.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0156/3905/2336/files/00_1b54e8c0-14a6-4461-961a-a99d6617e9d3.jpg?v=1773815755",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/files/00_1b54e8c0-14a6-4461-961a-a99d6617e9d3.jpg?v=1773815755",
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/files/01_dea9f334-a4cd-4c07-b6e2-0b0c5f16d0b1.jpg?v=1773815755",
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/files/02_7e685d6c-c06b-4f9c-b213-440f893e3fb3.jpg?v=1773815755",
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/files/03_b900aa4d-4d70-445f-8cc8-1a1578237f60.jpg?v=1773815755",
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/files/04_8b849e8f-f551-41ec-a9f9-ea176ae64e7d.jpg?v=1773815755",
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/files/05_00d0e98e-a46e-4e30-b2b3-437f46fe8840.jpg?v=1773815755",
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/files/06_09381286-709a-4991-9ac2-a34a80147569.jpg?v=1773815755",
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/files/07_b37ef2c8-a654-4333-b94e-1b18a5a089a5.jpg?v=1773815755"
+      ],
+      "price_min": 26,
+      "price_max": 26,
+      "default_offer_id": "external_seed:ext_79bca27423e4840cc4cc4e93",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Capsule vitamin C serum for dullness, glow, and tone support.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Medicube",
+        "Serum"
+      ],
+      "sort_keys": {
+        "price_min": 26,
+        "price_max": 26,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_79bca27423e4840cc4cc4e93"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_d4cd0d0782d2008be3901a76",
+      "sellable_item_group_id": "sig_d4cd0d0782d2008be3901a76",
+      "product_line_id": "pl_587364f63997b8c604aa442d",
+      "review_family_id": "rf_587364f63997b8c604aa442d",
+      "brand_name": "Medicube",
+      "category_paths": [
+        "Sunscreen"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Deep Vita C Pads",
+      "subtitle": "Introducing Deep Vita C Pads, a game-changing addition to your skincare\nroutine, specially crafted to address the distinctive needs of both\nacne-prone and dull skin.\n\nOver a 4-week period, a remarkable *100% of participants witnessed\nimprovements in pigmentation, dark spots, exfoliation, hydration, and\nskin radiance.\n\nPowered by a potent blend of key ingredients, including Sea Buckthorn\nExtract renowned for its rich vitamin C content, Deep Vita C Pads\nactively help to improve post-acne marks, dark spots, and even out your\nskin tone. Notably, the vibrant yellow color of these pads comes\nnaturally from the sea buckthorn extract, ensuring a visually appealing\nand wholesome product.\n\nElevate your skincare routine and experience with the transformative\npower of Deep Vita C Pads. Unveil a brighter, more radiant complexion\nwhile enjoying the added benefit of improved post-acne marks. Rediscover\nconfidence in your skin and embrace the radiance you deserve.\n\nVegan Verified\n\nNon-comedogenic\n\nDermatologist-tested\n\nTested to be Low-Irritating\n\nph 3.5-5.5\n\nNo artificial color\n\nSustainable Packaging\n\n*Excerpt from Medicube Deep Vita C Pads Test Report and Survey\n\n*Results may vary.\n\nNet wt. 5.29 oz. / 150g (70 pads)",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0156/3905/2336/files/20607435fb2aafb1f5239ff229ed7137.png?v=1739338871",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/files/20607435fb2aafb1f5239ff229ed7137.png?v=1739338871",
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/files/d97ae32d5faf7076ec31508c4eecdca8.png?v=1743033987",
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/files/2_15f356d2-41a5-40a9-9071-9175eb4f879f.jpg?v=1767159478",
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/files/3_c2b70919-9fea-46bb-ac06-d246cf5a0c40.jpg?v=1767160208",
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/files/1_03a04c91-75de-47a9-bb22-ae866fb9f2ed.jpg?v=1767159478",
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/files/4_4bb5028c-a0ad-4579-8ec2-7e5a1d19b8ab.jpg?v=1767160208",
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/files/5_99d2b7e4-97cc-4389-aec2-c4c3e40638ae.jpg?v=1768379003",
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/files/2_pack.png?v=1767159478"
+      ],
+      "price_min": 28,
+      "price_max": 28,
+      "default_offer_id": "external_seed:ext_80735ef3328f583532d34b5a",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Pre-soaked vitamin C toner pads for uneven tone and post-blemish routines, with sea buckthorn water, niacinamide, gluconolactone, ethyl ascorbic acid, panthenol, and licorice-root support in the official evidence.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Medicube",
+        "Sunscreen"
+      ],
+      "sort_keys": {
+        "price_min": 28,
+        "price_max": 28,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_80735ef3328f583532d34b5a"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_2d40ed3a1412550ff62ce318",
+      "sellable_item_group_id": "sig_2d40ed3a1412550ff62ce318",
+      "product_line_id": "pl_90b3efde67b7a463b6ccfef2",
+      "review_family_id": "rf_90b3efde67b7a463b6ccfef2",
+      "brand_name": "Medicube",
+      "category_paths": [
+        "Treatment"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Deep Vita C Patch",
+      "subtitle": "A microtip-style treatment patch for localized dark-spot or post-blemish care, grounded in the source page direction to apply the patch to a target area and remove after wear.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://medicube.us/cdn/shop/files/DeepVitaCPatch.jpg?v=1695206457",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://medicube.us/cdn/shop/files/DeepVitaCPatch.jpg?v=1695206457",
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/products/MicrosoftTeams-image_13_00adb092-aeab-4a33-a71d-3f89d89bc390.jpg?v=1695206457",
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/products/MicrosoftTeams-image_12.jpg?v=1695206457"
+      ],
+      "price_min": 21,
+      "price_max": 21,
+      "default_offer_id": "external_seed:ext_98b732ab71195d87c9369b5a",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A microtip-style treatment patch for localized dark-spot or post-blemish care, grounded in the source page direction to apply the patch to a target area and remove after wear.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Medicube",
+        "Treatment"
+      ],
+      "sort_keys": {
+        "price_min": 21,
+        "price_max": 21,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_98b732ab71195d87c9369b5a"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_daf970427daa3e3bef582212",
+      "sellable_item_group_id": "sig_daf970427daa3e3bef582212",
+      "product_line_id": "pl_c9bf1cf695f32c5567cd7320",
+      "review_family_id": "rf_c9bf1cf695f32c5567cd7320",
+      "brand_name": "Medicube",
+      "category_paths": [
+        "Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Azelaic Acid 16 Calming Serum",
+      "subtitle": "Highly Concentrated and Powerful Soothing Formula - A 3-step care system that exfoliates to refine skin texture, removes excess sebum, and soothes troubled skin.\nFormulated with a high concentration of Azelaic Acid Complex, Niacinamide, and Pantothenic Acid, this powerful blend helps calm troubled skin, refine skin texture, and provide targeted after spot care for a clearer, more balanced complexion.\nHelp quickly soothe and comfort troubled skin while delivering deep hydration and long-lasting moisture. This powerful duo leaves the skin feeling calm, dewy, and refreshed.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://medicube.us/cdn/shop/files/00_285b5a5a-20e9-44ab-a41c-05b1196738d8.jpg?v=1749431175",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://medicube.us/cdn/shop/files/00_285b5a5a-20e9-44ab-a41c-05b1196738d8.jpg?v=1749431175",
+        "https://medicube.us/cdn/shop/files/01_b7a77460-867e-4b7c-b079-cfd94c5ff15c.jpg?v=1749431175",
+        "https://medicube.us/cdn/shop/files/02_808f3474-f3b9-4b8f-8eb4-90a2c30ddf5c.jpg?v=1749431175",
+        "https://medicube.us/cdn/shop/files/03_f425b681-c802-454b-b42f-0e2732ad7f74.jpg?v=1749431175",
+        "https://medicube.us/cdn/shop/files/04_b48f8ee3-b30a-4ade-9aec-c32d2d7d0fc8.jpg?v=1749431176",
+        "https://medicube.us/cdn/shop/files/05_c55f248a-9530-4a05-aea8-12b6820f53a9.jpg?v=1749431175"
+      ],
+      "price_min": 27,
+      "price_max": 27,
+      "default_offer_id": "external_seed:ext_9cc158f25a88a454c30d449c",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Active serum for azelaic-acid routines and visible redness/texture concerns.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Medicube",
+        "Serum"
+      ],
+      "sort_keys": {
+        "price_min": 27,
+        "price_max": 27,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_9cc158f25a88a454c30d449c"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_8ba5c56b4f9d8c89abd357eb",
+      "sellable_item_group_id": "sig_8ba5c56b4f9d8c89abd357eb",
+      "product_line_id": "pl_c0107370b80a1f34fc510cd7",
+      "review_family_id": "rf_c0107370b80a1f34fc510cd7",
+      "brand_name": "Medicube",
+      "category_paths": [
+        "Treatment"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Collagen Milky Glow Daytime Wrapping Mask",
+      "subtitle": "Glazed milky mask sets into a collagen wrap and reveals bright, radiant, plumped looking skin—all in just 20 minutes.\nPowered by collagen, glutathione, niacinamide, and milk protein, this mask delivers deep hydration while enhancing tone and glow—revealing visibly clearer, plumper, radiant skin.\nUnlike most collagen masks that stop at 300Da, this one features 130Da ultra-low molecular collagen—refined for faster absorption and visible improvements in skin firmness, elasticity, and smooth texture.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0156/3905/2336/files/00_89fb03b0-4232-415d-9ca1-2378b58e8ec4.jpg?v=1760949029",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/files/00_89fb03b0-4232-415d-9ca1-2378b58e8ec4.jpg?v=1760949029",
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/files/01_ef7e5a72-5a00-4d08-8d81-f4204894b8d4.jpg?v=1760949029",
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/files/02_91fb277e-4d9a-45a8-ba9e-015addb03999.jpg?v=1760949029",
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/files/03_da06f5e3-6a1c-438c-a14d-95cc5751e603.jpg?v=1760949029",
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/files/04_fd62209f-e389-4f88-9698-0fc18018b219.jpg?v=1760949029",
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/files/05_bd36902d-79a9-4269-b019-56ea44834168.jpg?v=1760949029",
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/files/06_7797d25d-89dd-451d-85cd-e5ce1cc3ab01.jpg?v=1760949029",
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/files/01_1_907aa553-262e-4852-b402-42efcc3d2587.jpg?v=1760949029"
+      ],
+      "price_min": 24,
+      "price_max": 24,
+      "default_offer_id": "external_seed:ext_ac4c47dafb427e53752fb522",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A film-forming daytime mask positioned for glow, tone, and smoothness, with collagen water, niacinamide, glutathione, panthenol, and milk-protein cues in the official evidence.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Medicube",
+        "Treatment"
+      ],
+      "sort_keys": {
+        "price_min": 24,
+        "price_max": 24,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_ac4c47dafb427e53752fb522"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_883683d48b00266bcd5df4f9",
+      "sellable_item_group_id": "sig_883683d48b00266bcd5df4f9",
+      "product_line_id": "pl_aed0ef4b2b60d3e97fb8efd4",
+      "review_family_id": "rf_aed0ef4b2b60d3e97fb8efd4",
+      "brand_name": "Medicube",
+      "category_paths": [
+        "Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Collagen Glow Booster Milk Serum",
+      "subtitle": "A milky serum for glow, texture, and elasticity-positioned routines, with niacinamide, milk protein extract, proteoglycan, and barrier-lipid cues in the official ingredient evidence.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://medicube.us/cdn/shop/files/51e843df17df5ab0c8e615344043ba12.jpg?v=1719903941",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://medicube.us/cdn/shop/files/51e843df17df5ab0c8e615344043ba12.jpg?v=1719903941",
+        "https://medicube.us/cdn/shop/files/021_1.jpg?v=1714703157",
+        "https://medicube.us/cdn/shop/files/03_67613d08-ecd0-4e58-b6bf-f4e884a59dca.jpg?v=1713858787",
+        "https://medicube.us/cdn/shop/files/04_cf6f76ce-e8e2-40b1-ae46-252fdbe857da.jpg?v=1713858787",
+        "https://medicube.us/cdn/shop/files/13_bfc2190d-beb5-4d3e-b790-2280f37246b5.jpg?v=1713858787",
+        "https://medicube.us/cdn/shop/files/14_1f46bb16-2b6c-4e55-9338-fe2edc820a40.jpg?v=1713858787",
+        "https://medicube.us/cdn/shop/files/07_ce1aab70-dfa8-4982-b9e7-2a269d583821.jpg?v=1713858787",
+        "https://medicube.us/cdn/shop/files/000.jpg?v=1713858787"
+      ],
+      "price_min": 22.4,
+      "price_max": 22.4,
+      "default_offer_id": "external_seed:ext_ac802f92e078086c1ad93cfe",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A milky serum for glow, texture, and elasticity-positioned routines, with niacinamide, milk protein extract, proteoglycan, and barrier-lipid cues in the official ingredient evidence.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Medicube",
+        "Serum"
+      ],
+      "sort_keys": {
+        "price_min": 22.4,
+        "price_max": 22.4,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_ac802f92e078086c1ad93cfe"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_2714074ce7f947d8c9d32fbc",
+      "sellable_item_group_id": "sig_2714074ce7f947d8c9d32fbc",
+      "product_line_id": "pl_3522619c4a1858f65dc88ea0",
+      "review_family_id": "rf_3522619c4a1858f65dc88ea0",
+      "brand_name": "Medicube",
+      "category_paths": [
+        "Moisturizer"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Deep Vita C Capsule Cream",
+      "subtitle": "A dual-texture cream combining vitamin capsule cream and transparent gel, positioned around vitamin C, sea buckthorn, niacinamide, and glow/uneven-tone support.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://medicube.us/cdn/shop/files/c096afcff419378df8afcb96182a4365.jpg?v=1768373336",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://medicube.us/cdn/shop/files/c096afcff419378df8afcb96182a4365.jpg?v=1768373336",
+        "https://medicube.us/cdn/shop/files/8_e377afc1-de40-4d99-a1bf-4d84b539fa91.jpg?v=1768373288",
+        "https://medicube.us/cdn/shop/files/01-_ai.jpg?v=1768382747",
+        "https://medicube.us/cdn/shop/files/05_9d79f177-d5b5-4808-97b5-68aa657cd7f4.jpg?v=1768373288",
+        "https://medicube.us/cdn/shop/files/03_c2083d52-48fe-45b3-aebd-21b00435d8ad.jpg?v=1768373336",
+        "https://medicube.us/cdn/shop/files/02_528c0ec9-7354-489f-b421-cbef45f4c9d3.jpg?v=1768373288",
+        "https://medicube.us/cdn/shop/files/06_61acf934-4801-4445-8d00-b10516d03264.jpg?v=1768373288",
+        "https://medicube.us/cdn/shop/files/091.jpg?v=1768373336"
+      ],
+      "price_min": 26,
+      "price_max": 26,
+      "default_offer_id": "external_seed:ext_ba84ece297536294ea627a07",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Dual-texture capsule cream for vitamin C glow and customizable moisture feel.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Medicube",
+        "Moisturizer"
+      ],
+      "sort_keys": {
+        "price_min": 26,
+        "price_max": 26,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_ba84ece297536294ea627a07"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_cb800370d310042fba810be0",
+      "sellable_item_group_id": "sig_cb800370d310042fba810be0",
+      "product_line_id": "pl_1919203b5f4f3b760ea4cde2",
+      "review_family_id": "rf_1919203b5f4f3b760ea4cde2",
+      "brand_name": "Medicube",
+      "category_paths": [
+        "Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Booster Gel Serum",
+      "subtitle": "A gel serum positioned as a moisturizing companion for Medicube AGE-R devices, with plant stem cell extract and slip-friendly gel texture.",
+      "variant_axes": {
+        "size": "100ml",
+        "volume": "100ml",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://medicube.us/cdn/shop/files/00_5fc0b45e-9c89-4d7a-acdc-05fbca818482.jpg?v=1766557515",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://medicube.us/cdn/shop/files/00_5fc0b45e-9c89-4d7a-acdc-05fbca818482.jpg?v=1766557515",
+        "https://medicube.us/cdn/shop/files/02_ca1d42eb-9c55-4231-99a9-25fefffb4eb6.jpg?v=1766557515",
+        "https://medicube.us/cdn/shop/files/04_ff3708a1-fbca-480c-9e68-f890f11790ef.jpg?v=1766557515",
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/products/10_d65b8238-339b-482d-b9be-bc7f05e64732.jpg?v=1766557458",
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/products/02_1c660e49-1641-4f7d-8e60-7b7b40a6eba7.jpg?v=1766557458",
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/files/20241020.png?v=1737512899",
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/files/20250128.png?v=1737512899",
+        "https://cdn.shopify.com/s/files/1/0156/3905/2336/files/20250125.png?v=1737512900"
+      ],
+      "price_min": 15,
+      "price_max": 15,
+      "default_offer_id": "external_seed:ext_bdeaac19241ab0f35520a3a0",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Moisturizing gel serum built for AGE-R device glide.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Medicube",
+        "Serum"
+      ],
+      "sort_keys": {
+        "price_min": 15,
+        "price_max": 15,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_bdeaac19241ab0f35520a3a0"
+      ]
+    }
+  ]
+}

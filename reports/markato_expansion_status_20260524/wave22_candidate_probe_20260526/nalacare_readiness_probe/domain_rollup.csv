@@ -1,0 +1,2 @@
+domain,seed_rows,actionable_seed_rows,db_serving_ready,db_serving_ready_rate,actionable_db_serving_ready_rate,public_index_ready,public_index_ready_rate,external_index_published,commerce_public_docs,commerce_public_doc_groups,direct_kb_high_quality_ready,direct_kb_displayable,identity_ready,terminal_hold,seed_content_blocked,identity_blocked,kb_missing,kb_blocked,kb_displayable_limited,index_doc_shadow_only,top_blocker
+nalacare.com,10,10,0,0,0,0,0,0,0,0,10,10,0,0,0,10,0,0,0,0,identity_blocked

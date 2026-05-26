@@ -1,0 +1,996 @@
+{
+  "generated_at": "2026-05-26T01:21:57.887Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 17,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_01c2ff5b28e5d7ca45440810",
+      "sellable_item_group_id": "sig_01c2ff5b28e5d7ca45440810",
+      "product_line_id": "pl_741f0f68abd0b54e890a41d9",
+      "review_family_id": "rf_741f0f68abd0b54e890a41d9",
+      "brand_name": "Delicate Daisys Botanical Beauty",
+      "category_paths": [
+        "Hair Mask",
+        "Hair Treatment"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Herbal Hair Mask Probiotics",
+      "subtitle": "Experience the revitalizing effects of our Herbal Hair Mask Probiotics - a natural blend of powerful herbal extracts designed to repair and rejuvenate damaged, chemically treated hair. Our formula features Burdock to balance oil production and pH levels, walnut leaf extract to soothe irritation and add shine, and nettle to strengthen hair from root to tip and prevent hair loss. Additionally, Shea Butter deeply nourishes and restores damaged, dry ends, guarding against harmful free radicals and external damage.\n\nGive your scalp a botanical reset. After rinsing, mist with our rose water spray for added freshness and shine. It's haircare made simple.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://delicatedaisys.com/cdn/shop/files/IMG-3411.png?v=1779467325",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3411.png?v=1779467325",
+        "https://delicatedaisys.com/cdn/shop/files/herbal-hair-mask-probiotics-457851.jpg?v=1725349380",
+        "https://delicatedaisys.com/cdn/shop/files/herbal-hair-mask-probiotics-723428.jpg?v=1725349380",
+        "https://delicatedaisys.com/cdn/shop/files/herbal-hair-mask-probiotics-837593.jpg?v=1725349380",
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3413.png?v=1779467313",
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3361.png?v=1779413257"
+      ],
+      "price_min": 34.99,
+      "price_max": 34.99,
+      "default_offer_id": "external_seed:ext_770904b0a8a54583347cea85",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Delicate Daisys Botanical Beauty hair mask listed on the official source page as Herbal Hair Mask Probiotics.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Delicate Daisys Botanical Beauty",
+        "Hair Mask",
+        "Hair Treatment"
+      ],
+      "sort_keys": {
+        "price_min": 34.99,
+        "price_max": 34.99,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_770904b0a8a54583347cea85"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_f5a6f90732c4af20fc4612ac",
+      "sellable_item_group_id": "sig_f5a6f90732c4af20fc4612ac",
+      "product_line_id": "pl_4cbf4e7bc1ddddccdacddbd4",
+      "review_family_id": "rf_4cbf4e7bc1ddddccdacddbd4",
+      "brand_name": "Delicate Daisys Botanical Beauty",
+      "category_paths": [
+        "Body Wash"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Nourishing Probiotic Body Wash Pineapple",
+      "subtitle": "This nourishing shower gel is enhanced with Probiotics and natural extracts to effectively cleanse your skin while imparting a refreshing and fruity Pineapple aroma. It is",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://delicatedaisys.com/cdn/shop/files/IMG-3260.png?v=1779321961",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3260.png?v=1779321961",
+        "https://delicatedaisys.com/cdn/shop/files/nourishing-probiotic-body-wash-pineapple-285433.jpg?v=1725349497",
+        "https://delicatedaisys.com/cdn/shop/files/nourishing-probiotic-body-wash-pineapple-471823.jpg?v=1725349497",
+        "https://delicatedaisys.com/cdn/shop/files/nourishing-probiotic-body-wash-pineapple-807342.jpg?v=1725349497",
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3263.png?v=1779322184",
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3262.png?v=1779321961"
+      ],
+      "price_min": 19.99,
+      "price_max": 19.99,
+      "default_offer_id": "external_seed:ext_31b732e4e40c0579c5f4c554",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Delicate Daisys Botanical Beauty body wash listed on the official source page as Nourishing Probiotic Body Wash Pineapple.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Delicate Daisys Botanical Beauty",
+        "Body Wash"
+      ],
+      "sort_keys": {
+        "price_min": 19.99,
+        "price_max": 19.99,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_31b732e4e40c0579c5f4c554"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_d275edcf29109760764a2288",
+      "sellable_item_group_id": "sig_d275edcf29109760764a2288",
+      "product_line_id": "pl_0a8017de1ab27cc20b7e4360",
+      "review_family_id": "rf_0a8017de1ab27cc20b7e4360",
+      "brand_name": "Delicate Daisys Botanical Beauty",
+      "category_paths": [
+        "Moisturizer"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Rejuvenating Night Face Cream Bulgarian Rose",
+      "subtitle": "Our Rejuvenating Night Face Cream is specially formulated with pure oils and organic butters to effectively rejuvenate and nourish your skin. By protecting against fine lines and wrinkles, it provides 24-hour continuous action for maximum benefits when applied nightly. Plus, it's all-natural, vegan, and cruelty-free certified for your peace of mind.\n\nReady to wake up glowing? Use after our rose water spray to lock in moisture and soothe skin overnight. This combo is a nighttime skincare dream.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://delicatedaisys.com/cdn/shop/files/IMG-3224.jpg?v=1779314439",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3224.jpg?v=1779314439",
+        "https://delicatedaisys.com/cdn/shop/files/rejuvenating-night-face-cream-bulgarian-rose-254487.jpg?v=1725183707",
+        "https://delicatedaisys.com/cdn/shop/files/rejuvenating-night-face-cream-bulgarian-rose-864694.jpg?v=1725183707",
+        "https://delicatedaisys.com/cdn/shop/files/rejuvenating-night-face-cream-bulgarian-rose-132645.jpg?v=1725183707",
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3230.png?v=1779314932",
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3231.png?v=1779314932",
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3232.png?v=1779314932",
+        "https://delicatedaisys.com/cdn/shop/files/FullSizeRender.jpg?v=1779315170"
+      ],
+      "price_min": 49.99,
+      "price_max": 49.99,
+      "default_offer_id": "external_seed:ext_b5dafedce57973dfcca9fb5b",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Delicate Daisys Botanical Beauty moisturizer listed on the official source page as Rejuvenating Night Face Cream Bulgarian Rose. The official description identifies: Our Rejuvenating Night Face Cream is specially formulated with pure oils and organic butters to effectively rejuvenate and nourish your skin.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Delicate Daisys Botanical Beauty",
+        "Moisturizer"
+      ],
+      "sort_keys": {
+        "price_min": 49.99,
+        "price_max": 49.99,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_b5dafedce57973dfcca9fb5b"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_40f7c9b410f2e1d61e4e00e4",
+      "sellable_item_group_id": "sig_40f7c9b410f2e1d61e4e00e4",
+      "product_line_id": "pl_a9dd2b8037facbb9eac8520c",
+      "review_family_id": "rf_a9dd2b8037facbb9eac8520c",
+      "brand_name": "Joocyee",
+      "category_paths": [
+        "Lip Makeup"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Glazed Lip Gloss",
+      "subtitle": "All-Day Wear, Always Luminous\n\nEvolutionary 「Low Temperature Formulation」 Film-Forming Tech\n\n90% Essence Infusion Creamy-smooth texture on lips\n\nThree trendy shade families Flattering for all skin tones\n\nShade Options:\n\nMuted Pink Tone for Delicate Makeup\n\n22 Rose Glow Sheer Icy Nude Rose\n\n20 Cherry Blossom Glow Fresh Peach Blossom Pink\n\n26 Lilac Glow Low-saturation Grey Pink\n\nVersatile Reddish Shades\n\n66 Oolong Glow Glazed Sienna Red\n\n60 Grape Glow Dewy Plum Glaze\n\n68 Black Tea Glow Intense Brownish Red\n\nStylish Signature Brown Tones\n\n80 Moonlight Glow Sheer Nude Apricot\n\n82 Amber Glow Amber Cashew Yellow Brown\n\n85 Dune Glow Cinnamon Icy Coffee Nude Brown\n\nNet WT.: 0.14oz/4g",
+      "variant_axes": {
+        "color": "20 cherry blossom glow",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://joocyee.com/cdn/shop/files/20-id.jpg?v=1778493026",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://joocyee.com/cdn/shop/files/20-id.jpg?v=1778493026",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/80_90dfa7f7-370c-4a63-9ff5-cf77a2719972.jpg?v=1778493127",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/9_50a92f5a-9013-49d5-b7fb-89bc8297f58d.jpg?v=1778493175",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/4_7a171235-885b-49b4-aa89-16a8ee24fe53.jpg?v=1778493175",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/1_dccae7a8-5940-458b-963a-e4feb9221013.jpg?v=1778493175",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/0c70a81518926b795fbb78c8b50c785b_28ad2a2f-7e2f-4015-bc23-32da42b37721.jpg?v=1778493175",
+        "https://joocyee.com/cdn/shop/files/20_28b411f6-d59a-4cd6-940f-a17820bf95a8.jpg?v=1778493035",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/20_3867b598-a665-4ec7-b99f-17f27a82f085.jpg?v=1778493036"
+      ],
+      "price_min": 19.9,
+      "price_max": 19.9,
+      "default_offer_id": "external_seed:ext_bb9685457f5a919c945ee9ce",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Joocyee lip gloss with a luminous glazed finish, creamy-smooth texture, and shade families spanning pink, red, and brown tones.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Joocyee",
+        "Lip Makeup"
+      ],
+      "sort_keys": {
+        "price_min": 19.9,
+        "price_max": 19.9,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_bb9685457f5a919c945ee9ce"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_de2c100382224878790af271",
+      "sellable_item_group_id": "sig_de2c100382224878790af271",
+      "product_line_id": "pl_b135453a63032cf132dc4c3d",
+      "review_family_id": "rf_b135453a63032cf132dc4c3d",
+      "brand_name": "Joocyee",
+      "category_paths": [
+        "Primer"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Color-correcting Primer",
+      "subtitle": "Naturally translucent, no chalky white cast\n\nBlends seamlessly in 3 seconds with bare hand.\n\nFormulated with cactus flower extract to deliver long-lasting hydration and moisture.\n\nExclusive pigment grinding technology blends perfectly with multiple skin types.\n\n0.25μm covering particles refined through 6 grinding processes for a non-caky, undetectable finish.\n\nShade Options:\n\nSoft Light Green\nNeutralizes redness and blemishes to restore a clear, even complexion.\n\nSoft Light Purple\nBrightens dull, sallow skin for a translucent, radiant glow.\n\nNET WT.: 1.01oz / 30g",
+      "variant_axes": {
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://joocyee.com/cdn/shop/files/02-id.jpg?v=1777277736",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://joocyee.com/cdn/shop/files/02-id.jpg?v=1777277736",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/b29a020a8b854e14e37563ac56c10b27.jpg?v=1777277765",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/9ae9a560a9e3371478e67f927b81bc89.jpg?v=1777277765",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/0c70a81518926b795fbb78c8b50c785b_a1b00473-fdae-48b5-a1ae-77652c5fede0.jpg?v=1777277765",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/b29a020a8b854e14e37563ac56c10b27_985d8f0f-bc52-49a6-ad77-4f3b30ab3871.jpg?v=1777355163",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/02_f2736478-dcc0-41e3-b415-c9189693db2e.jpg?v=1777277736",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/02_3e08a805-a6d2-43fa-9609-d26c504eef66.jpg?v=1777277736",
+        "https://joocyee.com/cdn/shop/files/01_2f246575-5c52-40b0-b6a5-5a408d7bdb52.jpg?v=1777277719"
+      ],
+      "price_min": 18.9,
+      "price_max": 18.9,
+      "default_offer_id": "external_seed:ext_794deab047eb4a75225329df",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Joocyee color-correcting primer in green and purple tones, made to neutralize redness or dullness before base makeup.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Joocyee",
+        "Primer"
+      ],
+      "sort_keys": {
+        "price_min": 18.9,
+        "price_max": 18.9,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_794deab047eb4a75225329df"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_6b92f753966ed06a55217641",
+      "sellable_item_group_id": "sig_6b92f753966ed06a55217641",
+      "product_line_id": "pl_96a3e360f8615ad37d4aeb9e",
+      "review_family_id": "rf_96a3e360f8615ad37d4aeb9e",
+      "brand_name": "Nala Care",
+      "category_paths": [
+        "Deodorant"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Peppermint & Activated Charcoal, Natural Deodorant",
+      "subtitle": "Make the easy switch from conventional deodorants with the Peppermint & Activated Charcoal Deodorant.\n\nAn effective formula that is both refreshing and eliminating. Neutralize odour and wetness naturally with our pairing of energizing peppermint and detoxing charcoal. Safe and",
+      "variant_axes": {
+        "volume": "60g",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Peppermint_Charcoal_Transparent_Box.png?v=1752599986",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Peppermint_Charcoal_Transparent_Box.png?v=1752599986",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Tube.png?v=1752600229",
+        "https://nalacare.com/cdn/shop/files/AK5A1190.png?v=1778824029",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Palo_Santo_Sage_Transparent_Box.png?v=1752600229",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Lavender_Vetiver_Transparent_Box.png?v=1752600139",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Unscented_Transparent_Box.png?v=1752600176",
+        "https://nalacare.com/cdn/shop/files/241205_Nala_7409_web.jpg?v=1735323818"
+      ],
+      "price_min": 26,
+      "price_max": 26,
+      "default_offer_id": "external_seed:ext_8136f11be69e6c18781a7f02",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Nala Care deodorant listed on the official source page as Peppermint & Activated Charcoal, Natural Deodorant. The official description identifies: Make the easy switch from conventional deodorants with the Peppermint & Activated Charcoal Deodorant.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Nala Care",
+        "Deodorant"
+      ],
+      "sort_keys": {
+        "price_min": 26,
+        "price_max": 26,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_8136f11be69e6c18781a7f02"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_dc67c95a05ea55d137601330",
+      "sellable_item_group_id": "sig_dc67c95a05ea55d137601330",
+      "product_line_id": "pl_4c6d2e665826225e7c6fa577",
+      "review_family_id": "rf_4c6d2e665826225e7c6fa577",
+      "brand_name": "Nala Care",
+      "category_paths": [
+        "Deodorant"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Essence of Rosewood, Extra Strength Natural Deodorant",
+      "subtitle": "Rosewood is renowned for its sophisticated scent as well as its harmonizing and relaxing properties on the mind. Imagine a wood smelling rose that's more wood than rose and you can begin to appreciate one of the most complex scents in perfumery.\n\nAll Nala deodorants are made with organic essential oils for a subtle, not overpowering, scent.\n\nAs always, free-from carcinogens, free-from aluminum, free-from cruelty.\n\n60 g",
+      "variant_axes": {
+        "volume": "60g",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Rosewood_Transparent_Box.png?v=1752600292",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Rosewood_Transparent_Box.png?v=1752600292",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Tube.png?v=1752600229",
+        "https://cdn.stamped.io/cdn/images/pixel.png",
+        "https://cdn1.stamped.io/uploads/productImages/139780_8139512938596.png",
+        "https://cdn1.stamped.io/uploads/productImages/139780_6580323811428.png",
+        "https://cdn1.stamped.io/uploads/productImages/139780_7212833800292.png",
+        "https://cdn1.stamped.io/uploads/productImages/139780_6597643403364.png",
+        "https://cdn1.stamped.io/uploads/productImages/139780_6580314734692.png"
+      ],
+      "price_min": 26,
+      "price_max": 26,
+      "default_offer_id": "external_seed:ext_e5f66cf29d6c516775bb0fce",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Nala Care deodorant listed on the official source page as Essence of Rosewood, Extra Strength Natural Deodorant. The official description identifies: Rosewood is renowned for its sophisticated scent as well as its harmonizing and relaxing properties on the mind.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Nala Care",
+        "Deodorant"
+      ],
+      "sort_keys": {
+        "price_min": 26,
+        "price_max": 26,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_e5f66cf29d6c516775bb0fce"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_4d5786ae6535963a72172e4a",
+      "sellable_item_group_id": "sig_4d5786ae6535963a72172e4a",
+      "product_line_id": "pl_b92855b4d461e828216e5da3",
+      "review_family_id": "rf_b92855b4d461e828216e5da3",
+      "brand_name": "Nala Care",
+      "category_paths": [
+        "Deodorant"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Eucalyptus & Champa, Extra Strength Natural Deodorant",
+      "subtitle": "For a spa-like escape baked into your daily routine, reach for this refreshing and restorative eucalyptus blend. Promote relaxation before your day even begins, this unique blend of essential oils is naturally stress relieving.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Eucalyptus_Champa_Transparent_Box.png?v=1752600258",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Eucalyptus_Champa_Transparent_Box.png?v=1752600258",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Tube.png?v=1752600229",
+        "https://nalacare.com/cdn/shop/files/AK5A1190.png?v=1778824029",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Sandalwood_Bergamot_Transparent_Box.png?v=1752600440",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Rosewood_Transparent_Box.png?v=1752600292",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Coastal_Waters_Transparent_Box.png?v=1752600326",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Grapefruit_Neroli_Transparent_Box.png?v=1752600087",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Peach_Chamomile_Transparent_Box.png?v=1752600403"
+      ],
+      "price_min": 26,
+      "price_max": 26,
+      "default_offer_id": "external_seed:ext_446a5f126507ff6adba46258",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Nala Care deodorant listed on the official source page as Eucalyptus & Champa, Extra Strength Natural Deodorant. The official description identifies: For a spa-like escape baked into your daily routine, reach for this refreshing and restorative eucalyptus blend.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Nala Care",
+        "Deodorant"
+      ],
+      "sort_keys": {
+        "price_min": 26,
+        "price_max": 26,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_446a5f126507ff6adba46258"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_45716e6070ce703c2f4ee3d4",
+      "sellable_item_group_id": "sig_45716e6070ce703c2f4ee3d4",
+      "product_line_id": "pl_6dcf9ffecb3ff57f4339d517",
+      "review_family_id": "rf_6dcf9ffecb3ff57f4339d517",
+      "brand_name": "Nala Care",
+      "category_paths": [
+        "Deodorant"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Palo Santo & Sage, Sensitive Skin Natural Deodorant",
+      "subtitle": "Reminiscent of ancient forests and smoky rituals, Nala's Palo Santo & Sage deodorant is a grounding and meditative woodsy blend that is balanced by light floral notes of lavender and refreshing hints of sage.\n\nPalo santo and cedarwood are both soothing with anti-inflammatory properties. Palo Santo is a spiritual tree that is thought to help cleanse negative energy and restore positive well-being. This deodorant reduces undesirable underarm odor as cedarwood and sage in it are both natural astringents that tighten your pores and reduce sweating.\n\nPrimary Notes: palo santo, sage\nSecondary Notes: lavender\nBase Notes: cedarwood, palo santo",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Palo_Santo_Sage_Transparent_Box.png?v=1752600229",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Palo_Santo_Sage_Transparent_Box.png?v=1752600229",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Tube.png?v=1752600229",
+        "https://nalacare.com/cdn/shop/files/AK5A1190.png?v=1778824029",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Peppermint_Charcoal_Transparent_Box.png?v=1752599986",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Lavender_Vetiver_Transparent_Box.png?v=1752600139",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Unscented_Transparent_Box.png?v=1752600176",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Sandalwood_Bergamot_Transparent_Box.png?v=1752600440",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Rosewood_Transparent_Box.png?v=1752600292"
+      ],
+      "price_min": 26,
+      "price_max": 26,
+      "default_offer_id": "external_seed:ext_2ef1955968e55d0bfdf5fe78",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Nala Care deodorant listed on the official source page as Palo Santo & Sage, Sensitive Skin Natural Deodorant.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Nala Care",
+        "Deodorant"
+      ],
+      "sort_keys": {
+        "price_min": 26,
+        "price_max": 26,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_2ef1955968e55d0bfdf5fe78"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_176d0cbeaaff82a732c51ef4",
+      "sellable_item_group_id": "sig_176d0cbeaaff82a732c51ef4",
+      "product_line_id": "pl_e6f5488af794bb7d3dcf82d6",
+      "review_family_id": "rf_e6f5488af794bb7d3dcf82d6",
+      "brand_name": "Nala Care",
+      "category_paths": [
+        "Deodorant"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Unscented, Sensitive Skin Natural Deodorant",
+      "subtitle": "All the moisture absorbing, odor reducing and protective properties of our base formula without any of the scent. Perfect for those who work in scent-free environments or prefer to keep their routine simple and bare.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Unscented_Transparent_Box.png?v=1752600176",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Unscented_Transparent_Box.png?v=1752600176",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Tube.png?v=1752600229",
+        "https://nalacare.com/cdn/shop/files/AK5A1190.png?v=1778824029",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Peppermint_Charcoal_Transparent_Box.png?v=1752599986",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Palo_Santo_Sage_Transparent_Box.png?v=1752600229",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Lavender_Vetiver_Transparent_Box.png?v=1752600139",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Eucalyptus_Champa_Transparent_Box.png?v=1752600258",
+        "https://nalacare.com/cdn/shop/files/241205_Nala_7409_web.jpg?v=1735323818"
+      ],
+      "price_min": 26,
+      "price_max": 26,
+      "default_offer_id": "external_seed:ext_5975f96c1d90b02d02329960",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Nala Care deodorant listed on the official source page as Unscented, Sensitive Skin Natural Deodorant. The official description identifies: All the moisture absorbing, odor reducing and protective properties of our base formula without any of the scent.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Nala Care",
+        "Deodorant"
+      ],
+      "sort_keys": {
+        "price_min": 26,
+        "price_max": 26,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_5975f96c1d90b02d02329960"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_3593c2c3e729fd45ede0996a",
+      "sellable_item_group_id": "sig_3593c2c3e729fd45ede0996a",
+      "product_line_id": "pl_694450939140db330c1ea653",
+      "review_family_id": "rf_694450939140db330c1ea653",
+      "brand_name": "Nala Care",
+      "category_paths": [
+        "Deodorant"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Lavender & Vetiver, Sensitive Skin Natural Deodorant",
+      "subtitle": "This one is for all you lavender lovers. It smells like the purest of lavenders, a grounding and soothing blend of lavender, vetiver, sage, and fir. Soft and delicate notes of lavender connect with earthy and smoky hints of vetiver. This relaxing fragrance is balanced with the light citrusy scent of fir needle oil and crisp sage.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Lavender_Vetiver_Transparent_Box.png?v=1752600139",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Lavender_Vetiver_Transparent_Box.png?v=1752600139",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Tube.png?v=1752600229",
+        "https://nalacare.com/cdn/shop/files/AK5A1190.png?v=1778824029",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Peppermint_Charcoal_Transparent_Box.png?v=1752599986",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Palo_Santo_Sage_Transparent_Box.png?v=1752600229",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Unscented_Transparent_Box.png?v=1752600176",
+        "https://nalacare.com/cdn/shop/files/Nala_Breast_Oil_Transparent.png?v=1753798279",
+        "https://nalacare.com/cdn/shop/files/241205_Nala_7409_web.jpg?v=1735323818"
+      ],
+      "price_min": 26,
+      "price_max": 26,
+      "default_offer_id": "external_seed:ext_21216a67b62b16d88661367f",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "The official description identifies: This one is for all you lavender lovers.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Nala Care",
+        "Deodorant"
+      ],
+      "sort_keys": {
+        "price_min": 26,
+        "price_max": 26,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_21216a67b62b16d88661367f"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_0c5ce72c1a7bb40617f0b83d",
+      "sellable_item_group_id": "sig_0c5ce72c1a7bb40617f0b83d",
+      "product_line_id": "pl_4620c3736a14c5e0e09af523",
+      "review_family_id": "rf_4620c3736a14c5e0e09af523",
+      "brand_name": "Nala Care",
+      "category_paths": [
+        "Deodorant"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Grapefruit & Neroli, Extra Strength Natural Deodorant",
+      "subtitle": "An intoxicating blend of pink grapefruit, neroli flower oil, basil, and black peppercorn. Black peppercorn gives a subtle but sharp contrast to the bright blend of citrus & floral, elevating the whole.\n\nMade with luxurious camellia seed oil, organic botanical extracts, and scientifically-validated ingredients of the highest quality, this natural deodorant neutralizes underarm odor and nourishes delicate underarm skin.\n\nScented with organic essential oils, no artificial fragrance.\n\nFree-from aluminum, parabens, pthalates, petroleum, carcinogens.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Grapefruit_Neroli_Transparent_Box.png?v=1752600087",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Grapefruit_Neroli_Transparent_Box.png?v=1752600087",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Tube.png?v=1752600229",
+        "https://nalacare.com/cdn/shop/files/AK5A1190.png?v=1778824029",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Coastal_Waters_Transparent_Box.png?v=1752600326",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Sandalwood_Bergamot_Transparent_Box.png?v=1752600440",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Eucalyptus_Champa_Transparent_Box.png?v=1752600258",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Rosewood_Transparent_Box.png?v=1752600292",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Peach_Chamomile_Transparent_Box.png?v=1752600403"
+      ],
+      "price_min": 26,
+      "price_max": 26,
+      "default_offer_id": "external_seed:ext_b36935c92dc89857bf62f25e",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Nala Care deodorant listed on the official source page as Grapefruit & Neroli, Extra Strength Natural Deodorant. The official description identifies: An intoxicating blend of pink grapefruit, neroli flower oil, basil, and black peppercorn.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Nala Care",
+        "Deodorant"
+      ],
+      "sort_keys": {
+        "price_min": 26,
+        "price_max": 26,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_b36935c92dc89857bf62f25e"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_585510673ac14ed71e01b4a9",
+      "sellable_item_group_id": "sig_585510673ac14ed71e01b4a9",
+      "product_line_id": "pl_870b8abffbc9367ccb6c0122",
+      "review_family_id": "rf_870b8abffbc9367ccb6c0122",
+      "brand_name": "Nala Care",
+      "category_paths": [
+        "Deodorant"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Coastal Waters, Extra Strength Natural Deodorant",
+      "subtitle": "A rugged but energizing blend of natural elements, this deodorant embodies life by the ocean. A heavier, woody scent that comes from Frankincense essential oil is balanced with lighter hints of citrus and swirls of fresh mint. The final touch in this blend is a hint of salt, reminiscent of a cool, ocean breeze.\n\n60 g",
+      "variant_axes": {
+        "volume": "60g",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Coastal_Waters_Transparent_Box.png?v=1752600326",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Coastal_Waters_Transparent_Box.png?v=1752600326",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Tube.png?v=1752600229",
+        "https://nalacare.com/cdn/shop/files/AK5A1190.png?v=1778824029",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Sandalwood_Bergamot_Transparent_Box.png?v=1752600440",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Eucalyptus_Champa_Transparent_Box.png?v=1752600258",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Rosewood_Transparent_Box.png?v=1752600292",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Grapefruit_Neroli_Transparent_Box.png?v=1752600087",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Peach_Chamomile_Transparent_Box.png?v=1752600403"
+      ],
+      "price_min": 26,
+      "price_max": 26,
+      "default_offer_id": "external_seed:ext_e08d2e62205f1691dfe30753",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Nala Care deodorant listed on the official source page as Coastal Waters, Extra Strength Natural Deodorant. The official description identifies: A rugged but energizing blend of natural elements, this deodorant embodies life by the ocean.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Nala Care",
+        "Deodorant"
+      ],
+      "sort_keys": {
+        "price_min": 26,
+        "price_max": 26,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_e08d2e62205f1691dfe30753"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_344eafc02c8931679c020a25",
+      "sellable_item_group_id": "sig_344eafc02c8931679c020a25",
+      "product_line_id": "pl_ffe7fee8956b23b45da389b7",
+      "review_family_id": "rf_ffe7fee8956b23b45da389b7",
+      "brand_name": "Delicate Daisys Botanical Beauty",
+      "category_paths": [
+        "Cleanser"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Cleansing Face Milk Bulgarian Rose",
+      "subtitle": "With this gentle, waterless cleansing milk, you can effectively cleanse, refresh, and soothe your face and neck without stripping your skin of important oils. Made with Organic Damask Rose Water and Oil, this product has the added benefits of pore-tightening, skin irritation relief, and protection against cell damage. Simply pump onto a cotton wipe or pad, massage, and wipe away for convenient and effective facial cleansing that can be done anytime and anywhere.\n\nCleanse gently, then follow with our Rose Water Spray to calm and tone. Perfect for sensitive skin or minimalist routines.\n\nDirections for use: Use a cotton wipe or pad to clean the face and eyes in the morning and evening. No rinse is necessary. Suitable for all skin types and gentle enough for daily use.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://delicatedaisys.com/cdn/shop/files/IMG-3349.jpg?v=1779411477",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3349.jpg?v=1779411477",
+        "https://delicatedaisys.com/cdn/shop/files/cleansing-face-milk-bulgarian-rose-353063.jpg?v=1725349381",
+        "https://delicatedaisys.com/cdn/shop/files/cleansing-face-milk-bulgarian-rose-783357.jpg?v=1725349381",
+        "https://delicatedaisys.com/cdn/shop/files/cleansing-face-milk-bulgarian-rose-349638.jpg?v=1725349381",
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3351.png?v=1779411776",
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3243.png?v=1779317759",
+        "https://delicatedaisys.com/cdn/shop/files/cleansing-face-milk-bulgarian-rose-139536.jpg?v=1725312396"
+      ],
+      "price_min": 39.99,
+      "price_max": 39.99,
+      "default_offer_id": "external_seed:ext_99b5d36c01c7614a5de71fa1",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Delicate Daisys Botanical Beauty cleanser listed on the official source page as Cleansing Face Milk Bulgarian Rose. The official description identifies: With this gentle, waterless cleansing milk, you can effectively cleanse, refresh, and soothe your face and neck without stripping your skin of important oils.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Delicate Daisys Botanical Beauty",
+        "Cleanser"
+      ],
+      "sort_keys": {
+        "price_min": 39.99,
+        "price_max": 39.99,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_99b5d36c01c7614a5de71fa1"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_f0c452f8504c681b0c410a4f",
+      "sellable_item_group_id": "sig_f0c452f8504c681b0c410a4f",
+      "product_line_id": "pl_3545617c840f7298b3024e0d",
+      "review_family_id": "rf_3545617c840f7298b3024e0d",
+      "brand_name": "Delicate Daisys Botanical Beauty",
+      "category_paths": [
+        "Body Cream",
+        "Body Moisturizer"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Firming & Toning Body Cream Pineapple & Retinol",
+      "subtitle": "Revitalize your body with our all-natural Pineapple & Retinol infused Firming & Toning Body Cream, specially formulated to target cellulite and stimulate fat burning, while preventing the formation of new cells. Enhance your daily workout routine with this cream and pair it with cupping therapy, massage, and body brushing for optimal results. Don't worry if you feel a slight tingling or warming sensation, as it is a natural and temporary part of the stimulation process. Trust us, your body will thank you!\n\nFor best results, apply after cleansing with our pineapple enzyme body wash .",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://delicatedaisys.com/cdn/shop/files/IMG-3410.png?v=1779467076",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3410.png?v=1779467076",
+        "https://delicatedaisys.com/cdn/shop/files/firming-toning-body-cream-pineapple-retinol-302883.jpg?v=1725349380",
+        "https://delicatedaisys.com/cdn/shop/files/firming-toning-body-cream-pineapple-retinol-861179.jpg?v=1725349380",
+        "https://delicatedaisys.com/cdn/shop/files/firming-toning-body-cream-pineapple-retinol-104111.jpg?v=1725349380",
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3409.png?v=1779467075",
+        "https://delicatedaisys.com/cdn/shop/files/firming-toning-body-cream-pineapple-retinol-988260.jpg?v=1725349380",
+        "https://m.media-amazon.com/images/I/512boGEq-3L.jpg",
+        "https://m.media-amazon.com/images/I/61+C6UujlfL.jpg"
+      ],
+      "price_min": 45.99,
+      "price_max": 45.99,
+      "default_offer_id": "external_seed:ext_9695064b5f7d76303f88beb1",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Delicate Daisys Botanical Beauty moisturizer listed on the official source page as Firming & Toning Body Cream Pineapple & Retinol.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Delicate Daisys Botanical Beauty",
+        "Body Cream",
+        "Body Moisturizer"
+      ],
+      "sort_keys": {
+        "price_min": 45.99,
+        "price_max": 45.99,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_9695064b5f7d76303f88beb1"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_46a6391643f5a1383dd066e6",
+      "sellable_item_group_id": "sig_46a6391643f5a1383dd066e6",
+      "product_line_id": "pl_37647bb6da4e2d9cc223fa96",
+      "review_family_id": "rf_37647bb6da4e2d9cc223fa96",
+      "brand_name": "Delicate Daisys Botanical Beauty",
+      "category_paths": [
+        "Body Oil"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Glimmer Tanning Body Oil Colloidal Gold",
+      "subtitle": "Expertly crafted, our multi-purpose body oil features Colloidal Gold for a radiant glow when in the sun and nourished skin thanks to coconut oil and cocoa butter. With nanoparticle technology, Colloidal Gold penetrates deeply to protect and rejuvenate skin. Ideal for daily use, sunbathing, and tanning beds.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://delicatedaisys.com/cdn/shop/files/IMG-3436.png?v=1779473303",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3436.png?v=1779473303",
+        "https://delicatedaisys.com/cdn/shop/files/glimmer-tanning-body-oil-colloidal-gold-581835.jpg?v=1725349382",
+        "https://delicatedaisys.com/cdn/shop/files/glimmer-tanning-body-oil-colloidal-gold-376720.jpg?v=1725349382",
+        "https://delicatedaisys.com/cdn/shop/files/glimmer-tanning-body-oil-colloidal-gold-848082.jpg?v=1725349382",
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3437.png?v=1779473435",
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3282_b5c6f75e-62da-45aa-a2c2-1ca36a27c7ab.png?v=1779473304",
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3281_0d8f7467-1b8f-4ced-b0c8-d14da658c14f.png?v=1779473304",
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3279_46de2c66-e313-4151-9b9c-87c5856423ab.png?v=1779473304"
+      ],
+      "price_min": 34.99,
+      "price_max": 34.99,
+      "default_offer_id": "external_seed:ext_3405f1b2b381c9a5e0941c20",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Delicate Daisys Botanical Beauty body oil listed on the official source page as Glimmer Tanning Body Oil Colloidal Gold.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Delicate Daisys Botanical Beauty",
+        "Body Oil"
+      ],
+      "sort_keys": {
+        "price_min": 34.99,
+        "price_max": 34.99,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_3405f1b2b381c9a5e0941c20"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_fe94d67f4b6aa5cd8feb8e32",
+      "sellable_item_group_id": "sig_fe94d67f4b6aa5cd8feb8e32",
+      "product_line_id": "pl_b66437e126013dea260dd7e4",
+      "review_family_id": "rf_b66437e126013dea260dd7e4",
+      "brand_name": "Delicate Daisys Botanical Beauty",
+      "category_paths": [
+        "Body Oil"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Cooling After Sun Body Oil Aloe Vera",
+      "subtitle": "Experience the nourishing benefits of Aloe Vera with this body oil, providing deep hydration and rejuvenation for luxuriously smooth skin. The natural cooling effect of Peppermint oil adds a refreshing touch, making it ideal for daily use. This versatile body oil is not only perfect for daily indulgence, but also as a pre-, during, and post-sun companion to keep your skin healthy and hydrated. Make it a part of your all-encompassing skincare routine.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://delicatedaisys.com/cdn/shop/files/IMG-3438.png?v=1779473661",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3438.png?v=1779473661",
+        "https://delicatedaisys.com/cdn/shop/files/cooling-after-sun-body-oil-aloe-vera-898941.jpg?v=1725349379",
+        "https://delicatedaisys.com/cdn/shop/files/cooling-after-sun-body-oil-aloe-vera-299320.jpg?v=1725349379",
+        "https://delicatedaisys.com/cdn/shop/files/cooling-after-sun-body-oil-aloe-vera-960183.jpg?v=1725349379",
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3439.png?v=1779473662",
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3442.png?v=1779473979",
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3441.png?v=1779473979"
+      ],
+      "price_min": 34.99,
+      "price_max": 34.99,
+      "default_offer_id": "external_seed:ext_b344f028268229b02a16d0cb",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Delicate Daisys Botanical Beauty body oil listed on the official source page as Cooling After Sun Body Oil Aloe Vera. The official description identifies: Experience the nourishing benefits of Aloe Vera with this body oil, providing deep hydration and rejuvenation for luxuriously smooth skin.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Delicate Daisys Botanical Beauty",
+        "Body Oil"
+      ],
+      "sort_keys": {
+        "price_min": 34.99,
+        "price_max": 34.99,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_b344f028268229b02a16d0cb"
+      ]
+    }
+  ]
+}

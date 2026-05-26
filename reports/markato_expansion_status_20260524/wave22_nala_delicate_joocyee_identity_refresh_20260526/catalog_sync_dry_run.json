@@ -1,0 +1,4016 @@
+{
+  "generated_at": "2026-05-26T01:18:24.301Z",
+  "mode": "dry_run",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": true,
+  "requested_ids": 17,
+  "fetched_rows": 17,
+  "mirror_rows": 17,
+  "planned_sku_rows": 27,
+  "planned_offer_rows": 27,
+  "planned_index_state_rows": 17,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "dry_run",
+    "existing_before": {
+      "catalog_products": 17,
+      "catalog_skus": 15,
+      "catalog_offers": 15,
+      "product_group_members": 15
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 27
+    },
+    "product_upserts": 0,
+    "sku_upserts": 0,
+    "offer_upserts": 0,
+    "group_member_upserts": 0,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 0,
+    "identity_live_read_updates": 0
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_21216a67b62b16d88661367f",
+      "product_key": "prod::external_seed::external_seed::ext_21216a67b62b16d88661367f",
+      "product_group_id": "sig_3593c2c3e729fd45ede0996a",
+      "title": "Lavender & Vetiver, Sensitive Skin Natural Deodorant",
+      "brand": "Nala Care",
+      "product_type": "Deodorant",
+      "category": "Deodorant",
+      "category_path": "beauty/body-care/deodorant",
+      "canonical_url": "https://nalacare.com/products/lavender-and-vetiver-charcoal-natural-deodorant",
+      "pivota_signature_id": "sig_3593c2c3e729fd45ede0996a",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_21216a67b62b16d88661367f::sku_3e1f40ca41fa8ec14a24",
+        "product_key": "prod::external_seed::external_seed::ext_21216a67b62b16d88661367f",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_21216a67b62b16d88661367f",
+        "source_variant_id": "ext_21216a67b62b16d88661367f:41827204005988",
+        "source_domain": "nalacare.com",
+        "sku": "FFD00008",
+        "barcode": null,
+        "title": "Default",
+        "currency": "USD",
+        "image_url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Lavender_Vetiver_Transparent_Box.png?v=1752600139",
+        "visible_attributes": {
+          "Shade": "Default"
+        },
+        "visible_option_labels": {
+          "Shade": "Default"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_21216a67b62b16d88661367f",
+          "raw_variant_id": "41827204005988",
+          "source_variant_id": "ext_21216a67b62b16d88661367f:41827204005988",
+          "variant_sku": "FFD00008",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://nalacare.com/products/lavender-and-vetiver-charcoal-natural-deodorant",
+          "external_redirect_url": "https://nalacare.com/products/lavender-and-vetiver-charcoal-natural-deodorant",
+          "price": "26",
+          "price_amount": 26,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Lavender_Vetiver_Transparent_Box.png?v=1752600139",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Shade": "Default"
+          },
+          "raw_variant": {
+            "sku": "FFD00008",
+            "url": "https://nalacare.com/products/lavender-and-vetiver-charcoal-natural-deodorant?variant=41827204005988&utm_source=pivota&utm_medium=affiliate",
+            "price": "26.00",
+            "stock": "In Stock",
+            "title": "Default",
+            "options": [],
+            "currency": "USD",
+            "deep_link": "https://nalacare.com/products/lavender-and-vetiver-charcoal-natural-deodorant?variant=41827204005988&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Lavender_Vetiver_Transparent_Box.png?v=1752600139",
+            "image_urls": [
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Lavender_Vetiver_Transparent_Box.png?v=1752600139",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Tube.png?v=1752600229",
+              "https://nalacare.com/cdn/shop/files/AK5A1190.png?v=1778824029",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Peppermint_Charcoal_Transparent_Box.png?v=1752599986",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Palo_Santo_Sage_Transparent_Box.png?v=1752600229",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Unscented_Transparent_Box.png?v=1752600176",
+              "https://nalacare.com/cdn/shop/files/Nala_Breast_Oil_Transparent.png?v=1753798279",
+              "https://nalacare.com/cdn/shop/files/241205_Nala_7409_web.jpg?v=1735323818"
+            ],
+            "variant_id": "41827204005988",
+            "product_url": "https://nalacare.com/products/lavender-and-vetiver-charcoal-natural-deodorant"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:ea60d878dce61f79959312846d52ba4e",
+        "sku_key": "prod::external_seed::external_seed::ext_21216a67b62b16d88661367f::sku_3e1f40ca41fa8ec14a24",
+        "product_key": "prod::external_seed::external_seed::ext_21216a67b62b16d88661367f",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 26,
+        "merchant_effective_price": 26,
+        "estimated_best_price": 26,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_397f9fecae5c0008b37ef970",
+        "source_domain": "nalacare.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_397f9fecae5c0008b37ef970",
+          "external_product_id": "ext_21216a67b62b16d88661367f",
+          "domain": "nalacare.com",
+          "market": "US",
+          "product_title": "Lavender & Vetiver, Sensitive Skin Natural Deodorant",
+          "variant_title": "Default",
+          "variant_sku": "FFD00008",
+          "raw_variant_id": "41827204005988",
+          "url": "https://nalacare.com/products/lavender-and-vetiver-charcoal-natural-deodorant",
+          "offer_url": "https://nalacare.com/products/lavender-and-vetiver-charcoal-natural-deodorant",
+          "canonical_url": "https://nalacare.com/products/lavender-and-vetiver-charcoal-natural-deodorant",
+          "destination_url": "https://nalacare.com/products/lavender-and-vetiver-charcoal-natural-deodorant",
+          "external_redirect_url": "https://nalacare.com/products/lavender-and-vetiver-charcoal-natural-deodorant",
+          "merchant_display_name": "Nala Care",
+          "price": "26",
+          "price_amount": 26,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T00:37:40.481Z",
+            "evidence_url": "https://nalacare.com/products/lavender-and-vetiver-charcoal-natural-deodorant",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T00:37:40.481Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://nalacare.com/products/lavender-and-vetiver-charcoal-natural-deodorant"
+            },
+            "regional_price": {
+              "amount": 26,
+              "currency": "USD",
+              "display_raw": "26.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://nalacare.com/products/lavender-and-vetiver-charcoal-natural-deodorant",
+              "captured_at": "2026-05-23T00:37:40.481Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:37:40.481Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T00:37:40.481Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T00:37:40.481Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 26,
+              "currency": "USD",
+              "display_raw": "26.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://nalacare.com/products/lavender-and-vetiver-charcoal-natural-deodorant",
+              "captured_at": "2026-05-23T00:37:40.481Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:37:40.481Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 331
+      }
+    },
+    {
+      "external_product_id": "ext_2ef1955968e55d0bfdf5fe78",
+      "product_key": "prod::external_seed::external_seed::ext_2ef1955968e55d0bfdf5fe78",
+      "product_group_id": "sig_45716e6070ce703c2f4ee3d4",
+      "title": "Palo Santo & Sage, Sensitive Skin Natural Deodorant",
+      "brand": "Nala Care",
+      "product_type": "Deodorant",
+      "category": "Deodorant",
+      "category_path": "beauty/body-care/deodorant",
+      "canonical_url": "https://nalacare.com/products/palo-santo-sage-natural-deodorant",
+      "pivota_signature_id": "sig_45716e6070ce703c2f4ee3d4",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_2ef1955968e55d0bfdf5fe78::sku_46e6e04ba7a77e132ec8",
+        "product_key": "prod::external_seed::external_seed::ext_2ef1955968e55d0bfdf5fe78",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_2ef1955968e55d0bfdf5fe78",
+        "source_variant_id": "ext_2ef1955968e55d0bfdf5fe78:41827203252324",
+        "source_domain": "nalacare.com",
+        "sku": "FFD00005",
+        "barcode": null,
+        "title": "Default",
+        "currency": "USD",
+        "image_url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Palo_Santo_Sage_Transparent_Box.png?v=1752600229",
+        "visible_attributes": {
+          "Shade": "Default"
+        },
+        "visible_option_labels": {
+          "Shade": "Default"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_2ef1955968e55d0bfdf5fe78",
+          "raw_variant_id": "41827203252324",
+          "source_variant_id": "ext_2ef1955968e55d0bfdf5fe78:41827203252324",
+          "variant_sku": "FFD00005",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://nalacare.com/products/palo-santo-sage-natural-deodorant",
+          "external_redirect_url": "https://nalacare.com/products/palo-santo-sage-natural-deodorant",
+          "price": "26",
+          "price_amount": 26,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Palo_Santo_Sage_Transparent_Box.png?v=1752600229",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Shade": "Default"
+          },
+          "raw_variant": {
+            "sku": "FFD00005",
+            "url": "https://nalacare.com/products/palo-santo-sage-natural-deodorant?variant=41827203252324&utm_source=pivota&utm_medium=affiliate",
+            "price": "26.00",
+            "stock": "In Stock",
+            "title": "Default",
+            "options": [],
+            "currency": "USD",
+            "deep_link": "https://nalacare.com/products/palo-santo-sage-natural-deodorant?variant=41827203252324&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Palo_Santo_Sage_Transparent_Box.png?v=1752600229",
+            "image_urls": [
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Palo_Santo_Sage_Transparent_Box.png?v=1752600229",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Tube.png?v=1752600229",
+              "https://nalacare.com/cdn/shop/files/AK5A1190.png?v=1778824029",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Peppermint_Charcoal_Transparent_Box.png?v=1752599986",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Lavender_Vetiver_Transparent_Box.png?v=1752600139",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Unscented_Transparent_Box.png?v=1752600176",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Sandalwood_Bergamot_Transparent_Box.png?v=1752600440",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Rosewood_Transparent_Box.png?v=1752600292",
+              "https://nalacare.com/cdn/shop/files/Nala_Breast_Oil_Transparent.png?v=1753798279",
+              "https://nalacare.com/cdn/shop/files/241205_Nala_7409_web.jpg?v=1735323818"
+            ],
+            "variant_id": "41827203252324",
+            "product_url": "https://nalacare.com/products/palo-santo-sage-natural-deodorant"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:b418a4654ea4cc22634e3609cd6910d9",
+        "sku_key": "prod::external_seed::external_seed::ext_2ef1955968e55d0bfdf5fe78::sku_46e6e04ba7a77e132ec8",
+        "product_key": "prod::external_seed::external_seed::ext_2ef1955968e55d0bfdf5fe78",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 26,
+        "merchant_effective_price": 26,
+        "estimated_best_price": 26,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_ea734087361e2bc8116864de",
+        "source_domain": "nalacare.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_ea734087361e2bc8116864de",
+          "external_product_id": "ext_2ef1955968e55d0bfdf5fe78",
+          "domain": "nalacare.com",
+          "market": "US",
+          "product_title": "Palo Santo & Sage, Sensitive Skin Natural Deodorant",
+          "variant_title": "Default",
+          "variant_sku": "FFD00005",
+          "raw_variant_id": "41827203252324",
+          "url": "https://nalacare.com/products/palo-santo-sage-natural-deodorant",
+          "offer_url": "https://nalacare.com/products/palo-santo-sage-natural-deodorant",
+          "canonical_url": "https://nalacare.com/products/palo-santo-sage-natural-deodorant",
+          "destination_url": "https://nalacare.com/products/palo-santo-sage-natural-deodorant",
+          "external_redirect_url": "https://nalacare.com/products/palo-santo-sage-natural-deodorant",
+          "merchant_display_name": "Nala Care",
+          "price": "26",
+          "price_amount": 26,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T00:38:01.751Z",
+            "evidence_url": "https://nalacare.com/products/palo-santo-sage-natural-deodorant",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T00:38:01.751Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://nalacare.com/products/palo-santo-sage-natural-deodorant"
+            },
+            "regional_price": {
+              "amount": 26,
+              "currency": "USD",
+              "display_raw": "26.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://nalacare.com/products/palo-santo-sage-natural-deodorant",
+              "captured_at": "2026-05-23T00:38:01.751Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:38:01.751Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T00:38:01.751Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T00:38:01.751Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 26,
+              "currency": "USD",
+              "display_raw": "26.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://nalacare.com/products/palo-santo-sage-natural-deodorant",
+              "captured_at": "2026-05-23T00:38:01.751Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:38:01.751Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 643
+      }
+    },
+    {
+      "external_product_id": "ext_446a5f126507ff6adba46258",
+      "product_key": "prod::external_seed::external_seed::ext_446a5f126507ff6adba46258",
+      "product_group_id": "sig_4d5786ae6535963a72172e4a",
+      "title": "Eucalyptus & Champa, Extra Strength Natural Deodorant",
+      "brand": "Nala Care",
+      "product_type": "Deodorant",
+      "category": "Deodorant",
+      "category_path": "beauty/body-care/deodorant",
+      "canonical_url": "https://nalacare.com/products/eucalyptus-natural-deodorant",
+      "pivota_signature_id": "sig_4d5786ae6535963a72172e4a",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_446a5f126507ff6adba46258::sku_a1dfa165f0f1016aa7fd",
+        "product_key": "prod::external_seed::external_seed::ext_446a5f126507ff6adba46258",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_446a5f126507ff6adba46258",
+        "source_variant_id": "ext_446a5f126507ff6adba46258:41827203154020",
+        "source_domain": "nalacare.com",
+        "sku": "FFD00006",
+        "barcode": null,
+        "title": "Default",
+        "currency": "USD",
+        "image_url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Eucalyptus_Champa_Transparent_Box.png?v=1752600258",
+        "visible_attributes": {
+          "Shade": "Default"
+        },
+        "visible_option_labels": {
+          "Shade": "Default"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_446a5f126507ff6adba46258",
+          "raw_variant_id": "41827203154020",
+          "source_variant_id": "ext_446a5f126507ff6adba46258:41827203154020",
+          "variant_sku": "FFD00006",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://nalacare.com/products/eucalyptus-natural-deodorant",
+          "external_redirect_url": "https://nalacare.com/products/eucalyptus-natural-deodorant",
+          "price": "26",
+          "price_amount": 26,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Eucalyptus_Champa_Transparent_Box.png?v=1752600258",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Shade": "Default"
+          },
+          "raw_variant": {
+            "sku": "FFD00006",
+            "url": "https://nalacare.com/products/eucalyptus-natural-deodorant?variant=41827203154020&utm_source=pivota&utm_medium=affiliate",
+            "price": "26.00",
+            "stock": "In Stock",
+            "title": "Default",
+            "options": [],
+            "currency": "USD",
+            "deep_link": "https://nalacare.com/products/eucalyptus-natural-deodorant?variant=41827203154020&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Eucalyptus_Champa_Transparent_Box.png?v=1752600258",
+            "image_urls": [
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Eucalyptus_Champa_Transparent_Box.png?v=1752600258",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Tube.png?v=1752600229",
+              "https://nalacare.com/cdn/shop/files/AK5A1190.png?v=1778824029",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Sandalwood_Bergamot_Transparent_Box.png?v=1752600440",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Rosewood_Transparent_Box.png?v=1752600292",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Coastal_Waters_Transparent_Box.png?v=1752600326",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Grapefruit_Neroli_Transparent_Box.png?v=1752600087",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Peach_Chamomile_Transparent_Box.png?v=1752600403",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Peppermint_Charcoal_Transparent_Box.png?v=1752599986",
+              "https://nalacare.com/cdn/shop/files/241205_Nala_7409_web.jpg?v=1735323818"
+            ],
+            "variant_id": "41827203154020",
+            "description": "For a spa-like escape baked into your daily routine, reach for this refreshing and restorative eucalyptus blend. Promote relaxation before your day even begins, this unique blend of essential oils is naturally stress relieving.",
+            "product_url": "https://nalacare.com/products/eucalyptus-natural-deodorant"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:2aebd774631885fbb44d465a44d86df5",
+        "sku_key": "prod::external_seed::external_seed::ext_446a5f126507ff6adba46258::sku_a1dfa165f0f1016aa7fd",
+        "product_key": "prod::external_seed::external_seed::ext_446a5f126507ff6adba46258",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 26,
+        "merchant_effective_price": 26,
+        "estimated_best_price": 26,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_f71587e76c7f38fd91249f6b",
+        "source_domain": "nalacare.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_f71587e76c7f38fd91249f6b",
+          "external_product_id": "ext_446a5f126507ff6adba46258",
+          "domain": "nalacare.com",
+          "market": "US",
+          "product_title": "Eucalyptus & Champa, Extra Strength Natural Deodorant",
+          "variant_title": "Default",
+          "variant_sku": "FFD00006",
+          "raw_variant_id": "41827203154020",
+          "url": "https://nalacare.com/products/eucalyptus-natural-deodorant",
+          "offer_url": "https://nalacare.com/products/eucalyptus-natural-deodorant",
+          "canonical_url": "https://nalacare.com/products/eucalyptus-natural-deodorant",
+          "destination_url": "https://nalacare.com/products/eucalyptus-natural-deodorant",
+          "external_redirect_url": "https://nalacare.com/products/eucalyptus-natural-deodorant",
+          "merchant_display_name": "Nala Care",
+          "price": "26",
+          "price_amount": 26,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T00:37:05.419Z",
+            "evidence_url": "https://nalacare.com/products/eucalyptus-natural-deodorant",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T00:37:05.419Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://nalacare.com/products/eucalyptus-natural-deodorant"
+            },
+            "regional_price": {
+              "amount": 26,
+              "currency": "USD",
+              "display_raw": "26.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://nalacare.com/products/eucalyptus-natural-deodorant",
+              "captured_at": "2026-05-23T00:37:05.419Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:37:05.419Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T00:37:05.419Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T00:37:05.419Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 26,
+              "currency": "USD",
+              "display_raw": "26.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://nalacare.com/products/eucalyptus-natural-deodorant",
+              "captured_at": "2026-05-23T00:37:05.419Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:37:05.419Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 227
+      }
+    },
+    {
+      "external_product_id": "ext_5975f96c1d90b02d02329960",
+      "product_key": "prod::external_seed::external_seed::ext_5975f96c1d90b02d02329960",
+      "product_group_id": "sig_176d0cbeaaff82a732c51ef4",
+      "title": "Unscented, Sensitive Skin Natural Deodorant",
+      "brand": "Nala Care",
+      "product_type": "Deodorant",
+      "category": "Deodorant",
+      "category_path": "beauty/body-care/deodorant",
+      "canonical_url": "https://nalacare.com/products/unscented-natural-deodorant",
+      "pivota_signature_id": "sig_176d0cbeaaff82a732c51ef4",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_5975f96c1d90b02d02329960::sku_0bc664628c69a05d780f",
+        "product_key": "prod::external_seed::external_seed::ext_5975f96c1d90b02d02329960",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_5975f96c1d90b02d02329960",
+        "source_variant_id": "ext_5975f96c1d90b02d02329960:41827203350628",
+        "source_domain": "nalacare.com",
+        "sku": "FFD00007",
+        "barcode": null,
+        "title": "Default",
+        "currency": "USD",
+        "image_url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Unscented_Transparent_Box.png?v=1752600176",
+        "visible_attributes": {
+          "Shade": "Default"
+        },
+        "visible_option_labels": {
+          "Shade": "Default"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_5975f96c1d90b02d02329960",
+          "raw_variant_id": "41827203350628",
+          "source_variant_id": "ext_5975f96c1d90b02d02329960:41827203350628",
+          "variant_sku": "FFD00007",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://nalacare.com/products/unscented-natural-deodorant",
+          "external_redirect_url": "https://nalacare.com/products/unscented-natural-deodorant",
+          "price": "26",
+          "price_amount": 26,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Unscented_Transparent_Box.png?v=1752600176",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Shade": "Default"
+          },
+          "raw_variant": {
+            "sku": "FFD00007",
+            "url": "https://nalacare.com/products/unscented-natural-deodorant?variant=41827203350628&utm_source=pivota&utm_medium=affiliate",
+            "price": "26.00",
+            "stock": "In Stock",
+            "title": "Default",
+            "options": [],
+            "currency": "USD",
+            "deep_link": "https://nalacare.com/products/unscented-natural-deodorant?variant=41827203350628&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Unscented_Transparent_Box.png?v=1752600176",
+            "image_urls": [
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Unscented_Transparent_Box.png?v=1752600176",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Tube.png?v=1752600229",
+              "https://nalacare.com/cdn/shop/files/AK5A1190.png?v=1778824029",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Peppermint_Charcoal_Transparent_Box.png?v=1752599986",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Palo_Santo_Sage_Transparent_Box.png?v=1752600229",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Lavender_Vetiver_Transparent_Box.png?v=1752600139",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Eucalyptus_Champa_Transparent_Box.png?v=1752600258",
+              "https://nalacare.com/cdn/shop/files/241205_Nala_7409_web.jpg?v=1735323818"
+            ],
+            "variant_id": "41827203350628",
+            "description": "All the moisture absorbing, odor reducing and protective properties of our base formula without any of the scent. Perfect for those who work in scent-free environments or prefer to keep their routine simple and bare.",
+            "product_url": "https://nalacare.com/products/unscented-natural-deodorant"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:5ac9a674ed089a97d29e972ece90e6e4",
+        "sku_key": "prod::external_seed::external_seed::ext_5975f96c1d90b02d02329960::sku_0bc664628c69a05d780f",
+        "product_key": "prod::external_seed::external_seed::ext_5975f96c1d90b02d02329960",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 26,
+        "merchant_effective_price": 26,
+        "estimated_best_price": 26,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_70cc3400fbd348ddea653644",
+        "source_domain": "nalacare.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_70cc3400fbd348ddea653644",
+          "external_product_id": "ext_5975f96c1d90b02d02329960",
+          "domain": "nalacare.com",
+          "market": "US",
+          "product_title": "Unscented, Sensitive Skin Natural Deodorant",
+          "variant_title": "Default",
+          "variant_sku": "FFD00007",
+          "raw_variant_id": "41827203350628",
+          "url": "https://nalacare.com/products/unscented-natural-deodorant",
+          "offer_url": "https://nalacare.com/products/unscented-natural-deodorant",
+          "canonical_url": "https://nalacare.com/products/unscented-natural-deodorant",
+          "destination_url": "https://nalacare.com/products/unscented-natural-deodorant",
+          "external_redirect_url": "https://nalacare.com/products/unscented-natural-deodorant",
+          "merchant_display_name": "Nala Care",
+          "price": "26",
+          "price_amount": 26,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T00:38:50.857Z",
+            "evidence_url": "https://nalacare.com/products/unscented-natural-deodorant",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T00:38:50.857Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://nalacare.com/products/unscented-natural-deodorant"
+            },
+            "regional_price": {
+              "amount": 26,
+              "currency": "USD",
+              "display_raw": "26.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://nalacare.com/products/unscented-natural-deodorant",
+              "captured_at": "2026-05-23T00:38:50.857Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:38:50.857Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T00:38:50.857Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T00:38:50.857Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 26,
+              "currency": "USD",
+              "display_raw": "26.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://nalacare.com/products/unscented-natural-deodorant",
+              "captured_at": "2026-05-23T00:38:50.857Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:38:50.857Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 216
+      }
+    },
+    {
+      "external_product_id": "ext_8136f11be69e6c18781a7f02",
+      "product_key": "prod::external_seed::external_seed::ext_8136f11be69e6c18781a7f02",
+      "product_group_id": "sig_6b92f753966ed06a55217641",
+      "title": "Peppermint & Activated Charcoal, Natural Deodorant",
+      "brand": "Nala Care",
+      "product_type": "Deodorant",
+      "category": "Deodorant",
+      "category_path": "beauty/body-care/deodorant",
+      "canonical_url": "https://nalacare.com/products/natural-deodorant-peppermint-charcoal",
+      "pivota_signature_id": "sig_6b92f753966ed06a55217641",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_8136f11be69e6c18781a7f02::sku_f591645a89f135c933e6",
+        "product_key": "prod::external_seed::external_seed::ext_8136f11be69e6c18781a7f02",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_8136f11be69e6c18781a7f02",
+        "source_variant_id": "ext_8136f11be69e6c18781a7f02:44152788910180",
+        "source_domain": "nalacare.com",
+        "sku": "FFD00001",
+        "barcode": null,
+        "title": "60g",
+        "currency": "USD",
+        "image_url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Peppermint_Charcoal_Transparent_Box.png?v=1752599986",
+        "visible_attributes": {
+          "Size": "60g"
+        },
+        "visible_option_labels": {
+          "Size": "60g"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_8136f11be69e6c18781a7f02",
+          "raw_variant_id": "44152788910180",
+          "source_variant_id": "ext_8136f11be69e6c18781a7f02:44152788910180",
+          "variant_sku": "FFD00001",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://nalacare.com/products/natural-deodorant-peppermint-charcoal",
+          "external_redirect_url": "https://nalacare.com/products/natural-deodorant-peppermint-charcoal",
+          "price": "26",
+          "price_amount": 26,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Peppermint_Charcoal_Transparent_Box.png?v=1752599986",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "60g"
+          },
+          "raw_variant": {
+            "sku": "FFD00001",
+            "url": "https://nalacare.com/products/natural-deodorant-peppermint-charcoal?variant=44152788910180&utm_source=pivota&utm_medium=affiliate",
+            "price": "26.00",
+            "stock": "In Stock",
+            "title": "60g",
+            "options": [
+              {
+                "name": "Size",
+                "value": "60g"
+              }
+            ],
+            "currency": "USD",
+            "deep_link": "https://nalacare.com/products/natural-deodorant-peppermint-charcoal?variant=44152788910180&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Peppermint_Charcoal_Transparent_Box.png?v=1752599986",
+            "image_urls": [
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Peppermint_Charcoal_Transparent_Box.png?v=1752599986",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Tube.png?v=1752600229",
+              "https://nalacare.com/cdn/shop/files/AK5A1190.png?v=1778824029",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Palo_Santo_Sage_Transparent_Box.png?v=1752600229",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Lavender_Vetiver_Transparent_Box.png?v=1752600139",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Unscented_Transparent_Box.png?v=1752600176",
+              "https://nalacare.com/cdn/shop/files/241205_Nala_7409_web.jpg?v=1735323818"
+            ],
+            "variant_id": "44152788910180",
+            "description": "Make the easy switch from conventional deodorants with the Peppermint & Activated Charcoal Deodorant. An effective formula that is both refreshing and eliminating. Neutralize odour and wetness naturally with our pairing of energizing peppermint and detoxing charcoal. Safe and",
+            "option_name": "Size",
+            "product_url": "https://nalacare.com/products/natural-deodorant-peppermint-charcoal",
+            "option_value": "60g"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:7c3dd255847c58f892b3454d9afd7056",
+        "sku_key": "prod::external_seed::external_seed::ext_8136f11be69e6c18781a7f02::sku_f591645a89f135c933e6",
+        "product_key": "prod::external_seed::external_seed::ext_8136f11be69e6c18781a7f02",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 26,
+        "merchant_effective_price": 26,
+        "estimated_best_price": 26,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_3f6b17eb288ce4725cbd191a",
+        "source_domain": "nalacare.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_3f6b17eb288ce4725cbd191a",
+          "external_product_id": "ext_8136f11be69e6c18781a7f02",
+          "domain": "nalacare.com",
+          "market": "US",
+          "product_title": "Peppermint & Activated Charcoal, Natural Deodorant",
+          "variant_title": "60g",
+          "variant_sku": "FFD00001",
+          "raw_variant_id": "44152788910180",
+          "url": "https://nalacare.com/products/natural-deodorant-peppermint-charcoal",
+          "offer_url": "https://nalacare.com/products/natural-deodorant-peppermint-charcoal",
+          "canonical_url": "https://nalacare.com/products/natural-deodorant-peppermint-charcoal",
+          "destination_url": "https://nalacare.com/products/natural-deodorant-peppermint-charcoal",
+          "external_redirect_url": "https://nalacare.com/products/natural-deodorant-peppermint-charcoal",
+          "merchant_display_name": "Nala Care",
+          "price": "26",
+          "price_amount": 26,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T00:38:35.092Z",
+            "evidence_url": "https://nalacare.com/products/natural-deodorant-peppermint-charcoal",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T00:38:35.092Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://nalacare.com/products/natural-deodorant-peppermint-charcoal"
+            },
+            "regional_price": {
+              "amount": 26,
+              "currency": "USD",
+              "display_raw": "26.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://nalacare.com/products/natural-deodorant-peppermint-charcoal",
+              "captured_at": "2026-05-23T00:38:35.092Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:38:35.092Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T00:38:35.092Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T00:38:35.092Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 26,
+              "currency": "USD",
+              "display_raw": "26.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://nalacare.com/products/natural-deodorant-peppermint-charcoal",
+              "captured_at": "2026-05-23T00:38:35.092Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:38:35.092Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 277
+      }
+    },
+    {
+      "external_product_id": "ext_b36935c92dc89857bf62f25e",
+      "product_key": "prod::external_seed::external_seed::ext_b36935c92dc89857bf62f25e",
+      "product_group_id": "sig_0c5ce72c1a7bb40617f0b83d",
+      "title": "Grapefruit & Neroli, Extra Strength Natural Deodorant",
+      "brand": "Nala Care",
+      "product_type": "Deodorant",
+      "category": "Deodorant",
+      "category_path": "beauty/body-care/deodorant",
+      "canonical_url": "https://nalacare.com/products/grapefruit-neroli-natural-deodorant",
+      "pivota_signature_id": "sig_0c5ce72c1a7bb40617f0b83d",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_b36935c92dc89857bf62f25e::sku_8fe703e30d5b7a539b4e",
+        "product_key": "prod::external_seed::external_seed::ext_b36935c92dc89857bf62f25e",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_b36935c92dc89857bf62f25e",
+        "source_variant_id": "ext_b36935c92dc89857bf62f25e:43144431534180",
+        "source_domain": "nalacare.com",
+        "sku": "FFD00009",
+        "barcode": null,
+        "title": "Default",
+        "currency": "USD",
+        "image_url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Grapefruit_Neroli_Transparent_Box.png?v=1752600087",
+        "visible_attributes": {
+          "Shade": "Default"
+        },
+        "visible_option_labels": {
+          "Shade": "Default"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_b36935c92dc89857bf62f25e",
+          "raw_variant_id": "43144431534180",
+          "source_variant_id": "ext_b36935c92dc89857bf62f25e:43144431534180",
+          "variant_sku": "FFD00009",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://nalacare.com/products/grapefruit-neroli-natural-deodorant",
+          "external_redirect_url": "https://nalacare.com/products/grapefruit-neroli-natural-deodorant",
+          "price": "26",
+          "price_amount": 26,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Grapefruit_Neroli_Transparent_Box.png?v=1752600087",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Shade": "Default"
+          },
+          "raw_variant": {
+            "sku": "FFD00009",
+            "url": "https://nalacare.com/products/grapefruit-neroli-natural-deodorant?variant=43144431534180&utm_source=pivota&utm_medium=affiliate",
+            "price": "26.00",
+            "stock": "In Stock",
+            "title": "Default",
+            "options": [],
+            "currency": "USD",
+            "deep_link": "https://nalacare.com/products/grapefruit-neroli-natural-deodorant?variant=43144431534180&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Grapefruit_Neroli_Transparent_Box.png?v=1752600087",
+            "image_urls": [
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Grapefruit_Neroli_Transparent_Box.png?v=1752600087",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Tube.png?v=1752600229",
+              "https://nalacare.com/cdn/shop/files/AK5A1190.png?v=1778824029",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Coastal_Waters_Transparent_Box.png?v=1752600326",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Sandalwood_Bergamot_Transparent_Box.png?v=1752600440",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Eucalyptus_Champa_Transparent_Box.png?v=1752600258",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Rosewood_Transparent_Box.png?v=1752600292",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Peach_Chamomile_Transparent_Box.png?v=1752600403",
+              "https://nalacare.com/cdn/shop/files/Nala_Breast_Oil_Transparent.png?v=1753798279",
+              "https://nalacare.com/cdn/shop/files/241205_Nala_7409_web.jpg?v=1735323818"
+            ],
+            "variant_id": "43144431534180",
+            "product_url": "https://nalacare.com/products/grapefruit-neroli-natural-deodorant"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:38361e2ace522ee917891d4dd589f112",
+        "sku_key": "prod::external_seed::external_seed::ext_b36935c92dc89857bf62f25e::sku_8fe703e30d5b7a539b4e",
+        "product_key": "prod::external_seed::external_seed::ext_b36935c92dc89857bf62f25e",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 26,
+        "merchant_effective_price": 26,
+        "estimated_best_price": 26,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_4e147a8448a969b3bd3c46a9",
+        "source_domain": "nalacare.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_4e147a8448a969b3bd3c46a9",
+          "external_product_id": "ext_b36935c92dc89857bf62f25e",
+          "domain": "nalacare.com",
+          "market": "US",
+          "product_title": "Grapefruit & Neroli, Extra Strength Natural Deodorant",
+          "variant_title": "Default",
+          "variant_sku": "FFD00009",
+          "raw_variant_id": "43144431534180",
+          "url": "https://nalacare.com/products/grapefruit-neroli-natural-deodorant",
+          "offer_url": "https://nalacare.com/products/grapefruit-neroli-natural-deodorant",
+          "canonical_url": "https://nalacare.com/products/grapefruit-neroli-natural-deodorant",
+          "destination_url": "https://nalacare.com/products/grapefruit-neroli-natural-deodorant",
+          "external_redirect_url": "https://nalacare.com/products/grapefruit-neroli-natural-deodorant",
+          "merchant_display_name": "Nala Care",
+          "price": "26",
+          "price_amount": 26,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T00:37:24.877Z",
+            "evidence_url": "https://nalacare.com/products/grapefruit-neroli-natural-deodorant",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T00:37:24.877Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://nalacare.com/products/grapefruit-neroli-natural-deodorant"
+            },
+            "regional_price": {
+              "amount": 26,
+              "currency": "USD",
+              "display_raw": "26.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://nalacare.com/products/grapefruit-neroli-natural-deodorant",
+              "captured_at": "2026-05-23T00:37:24.877Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:37:24.877Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T00:37:24.877Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T00:37:24.877Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 26,
+              "currency": "USD",
+              "display_raw": "26.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://nalacare.com/products/grapefruit-neroli-natural-deodorant",
+              "captured_at": "2026-05-23T00:37:24.877Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:37:24.877Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 550
+      }
+    },
+    {
+      "external_product_id": "ext_e08d2e62205f1691dfe30753",
+      "product_key": "prod::external_seed::external_seed::ext_e08d2e62205f1691dfe30753",
+      "product_group_id": "sig_585510673ac14ed71e01b4a9",
+      "title": "Coastal Waters, Extra Strength Natural Deodorant",
+      "brand": "Nala Care",
+      "product_type": "Deodorant",
+      "category": "Deodorant",
+      "category_path": "beauty/body-care/deodorant",
+      "canonical_url": "https://nalacare.com/products/coastal-waters-natural-deodorant-extra-strength",
+      "pivota_signature_id": "sig_585510673ac14ed71e01b4a9",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_e08d2e62205f1691dfe30753::sku_ffbaf2efa6835c31ad7f",
+        "product_key": "prod::external_seed::external_seed::ext_e08d2e62205f1691dfe30753",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_e08d2e62205f1691dfe30753",
+        "source_variant_id": "ext_e08d2e62205f1691dfe30753:39363500310628",
+        "source_domain": "nalacare.com",
+        "sku": "FFD00011",
+        "barcode": null,
+        "title": "60g",
+        "currency": "USD",
+        "image_url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Coastal_Waters_Transparent_Box.png?v=1752600326",
+        "visible_attributes": {
+          "Size": "60g"
+        },
+        "visible_option_labels": {
+          "Size": "60g"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_e08d2e62205f1691dfe30753",
+          "raw_variant_id": "39363500310628",
+          "source_variant_id": "ext_e08d2e62205f1691dfe30753:39363500310628",
+          "variant_sku": "FFD00011",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://nalacare.com/products/coastal-waters-natural-deodorant-extra-strength",
+          "external_redirect_url": "https://nalacare.com/products/coastal-waters-natural-deodorant-extra-strength",
+          "price": "26",
+          "price_amount": 26,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Coastal_Waters_Transparent_Box.png?v=1752600326",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "60g"
+          },
+          "raw_variant": {
+            "sku": "FFD00011",
+            "url": "https://nalacare.com/products/coastal-waters-natural-deodorant-extra-strength?variant=39363500310628&utm_source=pivota&utm_medium=affiliate",
+            "price": "26.00",
+            "stock": "In Stock",
+            "title": "60g",
+            "options": [
+              {
+                "name": "Size",
+                "value": "60g"
+              }
+            ],
+            "currency": "USD",
+            "deep_link": "https://nalacare.com/products/coastal-waters-natural-deodorant-extra-strength?variant=39363500310628&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Coastal_Waters_Transparent_Box.png?v=1752600326",
+            "image_urls": [
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Coastal_Waters_Transparent_Box.png?v=1752600326",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Tube.png?v=1752600229",
+              "https://nalacare.com/cdn/shop/files/AK5A1190.png?v=1778824029",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Sandalwood_Bergamot_Transparent_Box.png?v=1752600440",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Eucalyptus_Champa_Transparent_Box.png?v=1752600258",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Rosewood_Transparent_Box.png?v=1752600292",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Grapefruit_Neroli_Transparent_Box.png?v=1752600087",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Peach_Chamomile_Transparent_Box.png?v=1752600403",
+              "https://nalacare.com/cdn/shop/files/241205_Nala_7409_web.jpg?v=1735323818"
+            ],
+            "variant_id": "39363500310628",
+            "description": "A rugged but energizing blend of natural elements, this deodorant embodies life by the ocean. A heavier, woody scent that comes from Frankincense essential oil is balanced with lighter hints of citrus and swirls of fresh mint. The final touch in this blend is a hint of salt, reminiscent of a cool, ocean breeze. 60 g",
+            "option_name": "Size",
+            "product_url": "https://nalacare.com/products/coastal-waters-natural-deodorant-extra-strength",
+            "option_value": "60g"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:5760b4da2b88e97d3ebf2dc922763fe2",
+        "sku_key": "prod::external_seed::external_seed::ext_e08d2e62205f1691dfe30753::sku_ffbaf2efa6835c31ad7f",
+        "product_key": "prod::external_seed::external_seed::ext_e08d2e62205f1691dfe30753",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 26,
+        "merchant_effective_price": 26,
+        "estimated_best_price": 26,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_18d393cf24840b4bbe6b1a52",
+        "source_domain": "nalacare.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_18d393cf24840b4bbe6b1a52",
+          "external_product_id": "ext_e08d2e62205f1691dfe30753",
+          "domain": "nalacare.com",
+          "market": "US",
+          "product_title": "Coastal Waters, Extra Strength Natural Deodorant",
+          "variant_title": "60g",
+          "variant_sku": "FFD00011",
+          "raw_variant_id": "39363500310628",
+          "url": "https://nalacare.com/products/coastal-waters-natural-deodorant-extra-strength",
+          "offer_url": "https://nalacare.com/products/coastal-waters-natural-deodorant-extra-strength",
+          "canonical_url": "https://nalacare.com/products/coastal-waters-natural-deodorant-extra-strength",
+          "destination_url": "https://nalacare.com/products/coastal-waters-natural-deodorant-extra-strength",
+          "external_redirect_url": "https://nalacare.com/products/coastal-waters-natural-deodorant-extra-strength",
+          "merchant_display_name": "Nala Care",
+          "price": "26",
+          "price_amount": 26,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T00:36:18.280Z",
+            "evidence_url": "https://nalacare.com/products/coastal-waters-natural-deodorant-extra-strength",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T00:36:18.280Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://nalacare.com/products/coastal-waters-natural-deodorant-extra-strength"
+            },
+            "regional_price": {
+              "amount": 26,
+              "currency": "USD",
+              "display_raw": "26.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://nalacare.com/products/coastal-waters-natural-deodorant-extra-strength",
+              "captured_at": "2026-05-23T00:36:18.280Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:36:18.280Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T00:36:18.280Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T00:36:18.280Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 26,
+              "currency": "USD",
+              "display_raw": "26.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://nalacare.com/products/coastal-waters-natural-deodorant-extra-strength",
+              "captured_at": "2026-05-23T00:36:18.280Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:36:18.280Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 318
+      }
+    },
+    {
+      "external_product_id": "ext_e5f66cf29d6c516775bb0fce",
+      "product_key": "prod::external_seed::external_seed::ext_e5f66cf29d6c516775bb0fce",
+      "product_group_id": "sig_dc67c95a05ea55d137601330",
+      "title": "Essence of Rosewood, Extra Strength Natural Deodorant",
+      "brand": "Nala Care",
+      "product_type": "Deodorant",
+      "category": "Deodorant",
+      "category_path": "beauty/body-care/deodorant",
+      "canonical_url": "https://nalacare.com/products/essence-of-rosewood-extra-strength-deodorant",
+      "pivota_signature_id": "sig_dc67c95a05ea55d137601330",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_e5f66cf29d6c516775bb0fce::sku_f9e579315404aed07fef",
+        "product_key": "prod::external_seed::external_seed::ext_e5f66cf29d6c516775bb0fce",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_e5f66cf29d6c516775bb0fce",
+        "source_variant_id": "ext_e5f66cf29d6c516775bb0fce:44152762826852",
+        "source_domain": "nalacare.com",
+        "sku": "FFD00004",
+        "barcode": null,
+        "title": "60g",
+        "currency": "USD",
+        "image_url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Rosewood_Transparent_Box.png?v=1752600292",
+        "visible_attributes": {
+          "Size": "60g"
+        },
+        "visible_option_labels": {
+          "Size": "60g"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_e5f66cf29d6c516775bb0fce",
+          "raw_variant_id": "44152762826852",
+          "source_variant_id": "ext_e5f66cf29d6c516775bb0fce:44152762826852",
+          "variant_sku": "FFD00004",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://nalacare.com/products/essence-of-rosewood-extra-strength-deodorant",
+          "external_redirect_url": "https://nalacare.com/products/essence-of-rosewood-extra-strength-deodorant",
+          "price": "26",
+          "price_amount": 26,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Rosewood_Transparent_Box.png?v=1752600292",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "60g"
+          },
+          "raw_variant": {
+            "sku": "FFD00004",
+            "url": "https://nalacare.com/products/essence-of-rosewood-extra-strength-deodorant?variant=44152762826852&utm_source=pivota&utm_medium=affiliate",
+            "price": "26.00",
+            "stock": "In Stock",
+            "title": "60g",
+            "options": [
+              {
+                "name": "Size",
+                "value": "60g"
+              }
+            ],
+            "currency": "USD",
+            "deep_link": "https://nalacare.com/products/essence-of-rosewood-extra-strength-deodorant?variant=44152762826852&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Rosewood_Transparent_Box.png?v=1752600292",
+            "image_urls": [
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Rosewood_Transparent_Box.png?v=1752600292",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Tube.png?v=1752600229",
+              "https://cdn.stamped.io/cdn/images/pixel.png",
+              "https://cdn1.stamped.io/uploads/productImages/139780_8139512938596.png",
+              "https://cdn1.stamped.io/uploads/productImages/139780_6580323811428.png",
+              "https://cdn1.stamped.io/uploads/productImages/139780_7212833800292.png",
+              "https://cdn1.stamped.io/uploads/productImages/139780_6597643403364.png",
+              "https://cdn1.stamped.io/uploads/productImages/139780_6580314734692.png",
+              "https://cdn1.stamped.io/uploads/productImages/139780_6599991820388.png",
+              "https://cdn1.stamped.io/uploads/productImages/139780_7212834127972.png?v=1768065157",
+              "https://cdn1.stamped.io/uploads/productImages/139780_7212833734756.png"
+            ],
+            "variant_id": "44152762826852",
+            "option_name": "Size",
+            "product_url": "https://nalacare.com/products/essence-of-rosewood-extra-strength-deodorant",
+            "option_value": "60g"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:e8f7a5a21c95a3fa51779ae9761cdc75",
+        "sku_key": "prod::external_seed::external_seed::ext_e5f66cf29d6c516775bb0fce::sku_f9e579315404aed07fef",
+        "product_key": "prod::external_seed::external_seed::ext_e5f66cf29d6c516775bb0fce",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 26,
+        "merchant_effective_price": 26,
+        "estimated_best_price": 26,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_2a694bb944824411ac2da0a2",
+        "source_domain": "nalacare.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_2a694bb944824411ac2da0a2",
+          "external_product_id": "ext_e5f66cf29d6c516775bb0fce",
+          "domain": "nalacare.com",
+          "market": "US",
+          "product_title": "Essence of Rosewood, Extra Strength Natural Deodorant",
+          "variant_title": "60g",
+          "variant_sku": "FFD00004",
+          "raw_variant_id": "44152762826852",
+          "url": "https://nalacare.com/products/essence-of-rosewood-extra-strength-deodorant",
+          "offer_url": "https://nalacare.com/products/essence-of-rosewood-extra-strength-deodorant",
+          "canonical_url": "https://nalacare.com/products/essence-of-rosewood-extra-strength-deodorant",
+          "destination_url": "https://nalacare.com/products/essence-of-rosewood-extra-strength-deodorant",
+          "external_redirect_url": "https://nalacare.com/products/essence-of-rosewood-extra-strength-deodorant",
+          "merchant_display_name": "Nala Care",
+          "price": "26",
+          "price_amount": 26,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T00:36:41.867Z",
+            "evidence_url": "https://nalacare.com/products/essence-of-rosewood-extra-strength-deodorant",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T00:36:41.867Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://nalacare.com/products/essence-of-rosewood-extra-strength-deodorant"
+            },
+            "regional_price": {
+              "amount": 26,
+              "currency": "USD",
+              "display_raw": "26.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://nalacare.com/products/essence-of-rosewood-extra-strength-deodorant",
+              "captured_at": "2026-05-23T00:36:41.867Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:36:41.867Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T00:36:41.867Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T00:36:41.867Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 26,
+              "currency": "USD",
+              "display_raw": "26.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://nalacare.com/products/essence-of-rosewood-extra-strength-deodorant",
+              "captured_at": "2026-05-23T00:36:41.867Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:36:41.867Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 422
+      }
+    },
+    {
+      "external_product_id": "ext_31b732e4e40c0579c5f4c554",
+      "product_key": "prod::external_seed::external_seed::ext_31b732e4e40c0579c5f4c554",
+      "product_group_id": "sig_f5a6f90732c4af20fc4612ac",
+      "title": "Nourishing Probiotic Body Wash Pineapple",
+      "brand": "Delicate Daisys Botanical Beauty",
+      "product_type": "Body Wash",
+      "category": "Body Wash",
+      "category_path": "beauty/body-care/body-wash",
+      "canonical_url": "https://delicatedaisys.com/products/nourishing-probiotic-body-wash-pineapple",
+      "pivota_signature_id": "sig_f5a6f90732c4af20fc4612ac",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_31b732e4e40c0579c5f4c554::sku_78e3e059161d8e3f3df5",
+        "product_key": "prod::external_seed::external_seed::ext_31b732e4e40c0579c5f4c554",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_31b732e4e40c0579c5f4c554",
+        "source_variant_id": "ext_31b732e4e40c0579c5f4c554:47818597007634",
+        "source_domain": "delicatedaisys.com",
+        "sku": "860008494054",
+        "barcode": null,
+        "title": "Default Title",
+        "currency": "USD",
+        "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3260.png?v=1779321961",
+        "visible_attributes": {
+          "Shade": "Default Title"
+        },
+        "visible_option_labels": {
+          "Shade": "Default Title"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_31b732e4e40c0579c5f4c554",
+          "raw_variant_id": "47818597007634",
+          "source_variant_id": "ext_31b732e4e40c0579c5f4c554:47818597007634",
+          "variant_sku": "860008494054",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://delicatedaisys.com/products/nourishing-probiotic-body-wash-pineapple",
+          "external_redirect_url": "https://delicatedaisys.com/products/nourishing-probiotic-body-wash-pineapple",
+          "price": "19.99",
+          "price_amount": 19.99,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3260.png?v=1779321961",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Shade": "Default Title"
+          },
+          "raw_variant": {
+            "sku": "860008494054",
+            "url": "https://delicatedaisys.com/products/nourishing-probiotic-body-wash-pineapple?variant=47818597007634&utm_source=pivota&utm_medium=affiliate",
+            "price": "19.99",
+            "stock": "In Stock",
+            "title": "Default Title",
+            "options": [],
+            "currency": "USD",
+            "deep_link": "https://delicatedaisys.com/products/nourishing-probiotic-body-wash-pineapple?variant=47818597007634&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3260.png?v=1779321961",
+            "image_urls": [
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3260.png?v=1779321961",
+              "https://delicatedaisys.com/cdn/shop/files/nourishing-probiotic-body-wash-pineapple-285433.jpg?v=1725349497",
+              "https://delicatedaisys.com/cdn/shop/files/nourishing-probiotic-body-wash-pineapple-471823.jpg?v=1725349497",
+              "https://delicatedaisys.com/cdn/shop/files/nourishing-probiotic-body-wash-pineapple-807342.jpg?v=1725349497",
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3263.png?v=1779322184",
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3262.png?v=1779321961"
+            ],
+            "variant_id": "47818597007634",
+            "description": "This nourishing shower gel is enhanced with Probiotics and natural extracts to effectively cleanse your skin while imparting a refreshing and fruity Pineapple aroma. It is",
+            "product_url": "https://delicatedaisys.com/products/nourishing-probiotic-body-wash-pineapple"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:eddc8b9f27892aebee6e47f69f635d10",
+        "sku_key": "prod::external_seed::external_seed::ext_31b732e4e40c0579c5f4c554::sku_78e3e059161d8e3f3df5",
+        "product_key": "prod::external_seed::external_seed::ext_31b732e4e40c0579c5f4c554",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 19.99,
+        "merchant_effective_price": 19.99,
+        "estimated_best_price": 19.99,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_21794d2c1b706f4b3c7887b6",
+        "source_domain": "delicatedaisys.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_21794d2c1b706f4b3c7887b6",
+          "external_product_id": "ext_31b732e4e40c0579c5f4c554",
+          "domain": "delicatedaisys.com",
+          "market": "US",
+          "product_title": "Nourishing Probiotic Body Wash Pineapple",
+          "variant_title": "Default Title",
+          "variant_sku": "860008494054",
+          "raw_variant_id": "47818597007634",
+          "url": "https://delicatedaisys.com/products/nourishing-probiotic-body-wash-pineapple",
+          "offer_url": "https://delicatedaisys.com/products/nourishing-probiotic-body-wash-pineapple",
+          "canonical_url": "https://delicatedaisys.com/products/nourishing-probiotic-body-wash-pineapple",
+          "destination_url": "https://delicatedaisys.com/products/nourishing-probiotic-body-wash-pineapple",
+          "external_redirect_url": "https://delicatedaisys.com/products/nourishing-probiotic-body-wash-pineapple",
+          "merchant_display_name": "Delicate Daisys Botanical Beauty",
+          "price": "19.99",
+          "price_amount": 19.99,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T00:27:03.509Z",
+            "evidence_url": "https://delicatedaisys.com/products/nourishing-probiotic-body-wash-pineapple",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T00:27:03.509Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://delicatedaisys.com/products/nourishing-probiotic-body-wash-pineapple"
+            },
+            "regional_price": {
+              "amount": 19.99,
+              "currency": "USD",
+              "display_raw": "19.99",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://delicatedaisys.com/products/nourishing-probiotic-body-wash-pineapple",
+              "captured_at": "2026-05-23T00:27:03.509Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:27:03.509Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T00:27:03.509Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T00:27:03.509Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 19.99,
+              "currency": "USD",
+              "display_raw": "19.99",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://delicatedaisys.com/products/nourishing-probiotic-body-wash-pineapple",
+              "captured_at": "2026-05-23T00:27:03.509Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:27:03.509Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 171
+      }
+    },
+    {
+      "external_product_id": "ext_3405f1b2b381c9a5e0941c20",
+      "product_key": "prod::external_seed::external_seed::ext_3405f1b2b381c9a5e0941c20",
+      "product_group_id": "sig_46a6391643f5a1383dd066e6",
+      "title": "Glimmer Tanning Body Oil Colloidal Gold",
+      "brand": "Delicate Daisys Botanical Beauty",
+      "product_type": "Body Oil",
+      "category": "Body Oil",
+      "category_path": "beauty/body-care/body-oils",
+      "canonical_url": "https://delicatedaisys.com/products/glimmer-tanning-body-oil-colloidal-gold",
+      "pivota_signature_id": "sig_46a6391643f5a1383dd066e6",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_3405f1b2b381c9a5e0941c20::sku_211a8a361c58930e368a",
+        "product_key": "prod::external_seed::external_seed::ext_3405f1b2b381c9a5e0941c20",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_3405f1b2b381c9a5e0941c20",
+        "source_variant_id": "ext_3405f1b2b381c9a5e0941c20:47818612769042",
+        "source_domain": "delicatedaisys.com",
+        "sku": "SHOPIFY-47818612769042",
+        "barcode": null,
+        "title": "Default Title",
+        "currency": "USD",
+        "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3436.png?v=1779473303",
+        "visible_attributes": {
+          "Shade": "Default Title"
+        },
+        "visible_option_labels": {
+          "Shade": "Default Title"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_3405f1b2b381c9a5e0941c20",
+          "raw_variant_id": "47818612769042",
+          "source_variant_id": "ext_3405f1b2b381c9a5e0941c20:47818612769042",
+          "variant_sku": "SHOPIFY-47818612769042",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://delicatedaisys.com/products/glimmer-tanning-body-oil-colloidal-gold",
+          "external_redirect_url": "https://delicatedaisys.com/products/glimmer-tanning-body-oil-colloidal-gold",
+          "price": "34.99",
+          "price_amount": 34.99,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3436.png?v=1779473303",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Shade": "Default Title"
+          },
+          "raw_variant": {
+            "sku": "SHOPIFY-47818612769042",
+            "url": "https://delicatedaisys.com/products/glimmer-tanning-body-oil-colloidal-gold?variant=47818612769042&utm_source=pivota&utm_medium=affiliate",
+            "price": "34.99",
+            "stock": "In Stock",
+            "title": "Default Title",
+            "options": [],
+            "currency": "USD",
+            "deep_link": "https://delicatedaisys.com/products/glimmer-tanning-body-oil-colloidal-gold?variant=47818612769042&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3436.png?v=1779473303",
+            "image_urls": [
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3436.png?v=1779473303",
+              "https://delicatedaisys.com/cdn/shop/files/glimmer-tanning-body-oil-colloidal-gold-581835.jpg?v=1725349382",
+              "https://delicatedaisys.com/cdn/shop/files/glimmer-tanning-body-oil-colloidal-gold-376720.jpg?v=1725349382",
+              "https://delicatedaisys.com/cdn/shop/files/glimmer-tanning-body-oil-colloidal-gold-848082.jpg?v=1725349382",
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3437.png?v=1779473435",
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3282_b5c6f75e-62da-45aa-a2c2-1ca36a27c7ab.png?v=1779473304",
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3281_0d8f7467-1b8f-4ced-b0c8-d14da658c14f.png?v=1779473304",
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3279_46de2c66-e313-4151-9b9c-87c5856423ab.png?v=1779473304"
+            ],
+            "variant_id": "47818612769042",
+            "description": "Expertly crafted, our multi-purpose body oil features Colloidal Gold for a radiant glow when in the sun and nourished skin thanks to coconut oil and cocoa butter. With nanoparticle technology, Colloidal Gold penetrates deeply to protect and rejuvenate skin. Ideal for daily use, sunbathing, and tanning beds.",
+            "product_url": "https://delicatedaisys.com/products/glimmer-tanning-body-oil-colloidal-gold"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:d847e08d6436fc33410451effb11a512",
+        "sku_key": "prod::external_seed::external_seed::ext_3405f1b2b381c9a5e0941c20::sku_211a8a361c58930e368a",
+        "product_key": "prod::external_seed::external_seed::ext_3405f1b2b381c9a5e0941c20",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 34.99,
+        "merchant_effective_price": 34.99,
+        "estimated_best_price": 34.99,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_9c3a54c931f5b4bdf1e65b03",
+        "source_domain": "delicatedaisys.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_9c3a54c931f5b4bdf1e65b03",
+          "external_product_id": "ext_3405f1b2b381c9a5e0941c20",
+          "domain": "delicatedaisys.com",
+          "market": "US",
+          "product_title": "Glimmer Tanning Body Oil Colloidal Gold",
+          "variant_title": "Default Title",
+          "variant_sku": "SHOPIFY-47818612769042",
+          "raw_variant_id": "47818612769042",
+          "url": "https://delicatedaisys.com/products/glimmer-tanning-body-oil-colloidal-gold",
+          "offer_url": "https://delicatedaisys.com/products/glimmer-tanning-body-oil-colloidal-gold",
+          "canonical_url": "https://delicatedaisys.com/products/glimmer-tanning-body-oil-colloidal-gold",
+          "destination_url": "https://delicatedaisys.com/products/glimmer-tanning-body-oil-colloidal-gold",
+          "external_redirect_url": "https://delicatedaisys.com/products/glimmer-tanning-body-oil-colloidal-gold",
+          "merchant_display_name": "Delicate Daisys Botanical Beauty",
+          "price": "34.99",
+          "price_amount": 34.99,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T00:26:29.089Z",
+            "evidence_url": "https://delicatedaisys.com/products/glimmer-tanning-body-oil-colloidal-gold",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T00:26:29.089Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://delicatedaisys.com/products/glimmer-tanning-body-oil-colloidal-gold"
+            },
+            "regional_price": {
+              "amount": 34.99,
+              "currency": "USD",
+              "display_raw": "34.99",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://delicatedaisys.com/products/glimmer-tanning-body-oil-colloidal-gold",
+              "captured_at": "2026-05-23T00:26:29.089Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:26:29.089Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T00:26:29.089Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T00:26:29.089Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 34.99,
+              "currency": "USD",
+              "display_raw": "34.99",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://delicatedaisys.com/products/glimmer-tanning-body-oil-colloidal-gold",
+              "captured_at": "2026-05-23T00:26:29.089Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:26:29.089Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 308
+      }
+    },
+    {
+      "external_product_id": "ext_770904b0a8a54583347cea85",
+      "product_key": "prod::external_seed::external_seed::ext_770904b0a8a54583347cea85",
+      "product_group_id": "sig_01c2ff5b28e5d7ca45440810",
+      "title": "Herbal Hair Mask Probiotics",
+      "brand": "Delicate Daisys Botanical Beauty",
+      "product_type": "Hair Treatment",
+      "category": "Hair Treatment",
+      "category_path": "beauty/haircare/treatments",
+      "canonical_url": "https://delicatedaisys.com/products/herbal-hair-mask-probiotics",
+      "pivota_signature_id": "sig_01c2ff5b28e5d7ca45440810",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_770904b0a8a54583347cea85::sku_8984e7204454a1a86748",
+        "product_key": "prod::external_seed::external_seed::ext_770904b0a8a54583347cea85",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_770904b0a8a54583347cea85",
+        "source_variant_id": "ext_770904b0a8a54583347cea85:47818640097554",
+        "source_domain": "delicatedaisys.com",
+        "sku": "860008494085",
+        "barcode": null,
+        "title": "Default Title",
+        "currency": "USD",
+        "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3411.png?v=1779467325",
+        "visible_attributes": {
+          "Shade": "Default Title"
+        },
+        "visible_option_labels": {
+          "Shade": "Default Title"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_770904b0a8a54583347cea85",
+          "raw_variant_id": "47818640097554",
+          "source_variant_id": "ext_770904b0a8a54583347cea85:47818640097554",
+          "variant_sku": "860008494085",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://delicatedaisys.com/products/herbal-hair-mask-probiotics",
+          "external_redirect_url": "https://delicatedaisys.com/products/herbal-hair-mask-probiotics",
+          "price": "34.99",
+          "price_amount": 34.99,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3411.png?v=1779467325",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Shade": "Default Title"
+          },
+          "raw_variant": {
+            "sku": "860008494085",
+            "url": "https://delicatedaisys.com/products/herbal-hair-mask-probiotics?variant=47818640097554&utm_source=pivota&utm_medium=affiliate",
+            "price": "34.99",
+            "stock": "In Stock",
+            "title": "Default Title",
+            "options": [],
+            "currency": "USD",
+            "deep_link": "https://delicatedaisys.com/products/herbal-hair-mask-probiotics?variant=47818640097554&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3411.png?v=1779467325",
+            "image_urls": [
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3411.png?v=1779467325",
+              "https://delicatedaisys.com/cdn/shop/files/herbal-hair-mask-probiotics-457851.jpg?v=1725349380",
+              "https://delicatedaisys.com/cdn/shop/files/herbal-hair-mask-probiotics-723428.jpg?v=1725349380",
+              "https://delicatedaisys.com/cdn/shop/files/herbal-hair-mask-probiotics-837593.jpg?v=1725349380",
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3413.png?v=1779467313",
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3361.png?v=1779413257"
+            ],
+            "variant_id": "47818640097554",
+            "product_url": "https://delicatedaisys.com/products/herbal-hair-mask-probiotics"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:4e9bef3c60631edbb304bc5af41e8010",
+        "sku_key": "prod::external_seed::external_seed::ext_770904b0a8a54583347cea85::sku_8984e7204454a1a86748",
+        "product_key": "prod::external_seed::external_seed::ext_770904b0a8a54583347cea85",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 34.99,
+        "merchant_effective_price": 34.99,
+        "estimated_best_price": 34.99,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_f86a6a2819bbe74d4933778f",
+        "source_domain": "delicatedaisys.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_f86a6a2819bbe74d4933778f",
+          "external_product_id": "ext_770904b0a8a54583347cea85",
+          "domain": "delicatedaisys.com",
+          "market": "US",
+          "product_title": "Herbal Hair Mask Probiotics",
+          "variant_title": "Default Title",
+          "variant_sku": "860008494085",
+          "raw_variant_id": "47818640097554",
+          "url": "https://delicatedaisys.com/products/herbal-hair-mask-probiotics",
+          "offer_url": "https://delicatedaisys.com/products/herbal-hair-mask-probiotics",
+          "canonical_url": "https://delicatedaisys.com/products/herbal-hair-mask-probiotics",
+          "destination_url": "https://delicatedaisys.com/products/herbal-hair-mask-probiotics",
+          "external_redirect_url": "https://delicatedaisys.com/products/herbal-hair-mask-probiotics",
+          "merchant_display_name": "Delicate Daisys Botanical Beauty",
+          "price": "34.99",
+          "price_amount": 34.99,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T00:26:52.469Z",
+            "evidence_url": "https://delicatedaisys.com/products/herbal-hair-mask-probiotics",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T00:26:52.469Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://delicatedaisys.com/products/herbal-hair-mask-probiotics"
+            },
+            "regional_price": {
+              "amount": 34.99,
+              "currency": "USD",
+              "display_raw": "34.99",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://delicatedaisys.com/products/herbal-hair-mask-probiotics",
+              "captured_at": "2026-05-23T00:26:52.469Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:26:52.469Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T00:26:52.469Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T00:26:52.469Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 34.99,
+              "currency": "USD",
+              "display_raw": "34.99",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://delicatedaisys.com/products/herbal-hair-mask-probiotics",
+              "captured_at": "2026-05-23T00:26:52.469Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:26:52.469Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 655
+      }
+    },
+    {
+      "external_product_id": "ext_9695064b5f7d76303f88beb1",
+      "product_key": "prod::external_seed::external_seed::ext_9695064b5f7d76303f88beb1",
+      "product_group_id": "sig_f0c452f8504c681b0c410a4f",
+      "title": "Firming & Toning Body Cream Pineapple & Retinol",
+      "brand": "Delicate Daisys Botanical Beauty",
+      "product_type": "Body Moisturizer",
+      "category": "Body Moisturizer",
+      "category_path": "beauty/body-care/body-moisturizers",
+      "canonical_url": "https://delicatedaisys.com/products/firming-toning-body-cream-pineapple-retinol",
+      "pivota_signature_id": "sig_f0c452f8504c681b0c410a4f",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_9695064b5f7d76303f88beb1::sku_08dd6c785dbee6ebaa19",
+        "product_key": "prod::external_seed::external_seed::ext_9695064b5f7d76303f88beb1",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_9695064b5f7d76303f88beb1",
+        "source_variant_id": "ext_9695064b5f7d76303f88beb1:50203281424658",
+        "source_domain": "delicatedaisys.com",
+        "sku": "SHOPIFY-50203281424658",
+        "barcode": null,
+        "title": "3L",
+        "currency": "USD",
+        "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3410.png?v=1779467076",
+        "visible_attributes": {
+          "Size": "3L"
+        },
+        "visible_option_labels": {
+          "Size": "3L"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_9695064b5f7d76303f88beb1",
+          "raw_variant_id": "50203281424658",
+          "source_variant_id": "ext_9695064b5f7d76303f88beb1:50203281424658",
+          "variant_sku": "SHOPIFY-50203281424658",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://delicatedaisys.com/products/firming-toning-body-cream-pineapple-retinol",
+          "external_redirect_url": "https://delicatedaisys.com/products/firming-toning-body-cream-pineapple-retinol",
+          "price": "45.99",
+          "price_amount": 45.99,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3410.png?v=1779467076",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "3L"
+          },
+          "raw_variant": {
+            "sku": "SHOPIFY-50203281424658",
+            "url": "https://delicatedaisys.com/products/firming-toning-body-cream-pineapple-retinol?variant=50203281424658&utm_source=pivota&utm_medium=affiliate",
+            "price": "45.99",
+            "stock": "In Stock",
+            "title": "3L",
+            "options": [
+              {
+                "name": "Size",
+                "value": "3L"
+              }
+            ],
+            "currency": "USD",
+            "deep_link": "https://delicatedaisys.com/products/firming-toning-body-cream-pineapple-retinol?variant=50203281424658&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3410.png?v=1779467076",
+            "image_urls": [
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3410.png?v=1779467076",
+              "https://delicatedaisys.com/cdn/shop/files/firming-toning-body-cream-pineapple-retinol-302883.jpg?v=1725349380",
+              "https://delicatedaisys.com/cdn/shop/files/firming-toning-body-cream-pineapple-retinol-861179.jpg?v=1725349380",
+              "https://delicatedaisys.com/cdn/shop/files/firming-toning-body-cream-pineapple-retinol-104111.jpg?v=1725349380",
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3409.png?v=1779467075",
+              "https://delicatedaisys.com/cdn/shop/files/firming-toning-body-cream-pineapple-retinol-988260.jpg?v=1725349380",
+              "https://m.media-amazon.com/images/I/512boGEq-3L.jpg",
+              "https://m.media-amazon.com/images/I/61+C6UujlfL.jpg",
+              "https://m.media-amazon.com/images/I/61-Dmh39EKL.jpg"
+            ],
+            "variant_id": "50203281424658",
+            "option_name": "Size",
+            "product_url": "https://delicatedaisys.com/products/firming-toning-body-cream-pineapple-retinol",
+            "option_value": "3L"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:6c5203f59e6ce43dcbd7d8ef81a1cc53",
+        "sku_key": "prod::external_seed::external_seed::ext_9695064b5f7d76303f88beb1::sku_08dd6c785dbee6ebaa19",
+        "product_key": "prod::external_seed::external_seed::ext_9695064b5f7d76303f88beb1",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 45.99,
+        "merchant_effective_price": 45.99,
+        "estimated_best_price": 45.99,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_cbe791e3565d702ac4fc546a",
+        "source_domain": "delicatedaisys.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_cbe791e3565d702ac4fc546a",
+          "external_product_id": "ext_9695064b5f7d76303f88beb1",
+          "domain": "delicatedaisys.com",
+          "market": "US",
+          "product_title": "Firming & Toning Body Cream Pineapple & Retinol",
+          "variant_title": "3L",
+          "variant_sku": "SHOPIFY-50203281424658",
+          "raw_variant_id": "50203281424658",
+          "url": "https://delicatedaisys.com/products/firming-toning-body-cream-pineapple-retinol",
+          "offer_url": "https://delicatedaisys.com/products/firming-toning-body-cream-pineapple-retinol",
+          "canonical_url": "https://delicatedaisys.com/products/firming-toning-body-cream-pineapple-retinol",
+          "destination_url": "https://delicatedaisys.com/products/firming-toning-body-cream-pineapple-retinol",
+          "external_redirect_url": "https://delicatedaisys.com/products/firming-toning-body-cream-pineapple-retinol",
+          "merchant_display_name": "Delicate Daisys Botanical Beauty",
+          "price": "45.99",
+          "price_amount": 45.99,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T00:26:06.058Z",
+            "evidence_url": "https://delicatedaisys.com/products/firming-toning-body-cream-pineapple-retinol",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T00:26:06.058Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://delicatedaisys.com/products/firming-toning-body-cream-pineapple-retinol"
+            },
+            "regional_price": {
+              "amount": 45.99,
+              "currency": "USD",
+              "display_raw": "45.99",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://delicatedaisys.com/products/firming-toning-body-cream-pineapple-retinol",
+              "captured_at": "2026-05-23T00:26:06.058Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:26:06.058Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T00:26:06.058Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T00:26:06.058Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 45.99,
+              "currency": "USD",
+              "display_raw": "45.99",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://delicatedaisys.com/products/firming-toning-body-cream-pineapple-retinol",
+              "captured_at": "2026-05-23T00:26:06.058Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:26:06.058Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 589
+      }
+    },
+    {
+      "external_product_id": "ext_99b5d36c01c7614a5de71fa1",
+      "product_key": "prod::external_seed::external_seed::ext_99b5d36c01c7614a5de71fa1",
+      "product_group_id": "sig_344eafc02c8931679c020a25",
+      "title": "Cleansing Face Milk Bulgarian Rose",
+      "brand": "Delicate Daisys Botanical Beauty",
+      "product_type": "Cleanser",
+      "category": "Cleanser",
+      "category_path": "beauty/skincare/cleansers",
+      "canonical_url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose",
+      "pivota_signature_id": "sig_344eafc02c8931679c020a25",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_99b5d36c01c7614a5de71fa1::sku_082013546404bc8a5686",
+        "product_key": "prod::external_seed::external_seed::ext_99b5d36c01c7614a5de71fa1",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_99b5d36c01c7614a5de71fa1",
+        "source_variant_id": "ext_99b5d36c01c7614a5de71fa1:47818391847186",
+        "source_domain": "delicatedaisys.com",
+        "sku": "860008494009",
+        "barcode": null,
+        "title": "Default Title",
+        "currency": "USD",
+        "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3349.jpg?v=1779411477",
+        "visible_attributes": {
+          "Shade": "Default Title"
+        },
+        "visible_option_labels": {
+          "Shade": "Default Title"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_99b5d36c01c7614a5de71fa1",
+          "raw_variant_id": "47818391847186",
+          "source_variant_id": "ext_99b5d36c01c7614a5de71fa1:47818391847186",
+          "variant_sku": "860008494009",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose",
+          "external_redirect_url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose",
+          "price": "39.99",
+          "price_amount": 39.99,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3349.jpg?v=1779411477",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Shade": "Default Title"
+          },
+          "raw_variant": {
+            "sku": "860008494009",
+            "url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose?variant=47818391847186&utm_source=pivota&utm_medium=affiliate",
+            "price": "39.99",
+            "stock": "In Stock",
+            "title": "Default Title",
+            "options": [],
+            "currency": "USD",
+            "deep_link": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose?variant=47818391847186&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3349.jpg?v=1779411477",
+            "image_urls": [
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3349.jpg?v=1779411477",
+              "https://delicatedaisys.com/cdn/shop/files/cleansing-face-milk-bulgarian-rose-353063.jpg?v=1725349381",
+              "https://delicatedaisys.com/cdn/shop/files/cleansing-face-milk-bulgarian-rose-783357.jpg?v=1725349381",
+              "https://delicatedaisys.com/cdn/shop/files/cleansing-face-milk-bulgarian-rose-349638.jpg?v=1725349381",
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3351.png?v=1779411776",
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3243.png?v=1779317759",
+              "https://delicatedaisys.com/cdn/shop/files/cleansing-face-milk-bulgarian-rose-139536.jpg?v=1725312396"
+            ],
+            "variant_id": "47818391847186",
+            "product_url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:e6d1d0a16eb6fb323c779bad17b0e44b",
+        "sku_key": "prod::external_seed::external_seed::ext_99b5d36c01c7614a5de71fa1::sku_082013546404bc8a5686",
+        "product_key": "prod::external_seed::external_seed::ext_99b5d36c01c7614a5de71fa1",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 39.99,
+        "merchant_effective_price": 39.99,
+        "estimated_best_price": 39.99,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_bfe66983319825686ed76f14",
+        "source_domain": "delicatedaisys.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_bfe66983319825686ed76f14",
+          "external_product_id": "ext_99b5d36c01c7614a5de71fa1",
+          "domain": "delicatedaisys.com",
+          "market": "US",
+          "product_title": "Cleansing Face Milk Bulgarian Rose",
+          "variant_title": "Default Title",
+          "variant_sku": "860008494009",
+          "raw_variant_id": "47818391847186",
+          "url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose",
+          "offer_url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose",
+          "canonical_url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose",
+          "destination_url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose",
+          "external_redirect_url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose",
+          "merchant_display_name": "Delicate Daisys Botanical Beauty",
+          "price": "39.99",
+          "price_amount": 39.99,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T00:24:58.123Z",
+            "evidence_url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T00:24:58.123Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose"
+            },
+            "regional_price": {
+              "amount": 39.99,
+              "currency": "USD",
+              "display_raw": "39.99",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose",
+              "captured_at": "2026-05-23T00:24:58.123Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:24:58.123Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T00:24:58.123Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T00:24:58.123Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 39.99,
+              "currency": "USD",
+              "display_raw": "39.99",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose",
+              "captured_at": "2026-05-23T00:24:58.123Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:24:58.123Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 775
+      }
+    },
+    {
+      "external_product_id": "ext_b344f028268229b02a16d0cb",
+      "product_key": "prod::external_seed::external_seed::ext_b344f028268229b02a16d0cb",
+      "product_group_id": "sig_fe94d67f4b6aa5cd8feb8e32",
+      "title": "Cooling After Sun Body Oil Aloe Vera",
+      "brand": "Delicate Daisys Botanical Beauty",
+      "product_type": "Body Oil",
+      "category": "Body Oil",
+      "category_path": "beauty/body-care/body-oils",
+      "canonical_url": "https://delicatedaisys.com/products/cooling-after-sun-body-oil-aloe-vera",
+      "pivota_signature_id": "sig_fe94d67f4b6aa5cd8feb8e32",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_b344f028268229b02a16d0cb::sku_0e37c8d1dc4ec6f886a0",
+        "product_key": "prod::external_seed::external_seed::ext_b344f028268229b02a16d0cb",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_b344f028268229b02a16d0cb",
+        "source_variant_id": "ext_b344f028268229b02a16d0cb:47818622140690",
+        "source_domain": "delicatedaisys.com",
+        "sku": "860008494078",
+        "barcode": null,
+        "title": "Default Title",
+        "currency": "USD",
+        "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3438.png?v=1779473661",
+        "visible_attributes": {
+          "Shade": "Default Title"
+        },
+        "visible_option_labels": {
+          "Shade": "Default Title"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_b344f028268229b02a16d0cb",
+          "raw_variant_id": "47818622140690",
+          "source_variant_id": "ext_b344f028268229b02a16d0cb:47818622140690",
+          "variant_sku": "860008494078",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://delicatedaisys.com/products/cooling-after-sun-body-oil-aloe-vera",
+          "external_redirect_url": "https://delicatedaisys.com/products/cooling-after-sun-body-oil-aloe-vera",
+          "price": "34.99",
+          "price_amount": 34.99,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3438.png?v=1779473661",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Shade": "Default Title"
+          },
+          "raw_variant": {
+            "sku": "860008494078",
+            "url": "https://delicatedaisys.com/products/cooling-after-sun-body-oil-aloe-vera?variant=47818622140690&utm_source=pivota&utm_medium=affiliate",
+            "price": "34.99",
+            "stock": "In Stock",
+            "title": "Default Title",
+            "options": [],
+            "currency": "USD",
+            "deep_link": "https://delicatedaisys.com/products/cooling-after-sun-body-oil-aloe-vera?variant=47818622140690&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3438.png?v=1779473661",
+            "image_urls": [
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3438.png?v=1779473661",
+              "https://delicatedaisys.com/cdn/shop/files/cooling-after-sun-body-oil-aloe-vera-898941.jpg?v=1725349379",
+              "https://delicatedaisys.com/cdn/shop/files/cooling-after-sun-body-oil-aloe-vera-299320.jpg?v=1725349379",
+              "https://delicatedaisys.com/cdn/shop/files/cooling-after-sun-body-oil-aloe-vera-960183.jpg?v=1725349379",
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3439.png?v=1779473662",
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3442.png?v=1779473979",
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3441.png?v=1779473979"
+            ],
+            "variant_id": "47818622140690",
+            "product_url": "https://delicatedaisys.com/products/cooling-after-sun-body-oil-aloe-vera"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:d5cb8d2ac9bc118c1aaa75089eb9ba9b",
+        "sku_key": "prod::external_seed::external_seed::ext_b344f028268229b02a16d0cb::sku_0e37c8d1dc4ec6f886a0",
+        "product_key": "prod::external_seed::external_seed::ext_b344f028268229b02a16d0cb",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 34.99,
+        "merchant_effective_price": 34.99,
+        "estimated_best_price": 34.99,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_8f7a3ed787f0992b52fb0f31",
+        "source_domain": "delicatedaisys.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_8f7a3ed787f0992b52fb0f31",
+          "external_product_id": "ext_b344f028268229b02a16d0cb",
+          "domain": "delicatedaisys.com",
+          "market": "US",
+          "product_title": "Cooling After Sun Body Oil Aloe Vera",
+          "variant_title": "Default Title",
+          "variant_sku": "860008494078",
+          "raw_variant_id": "47818622140690",
+          "url": "https://delicatedaisys.com/products/cooling-after-sun-body-oil-aloe-vera",
+          "offer_url": "https://delicatedaisys.com/products/cooling-after-sun-body-oil-aloe-vera",
+          "canonical_url": "https://delicatedaisys.com/products/cooling-after-sun-body-oil-aloe-vera",
+          "destination_url": "https://delicatedaisys.com/products/cooling-after-sun-body-oil-aloe-vera",
+          "external_redirect_url": "https://delicatedaisys.com/products/cooling-after-sun-body-oil-aloe-vera",
+          "merchant_display_name": "Delicate Daisys Botanical Beauty",
+          "price": "34.99",
+          "price_amount": 34.99,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T00:25:23.605Z",
+            "evidence_url": "https://delicatedaisys.com/products/cooling-after-sun-body-oil-aloe-vera",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T00:25:23.605Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://delicatedaisys.com/products/cooling-after-sun-body-oil-aloe-vera"
+            },
+            "regional_price": {
+              "amount": 34.99,
+              "currency": "USD",
+              "display_raw": "34.99",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://delicatedaisys.com/products/cooling-after-sun-body-oil-aloe-vera",
+              "captured_at": "2026-05-23T00:25:23.605Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:25:23.605Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T00:25:23.605Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T00:25:23.605Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 34.99,
+              "currency": "USD",
+              "display_raw": "34.99",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://delicatedaisys.com/products/cooling-after-sun-body-oil-aloe-vera",
+              "captured_at": "2026-05-23T00:25:23.605Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:25:23.605Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 454
+      }
+    },
+    {
+      "external_product_id": "ext_b5dafedce57973dfcca9fb5b",
+      "product_key": "prod::external_seed::external_seed::ext_b5dafedce57973dfcca9fb5b",
+      "product_group_id": "sig_d275edcf29109760764a2288",
+      "title": "Rejuvenating Night Face Cream Bulgarian Rose",
+      "brand": "Delicate Daisys Botanical Beauty",
+      "product_type": "Moisturizer",
+      "category": "Moisturizer",
+      "category_path": "beauty/skincare/moisturizers",
+      "canonical_url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose",
+      "pivota_signature_id": "sig_d275edcf29109760764a2288",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_b5dafedce57973dfcca9fb5b::sku_5a9584d31963a01f07e4",
+        "product_key": "prod::external_seed::external_seed::ext_b5dafedce57973dfcca9fb5b",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_b5dafedce57973dfcca9fb5b",
+        "source_variant_id": "ext_b5dafedce57973dfcca9fb5b:47818365010194",
+        "source_domain": "delicatedaisys.com",
+        "sku": "860008494092",
+        "barcode": null,
+        "title": "Default Title",
+        "currency": "USD",
+        "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3224.jpg?v=1779314439",
+        "visible_attributes": {
+          "Shade": "Default Title"
+        },
+        "visible_option_labels": {
+          "Shade": "Default Title"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_b5dafedce57973dfcca9fb5b",
+          "raw_variant_id": "47818365010194",
+          "source_variant_id": "ext_b5dafedce57973dfcca9fb5b:47818365010194",
+          "variant_sku": "860008494092",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose",
+          "external_redirect_url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose",
+          "price": "49.99",
+          "price_amount": 49.99,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3224.jpg?v=1779314439",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Shade": "Default Title"
+          },
+          "raw_variant": {
+            "sku": "860008494092",
+            "url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose?variant=47818365010194&utm_source=pivota&utm_medium=affiliate",
+            "price": "49.99",
+            "stock": "In Stock",
+            "title": "Default Title",
+            "options": [],
+            "currency": "USD",
+            "deep_link": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose?variant=47818365010194&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3224.jpg?v=1779314439",
+            "image_urls": [
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3224.jpg?v=1779314439",
+              "https://delicatedaisys.com/cdn/shop/files/rejuvenating-night-face-cream-bulgarian-rose-254487.jpg?v=1725183707",
+              "https://delicatedaisys.com/cdn/shop/files/rejuvenating-night-face-cream-bulgarian-rose-864694.jpg?v=1725183707",
+              "https://delicatedaisys.com/cdn/shop/files/rejuvenating-night-face-cream-bulgarian-rose-132645.jpg?v=1725183707",
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3230.png?v=1779314932",
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3231.png?v=1779314932",
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3232.png?v=1779314932",
+              "https://delicatedaisys.com/cdn/shop/files/FullSizeRender.jpg?v=1779315170"
+            ],
+            "variant_id": "47818365010194",
+            "product_url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:472aa0def64faec4833ccf4f9357ec7a",
+        "sku_key": "prod::external_seed::external_seed::ext_b5dafedce57973dfcca9fb5b::sku_5a9584d31963a01f07e4",
+        "product_key": "prod::external_seed::external_seed::ext_b5dafedce57973dfcca9fb5b",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 49.99,
+        "merchant_effective_price": 49.99,
+        "estimated_best_price": 49.99,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_9bea2beb5e5ef01fd465b526",
+        "source_domain": "delicatedaisys.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_9bea2beb5e5ef01fd465b526",
+          "external_product_id": "ext_b5dafedce57973dfcca9fb5b",
+          "domain": "delicatedaisys.com",
+          "market": "US",
+          "product_title": "Rejuvenating Night Face Cream Bulgarian Rose",
+          "variant_title": "Default Title",
+          "variant_sku": "860008494092",
+          "raw_variant_id": "47818365010194",
+          "url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose",
+          "offer_url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose",
+          "canonical_url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose",
+          "destination_url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose",
+          "external_redirect_url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose",
+          "merchant_display_name": "Delicate Daisys Botanical Beauty",
+          "price": "49.99",
+          "price_amount": 49.99,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T00:27:32.720Z",
+            "evidence_url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T00:27:32.720Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose"
+            },
+            "regional_price": {
+              "amount": 49.99,
+              "currency": "USD",
+              "display_raw": "49.99",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose",
+              "captured_at": "2026-05-23T00:27:32.720Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:27:32.720Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T00:27:32.720Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T00:27:32.720Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 49.99,
+              "currency": "USD",
+              "display_raw": "49.99",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose",
+              "captured_at": "2026-05-23T00:27:32.720Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:27:32.720Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 498
+      }
+    },
+    {
+      "external_product_id": "ext_794deab047eb4a75225329df",
+      "product_key": "prod::external_seed::external_seed::ext_794deab047eb4a75225329df",
+      "product_group_id": "sig_de2c100382224878790af271",
+      "title": "Color-correcting Primer",
+      "brand": "Joocyee",
+      "product_type": "Primer",
+      "category": "Primer",
+      "category_path": "beauty/makeup/face/primer",
+      "canonical_url": "https://joocyee.com/products/color-correcting-primer",
+      "pivota_signature_id": "sig_6c0ec349bd054178a2d4de2e237c7b1f",
+      "sku_rows": 2,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_794deab047eb4a75225329df::sku_c2776b5f9515420165e1",
+        "product_key": "prod::external_seed::external_seed::ext_794deab047eb4a75225329df",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_794deab047eb4a75225329df",
+        "source_variant_id": "ext_794deab047eb4a75225329df:53960867676470",
+        "source_domain": "joocyee.com",
+        "sku": "6978647803329",
+        "barcode": null,
+        "title": "Soft Light Purple",
+        "currency": "USD",
+        "image_url": "https://joocyee.com/cdn/shop/files/01_2f246575-5c52-40b0-b6a5-5a408d7bdb52.jpg?v=1777277719",
+        "visible_attributes": {
+          "Color": "Soft Light Purple"
+        },
+        "visible_option_labels": {
+          "Color": "Soft Light Purple"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_794deab047eb4a75225329df",
+          "raw_variant_id": "53960867676470",
+          "source_variant_id": "ext_794deab047eb4a75225329df:53960867676470",
+          "variant_sku": "6978647803329",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://joocyee.com/products/color-correcting-primer",
+          "external_redirect_url": "https://joocyee.com/products/color-correcting-primer",
+          "price": "18.9",
+          "price_amount": 18.9,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://joocyee.com/cdn/shop/files/01_2f246575-5c52-40b0-b6a5-5a408d7bdb52.jpg?v=1777277719",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Color": "Soft Light Purple"
+          },
+          "raw_variant": {
+            "sku": "6978647803329",
+            "url": "https://joocyee.com/products/color-correcting-primer?variant=53960867676470&utm_source=pivota&utm_medium=affiliate",
+            "price": "18.90",
+            "stock": "In Stock",
+            "title": "Soft Light Purple",
+            "options": [
+              {
+                "name": "Color",
+                "value": "Soft Light Purple"
+              }
+            ],
+            "currency": "USD",
+            "deep_link": "https://joocyee.com/products/color-correcting-primer?variant=53960867676470&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://joocyee.com/cdn/shop/files/01_2f246575-5c52-40b0-b6a5-5a408d7bdb52.jpg?v=1777277719",
+            "image_urls": [
+              "https://joocyee.com/cdn/shop/files/01_2f246575-5c52-40b0-b6a5-5a408d7bdb52.jpg?v=1777277719",
+              "https://joocyee.com/cdn/shop/files/02-id.jpg?v=1777277736",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/b29a020a8b854e14e37563ac56c10b27.jpg?v=1777277765",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/9ae9a560a9e3371478e67f927b81bc89.jpg?v=1777277765",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/0c70a81518926b795fbb78c8b50c785b_a1b00473-fdae-48b5-a1ae-77652c5fede0.jpg?v=1777277765",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/b29a020a8b854e14e37563ac56c10b27_985d8f0f-bc52-49a6-ad77-4f3b30ab3871.jpg?v=1777355163",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/02_f2736478-dcc0-41e3-b415-c9189693db2e.jpg?v=1777277736",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/02_3e08a805-a6d2-43fa-9609-d26c504eef66.jpg?v=1777277736",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/01_0830c177-3ce7-4da8-8a1f-3b1a4fab215d.jpg?v=1777277720",
+              "https://joocyee.com/cdn/shop/files/joocyeelogo_747519d3-70a5-4660-8122-09d597d53a9b.png?v=1741988965",
+              "https://joocyee.com/cdn/shop/files/joocyeelogo_747519d3-70a5-4660-8122-09d597d53a9b.png?crop=center&v=1741988965",
+              "https://joocyee.com/cdn/shop/files/147.jpg?v=1776939601",
+              "https://joocyee.com/cdn/shop/files/147.jpg?crop=center&v=1776939601",
+              "https://joocyee.com/cdn/shop/files/503-1.jpg?v=1774515866",
+              "https://joocyee.com/cdn/shop/files/503-1.jpg?crop=center&v=1774515866",
+              "https://joocyee.com/cdn/shop/files/jelly_eyeshadow_stick-mt10.jpg?v=1773637851",
+              "https://joocyee.com/cdn/shop/files/jelly_eyeshadow_stick-mt10.jpg?crop=center&v=1773637851",
+              "https://joocyee.com/cdn/shop/files/Joocyee-Lookbook-Multi-Palette-01.jpg?v=1761030485",
+              "https://joocyee.com/cdn/shop/files/Joocyee-Lookbook-Multi-Palette-01.jpg?crop=center&v=1761030485",
+              "https://joocyee.com/cdn/shop/files/20-id.jpg?v=1778493026",
+              "https://joocyee.com/cdn/shop/files/20-id.jpg?crop=center&v=1778493026",
+              "https://joocyee.com/cdn/shop/files/800-id.jpg?v=1776669457",
+              "https://joocyee.com/cdn/shop/files/800-id.jpg?crop=center&v=1776669457",
+              "https://joocyee.com/cdn/shop/files/01-id.jpg?v=1777277719",
+              "https://joocyee.com/cdn/shop/files/01-id.jpg?crop=center&v=1777277719",
+              "https://joocyee.com/cdn/shop/files/id_ccf0f866-ef58-4031-8bff-d63f391c253d.jpg?v=1776935136",
+              "https://joocyee.com/cdn/shop/files/id_ccf0f866-ef58-4031-8bff-d63f391c253d.jpg?crop=center&v=1776935136",
+              "https://joocyee.com/cdn/shop/files/712-id.jpg?v=1776320669",
+              "https://joocyee.com/cdn/shop/files/712-id.jpg?crop=center&v=1776320669",
+              "https://joocyee.com/cdn/shop/files/b58ee6f8673b73bcb386257c2d38ca49_cc028632-149d-479e-9d32-2c84cc948b19.jpg?v=1776927461",
+              "https://joocyee.com/cdn/shop/files/b58ee6f8673b73bcb386257c2d38ca49_cc028632-149d-479e-9d32-2c84cc948b19.jpg?crop=center&v=1776927461",
+              "https://joocyee.com/cdn/shop/files/1_9a72da3b-2ca3-4bfa-a362-c8f79ffdb493.jpg?v=1775617031",
+              "https://joocyee.com/cdn/shop/files/1_9a72da3b-2ca3-4bfa-a362-c8f79ffdb493.jpg?crop=center&v=1775617031",
+              "https://joocyee.com/cdn/shop/files/spring-flow-all-in-giftbox-5.jpg?v=1775029889",
+              "https://joocyee.com/cdn/shop/files/spring-flow-all-in-giftbox-5.jpg?crop=center&v=1775029889",
+              "https://joocyee.com/cdn/shop/files/f701c932c3a3ebcf8a6f5eb480e28dc5_cc647997-f212-4f3a-a35d-89c5de991e4d.jpg?v=1765182502",
+              "https://joocyee.com/cdn/shop/files/f701c932c3a3ebcf8a6f5eb480e28dc5_cc647997-f212-4f3a-a35d-89c5de991e4d.jpg?crop=center&v=1765182502",
+              "https://joocyee.com/cdn/shop/files/Tipsy_Night_Gift_Set_01.jpg?v=1764661210",
+              "https://joocyee.com/cdn/shop/files/Tipsy_Night_Gift_Set_01.jpg?crop=center&v=1764661210",
+              "https://joocyee.com/cdn/shop/files/joocyee_spring_mega_sale.jpg?v=1778211515",
+              "https://joocyee.com/cdn/shop/files/joocyee_spring_mega_sale.jpg?crop=center&v=1778211515",
+              "https://joocyee.com/cdn/shop/files/menu-cotd.jpg?v=1775616372",
+              "https://joocyee.com/cdn/shop/files/menu-cotd.jpg?crop=center&v=1775616372",
+              "https://joocyee.com/cdn/shop/files/menu_bb3e61bb-bd0b-4af7-96f0-2205ee0b084d.jpg?v=1772262947",
+              "https://joocyee.com/cdn/shop/files/menu_bb3e61bb-bd0b-4af7-96f0-2205ee0b084d.jpg?crop=center&v=1772262947"
+            ],
+            "variant_id": "53960867676470",
+            "description": "Naturally translucent, no chalky white cast\n\nBlends seamlessly in 3 seconds with bare hand.\n\nFormulated with cactus flower extract to deliver long-lasting hydration and moisture.\n\nExclusive pigment grinding technology blends perfectly with multiple skin types.\n\n0.25μm covering particles refined through 6 grinding processes for a non-caky, undetectable finish.\n\nShade Options:\n\nSoft Light Green\nNeutralizes redness and blemishes to restore a clear, even complexion.\n\nSoft Light Purple\nBrightens dull, sallow skin for a translucent, radiant glow.\n\nNET WT.: 1.01oz / 30g",
+            "option_name": "Color",
+            "product_url": "https://joocyee.com/products/color-correcting-primer",
+            "option_value": "Soft Light Purple"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:b851e0883eff539946963fa71a518103",
+        "sku_key": "prod::external_seed::external_seed::ext_794deab047eb4a75225329df::sku_c2776b5f9515420165e1",
+        "product_key": "prod::external_seed::external_seed::ext_794deab047eb4a75225329df",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 18.9,
+        "merchant_effective_price": 18.9,
+        "estimated_best_price": 18.9,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_ebb12bb4d8f9c3e65b57a8f3",
+        "source_domain": "joocyee.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_ebb12bb4d8f9c3e65b57a8f3",
+          "external_product_id": "ext_794deab047eb4a75225329df",
+          "domain": "joocyee.com",
+          "market": "US",
+          "product_title": "Color-correcting Primer",
+          "variant_title": "Soft Light Purple",
+          "variant_sku": "6978647803329",
+          "raw_variant_id": "53960867676470",
+          "url": "https://joocyee.com/products/color-correcting-primer",
+          "offer_url": "https://joocyee.com/products/color-correcting-primer",
+          "canonical_url": "https://joocyee.com/products/color-correcting-primer",
+          "destination_url": "https://joocyee.com/products/color-correcting-primer",
+          "external_redirect_url": "https://joocyee.com/products/color-correcting-primer",
+          "merchant_display_name": "Joocyee",
+          "price": "18.9",
+          "price_amount": 18.9,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-14T00:47:50.939Z",
+            "evidence_url": "https://joocyee.com/products/color-correcting-primer",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-14T00:47:50.939Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://joocyee.com/products/color-correcting-primer"
+            },
+            "regional_price": {
+              "amount": 18.9,
+              "currency": "USD",
+              "display_raw": "18.90",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://joocyee.com/products/color-correcting-primer",
+              "captured_at": "2026-05-14T00:47:50.939Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-14T00:47:50.939Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-14T00:47:50.939Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-14T00:47:50.939Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 18.9,
+              "currency": "USD",
+              "display_raw": "18.90",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://joocyee.com/products/color-correcting-primer",
+              "captured_at": "2026-05-14T00:47:50.939Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-14T00:47:50.939Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 569
+      }
+    },
+    {
+      "external_product_id": "ext_bb9685457f5a919c945ee9ce",
+      "product_key": "prod::external_seed::external_seed::ext_bb9685457f5a919c945ee9ce",
+      "product_group_id": "sig_40f7c9b410f2e1d61e4e00e4",
+      "title": "Glazed Lip Gloss",
+      "brand": "Joocyee",
+      "product_type": "Lip Color",
+      "category": "Lip Color",
+      "category_path": "beauty/makeup/lip",
+      "canonical_url": "https://joocyee.com/products/glazed-lip-gloss",
+      "pivota_signature_id": "sig_dd7b1e29d9f60d048b5ced2dbdbb9b6b",
+      "sku_rows": 10,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_bb9685457f5a919c945ee9ce::sku_6187dbcde8d590454de7",
+        "product_key": "prod::external_seed::external_seed::ext_bb9685457f5a919c945ee9ce",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_bb9685457f5a919c945ee9ce",
+        "source_variant_id": "ext_bb9685457f5a919c945ee9ce:54012522430774",
+        "source_domain": "joocyee.com",
+        "sku": "6978647803206",
+        "barcode": null,
+        "title": "20 Cherry Blossom Glow",
+        "currency": "USD",
+        "image_url": "https://joocyee.com/cdn/shop/files/20_28b411f6-d59a-4cd6-940f-a17820bf95a8.jpg?v=1778493035",
+        "visible_attributes": {
+          "Color": "20 Cherry Blossom Glow"
+        },
+        "visible_option_labels": {
+          "Color": "20 Cherry Blossom Glow"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_bb9685457f5a919c945ee9ce",
+          "raw_variant_id": "54012522430774",
+          "source_variant_id": "ext_bb9685457f5a919c945ee9ce:54012522430774",
+          "variant_sku": "6978647803206",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://joocyee.com/products/glazed-lip-gloss",
+          "external_redirect_url": "https://joocyee.com/products/glazed-lip-gloss",
+          "price": "19.9",
+          "price_amount": 19.9,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://joocyee.com/cdn/shop/files/20_28b411f6-d59a-4cd6-940f-a17820bf95a8.jpg?v=1778493035",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Color": "20 Cherry Blossom Glow"
+          },
+          "raw_variant": {
+            "sku": "6978647803206",
+            "url": "https://joocyee.com/products/glazed-lip-gloss?variant=54012522430774&utm_source=pivota&utm_medium=affiliate",
+            "price": "19.90",
+            "stock": "In Stock",
+            "title": "20 Cherry Blossom Glow",
+            "options": [
+              {
+                "name": "Color",
+                "value": "20 Cherry Blossom Glow"
+              }
+            ],
+            "currency": "USD",
+            "deep_link": "https://joocyee.com/products/glazed-lip-gloss?variant=54012522430774&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://joocyee.com/cdn/shop/files/20_28b411f6-d59a-4cd6-940f-a17820bf95a8.jpg?v=1778493035",
+            "image_urls": [
+              "https://joocyee.com/cdn/shop/files/20_28b411f6-d59a-4cd6-940f-a17820bf95a8.jpg?v=1778493035",
+              "https://joocyee.com/cdn/shop/files/20-id.jpg?v=1778493026",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/80_90dfa7f7-370c-4a63-9ff5-cf77a2719972.jpg?v=1778493127",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/9_50a92f5a-9013-49d5-b7fb-89bc8297f58d.jpg?v=1778493175",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/4_7a171235-885b-49b4-aa89-16a8ee24fe53.jpg?v=1778493175",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/1_dccae7a8-5940-458b-963a-e4feb9221013.jpg?v=1778493175",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/0c70a81518926b795fbb78c8b50c785b_28ad2a2f-7e2f-4015-bc23-32da42b37721.jpg?v=1778493175",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/20_3867b598-a665-4ec7-b99f-17f27a82f085.jpg?v=1778493036",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/20_6483ac0a-3fcb-4a7a-bc23-0ca069fb6d9b.jpg?v=1778493036",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/22.jpg?v=1778493050",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/22_1450e1b3-b49f-40db-b6fa-3234fcca9fc0.jpg?v=1778493051",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/22_d007c9a6-5112-4382-9e73-60d332ebdaa4.jpg?v=1778493051",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/26.jpg?v=1778493060",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/26_310c6b3e-fb72-4917-8606-f35806826b90.jpg?v=1778493060",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/28.jpg?v=1778493077",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/28_84ead28e-9e97-4a1b-9c63-5a90fae1a496.jpg?v=1778496386",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/60.jpg?v=1778493090",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/60_0e57a02d-9446-41a4-9642-06b98eed49ae.jpg?v=1778493091",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/60_274f2a37-d878-42d5-9fc9-ff0cc0431b3b.jpg?v=1778493091",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/66.jpg?v=1778493104",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/66_a1446e6f-3572-46f5-8296-20f848b45445.jpg?v=1778493105",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/66_200a93c7-cdc7-468e-9d07-a9acdda16b95.jpg?v=1778493104",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/68.jpg?v=1778493116",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/68_baa93462-4b6e-47a8-8694-80cb891e96f0.jpg?v=1778493116",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/80.jpg?v=1778493127",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/80_259fed6c-0dfd-4bbd-839c-d82d034aecd7.jpg?v=1778493127",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/82.jpg?v=1778493137",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/82_46402418-fb16-4b19-b5eb-6b51480291f6.jpg?v=1778493137",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/85.jpg?v=1778493146",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/85_85619c49-b2a4-4755-ad0f-6f11a4370c0c.jpg?v=1778493147",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/85_a1704b30-ab26-42f1-b738-53218a2b43f5.jpg?v=1778493147",
+              "https://judgeme.imgix.net/joocyee/1778659237__img_4382__original.jpeg?auto=format&w=160",
+              "https://judgeme.imgix.net/joocyee/1778658964__img_4379__original.jpeg?auto=format&w=160",
+              "https://joocyee.com/cdn/shop/files/joocyeelogo_747519d3-70a5-4660-8122-09d597d53a9b.png?v=1741988965",
+              "https://joocyee.com/cdn/shop/files/joocyeelogo_747519d3-70a5-4660-8122-09d597d53a9b.png?crop=center&v=1741988965",
+              "https://joocyee.com/cdn/shop/files/147.jpg?v=1776939601",
+              "https://joocyee.com/cdn/shop/files/147.jpg?crop=center&v=1776939601",
+              "https://joocyee.com/cdn/shop/files/503-1.jpg?v=1774515866",
+              "https://joocyee.com/cdn/shop/files/503-1.jpg?crop=center&v=1774515866",
+              "https://joocyee.com/cdn/shop/files/jelly_eyeshadow_stick-mt10.jpg?v=1773637851",
+              "https://joocyee.com/cdn/shop/files/jelly_eyeshadow_stick-mt10.jpg?crop=center&v=1773637851",
+              "https://joocyee.com/cdn/shop/files/Joocyee-Lookbook-Multi-Palette-01.jpg?v=1761030485",
+              "https://joocyee.com/cdn/shop/files/Joocyee-Lookbook-Multi-Palette-01.jpg?crop=center&v=1761030485",
+              "https://joocyee.com/cdn/shop/files/smoky_gloss.jpg?v=1773025772",
+              "https://joocyee.com/cdn/shop/files/smoky_gloss.jpg?crop=center&v=1773025772",
+              "https://joocyee.com/cdn/shop/files/20-id.jpg?crop=center&v=1778493026",
+              "https://joocyee.com/cdn/shop/files/800-id.jpg?v=1776669457",
+              "https://joocyee.com/cdn/shop/files/800-id.jpg?crop=center&v=1776669457",
+              "https://joocyee.com/cdn/shop/files/01-id.jpg?v=1777277719",
+              "https://joocyee.com/cdn/shop/files/01-id.jpg?crop=center&v=1777277719",
+              "https://joocyee.com/cdn/shop/files/id_ccf0f866-ef58-4031-8bff-d63f391c253d.jpg?v=1776935136",
+              "https://joocyee.com/cdn/shop/files/id_ccf0f866-ef58-4031-8bff-d63f391c253d.jpg?crop=center&v=1776935136",
+              "https://joocyee.com/cdn/shop/files/712-id.jpg?v=1776320669",
+              "https://joocyee.com/cdn/shop/files/712-id.jpg?crop=center&v=1776320669",
+              "https://joocyee.com/cdn/shop/files/b58ee6f8673b73bcb386257c2d38ca49_cc028632-149d-479e-9d32-2c84cc948b19.jpg?v=1776927461",
+              "https://joocyee.com/cdn/shop/files/b58ee6f8673b73bcb386257c2d38ca49_cc028632-149d-479e-9d32-2c84cc948b19.jpg?crop=center&v=1776927461",
+              "https://joocyee.com/cdn/shop/files/1_9a72da3b-2ca3-4bfa-a362-c8f79ffdb493.jpg?v=1775617031",
+              "https://joocyee.com/cdn/shop/files/1_9a72da3b-2ca3-4bfa-a362-c8f79ffdb493.jpg?crop=center&v=1775617031",
+              "https://joocyee.com/cdn/shop/files/spring-flow-all-in-giftbox-5.jpg?v=1775029889",
+              "https://joocyee.com/cdn/shop/files/spring-flow-all-in-giftbox-5.jpg?crop=center&v=1775029889",
+              "https://joocyee.com/cdn/shop/files/f701c932c3a3ebcf8a6f5eb480e28dc5_cc647997-f212-4f3a-a35d-89c5de991e4d.jpg?v=1765182502",
+              "https://joocyee.com/cdn/shop/files/f701c932c3a3ebcf8a6f5eb480e28dc5_cc647997-f212-4f3a-a35d-89c5de991e4d.jpg?crop=center&v=1765182502",
+              "https://joocyee.com/cdn/shop/files/Tipsy_Night_Gift_Set_01.jpg?v=1764661210",
+              "https://joocyee.com/cdn/shop/files/Tipsy_Night_Gift_Set_01.jpg?crop=center&v=1764661210",
+              "https://joocyee.com/cdn/shop/files/joocyee_spring_mega_sale.jpg?v=1778211515",
+              "https://joocyee.com/cdn/shop/files/joocyee_spring_mega_sale.jpg?crop=center&v=1778211515",
+              "https://joocyee.com/cdn/shop/files/menu-cotd.jpg?v=1775616372",
+              "https://joocyee.com/cdn/shop/files/menu-cotd.jpg?crop=center&v=1775616372",
+              "https://joocyee.com/cdn/shop/files/menu_bb3e61bb-bd0b-4af7-96f0-2205ee0b084d.jpg?v=1772262947",
+              "https://joocyee.com/cdn/shop/files/menu_bb3e61bb-bd0b-4af7-96f0-2205ee0b084d.jpg?crop=center&v=1772262947"
+            ],
+            "variant_id": "54012522430774",
+            "description": "All-Day Wear, Always Luminous\n\nEvolutionary 「Low Temperature Formulation」 Film-Forming Tech\n\n90% Essence Infusion Creamy-smooth texture on lips\n\nThree trendy shade families Flattering for all skin tones\n\nShade Options:\n\nMuted Pink Tone for Delicate Makeup\n\n22 Rose Glow Sheer Icy Nude Rose\n\n20 Cherry Blossom Glow Fresh Peach Blossom Pink\n\n26 Lilac Glow Low-saturation Grey Pink\n\nVersatile Reddish Shades\n\n66 Oolong Glow Glazed Sienna Red\n\n60 Grape Glow Dewy Plum Glaze\n\n68 Black Tea Glow Intense Brownish Red\n\nStylish Signature Brown Tones\n\n80 Moonlight Glow Sheer Nude Apricot\n\n82 Amber Glow Amber Cashew Yellow Brown\n\n85 Dune Glow Cinnamon Icy Coffee Nude Brown\n\nNet WT.: 0.14oz/4g",
+            "option_name": "Color",
+            "product_url": "https://joocyee.com/products/glazed-lip-gloss",
+            "option_value": "20 Cherry Blossom Glow"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:42b5de46e4fee43c48e4861fd5b5e619",
+        "sku_key": "prod::external_seed::external_seed::ext_bb9685457f5a919c945ee9ce::sku_6187dbcde8d590454de7",
+        "product_key": "prod::external_seed::external_seed::ext_bb9685457f5a919c945ee9ce",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 19.9,
+        "merchant_effective_price": 19.9,
+        "estimated_best_price": 19.9,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_045c86298b3f262f544f3fc3",
+        "source_domain": "joocyee.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_045c86298b3f262f544f3fc3",
+          "external_product_id": "ext_bb9685457f5a919c945ee9ce",
+          "domain": "joocyee.com",
+          "market": "US",
+          "product_title": "Glazed Lip Gloss",
+          "variant_title": "20 Cherry Blossom Glow",
+          "variant_sku": "6978647803206",
+          "raw_variant_id": "54012522430774",
+          "url": "https://joocyee.com/products/glazed-lip-gloss",
+          "offer_url": "https://joocyee.com/products/glazed-lip-gloss",
+          "canonical_url": "https://joocyee.com/products/glazed-lip-gloss",
+          "destination_url": "https://joocyee.com/products/glazed-lip-gloss",
+          "external_redirect_url": "https://joocyee.com/products/glazed-lip-gloss",
+          "merchant_display_name": "Joocyee",
+          "price": "19.9",
+          "price_amount": 19.9,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-14T00:47:08.885Z",
+            "evidence_url": "https://joocyee.com/products/glazed-lip-gloss",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-14T00:47:08.885Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://joocyee.com/products/glazed-lip-gloss"
+            },
+            "regional_price": {
+              "amount": 19.9,
+              "currency": "USD",
+              "display_raw": "19.90",
+              "price_type": "sale",
+              "compare_at_amount": 22.9,
+              "compare_at_currency": "USD",
+              "compare_at_display_raw": "22.90",
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://joocyee.com/products/glazed-lip-gloss",
+              "captured_at": "2026-05-14T00:47:08.885Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-14T00:47:08.885Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-14T00:47:08.885Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-14T00:47:08.885Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 19.9,
+              "currency": "USD",
+              "display_raw": "19.90",
+              "price_type": "sale",
+              "compare_at_amount": 22.9,
+              "compare_at_currency": "USD",
+              "compare_at_display_raw": "22.90",
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://joocyee.com/products/glazed-lip-gloss",
+              "captured_at": "2026-05-14T00:47:08.885Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-14T00:47:08.885Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 684
+      }
+    }
+  ]
+}

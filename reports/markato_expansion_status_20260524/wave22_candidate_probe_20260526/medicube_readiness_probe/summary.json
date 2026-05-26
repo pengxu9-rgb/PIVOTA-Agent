@@ -1,0 +1,77 @@
+{
+  "generated_at": "2026-05-26T01:14:18.879Z",
+  "market_counts": [
+    {
+      "market": "US",
+      "active_external_seed_rows": 5764
+    },
+    {
+      "market": "EU-DE",
+      "active_external_seed_rows": 50
+    },
+    {
+      "market": "KR",
+      "active_external_seed_rows": 12
+    },
+    {
+      "market": "JP",
+      "active_external_seed_rows": 10
+    }
+  ],
+  "scanned_rows": 17,
+  "terminal_hold_rows": 0,
+  "action_required_rows": 3,
+  "db_serving_ready_rows": 14,
+  "db_serving_ready_rate": 0.8235,
+  "public_index_ready_rows": 14,
+  "public_index_ready_rate": 0.8235,
+  "db_serving_ready_rate_excluding_terminal_holds": 0.8235,
+  "public_index_ready_rate_excluding_terminal_holds": 0.8235,
+  "blocker_breakdown": [
+    {
+      "key": "db_serving_ready",
+      "count": 14
+    },
+    {
+      "key": "identity_blocked",
+      "count": 3
+    }
+  ],
+  "lane_breakdown": [
+    {
+      "key": "ready_no_action",
+      "count": 14
+    },
+    {
+      "key": "lane_1_identity_index",
+      "count": 3
+    }
+  ],
+  "kb": {
+    "direct_displayable": 17,
+    "direct_high_quality_ready": 17,
+    "direct_seller_only_or_limited": 0,
+    "missing_or_no_direct_kb": 0
+  },
+  "identity": {
+    "identity_rows_joined": 17,
+    "identity_ready_rows": 14
+  },
+  "commerce_index": {
+    "db_serving_ready_rows": 14,
+    "external_index_published_rows": 0,
+    "public_doc_groups_built_dry_run": 14,
+    "rows_with_public_doc": 14,
+    "rows_with_public_doc_and_insight_summary": 14,
+    "index_config": {
+      "base_url": "",
+      "index_name": "catalog_public_v1",
+      "api_key": null,
+      "shadow_read_enabled": false,
+      "enabled": false
+    },
+    "external_index_required_for_db_serving_ready": false
+  },
+  "source_build_failures": [],
+  "warnings": []
+}
