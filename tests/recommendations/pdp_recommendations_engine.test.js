@@ -1327,6 +1327,9 @@ describe('RecommendationEngine (PDP)', () => {
         product_type: 'Watery Matte Lip',
         brand: 'INTO YOU',
         image_url: 'https://cdn.example.test/w725.jpg',
+        price_amount: '18.00',
+        price_currency: 'USD',
+        availability: 'in_stock',
       },
     });
 
@@ -1460,6 +1463,7 @@ describe('RecommendationEngine (PDP)', () => {
         pdp_product: base,
         k: 1,
         options: {
+          catalog_only: false,
           debug: true,
           internal_candidates: internal,
           external_candidates: [],
@@ -1481,6 +1485,7 @@ describe('RecommendationEngine (PDP)', () => {
         pdp_product: base,
         k: 1,
         options: {
+          catalog_only: false,
           debug: true,
           internal_candidates: internal,
           external_candidates: [],
