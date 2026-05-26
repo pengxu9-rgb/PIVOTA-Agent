@@ -6,7 +6,9 @@ const path = require('node:path');
 
 const {
   validateRelationshipEdge,
-  upsertRelationshipEdge,
+  upsertRelationshipCandidateLabel,
+  reviewStatusToLabelState,
+  extractReasonFlags,
 } = require('../src/auroraBff/productRelationshipGraph');
 
 const REVIEW_PUBLISHER_VERSION = 'product_relationship_graph.review_publish.v1';
@@ -288,10 +290,43 @@ function stampApprovedEdge(edge, decision = {}, options = {}) {
   return next;
 }
 
+function stampNonApprovedEdge(edge, decision = {}, options = {}) {
+  const nowIso = toIsoOrNull(options.now) || new Date().toISOString();
+  const next = cloneJson(edge) || {};
+  next.review_status = decision.decision || 'pending';
+  next.provenance = {
+    ...(isPlainObject(next.provenance) ? next.provenance : {}),
+    review_publish: {
+      contract_version: REVIEW_PUBLISHER_VERSION,
+      decision: decision.decision || 'pending',
+      decision_edge_id: decision.edge_id || next.id || null,
+      reviewer: decision.reviewer || null,
+      reviewed_at: decision.reviewed_at || nowIso,
+      reason: decision.reason || null,
+      source_index: Number.isFinite(Number(decision.source_index)) ? Number(decision.source_index) : null,
+    },
+  };
+  return next;
+}
+
+function buildLabelPayload(stampedEdge, decision, labelState, sourceReport) {
+  const humanReview = isPlainObject(stampedEdge.human_review) ? stampedEdge.human_review : null;
+  return {
+    ...stampedEdge,
+    edge_id: stampedEdge.id,
+    label_state: labelState,
+    human_review: humanReview,
+    reason_flags: extractReasonFlags(humanReview),
+    source_report: sourceReport || null,
+    reviewed_at: decision.reviewed_at || null,
+  };
+}
+
 function buildPublishPlan(report, decisionRecords, options = {}) {
   const edges = Array.isArray(report && report.edges) ? report.edges : [];
   const decisionIndex = buildDecisionIndex(decisionRecords);
   const nowMs = new Date(toIsoOrNull(options.now) || new Date().toISOString()).getTime();
+  const sourceReport = options.sourceReport || null;
   const rows = [];
 
   for (const edge of edges) {
@@ -307,7 +342,34 @@ function buildPublishPlan(report, decisionRecords, options = {}) {
       });
       continue;
     }
-    if (decision.decision !== 'approved') {
+
+    if (decision.decision === 'approved') {
+      const approvedEdge = stampApprovedEdge(edge, decision, options);
+      const validation = validateRelationshipEdge(approvedEdge, { nowMs });
+      if (!validation.ok) {
+        rows.push({
+          status: 'invalid',
+          reason: 'validation_failed',
+          errors: validation.errors,
+          edge_id: normalizeString(edge && edge.id, 160),
+          decision,
+          edge: approvedEdge,
+        });
+        continue;
+      }
+      rows.push({
+        status: 'publishable',
+        reason: 'approved',
+        edge_id: validation.value.id,
+        decision,
+        edge: validation.value,
+        label: buildLabelPayload(validation.value, decision, 'human_approved', sourceReport),
+      });
+      continue;
+    }
+
+    const labelState = reviewStatusToLabelState(decision.decision);
+    if (!labelState) {
       rows.push({
         status: 'skipped',
         reason: `decision_${decision.decision || 'unknown'}`,
@@ -319,27 +381,14 @@ function buildPublishPlan(report, decisionRecords, options = {}) {
       });
       continue;
     }
-
-    const approvedEdge = stampApprovedEdge(edge, decision, options);
-    const validation = validateRelationshipEdge(approvedEdge, { nowMs });
-    if (!validation.ok) {
-      rows.push({
-        status: 'invalid',
-        reason: 'validation_failed',
-        errors: validation.errors,
-        edge_id: normalizeString(edge && edge.id, 160),
-        decision,
-        edge: approvedEdge,
-      });
-      continue;
-    }
-
+    const stampedEdge = stampNonApprovedEdge(edge, decision, options);
     rows.push({
       status: 'publishable',
-      reason: 'approved',
-      edge_id: validation.value.id,
+      reason: `label_${labelState}`,
+      edge_id: normalizeString(edge && edge.id, 160),
       decision,
-      edge: validation.value,
+      edge: stampedEdge,
+      label: buildLabelPayload(stampedEdge, decision, labelState, sourceReport),
     });
   }
 
@@ -358,11 +407,17 @@ function buildPublishPlan(report, decisionRecords, options = {}) {
   const summary = {
     report_edges: edges.length,
     approved_decisions: decisionIndex.approvedCount,
+    rejected_decisions: decisionIndex.rejectedCount,
     publishable: rows.filter((row) => row.status === 'publishable').length,
     published: 0,
     invalid: rows.filter((row) => row.status === 'invalid').length,
     skipped: rows.filter((row) => row.status === 'skipped').length,
-    rejected_decisions: decisionIndex.rejectedCount,
+    label_states: rows.reduce((acc, row) => {
+      const state = row.label && row.label.label_state;
+      if (!state) return acc;
+      acc[state] = (acc[state] || 0) + 1;
+      return acc;
+    }, {}),
     unmatched_approved_decisions: unmatchedApprovedDecisions.length,
   };
 
@@ -377,11 +432,12 @@ async function publishReviewReport({
   report,
   decisions,
   apply = false,
-  upsertFn = upsertRelationshipEdge,
+  upsertFn = upsertRelationshipCandidateLabel,
   now = new Date(),
   expiryDays = DEFAULT_EXPIRY_DAYS,
+  sourceReport = null,
 } = {}) {
-  const plan = buildPublishPlan(report, decisions, { now, expiryDays });
+  const plan = buildPublishPlan(report, decisions, { now, expiryDays, sourceReport });
   const rows = plan.rows.map((row) => ({ ...row }));
   let published = 0;
 
@@ -390,9 +446,9 @@ async function publishReviewReport({
       if (row.status !== 'publishable') continue;
       try {
         // eslint-disable-next-line no-await-in-loop
-        await upsertFn(row.edge, { nowMs: new Date(toIsoOrNull(now) || new Date().toISOString()).getTime() });
+        await upsertFn(row.label);
         row.status = 'published';
-        row.reason = 'upserted';
+        row.reason = `published_${row.label.label_state}`;
         published += 1;
       } catch (error) {
         row.status = 'invalid';
@@ -430,6 +486,7 @@ async function main(argv = process.argv) {
     report,
     decisions,
     apply: args.apply,
+    sourceReport: path.basename(reportPath),
   });
   const output = {
     ...result,
@@ -467,6 +524,7 @@ module.exports = {
   DEFAULT_EXPIRY_DAYS,
   REVIEW_PUBLISHER_VERSION,
   buildDecisionIndex,
+  buildLabelPayload,
   buildPublishPlan,
   edgeIdentity,
   extractDecisionRecords,
@@ -479,4 +537,5 @@ module.exports = {
   readStructuredRecords,
   resolvePathMaybeRelative,
   stampApprovedEdge,
+  stampNonApprovedEdge,
 };
