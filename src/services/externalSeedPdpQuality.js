@@ -65,19 +65,116 @@ function normalizeAmount(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function readPositiveAmount(...values) {
+  for (const value of values) {
+    const amount = normalizeAmount(value);
+    if (amount > 0) return amount;
+  }
+  return 0;
+}
+
+function readPriceLikeAmount(value) {
+  if (value == null) return 0;
+  if (typeof value !== 'object' || Array.isArray(value)) return normalizeAmount(value);
+  return readPositiveAmount(
+    value.amount,
+    value.value,
+    value.price_amount,
+    value.priceAmount,
+    value.current?.amount,
+    value.current?.value,
+  );
+}
+
 function pickExtractorPrice(product = {}) {
   const variants = Array.isArray(product.variants) ? product.variants : [];
   const variantPrice = variants
-    .map((variant) => normalizeAmount(variant?.price ?? variant?.price_amount))
+    .map((variant) => readPriceLikeAmount(variant?.price ?? variant?.price_amount ?? variant?.priceAmount))
     .find((value) => value > 0);
   if (variantPrice > 0) return variantPrice;
-  return normalizeAmount(product.price ?? product.price_amount);
+  return readPriceLikeAmount(product.price ?? product.price_amount ?? product.priceAmount);
+}
+
+function readOfferPriceAmount(offer = {}) {
+  const normalizedOffer = ensureJsonObject(offer);
+  return readPositiveAmount(
+    readPriceLikeAmount(normalizedOffer.price),
+    normalizedOffer.price_amount,
+    normalizedOffer.priceAmount,
+    normalizedOffer.estimated_best_price,
+    normalizedOffer.sale_price,
+    normalizedOffer.salePrice,
+    normalizedOffer.current_price,
+    normalizedOffer.currentPrice,
+    readPriceLikeAmount(normalizedOffer.pricing?.current),
+    readPriceLikeAmount(normalizedOffer.pricing),
+  );
+}
+
+function findOfferById(offers, offerId) {
+  const id = normalizeNonEmptyString(offerId);
+  if (!id) return null;
+  return offers.find((offer) => normalizeNonEmptyString(offer?.offer_id || offer?.id) === id) || null;
+}
+
+function pickOffersModulePrice(offersData = {}) {
+  const directPrice = readPositiveAmount(
+    readPriceLikeAmount(offersData.price),
+    offersData.price_amount,
+    offersData.priceAmount,
+    offersData.estimated_best_price,
+    offersData.best_price,
+    offersData.bestPrice,
+  );
+  if (directPrice > 0) return { amount: directPrice, source: 'offers.module_price' };
+
+  const offers = Array.isArray(offersData.offers) ? offersData.offers : [];
+  const defaultOffer = findOfferById(offers, offersData.default_offer_id);
+  const defaultPrice = readOfferPriceAmount(defaultOffer);
+  if (defaultPrice > 0) return { amount: defaultPrice, source: 'offers.default_offer' };
+
+  const bestPriceOffer = findOfferById(offers, offersData.best_price_offer_id);
+  const bestPrice = readOfferPriceAmount(bestPriceOffer);
+  if (bestPrice > 0) return { amount: bestPrice, source: 'offers.best_price_offer' };
+
+  for (const offer of offers) {
+    const amount = readOfferPriceAmount(offer);
+    if (amount > 0) return { amount, source: 'offers.first_positive_offer' };
+  }
+  return { amount: 0, source: null };
+}
+
+function analyzeOffersStatus(livePayload = {}, liveResponse = {}, referencePrice = 0) {
+  const modules = collectModules(liveResponse, livePayload);
+  const priceModule = modules.find((module) => module?.type === 'price_promo') || null;
+  const offersModule = modules.find((module) => module?.type === 'offers') || null;
+  const product = ensureJsonObject(livePayload?.product);
+  const pricePromoAmount = readPriceLikeAmount(priceModule?.data?.price);
+  const productPriceAmount = readPriceLikeAmount(product.price ?? product.price_amount ?? product.priceAmount);
+  const offersData = ensureJsonObject(offersModule?.data);
+  const offerPick = pickOffersModulePrice(offersData);
+  const priceAmount = readPositiveAmount(pricePromoAmount, productPriceAmount, offerPick.amount);
+  const priceSource = pricePromoAmount > 0
+    ? 'price_promo'
+    : productPriceAmount > 0
+      ? 'product'
+      : offerPick.source;
+  const modulePresent = Boolean(priceModule || offersModule);
+  const referencePriceAmount = normalizeAmount(referencePrice);
+  return {
+    module_present: modulePresent,
+    price_promo_present: Boolean(priceModule),
+    offers_module_present: Boolean(offersModule),
+    offer_count: Array.isArray(offersData.offers) ? offersData.offers.length : 0,
+    price_amount: priceAmount || null,
+    price_source: priceSource || null,
+    reference_price_amount: referencePriceAmount > 0 ? referencePriceAmount : null,
+    missing_price: Boolean(modulePresent && referencePriceAmount > 0 && !priceAmount),
+  };
 }
 
 function pickLivePdpPrice(livePayload = {}) {
-  const modules = Array.isArray(livePayload?.modules) ? livePayload.modules : [];
-  const priceModule = modules.find((module) => module?.type === 'price_promo');
-  return normalizeAmount(priceModule?.data?.price?.amount);
+  return analyzeOffersStatus(livePayload).price_amount || 0;
 }
 
 function collectProductDetailsText(livePayload = {}) {
@@ -159,6 +256,65 @@ function collectLiveQuestions(livePayload = {}, liveResponse = {}) {
     findModuleData('reviews_preview', liveResponse, livePayload) ||
     ensureJsonObject(liveResponse?.reviews_preview || livePayload?.reviews_preview);
   return Array.isArray(reviewsData?.questions) ? reviewsData.questions : [];
+}
+
+function collectReviewsStatus(livePayload = {}, liveResponse = {}) {
+  const modules = collectModules(liveResponse, livePayload);
+  const modulePresent = modules.some((module) => module?.type === 'reviews_preview');
+  const reviewsData =
+    findModuleData('reviews_preview', liveResponse, livePayload) ||
+    ensureJsonObject(liveResponse?.reviews_preview || livePayload?.reviews_preview);
+  const starDistribution = Array.isArray(reviewsData.star_distribution)
+    ? reviewsData.star_distribution
+    : Array.isArray(reviewsData.rating_distribution)
+      ? reviewsData.rating_distribution
+      : [];
+  const reviewCount = Number(
+    reviewsData.review_count ||
+      reviewsData.exact_item_review_count ||
+      reviewsData.product_line_review_count ||
+      reviewsData.total_reviews ||
+      0,
+  ) || 0;
+  return {
+    module_present: modulePresent,
+    review_count: reviewCount,
+    rating: Number(reviewsData.rating || reviewsData.average_rating || 0) || null,
+    chart_present: starDistribution.length >= 5,
+    distribution_bucket_count: starDistribution.length,
+    preview_count: Array.isArray(reviewsData.preview_items) ? reviewsData.preview_items.length : 0,
+    question_count: Array.isArray(reviewsData.questions) ? reviewsData.questions.length : 0,
+  };
+}
+
+function summarizeFaqItem(item = {}) {
+  return {
+    question: normalizeNonEmptyString(item.question).slice(0, 180),
+    answer: normalizeNonEmptyString(item.answer).slice(0, 180),
+    source_url: normalizeNonEmptyString(item.source_url || item.sourceUrl).slice(0, 240),
+  };
+}
+
+function collectBundleCompositionStatus(livePayload = {}, liveResponse = {}, productFamily = '') {
+  const modules = collectModules(liveResponse, livePayload);
+  const module = modules.find((item) => item?.type === 'bundle_composition') || null;
+  const data = ensureJsonObject(module?.data);
+  const components = [
+    data.components,
+    data.items,
+    data.bundle_items,
+    data.products,
+    data.product_refs,
+  ].find((items) => Array.isArray(items)) || [];
+  const requiredForSet = normalizeProductFamily(productFamily) === 'set_or_collection';
+  return {
+    module_present: Boolean(module),
+    required_for_product_family: requiredForSet,
+    component_count: components.length,
+    reason: normalizeNonEmptyString(module?.reason || data.reason) || null,
+    missing_for_set: Boolean(requiredForSet && !module),
+    empty_for_set: Boolean(requiredForSet && module && components.length === 0),
+  };
 }
 
 function collectLiveActiveIngredients(livePayload = {}, liveResponse = {}) {
@@ -430,6 +586,43 @@ function readSimilarCardEvidenceProfile(product = {}) {
 function hasSellerOnlySimilarCardEvidence(product = {}) {
   const profile = readSimilarCardEvidenceProfile(product);
   return profile === 'seller_only' || profile === 'seller_only_fallback';
+}
+
+function similarProductDedupeKey(product = {}) {
+  const explicit = normalizeNonEmptyString(
+    product.product_id ||
+      product.productId ||
+      product.pivota_signature_id ||
+      product.pivotaSignatureId ||
+      product.external_product_id ||
+      product.externalProductId ||
+      product.id ||
+      product.canonical_url ||
+      product.url,
+  ).toLowerCase();
+  if (explicit) return explicit;
+  const title = normalizeNonEmptyString(product.title || product.name).toLowerCase();
+  const brand = normalizeNonEmptyString(product.brand || product.vendor).toLowerCase();
+  return title ? `${brand}::${title}` : '';
+}
+
+function collectDuplicateSimilarProducts(products = []) {
+  const seen = new Set();
+  const duplicates = [];
+  for (const product of products) {
+    const key = similarProductDedupeKey(product);
+    if (!key) continue;
+    if (seen.has(key)) {
+      duplicates.push({
+        key,
+        product_id: normalizeNonEmptyString(product.product_id || product.productId || product.id),
+        title: normalizeNonEmptyString(product.title || product.name),
+      });
+      continue;
+    }
+    seen.add(key);
+  }
+  return duplicates;
 }
 
 function collectLiveGalleryImages(livePayload = {}) {
@@ -931,12 +1124,14 @@ function buildLivePdpGate({
   const extractorPrice = pickExtractorPrice(extractorProduct);
   const expectedPriceAmount = normalizeAmount(expectedPrice);
   const referencePrice = expectedPriceAmount > 0 ? expectedPriceAmount : extractorPrice;
-  const livePrice = pickLivePdpPrice(livePayload);
   const descriptionText = collectProductDescriptionText(livePayload);
   const detailSections = collectProductDetailsSections(livePayload);
   const detailsText = collectProductDetailsText(livePayload);
   const factsText = collectProductFactsText(livePayload);
   const liveModuleList = collectLiveModuleList(livePayload, liveResponse);
+  const offersStatus = analyzeOffersStatus(livePayload, liveResponse, referencePrice);
+  const livePrice = offersStatus.price_amount || 0;
+  const reviewsStatus = collectReviewsStatus(livePayload, liveResponse);
   const galleryImages = collectLiveGalleryImages(livePayload);
   const duplicateGalleryImageCount = countDuplicateGalleryImages(galleryImages);
   const seedContentImageUrls = collectSeedContentImageUrls(seedData);
@@ -948,7 +1143,9 @@ function buildLivePdpGate({
   const seedDetailSections = collectSeedDetailsSections(seedData);
   const seedFaqItems = collectSeedFaqItems(seedData);
   const liveQuestions = collectLiveQuestions(livePayload, liveResponse);
+  const invalidLiveQuestions = liveQuestions.filter((item) => !isDisplayablePdpFaqItem(item));
   const liveActiveItems = collectLiveActiveIngredients(livePayload, liveResponse);
+  const bundleCompositionStatus = collectBundleCompositionStatus(livePayload, liveResponse, productFamily);
   const snapshotContract = readExternalSeedSnapshotContract(seedData);
   const normalizedProductFamily = normalizeNonEmptyString(productFamily).toLowerCase();
   const suppressSingleFormulaActive =
@@ -973,6 +1170,12 @@ function buildLivePdpGate({
 
   if (referencePrice > 0 && livePrice > 0 && Math.abs(referencePrice - livePrice) > 0.01) {
     failureReasons.push('price_mismatch');
+  }
+  if (offersStatus.missing_price) {
+    failureReasons.push('offer_price_missing');
+  }
+  if (reviewsStatus.module_present && reviewsStatus.review_count > 0 && !reviewsStatus.chart_present) {
+    failureReasons.push('reviews_distribution_incomplete');
   }
   if (extractorHasDescription && detailsText.length === 0) {
     failureReasons.push('missing_overview_from_available_description');
@@ -1019,6 +1222,15 @@ function buildLivePdpGate({
   if (seedFaqItems.length > 0 && liveQuestions.length === 0) {
     failureReasons.push('merchant_faq_dropped');
   }
+  if (invalidLiveQuestions.length > 0) {
+    failureReasons.push('live_faq_contains_support_or_placeholder_noise');
+  }
+  if (bundleCompositionStatus.missing_for_set) {
+    failureReasons.push('bundle_composition_missing_for_set');
+  }
+  if (bundleCompositionStatus.empty_for_set) {
+    failureReasons.push('bundle_composition_empty_for_set');
+  }
   if (activeIngredientsExpected && liveActiveItems.length === 0) {
     failureReasons.push('active_ingredients_expected_but_hidden');
   }
@@ -1059,6 +1271,8 @@ function buildLivePdpGate({
     price_amount: livePrice || null,
     has_overview: detailsText.length > 0,
     live_modules: liveModuleList,
+    offers_status: offersStatus,
+    reviews_status: reviewsStatus,
     details_status: {
       section_count: detailSections.length,
       section_soup_count: soupSections.length,
@@ -1069,7 +1283,10 @@ function buildLivePdpGate({
     questions_status: {
       seed_faq_count: seedFaqItems.length,
       live_question_count: liveQuestions.length,
+      invalid_live_question_count: invalidLiveQuestions.length,
+      invalid_live_question_examples: invalidLiveQuestions.slice(0, 5).map(summarizeFaqItem),
     },
+    bundle_composition_status: bundleCompositionStatus,
     active_ingredients_status: {
       expected: activeIngredientsExpected,
       live_item_count: liveActiveItems.length,
@@ -1150,17 +1367,23 @@ function buildSimilarGate({
   const auditedProducts = products.slice(0, Math.min(products.length, 4));
   const missingHighlight = auditedProducts.filter((item) => !hasDisplayableSimilarCardData(item));
   const sellerOnlyFallback = auditedProducts.filter((item) => hasSellerOnlySimilarCardEvidence(item));
+  const duplicateProducts = collectDuplicateSimilarProducts(products);
   if (!exempt && products.length > 0 && missingHighlight.length > 0) {
     failureReasons.push('similar_card_missing_highlight');
   }
   if (!exempt && products.length > 0 && sellerOnlyFallback.length > 0) {
     failureReasons.push('similar_card_seller_only_fallback');
   }
+  if (!exempt && duplicateProducts.length > 0) {
+    failureReasons.push('similar_duplicate_cards');
+  }
   return {
     status: failureReasons.length ? 'failed' : exempt ? 'exempt' : 'passed',
     similar_count: products.length,
     card_highlight_missing_count: missingHighlight.length,
     card_seller_only_fallback_count: sellerOnlyFallback.length,
+    duplicate_count: duplicateProducts.length,
+    duplicate_examples: duplicateProducts.slice(0, 5),
     exempt,
     failure_reasons: failureReasons,
   };
@@ -1294,11 +1517,23 @@ function buildExternalSeedQualityResult({
     rootCauseClassification.push('image_asset_issue');
   }
   if (
+    failureReasons.includes('price_mismatch') ||
+    failureReasons.includes('offer_price_missing')
+  ) {
+    rootCauseClassification.push('commerce_issue');
+  }
+  if (failureReasons.includes('reviews_distribution_incomplete')) {
+    rootCauseClassification.push('reviews_issue');
+  }
+  if (
     failureReasons.includes('product_details_section_soup') ||
     failureReasons.includes('legacy_overview_render_risk') ||
     failureReasons.includes('duplicated_description_facts') ||
     failureReasons.includes('structured_sections_compressed_to_description_category') ||
     failureReasons.includes('merchant_faq_dropped') ||
+    failureReasons.includes('live_faq_contains_support_or_placeholder_noise') ||
+    failureReasons.includes('bundle_composition_missing_for_set') ||
+    failureReasons.includes('bundle_composition_empty_for_set') ||
     failureReasons.includes('active_ingredients_expected_but_hidden') ||
     failureReasons.includes('set_active_ingredients_rendered_as_single_formula') ||
     failureReasons.includes('live_pdp_probe_failed')
@@ -1321,7 +1556,8 @@ function buildExternalSeedQualityResult({
     failureReasons.includes('similar_probe_failed') ||
     failureReasons.includes('similar_underfill') ||
     failureReasons.includes('similar_card_missing_highlight') ||
-    failureReasons.includes('similar_card_seller_only_fallback')
+    failureReasons.includes('similar_card_seller_only_fallback') ||
+    failureReasons.includes('similar_duplicate_cards')
   ) {
     rootCauseClassification.push('similar_issue');
   }
@@ -1362,6 +1598,7 @@ function buildExternalSeedQualityResult({
 module.exports = {
   pickExtractorPrice,
   pickLivePdpPrice,
+  analyzeOffersStatus,
   collectProductDetailsText,
   collectProductFactsText,
   collectProductDescriptionText,

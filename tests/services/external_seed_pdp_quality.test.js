@@ -8,6 +8,7 @@ const {
   buildSimilarGate,
   buildExternalSeedQualityResult,
   looksLikeSectionSoupText,
+  pickLivePdpPrice,
 } = require('../../src/services/externalSeedPdpQuality');
 
 describe('externalSeedPdpQuality', () => {
@@ -312,6 +313,72 @@ describe('externalSeedPdpQuality', () => {
     expect(livePdpGate.failure_reasons).not.toContain('price_mismatch');
   });
 
+  test('reads PDP live price from offers when price promo is absent', () => {
+    const livePayload = {
+      modules: [
+        {
+          type: 'offers',
+          data: {
+            default_offer_id: 'offer_a',
+            offers: [
+              {
+                offer_id: 'offer_a',
+                price_amount: '19.90',
+                price_currency: 'USD',
+              },
+            ],
+          },
+        },
+        {
+          type: 'product_details',
+          data: { sections: [{ heading: 'Overview', content: 'A clear serum overview.' }] },
+        },
+      ],
+    };
+    const livePdpGate = buildLivePdpGate({
+      expectedPrice: 19.9,
+      seedData: {
+        external_seed_snapshot_contract: {
+          authoritative: true,
+          legacy_fields_quarantined: true,
+        },
+      },
+      livePayload,
+    });
+
+    expect(pickLivePdpPrice(livePayload)).toBe(19.9);
+    expect(livePdpGate.offers_status.price_source).toBe('offers.default_offer');
+    expect(livePdpGate.failure_reasons).not.toContain('offer_price_missing');
+    expect(livePdpGate.failure_reasons).not.toContain('price_mismatch');
+  });
+
+  test('flags requested offers modules that cannot supply expected price', () => {
+    const livePdpGate = buildLivePdpGate({
+      expectedPrice: 24,
+      seedData: {
+        external_seed_snapshot_contract: {
+          authoritative: true,
+          legacy_fields_quarantined: true,
+        },
+      },
+      livePayload: {
+        modules: [
+          {
+            type: 'offers',
+            data: { offers: [] },
+          },
+          {
+            type: 'product_details',
+            data: { sections: [{ heading: 'Overview', content: 'A clear serum overview.' }] },
+          },
+        ],
+      },
+    });
+
+    expect(livePdpGate.offers_status.missing_price).toBe(true);
+    expect(livePdpGate.failure_reasons).toContain('offer_price_missing');
+  });
+
   test('exempts gift cards from strict similar count requirement', () => {
     const similarGate = buildSimilarGate({
       similarResponse: { products: [] },
@@ -562,6 +629,78 @@ describe('externalSeedPdpQuality', () => {
       ]),
     );
     expect(similarGate.failure_reasons).toEqual(['similar_card_missing_highlight']);
+  });
+
+  test('audits reviews chart completeness, live FAQ noise, and set bundle composition', () => {
+    const livePdpGate = buildLivePdpGate({
+      productFamily: 'set_or_collection',
+      seedData: {
+        external_seed_snapshot_contract: {
+          authoritative: true,
+          legacy_fields_quarantined: true,
+        },
+      },
+      livePayload: {
+        modules: [
+          {
+            type: 'reviews_preview',
+            data: {
+              review_count: 18,
+              star_distribution: [{ stars: 5, count: 12 }, { stars: 4, count: 6 }],
+              questions: [
+                {
+                  question: 'Need help?',
+                  answer: 'Contact customer service for shipping and returns.',
+                  source_url: 'https://example.com/help',
+                },
+              ],
+            },
+          },
+          {
+            type: 'bundle_composition',
+            data: { components: [] },
+          },
+          {
+            type: 'product_details',
+            data: { sections: [{ heading: 'Overview', content: 'A three-piece regimen set.' }] },
+          },
+        ],
+      },
+    });
+
+    expect(livePdpGate.reviews_status.review_count).toBe(18);
+    expect(livePdpGate.questions_status.invalid_live_question_count).toBe(1);
+    expect(livePdpGate.bundle_composition_status.empty_for_set).toBe(true);
+    expect(livePdpGate.failure_reasons).toEqual(
+      expect.arrayContaining([
+        'reviews_distribution_incomplete',
+        'live_faq_contains_support_or_placeholder_noise',
+        'bundle_composition_empty_for_set',
+      ]),
+    );
+  });
+
+  test('flags set PDPs when bundle composition module is missing', () => {
+    const livePdpGate = buildLivePdpGate({
+      productFamily: 'set_or_collection',
+      seedData: {
+        external_seed_snapshot_contract: {
+          authoritative: true,
+          legacy_fields_quarantined: true,
+        },
+      },
+      livePayload: {
+        modules: [
+          {
+            type: 'product_details',
+            data: { sections: [{ heading: 'Overview', content: 'A regimen set with multiple products.' }] },
+          },
+        ],
+      },
+    });
+
+    expect(livePdpGate.bundle_composition_status.missing_for_set).toBe(true);
+    expect(livePdpGate.failure_reasons).toContain('bundle_composition_missing_for_set');
   });
 
   test('does not infer active sunscreen ingredients from cosmetic pigment INCI alone', () => {
@@ -868,6 +1007,23 @@ describe('externalSeedPdpQuality', () => {
     ]);
     expect(similarGate.card_highlight_missing_count).toBe(1);
     expect(similarGate.card_seller_only_fallback_count).toBe(1);
+  });
+
+  test('flags duplicated similar cards as recall quality failures', () => {
+    const similarGate = buildSimilarGate({
+      similarResponse: {
+        products: [
+          { product_id: 'sig_a', title: 'Hydrating Serum', card_highlight: 'Hydrating serum.' },
+          { product_id: 'sig_a', title: 'Hydrating Serum', card_highlight: 'Hydrating serum.' },
+          { product_id: 'sig_b', title: 'Barrier Cream', card_highlight: 'Barrier cream.' },
+          { product_id: 'sig_c', title: 'Milky Toner', card_highlight: 'Milky toner.' },
+        ],
+      },
+      exclusionFlags: { gift_card: false, donation_bundle: false, non_merchandise: false },
+    });
+
+    expect(similarGate.duplicate_count).toBe(1);
+    expect(similarGate.failure_reasons).toContain('similar_duplicate_cards');
   });
 
   test('reports probe failures instead of misclassifying them as product-quality regressions', () => {

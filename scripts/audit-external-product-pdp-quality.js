@@ -43,12 +43,15 @@ const AUTHORITATIVE_PDP_CORE_AUDIT_INCLUDE = [
   'product_intel',
   'reviews_preview',
   'similar',
+  'bundle_composition',
   'variant_selector',
   'offers',
 ];
 const AUTHORITATIVE_PDP_DETAILS_AUDIT_INCLUDE = [
+  'product_overview',
   'product_details',
   'product_facts',
+  'supplemental_details',
   'active_ingredients',
   'ingredients_inci',
   'how_to_use',
@@ -285,22 +288,33 @@ async function fetchRows({
   const res = await query(
     `
       SELECT
-        id,
-        external_product_id,
-        market,
-        domain,
-        tool,
-        attached_product_key,
-        canonical_url,
-        destination_url,
-        title,
-        price_amount,
-        price_currency,
-        availability,
-        seed_data,
-        updated_at,
-        created_at
-      FROM external_product_seeds
+        eps.id,
+        eps.external_product_id,
+        eps.market,
+        eps.domain,
+        eps.tool,
+        eps.attached_product_key,
+        eps.canonical_url,
+        eps.destination_url,
+        eps.title,
+        eps.price_amount,
+        eps.price_currency,
+        eps.availability,
+        eps.seed_data,
+        eps.updated_at,
+        eps.created_at,
+        cp.product_key AS catalog_product_key,
+        cp.pivota_signature_id
+      FROM external_product_seeds eps
+      LEFT JOIN LATERAL (
+        SELECT product_key, pivota_signature_id
+        FROM catalog_products cp
+        WHERE cp.merchant_id = 'external_seed'
+          AND cp.platform = 'external_seed'
+          AND cp.source_product_id = eps.external_product_id
+        ORDER BY cp.updated_at DESC NULLS LAST, cp.created_at DESC NULLS LAST
+        LIMIT 1
+      ) cp ON true
       WHERE ${where.join('\n        AND ')}
       ${orderSql}
       LIMIT ${limitBind}
@@ -758,6 +772,15 @@ function hasTerminalHoldMarker(seedData = {}, snapshot = {}) {
     );
 }
 
+function resolveProbeProductId(row = {}, { useSig = false } = {}) {
+  const externalProductId =
+    normalizeNonEmptyString(row.external_product_id) ||
+    normalizeNonEmptyString(row.seed_data?.external_product_id) ||
+    normalizeNonEmptyString(row.seed_data?.product_id);
+  const signatureId = normalizeNonEmptyString(row.pivota_signature_id);
+  return useSig && signatureId ? signatureId : externalProductId;
+}
+
 async function auditRow(row, {
   catalogBaseUrl,
   gatewayUrl,
@@ -768,12 +791,14 @@ async function auditRow(row, {
   pdpTimeoutMs = null,
   detailsPdpTimeoutMs = null,
   similarTimeoutMs = null,
+  useSig = false,
 }) {
   const seedData = ensureJsonObject(row.seed_data);
   const snapshot = ensureJsonObject(seedData.snapshot);
   const recall = resolveExternalSeedRecallDoc({ row, seedData, snapshot });
   const extractor = await fetchExtractorTruth(row, catalogBaseUrl, { timeoutMs: catalogTimeoutMs });
-  const productId =
+  const productId = resolveProbeProductId(row, { useSig });
+  const externalProductId =
     normalizeNonEmptyString(row.external_product_id) ||
     normalizeNonEmptyString(seedData.external_product_id) ||
     normalizeNonEmptyString(seedData.product_id);
@@ -879,9 +904,9 @@ async function auditRow(row, {
     livePayload: unwrapLivePdpPayload(corePdp),
     liveResponse: ensureJsonObject(corePdp),
   });
-  return buildExternalSeedQualityResult({
+  const result = buildExternalSeedQualityResult({
     seedId: row.id,
-    externalProductId: productId,
+    externalProductId,
     market: row.market,
     domain: row.domain,
     canonicalUrl: normalizeUrlLike(row.canonical_url || snapshot.canonical_url || extractor.target_url),
@@ -893,6 +918,11 @@ async function auditRow(row, {
     similarGate,
     variantGate,
   });
+  return {
+    ...result,
+    probed_product_id: productId,
+    probed_id_type: productId.startsWith('sig_') ? 'sig' : 'external_product_id',
+  };
 }
 
 async function main() {
@@ -908,6 +938,7 @@ async function main() {
   const detailsPdpTimeoutMs = argValue('details-pdp-timeout-ms');
   const similarTimeoutMs = argValue('similar-timeout-ms');
   const catalogTimeoutMs = argValue('catalog-timeout-ms');
+  const useSig = hasArg('use-sig') || hasArg('use-sig-id') || hasArg('sig');
   const out = argValue('out');
   const progressEvery = parsePositiveInt(argValue('progress-every'), 10, 1, 1000);
   const rows = await fetchRows({
@@ -937,6 +968,7 @@ async function main() {
           pdpTimeoutMs,
           detailsPdpTimeoutMs,
           similarTimeoutMs,
+          useSig,
         }),
       );
     } catch (error) {
@@ -945,6 +977,8 @@ async function main() {
       results.push({
         seed_id: normalizeNonEmptyString(row.id),
         external_product_id: normalizeNonEmptyString(row.external_product_id),
+        probed_product_id: resolveProbeProductId(row, { useSig }),
+        probed_id_type: resolveProbeProductId(row, { useSig }).startsWith('sig_') ? 'sig' : 'external_product_id',
         market: normalizeNonEmptyString(row.market),
         domain: normalizeNonEmptyString(row.domain),
         canonical_url: normalizeUrlLike(row.canonical_url || snapshot.canonical_url || row.destination_url),
@@ -1044,6 +1078,7 @@ module.exports = {
   unwrapLivePdpPayload,
   mergePdpProbeResponses,
   resolveExpectedLivePdpPrice,
+  resolveProbeProductId,
   probeImageUrl,
   probeImageHealth,
   auditRow,

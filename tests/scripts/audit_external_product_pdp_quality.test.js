@@ -26,6 +26,7 @@ const {
   mergePdpProbeResponses,
   unwrapLivePdpPayload,
   resolveExpectedLivePdpPrice,
+  resolveProbeProductId,
   probeImageHealth,
   writeOutput,
   invokeGateway,
@@ -91,6 +92,17 @@ describe('audit-external-product-pdp-quality helpers', () => {
     expect(resolveExpectedLivePdpPrice({ price_amount: '0' })).toBeNull();
   });
 
+  test('can probe live PDP by catalog signature while preserving external seed identity', () => {
+    const row = {
+      external_product_id: 'ext_123',
+      pivota_signature_id: 'sig_abc',
+      seed_data: {},
+    };
+
+    expect(resolveProbeProductId(row, { useSig: true })).toBe('sig_abc');
+    expect(resolveProbeProductId(row, { useSig: false })).toBe('ext_123');
+  });
+
   test('normalizes gateway bases to the public api gateway endpoint', () => {
     expect(resolveGatewayUrl('https://agent.pivota.cc')).toBe('https://agent.pivota.cc/api/gateway');
     expect(resolveGatewayUrl('https://agent.pivota.cc/api/gateway')).toBe('https://agent.pivota.cc/api/gateway');
@@ -131,6 +143,7 @@ describe('audit-external-product-pdp-quality helpers', () => {
           'product_intel',
           'reviews_preview',
           'similar',
+          'bundle_composition',
           'variant_selector',
           'offers',
         ],
