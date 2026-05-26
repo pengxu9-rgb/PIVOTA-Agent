@@ -670,9 +670,182 @@ async function upsertRelationshipEdge(input = {}, { queryFn = query, nowMs = Dat
   return edge;
 }
 
+const LABEL_STATES = new Set([
+  'generated',
+  'prefilter_rejected',
+  'review_ready',
+  'human_approved',
+  'human_rejected',
+  'needs_evidence',
+]);
+
+const REVIEW_STATUS_TO_LABEL_STATE = {
+  approved: 'human_approved',
+  rejected: 'human_rejected',
+  pending: 'needs_evidence',
+};
+
+function reviewStatusToLabelState(status) {
+  return REVIEW_STATUS_TO_LABEL_STATE[normalizeLower(status, 80)] || '';
+}
+
+function extractReasonFlags(humanReview) {
+  if (!isPlainObject(humanReview)) return [];
+  const raw = humanReview.reviewer_decisions || humanReview.reviewerDecisions;
+  const decisions = Array.isArray(raw)
+    ? raw
+    : isPlainObject(raw)
+      ? Object.values(raw)
+      : [];
+  const flags = new Set();
+  for (const decision of decisions) {
+    if (!isPlainObject(decision)) continue;
+    const list = Array.isArray(decision.flags) ? decision.flags : [];
+    for (const item of list) {
+      const flag = normalizeLower(item, 160);
+      if (flag) flags.add(flag);
+    }
+  }
+  return Array.from(flags).sort();
+}
+
+async function upsertRelationshipCandidateLabel(input = {}, { queryFn = query } = {}) {
+  const labelState = normalizeLower(input.label_state, 80);
+  if (!LABEL_STATES.has(labelState)) {
+    const err = new Error(`invalid_label_state:${labelState || 'missing'}`);
+    err.code = 'INVALID_LABEL_STATE';
+    throw err;
+  }
+
+  // human_approved labels must pass the full runtime-edge validation —
+  // they are what the view serves to production.
+  let edge = null;
+  if (labelState === 'human_approved') {
+    const validation = validateRelationshipEdge(input, { nowMs: Date.now() });
+    if (!validation.ok) {
+      const err = new Error(`invalid_product_relationship_edge:${validation.errors.join(',')}`);
+      err.code = 'INVALID_PRODUCT_RELATIONSHIP_EDGE';
+      err.errors = validation.errors;
+      throw err;
+    }
+    edge = validation.value;
+  } else {
+    edge = coerceRelationshipEdge(input);
+  }
+
+  const anchorType = ANCHOR_TYPES.has(edge.anchor_type) ? edge.anchor_type : 'product';
+  const anchorRef = normalizeString(edge.anchor_ref, 260);
+  const candidateRef = normalizeString(edge.candidate_product_ref, 260);
+  const relationType = RELATION_TYPES.has(edge.relation_type) ? edge.relation_type : null;
+  const market = normalizeString(edge.market || DEFAULT_MARKET, 32);
+  if (!anchorRef || !candidateRef || !relationType || !market) {
+    const err = new Error('label_missing_identity_fields');
+    err.code = 'LABEL_MISSING_IDENTITY';
+    throw err;
+  }
+
+  const id = normalizeString(input.id || edge.id, 160) || buildEdgeId({
+    anchor_ref: anchorRef,
+    candidate_product_ref: candidateRef,
+    relation_type: relationType,
+    market,
+  });
+  const edgeId = normalizeString(input.edge_id || edge.id || id, 160);
+  const humanReview = isPlainObject(input.human_review) ? input.human_review : null;
+  const reasonFlags = Array.isArray(input.reason_flags) && input.reason_flags.length
+    ? input.reason_flags
+        .map((flag) => normalizeLower(flag, 160))
+        .filter(Boolean)
+    : extractReasonFlags(humanReview);
+
+  await queryFn(
+    `
+      INSERT INTO relationship_candidate_labels (
+        id, edge_id, anchor_type, anchor_ref, anchor_snapshot,
+        candidate_product_ref, candidate_snapshot, relation_type,
+        display_label, market, vertical, category_taxonomy, use_case,
+        label_state, score_total, score_breakdown,
+        price_evidence, source_refs, evidence_grade,
+        why_candidate, tradeoffs, watchouts,
+        human_review, reason_flags, source_report, provenance,
+        reviewed_at, last_verified_at, expires_at, updated_at
+      )
+      VALUES (
+        $1, $2, $3, $4, $5::jsonb,
+        $6, $7::jsonb, $8,
+        $9, $10, $11, $12::jsonb, $13,
+        $14, $15, $16::jsonb,
+        $17::jsonb, $18::jsonb, $19,
+        $20::jsonb, $21::jsonb, $22::jsonb,
+        $23::jsonb, $24, $25, $26::jsonb,
+        $27::timestamptz, $28::timestamptz, $29::timestamptz, now()
+      )
+      ON CONFLICT (market, anchor_type, lower(anchor_ref), lower(candidate_product_ref), relation_type)
+      DO UPDATE SET
+        edge_id = EXCLUDED.edge_id,
+        anchor_snapshot = EXCLUDED.anchor_snapshot,
+        candidate_snapshot = EXCLUDED.candidate_snapshot,
+        display_label = EXCLUDED.display_label,
+        vertical = EXCLUDED.vertical,
+        category_taxonomy = EXCLUDED.category_taxonomy,
+        use_case = EXCLUDED.use_case,
+        label_state = EXCLUDED.label_state,
+        score_total = EXCLUDED.score_total,
+        score_breakdown = EXCLUDED.score_breakdown,
+        price_evidence = EXCLUDED.price_evidence,
+        source_refs = EXCLUDED.source_refs,
+        evidence_grade = EXCLUDED.evidence_grade,
+        why_candidate = EXCLUDED.why_candidate,
+        tradeoffs = EXCLUDED.tradeoffs,
+        watchouts = EXCLUDED.watchouts,
+        human_review = EXCLUDED.human_review,
+        reason_flags = EXCLUDED.reason_flags,
+        source_report = EXCLUDED.source_report,
+        provenance = EXCLUDED.provenance,
+        reviewed_at = EXCLUDED.reviewed_at,
+        last_verified_at = EXCLUDED.last_verified_at,
+        expires_at = EXCLUDED.expires_at,
+        updated_at = now()
+    `,
+    [
+      id,
+      edgeId,
+      anchorType,
+      anchorRef,
+      normalizeJsonbParam(edge.anchor_snapshot, {}),
+      candidateRef,
+      normalizeJsonbParam(edge.candidate_snapshot, {}),
+      relationType,
+      edge.display_label || null,
+      market,
+      DEFAULT_VERTICAL,
+      normalizeJsonbParam(edge.category_taxonomy, []),
+      edge.use_case || null,
+      labelState,
+      Number.isFinite(Number(edge.score_total)) ? Number(edge.score_total) : null,
+      normalizeJsonbParam(edge.score_breakdown, {}),
+      normalizeJsonbParam(edge.price_evidence, {}),
+      normalizeJsonbParam(edge.source_refs, []),
+      edge.evidence_grade || null,
+      normalizeJsonbParam(edge.why_candidate, {}),
+      normalizeJsonbParam(edge.tradeoffs, []),
+      normalizeJsonbParam(edge.watchouts, []),
+      humanReview ? normalizeJsonbParam(humanReview, {}) : null,
+      reasonFlags,
+      normalizeString(input.source_report, 260) || null,
+      normalizeJsonbParam(edge.provenance, {}),
+      input.reviewed_at || null,
+      edge.last_verified_at || null,
+      edge.expires_at || null,
+    ],
+  );
+  return { id, edge_id: edgeId, label_state: labelState };
+}
+
 module.exports = {
   RELATION_TYPES,
   REVIEW_STATUSES,
+  LABEL_STATES,
   PRICE_FRESHNESS_MS,
   coerceRelationshipEdge,
   validateRelationshipEdge,
@@ -683,6 +856,9 @@ module.exports = {
   listApprovedRelationshipEdgesForAnchor,
   getRelationshipGraphCandidatesForAnchor,
   upsertRelationshipEdge,
+  upsertRelationshipCandidateLabel,
+  reviewStatusToLabelState,
+  extractReasonFlags,
   __internal: {
     extractBrand,
     getPriceRatio,

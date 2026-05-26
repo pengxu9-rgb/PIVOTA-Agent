@@ -118,7 +118,7 @@ describe('publish-product-relationship-graph-review helpers', () => {
     );
   });
 
-  test('builds a dry-run plan for approved edges and skips rejected decisions', () => {
+  test('builds a dry-run plan that persists approved, rejected, and pending decisions as labels', () => {
     const approved = relationshipEdge({ id: 'prel_approved' });
     const rejected = relationshipEdge({
       id: 'prel_rejected',
@@ -131,8 +131,19 @@ describe('publish-product-relationship-graph-review helpers', () => {
         price: 85,
       },
     });
+    const pending = relationshipEdge({
+      id: 'prel_pending',
+      candidate_product_ref: 'product:candidate_3',
+      candidate_snapshot: {
+        product_id: 'candidate_3',
+        brand: 'Pending Brand',
+        name: 'Barrier Serum Pending',
+        category_taxonomy: ['skincare', 'serum'],
+        price: 90,
+      },
+    });
     const plan = buildPublishPlan(
-      { edges: [approved, rejected] },
+      { edges: [approved, rejected, pending] },
       [
         {
           edge_id: 'prel_approved',
@@ -146,32 +157,55 @@ describe('publish-product-relationship-graph-review helpers', () => {
           decision: 'rejected',
           reviewer: 'human_reviewer',
         },
+        {
+          edge_id: 'prel_pending',
+          decision: 'pending',
+          reviewer: 'human_reviewer',
+        },
       ],
-      { now: NOW },
+      { now: NOW, sourceReport: 'fixture_report.json' },
     );
 
     expect(plan.summary).toEqual(
       expect.objectContaining({
-        report_edges: 2,
+        report_edges: 3,
         approved_decisions: 1,
-        publishable: 1,
+        rejected_decisions: 2,
+        publishable: 3,
         published: 0,
         invalid: 0,
-        skipped: 1,
-        rejected_decisions: 1,
+        skipped: 0,
       }),
     );
-    expect(plan.rows.map((row) => row.status)).toEqual(['publishable', 'skipped']);
+    expect(plan.summary.label_states).toEqual({
+      human_approved: 1,
+      human_rejected: 1,
+      needs_evidence: 1,
+    });
+    expect(plan.rows.map((row) => row.status)).toEqual([
+      'publishable',
+      'publishable',
+      'publishable',
+    ]);
+    expect(plan.rows.map((row) => row.label.label_state)).toEqual([
+      'human_approved',
+      'human_rejected',
+      'needs_evidence',
+    ]);
     expect(plan.rows[0].edge.review_status).toBe('approved');
+    expect(plan.rows[0].label.source_report).toBe('fixture_report.json');
   });
 
-  test('apply mode calls upsert only for publishable approved edges', async () => {
-    const upsertFn = jest.fn(async (edge) => edge);
+  test('apply mode upserts approved, rejected, and pending labels', async () => {
+    const upsertFn = jest.fn(async (label) => label);
     const result = await publishReviewReport({
       report: {
         edges: [
           relationshipEdge({ id: 'prel_approved' }),
-          relationshipEdge({ id: 'prel_skipped', candidate_product_ref: 'product:skip_1' }),
+          relationshipEdge({
+            id: 'prel_rejected',
+            candidate_product_ref: 'product:reject_1',
+          }),
         ],
       },
       decisions: [
@@ -182,31 +216,42 @@ describe('publish-product-relationship-graph-review helpers', () => {
           last_verified_at: NOW,
           expires_at: FUTURE,
         },
+        {
+          edge_id: 'prel_rejected',
+          decision: 'rejected',
+          reviewer: 'human_reviewer',
+        },
       ],
       apply: true,
       upsertFn,
       now: NOW,
     });
 
-    expect(upsertFn).toHaveBeenCalledTimes(1);
+    expect(upsertFn).toHaveBeenCalledTimes(2);
     expect(upsertFn.mock.calls[0][0]).toEqual(
       expect.objectContaining({
-        id: 'prel_approved',
-        review_status: 'approved',
+        edge_id: 'prel_approved',
+        label_state: 'human_approved',
         last_verified_at: NOW,
         expires_at: FUTURE,
+      }),
+    );
+    expect(upsertFn.mock.calls[1][0]).toEqual(
+      expect.objectContaining({
+        edge_id: 'prel_rejected',
+        label_state: 'human_rejected',
       }),
     );
     expect(result.summary).toEqual(
       expect.objectContaining({
         report_edges: 2,
-        publishable: 1,
-        published: 1,
+        publishable: 2,
+        published: 2,
         invalid: 0,
-        skipped: 1,
+        skipped: 0,
       }),
     );
-    expect(result.rows.map((row) => row.status)).toEqual(['published', 'skipped']);
+    expect(result.rows.map((row) => row.status)).toEqual(['published', 'published']);
   });
 
   test('approved decisions with invalid edges are rejected with validation reasons', () => {
