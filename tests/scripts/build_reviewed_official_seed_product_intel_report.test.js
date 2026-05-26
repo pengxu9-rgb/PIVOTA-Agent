@@ -112,6 +112,56 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     expect(JSON.stringify(bundle)).not.toMatch(/beauty_product_shoppers|step":"beauty"|"texture":"beauty_product"/i);
   });
 
+  test('classifies 786 breathable nail polish without Beauty Product fallback', () => {
+    expect(
+      inferKind(
+        'Bahrain - Breathable Nail Polish',
+        'Beauty Product',
+        'beauty',
+        'Bahrain is best described as an iridescent and pearly finish.',
+      ),
+    ).toBe('nail_polish');
+
+    const bundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_786_bahrain',
+        title: 'Bahrain - Breathable Nail Polish',
+        canonical_url: 'https://786cosmetics.com/products/bahrain-breathable-nail-polish',
+        seed_data: {
+          brand: '786 Cosmetics',
+          category: 'Beauty Product',
+          description: 'Bahrain is best described as an iridescent and pearly finish.',
+          ingredients_inci: [
+            'Butyl Acetate',
+            'Ethyl Acetate',
+            'Nitrocellulose',
+            'Acetyl Tributyl Citrate',
+            'Isopropyl Alcohol',
+          ],
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_786_bahrain',
+        sellable_item_group_id: 'sig_786_bahrain',
+      },
+      generatedAt: '2026-05-26T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+
+    expect(bundle.shopping_card.subtitle).toBe('Nail Polish');
+    expect(bundle.shopping_card.highlight).toBe('Nail finish detail');
+    expect(bundle.product_intel_core.routine_fit.step).toBe('nail_color');
+    expect(bundle.product_intel_core.what_it_is.headline).toBe('Nail polish identity');
+    expect(bundle.product_intel_core.why_it_stands_out).toHaveLength(2);
+    expect(classifyGeneratedBundle(bundle)).toMatchObject({
+      displayable: true,
+      high_quality_ready: true,
+      blocking_issues: [],
+    });
+    expect(JSON.stringify(bundle)).not.toMatch(/beauty product|beauty_product/i);
+  });
+
   test('classifies reviewed Pixi set and patch patterns by title before component copy', () => {
     expect(inferKind('On-the-Glow Bronze Collection', '', '', 'Hydrating balm bronzers with fruit extracts.')).toBe(
       'makeup_set',
@@ -2775,6 +2825,22 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
         kb_direct_high_quality_ready: true,
       }),
     ).toBe(false);
+    expect(
+      isConservativeRewriteCandidate(
+        {
+          ...base,
+          title: 'Bahrain - Breathable Nail Polish',
+          recommended_lane: 'ready_no_action',
+          kb_direct_high_quality_ready: true,
+          kb_direct_human_reviewed: true,
+          kb_direct_quality_state: 'eligible',
+          kb_direct_evidence_profile: 'seller_plus_formula',
+          kb_direct_blocking_issues: '',
+          main_blocker: 'db_serving_ready',
+        },
+        { includeHighQualityExisting: true },
+      ),
+    ).toBe(true);
     expect(isConservativeRewriteCandidate({ ...base, title: 'PixiPerfume Sample' })).toBe(false);
     expect(
       isConservativeRewriteCandidate(
@@ -2982,6 +3048,25 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
         commerce_doc_public: false,
         terminal_hold: false,
       },
+      {
+        external_product_id: 'high_quality_existing',
+        domain: 'pixibeauty.com',
+        title: 'Bahrain - Breathable Nail Polish',
+        recommended_lane: 'ready_no_action',
+        seed_missing_fields: '',
+        identity_status: 'approved',
+        identity_live_read_enabled: true,
+        kb_direct_high_quality_ready: true,
+        kb_direct_human_reviewed: true,
+        kb_direct_quality_state: 'eligible',
+        kb_direct_evidence_profile: 'seller_plus_formula',
+        kb_direct_blocking_issues: '',
+        main_blocker: 'db_serving_ready',
+        catalog_attached: true,
+        index_serving_eligible: true,
+        commerce_doc_public: true,
+        terminal_hold: false,
+      },
     ];
 
     expect(
@@ -3026,5 +3111,16 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
         includeMissingOfficialSource: true,
       }).map((row) => row.external_product_id),
     ).toEqual(['safe', 'missing_official_source']);
+
+    expect(
+      selectInventoryRows(rows, {
+        domain: 'pixibeauty.com',
+        lane: 'ready_no_action',
+        limit: 10,
+        requirePublicCommerceDoc: true,
+        singleItemOnly: true,
+        includeHighQualityExisting: true,
+      }).map((row) => row.external_product_id),
+    ).toEqual(['high_quality_existing']);
   });
 });

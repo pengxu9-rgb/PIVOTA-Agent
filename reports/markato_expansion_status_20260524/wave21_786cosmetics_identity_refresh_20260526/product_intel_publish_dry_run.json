@@ -1,0 +1,30 @@
+{
+  "status": "ok",
+  "mode": "dry_run_validate_replacements",
+  "report": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/wave21_786cosmetics_identity_refresh_20260526/official_seed_product_intel_report_10.json",
+  "rows": [
+    "live_ext_2fc7cc1ac3370464b4b923d3",
+    "live_ext_69dcb156e335cb9756e016b2",
+    "live_ext_151aebc5b6246b8d2d9a877b",
+    "live_ext_8573685e1cc94840934c764d",
+    "live_ext_36b452da1e0dde5c19bd2ed0",
+    "live_ext_0d844fc65fd3348e35a09c80",
+    "live_ext_41aeeb470016979417c8637d",
+    "live_ext_33fa1a749060cefdd3e0dc2b",
+    "live_ext_55b774d3c57906a77a7167f0",
+    "live_ext_2c4793f5f96ec2d4680fd55b"
+  ],
+  "entries": [
+    "product:ext_2fc7cc1ac3370464b4b923d3",
+    "product:ext_69dcb156e335cb9756e016b2",
+    "product:ext_151aebc5b6246b8d2d9a877b",
+    "product:ext_8573685e1cc94840934c764d",
+    "product:ext_36b452da1e0dde5c19bd2ed0",
+    "product:ext_0d844fc65fd3348e35a09c80",
+    "product:ext_41aeeb470016979417c8637d",
+    "product:ext_33fa1a749060cefdd3e0dc2b",
+    "product:ext_55b774d3c57906a77a7167f0",
+    "product:ext_2c4793f5f96ec2d4680fd55b"
+  ],
+  "skipped_rows": []
+}

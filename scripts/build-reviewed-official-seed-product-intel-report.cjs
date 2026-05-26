@@ -30,6 +30,7 @@ function hasFlag(name) {
 const SAFE_REWRITE_QUALITY_STATES = new Set(['limited', 'eligible']);
 const SAFE_REWRITE_EVIDENCE_PROFILES = new Set(['seller_only', 'seller_plus_formula']);
 const SAFE_REWRITE_BLOCKERS = new Set(['kb_blocked', 'kb_displayable_limited']);
+const HIGH_QUALITY_EXISTING_REWRITE_BLOCKERS = new Set(['db_serving_ready', 'ready_no_action']);
 const NON_CORE_PUBLIC_REWRITE_TITLE_RE = /\b(?:sample|e-gift|gift card|hoodie|hat|tote|bucket|bag)\b/i;
 const MULTI_ITEM_PUBLIC_REWRITE_TITLE_RE = /\b(?:set|kit|duo|trio|bundle|routine|collection|essentials|must-haves?|choose your|gift set|gift trio)\b/i;
 
@@ -621,6 +622,7 @@ function inferKind(title, category, categoryPath, description = '') {
   if (/\b(?:primer|poreless)\b/.test(haystack)) return 'primer';
   if (/\b(?:foundation|skin tint|skintint|skin-tint)\b/.test(haystack)) return 'foundation';
   if (/\bconcealer\b/.test(haystack)) return 'concealer';
+  if (/\b(?:nail\s+polish|nail\s+lacquer|breathable\s+nail\s+polish)\b/.test(haystack)) return 'nail_polish';
   if (/\b(?:lipstick|lip color|lip tint|lip stain|lip balm|lip butter|butter balm|balm stick|lip oil|lip gloss|lipgloss|lip glaze|lip cream|lip combo|lip souffl[eé]|lip treatment|lip mask|lipmask|lip liner|lip pencil|lip luxe|lip patch|lippatch|gloss|pout)\b/.test(haystack)) return 'lip';
   if (/\b(?:candle)\b/.test(haystack)) return 'home_fragrance';
   if (/\bdeodorant\b/.test(haystack)) return 'deodorant';
@@ -688,6 +690,7 @@ function kindLabel(kind, category) {
     primer: 'primer',
     setting_spray: 'setting spray',
     corrector: 'color corrector',
+    nail_polish: 'nail polish',
     lip: text(category).toLowerCase() || 'lip product',
     body_mist: 'body mist',
     fragrance_set: 'fragrance set',
@@ -764,6 +767,7 @@ function displayCategoryForKind(kind, category) {
     primer: 'Primer',
     setting_spray: 'Setting Spray',
     corrector: 'Color Corrector',
+    nail_polish: 'Nail Polish',
     lip: 'Lip Product',
     body_mist: 'Body Mist',
     fragrance_set: 'Fragrance Set',
@@ -834,6 +838,7 @@ function displayCategoryForKind(kind, category) {
     'makeup_sharpener',
     'setting_spray',
     'corrector',
+    'nail_polish',
     'skincare_tool',
     'face_palette',
     'brush',
@@ -897,6 +902,7 @@ function routineStep(kind) {
     primer: 'complexion',
     setting_spray: 'complexion',
     corrector: 'complexion',
+    nail_polish: 'nail_color',
     lip: 'lip_color',
     body_mist: 'fragrance',
     fragrance_set: 'set',
@@ -1248,6 +1254,10 @@ function buildHighlightPhrase(kind, category, description, title = '') {
   if (kind === 'foundation') return 'Longwear complexion base';
   if (kind === 'setting_spray') return 'Makeup setting spray';
   if (kind === 'corrector') return 'Complexion correcting stick';
+  if (kind === 'nail_polish') {
+    if (/\b(?:iridescent|pearly|pearl|topcoat|top\s+coat|finish)\b/.test(signalText)) return 'Nail finish detail';
+    return 'Nail color formula detail';
+  }
   if (kind === 'brow') return 'Brow-shaping format detail';
   if (kind === 'primer') return 'Primer format detail';
   if (kind === 'eye_treatment') return /patch|goggle|caffeine|de-?puff|hydrate/.test(signalText) ? 'Eye-care format detail' : 'Eye treatment detail';
@@ -1684,6 +1694,7 @@ function isConservativeRewriteCandidate(row, options = {}) {
   if (options.safeOnly === false) return true;
   const qualityState = text(row.kb_direct_quality_state).toLowerCase();
   const evidenceProfile = text(row.kb_direct_evidence_profile).toLowerCase();
+  const mainBlocker = text(row.main_blocker);
   const blockingIssues = new Set(
     text(row.kb_direct_blocking_issues)
       .split('|')
@@ -1691,7 +1702,15 @@ function isConservativeRewriteCandidate(row, options = {}) {
       .filter(Boolean),
   );
   if (row.terminal_hold) return false;
-  if (row.kb_direct_high_quality_ready) return false;
+  const highQualityExistingAllowed =
+    options.includeHighQualityExisting === true &&
+    row.kb_direct_high_quality_ready === true &&
+    row.kb_direct_human_reviewed === true &&
+    SAFE_REWRITE_EVIDENCE_PROFILES.has(evidenceProfile) &&
+    ['eligible', 'reviewed', 'verified', 'published'].includes(qualityState) &&
+    HIGH_QUALITY_EXISTING_REWRITE_BLOCKERS.has(mainBlocker) &&
+    blockingIssues.size === 0;
+  if (row.kb_direct_high_quality_ready && !highQualityExistingAllowed) return false;
   const reviewedSellerOnlyAllowed =
     options.includeReviewedSellerOnly === true &&
     qualityState === 'reviewed' &&
@@ -1700,7 +1719,7 @@ function isConservativeRewriteCandidate(row, options = {}) {
     options.includeMissingOfficialSource === true &&
     qualityState === 'missing' &&
     evidenceProfile === 'missing' &&
-    text(row.main_blocker) === 'kb_missing' &&
+    mainBlocker === 'kb_missing' &&
     row.catalog_attached === true &&
     row.index_serving_eligible === true &&
     row.commerce_doc_public === true;
@@ -1709,7 +1728,7 @@ function isConservativeRewriteCandidate(row, options = {}) {
     row.kb_direct_human_reviewed !== true &&
     qualityState === 'limited' &&
     evidenceProfile === 'seller_only' &&
-    text(row.main_blocker) === 'kb_blocked' &&
+    mainBlocker === 'kb_blocked' &&
     row.catalog_attached === true &&
     row.index_serving_eligible === true &&
     row.commerce_doc_public === true &&
@@ -1718,10 +1737,12 @@ function isConservativeRewriteCandidate(row, options = {}) {
       issue === 'not_reviewed' || issue === 'not_displayable_gate',
     );
   if (!missingOfficialSourceAllowed) {
-    if (!SAFE_REWRITE_EVIDENCE_PROFILES.has(evidenceProfile)) return false;
-    if (!SAFE_REWRITE_BLOCKERS.has(text(row.main_blocker))) return false;
-    if (row.kb_direct_human_reviewed !== true && !notReviewedOfficialSourceAllowed) return false;
-    if (!SAFE_REWRITE_QUALITY_STATES.has(qualityState) && !reviewedSellerOnlyAllowed) return false;
+    if (!highQualityExistingAllowed) {
+      if (!SAFE_REWRITE_EVIDENCE_PROFILES.has(evidenceProfile)) return false;
+      if (!SAFE_REWRITE_BLOCKERS.has(mainBlocker)) return false;
+      if (row.kb_direct_human_reviewed !== true && !notReviewedOfficialSourceAllowed) return false;
+      if (!SAFE_REWRITE_QUALITY_STATES.has(qualityState) && !reviewedSellerOnlyAllowed) return false;
+    }
   }
   if (NON_CORE_PUBLIC_REWRITE_TITLE_RE.test(text(row.title))) return false;
   if (options.singleItemOnly && MULTI_ITEM_PUBLIC_REWRITE_TITLE_RE.test(text(row.title))) return false;
@@ -1744,12 +1765,13 @@ function selectInventoryRows(rows, options) {
   const includeReviewedSellerOnly = options.includeReviewedSellerOnly === true;
   const includeNotReviewedOfficialSource = options.includeNotReviewedOfficialSource === true;
   const includeMissingOfficialSource = options.includeMissingOfficialSource === true;
+  const includeHighQualityExisting = options.includeHighQualityExisting === true;
   return rows
     .filter((row) => !domain || text(row.domain).toLowerCase() === domain)
     .filter((row) => text(row.recommended_lane) === lane)
     .filter((row) => !text(row.seed_missing_fields))
     .filter((row) => text(row.identity_status) === 'approved' && row.identity_live_read_enabled !== false)
-    .filter((row) => !row.kb_direct_high_quality_ready)
+    .filter((row) => includeHighQualityExisting || !row.kb_direct_high_quality_ready)
     .filter((row) =>
       isConservativeRewriteCandidate(row, {
         safeOnly,
@@ -1758,6 +1780,7 @@ function selectInventoryRows(rows, options) {
         includeReviewedSellerOnly,
         includeNotReviewedOfficialSource,
         includeMissingOfficialSource,
+        includeHighQualityExisting,
       }),
     )
     .filter((row) => (requireDescription ? true : true))
@@ -1835,6 +1858,7 @@ async function main() {
     includeReviewedSellerOnly: hasFlag('include-reviewed-seller-only'),
     includeNotReviewedOfficialSource: hasFlag('include-not-reviewed-official-source'),
     includeMissingOfficialSource: hasFlag('include-missing-official-source'),
+    includeHighQualityExisting: hasFlag('include-high-quality-existing'),
   });
   const productIds = selectedInventory.map((row) => normalizeId(row.external_product_id)).filter(Boolean);
   const seeds = await fetchSeeds(productIds);
