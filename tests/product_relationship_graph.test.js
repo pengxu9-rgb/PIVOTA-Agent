@@ -5,6 +5,8 @@ const {
   buildAnchorRefsFromProduct,
   listApprovedRelationshipEdgesForAnchor,
   upsertRelationshipEdge,
+  extractReasonFlags,
+  extractFailureReasonFlags,
 } = require('../src/auroraBff/productRelationshipGraph');
 
 const NOW = Date.parse('2026-05-25T00:00:00.000Z');
@@ -305,5 +307,73 @@ describe('product relationship graph store helpers', () => {
       errors: expect.arrayContaining(['dupe_same_brand_blocked']),
     });
     expect(queryFn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('reason-flag projections', () => {
+  // Real shape observed in pilot_stage10 reports: each reviewer_decisions lane
+  // carries its own status, reason, and flags. Top-level human_review.flags
+  // aggregates flags from ALL lanes regardless of status — which is what
+  // extractReasonFlags also produces. extractFailureReasonFlags restricts to
+  // flags from lanes whose status === 'reject'.
+  const mixedHumanReview = {
+    consensus_status: 'reject',
+    reviewer_decisions: {
+      ingredient_formula_form: {
+        status: 'reject',
+        flags: ['product_job_mismatch', 'weak_same_category'],
+      },
+      brand_category_price: {
+        status: 'reject',
+        flags: ['cross_brand', 'product_job_mismatch'],
+      },
+      effect_use_case_claims: {
+        status: 'approve',
+        flags: ['same_target_area', 'direct_category_use_case_supported'],
+      },
+      provenance_kol_source: {
+        status: 'approve',
+        flags: ['authoritative_product_intel_source_refs', 'no_kol_or_endorsement_dependency'],
+      },
+    },
+  };
+
+  test('extractReasonFlags returns the union across all lanes regardless of status', () => {
+    expect(extractReasonFlags(mixedHumanReview)).toEqual([
+      'authoritative_product_intel_source_refs',
+      'cross_brand',
+      'direct_category_use_case_supported',
+      'no_kol_or_endorsement_dependency',
+      'product_job_mismatch',
+      'same_target_area',
+      'weak_same_category',
+    ]);
+  });
+
+  test('extractFailureReasonFlags includes only flags from lanes that voted reject', () => {
+    expect(extractFailureReasonFlags(mixedHumanReview)).toEqual([
+      'cross_brand',
+      'product_job_mismatch',
+      'weak_same_category',
+    ]);
+  });
+
+  test('both projections return [] for empty or malformed input', () => {
+    expect(extractReasonFlags(null)).toEqual([]);
+    expect(extractReasonFlags({})).toEqual([]);
+    expect(extractFailureReasonFlags(null)).toEqual([]);
+    expect(extractFailureReasonFlags({ reviewer_decisions: 'not an object' })).toEqual([]);
+  });
+
+  test('extractFailureReasonFlags treats hold/approve/missing-status lanes as non-failure', () => {
+    const r = extractFailureReasonFlags({
+      reviewer_decisions: {
+        a: { status: 'hold', flags: ['hold_flag'] },
+        b: { status: 'approve', flags: ['approve_flag'] },
+        c: { flags: ['no_status_flag'] },
+        d: { status: 'reject', flags: ['reject_flag'] },
+      },
+    });
+    expect(r).toEqual(['reject_flag']);
   });
 });
