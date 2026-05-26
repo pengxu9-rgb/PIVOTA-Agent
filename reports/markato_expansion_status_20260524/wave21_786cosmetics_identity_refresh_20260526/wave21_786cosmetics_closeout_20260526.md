@@ -95,6 +95,18 @@ Final live audit after reviewed product intel:
 - content_gap_ids: 0
 - domain rollup: `786cosmetics.com` 10
 
+Post-deploy live audit:
+
+- production build observed: `ebb714ec3cc3`
+- scanned: 10
+- ready: 10
+- thin: 0
+- not_conversion_ready: 0
+- weak_insights_ids: 0
+- seller_only_insights_ids: 0
+- force_filled_ids: 0
+- content_gap_ids: 0
+
 ## Artifacts
 
 - `catalog_sync_dry_run.json`
@@ -106,6 +118,7 @@ Final live audit after reviewed product intel:
 - `product_intel_publish_apply.json`
 - `readiness_after_product_intel/`
 - `live_pdp_modules_audit_after_product_intel.json`
+- `live_pdp_modules_audit_after_deploy.json`
 
 ## Verification
 
