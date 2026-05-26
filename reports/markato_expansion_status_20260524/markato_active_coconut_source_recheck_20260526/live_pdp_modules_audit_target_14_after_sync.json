@@ -1,0 +1,44 @@
+{
+  "generated_at": "2026-05-26T12:56:04.740Z",
+  "source": "external_seed_live_pdp_modules_audit",
+  "query": {
+    "market": "US",
+    "domain": null,
+    "brand": null,
+    "external_product_id": null,
+    "external_product_ids": [
+      "ext_94e9169cdf21031b65f760c9",
+      "ext_833660ffbf5c744869351463",
+      "ext_daba06ea03080351d96dd6f9",
+      "ext_eea9ddc94177c421b32a1ed5",
+      "ext_edef015844086dd8eaa792b2",
+      "ext_11509e4feaf83a2419d8c77d",
+      "ext_441b5d142009ef8ae5082262",
+      "ext_7e270c8cb635a23a446a76f9",
+      "ext_fda8be630c6dc79ef599df3c",
+      "ext_c840771410198f627d75673a",
+      "ext_a7f414cda657f8c5857fafe8",
+      "ext_9518e81076efc5c5138214ee",
+      "ext_57fe66e03e7b47b972b78c30",
+      "ext_8982e4384c3bd70a5718c899"
+    ],
+    "include_attached": false,
+    "limit": 20,
+    "offset": 0,
+    "include_similar": true,
+    "use_sig": false
+  },
+  "summary": {
+    "scanned": 0,
+    "ready": 0,
+    "thin": 0,
+    "not_conversion_ready": 0,
+    "by_domain": [],
+    "blocker_counts": [],
+    "weak_insights_ids": [],
+    "seller_only_insights_ids": [],
+    "force_filled_ids": [],
+    "content_gap_ids": []
+  },
+  "rows": []
+}

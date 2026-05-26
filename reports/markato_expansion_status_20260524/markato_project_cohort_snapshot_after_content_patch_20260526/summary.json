@@ -1,0 +1,29 @@
+{
+  "generated_at": "2026-05-26T11:11:00.882Z",
+  "source": "markato_project_targeted_sku_cohort_from_local_wave_artifacts_plus_wave5_domains",
+  "target_artifact_external_ids": 101,
+  "wave5_domain_scope": [
+    "activedrip.com",
+    "coconutmatter.com",
+    "joujoubotanicals.com"
+  ],
+  "production_target_products": 111,
+  "brands": 19,
+  "catalog_pdp_products": 111,
+  "db_serving_ready_products": 110,
+  "identity_ready_products": 110,
+  "reviewed_product_intel_products": 110,
+  "high_quality_product_intel_products": 110,
+  "catalog_pdp_coverage_pct": 100,
+  "db_serving_ready_coverage_pct": 99.1,
+  "high_quality_intel_coverage_pct": 99.1,
+  "brands_100pct_catalog": 19,
+  "brands_100pct_serving_ready": 18,
+  "brands_0pct_serving_ready": 0,
+  "blocker_summary": [
+    {
+      "blocker_code": "no_seed",
+      "product_count": 1
+    }
+  ]
+}

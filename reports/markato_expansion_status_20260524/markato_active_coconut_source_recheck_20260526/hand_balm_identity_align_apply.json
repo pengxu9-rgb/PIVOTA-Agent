@@ -1,0 +1,94 @@
+{
+  "status": "success",
+  "mode": "write",
+  "generated_at": "2026-05-26T12:55:09.852Z",
+  "external_product_ids": [
+    "ext_fda8be630c6dc79ef599df3c"
+  ],
+  "options": {
+    "allow_reviewed_product_line_singletons": true,
+    "allow_official_url_exact_conflict_cleanup": true
+  },
+  "rows_seen": 1,
+  "missing_ids": [],
+  "align_ready_count": 1,
+  "already_aligned_count": 0,
+  "held_count": 0,
+  "applied": {
+    "override_upserts": 1,
+    "identity_rows_updated": 1
+  },
+  "blockers": [],
+  "plans": [
+    {
+      "action": "align_ready",
+      "blockers": [],
+      "product_key": "prod::external_seed::external_seed::ext_fda8be630c6dc79ef599df3c",
+      "source_listing_ref": "external_seed:ext_fda8be630c6dc79ef599df3c",
+      "external_product_id": "ext_fda8be630c6dc79ef599df3c",
+      "title": "NOURISHING HAND BALM",
+      "brand": "COCONUT MATTER",
+      "canonical_url": "https://coconutmatter.com/products/nourishing-hand-balm",
+      "product_group_id": "",
+      "is_primary": false,
+      "content_key": "ck_93242029aafbd0a67096b1754e51ad10",
+      "catalog_sig_id": "sig_5d8d07b8dea0c405f7a34d56e5301278",
+      "catalog_sig_url": "https://agent.pivota.cc/products/sig_5d8d07b8dea0c405f7a34d56e5301278",
+      "identity_sig_id_before": "sig_d700eefeb388c474a894b35b",
+      "product_line_id": "pl_4272654ccd247748c8497e05",
+      "review_family_id": "rf_4272654ccd247748c8497e05",
+      "identity_status_before": "review_required",
+      "live_read_enabled_before": false,
+      "review_required_before": true,
+      "review_reason_codes_before": [
+        "multi_variant_exact_item_unresolved",
+        "insufficient_exact_item_evidence"
+      ],
+      "reviewed_product_line_singleton": {
+        "eligible": true,
+        "blockers": [],
+        "evidence": {
+          "source_tier": "brand",
+          "matched_by_rule": "singleton_source_ref",
+          "review_reason_codes": [
+            "multi_variant_exact_item_unresolved",
+            "insufficient_exact_item_evidence"
+          ],
+          "variant_axes": {
+            "multi_variant": true
+          },
+          "official_url": "https://coconutmatter.com/products/nourishing-hand-balm",
+          "canonical_url": "https://coconutmatter.com/products/nourishing-hand-balm",
+          "seed_canonical_url": "https://coconutmatter.com/products/nourishing-hand-balm",
+          "title": "NOURISHING HAND BALM",
+          "seed_title": "NOURISHING HAND BALM"
+        }
+      },
+      "reviewed_official_url_exact_conflict_cleanup": {
+        "eligible": false,
+        "blockers": [
+          "unexpected_matched_by_rule",
+          "missing_conflicting_official_url_review_reason",
+          "unsupported_review_reason_codes"
+        ],
+        "evidence": {
+          "source_tier": "brand",
+          "matched_by_rule": "singleton_source_ref",
+          "review_reason_codes": [
+            "multi_variant_exact_item_unresolved",
+            "insufficient_exact_item_evidence"
+          ],
+          "variant_axes": {
+            "multi_variant": true
+          },
+          "official_url": "https://coconutmatter.com/products/nourishing-hand-balm",
+          "canonical_url": "https://coconutmatter.com/products/nourishing-hand-balm",
+          "seed_canonical_url": "https://coconutmatter.com/products/nourishing-hand-balm",
+          "title": "NOURISHING HAND BALM",
+          "seed_title": "NOURISHING HAND BALM"
+        }
+      },
+      "needs_update": true
+    }
+  ]
+}

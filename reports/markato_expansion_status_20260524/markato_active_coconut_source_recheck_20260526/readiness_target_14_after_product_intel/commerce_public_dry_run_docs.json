@@ -1,0 +1,793 @@
+{
+  "generated_at": "2026-05-26T13:03:40.435Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 14,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_5d8d07b8dea0c405f7a34d56e5301278",
+      "sellable_item_group_id": "sig_5d8d07b8dea0c405f7a34d56e5301278",
+      "product_line_id": "pl_4272654ccd247748c8497e05",
+      "review_family_id": "rf_4272654ccd247748c8497e05",
+      "brand_name": "COCONUT MATTER",
+      "category_paths": [
+        "Hand Balm"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "NOURISHING HAND BALM",
+      "subtitle": "Crafted with a deeply moisturising blend of plant-based ingredients like jojoba oil and our signature WILD virgin coconut oil, it absorbs immediately into the skin and nourishes without leaving a greasy feel. Choose from scents infused by Bulgaria Rose, Bulgaria Lavender or Egypt Jasmine. Feel the balm on your hands as it works wonders on dry, irritated, or cracked skin.",
+      "variant_axes": {
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/products/NoMoreBluesLavenderHandBalm_aac94b81-cae7-4f38-b6d9-2e826e975e2e.png?v=1653378699",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/products/NoMoreBluesLavenderHandBalm_aac94b81-cae7-4f38-b6d9-2e826e975e2e.png?v=1653378699",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/products/JoyofLoveRoseHandBalm_2760207f-63aa-403e-ae7b-ced6368b0944.webp?v=1653378699",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/products/OnCloudNineJasmineHandBalm_16eb3434-b67c-4297-b9cc-3928b2c94840.webp?v=1653378699"
+      ],
+      "price_min": 12,
+      "price_max": 12,
+      "default_offer_id": "external_seed:ext_fda8be630c6dc79ef599df3c",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A COCONUT MATTER hand balm listed on the brand source page as NOURISHING HAND BALM.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "COCONUT MATTER",
+        "Hand Balm"
+      ],
+      "sort_keys": {
+        "price_min": 12,
+        "price_max": 12,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_fda8be630c6dc79ef599df3c"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_ab0548c0101059f42676a642",
+      "sellable_item_group_id": "sig_ab0548c0101059f42676a642",
+      "product_line_id": "pl_b280c2d5a19e59fcfc525550",
+      "review_family_id": "rf_b280c2d5a19e59fcfc525550",
+      "brand_name": "COCONUT MATTER",
+      "category_paths": [
+        "Lip Treatment"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "TINTED COCONUT LIP BALM",
+      "subtitle": "Lightweight, sheer, and intensely nourishing, our tinted coconut lip balms are one of the easiest way to boost your natural lip color. \n\nAvailable in five sheer shade. Depending on swipe strength, the color can range from a sheer tint to a juicier, more saturated sheen.",
+      "variant_axes": {
+        "color": "smooch",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-smooch-swatch.png?v=1731569108",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-smooch-swatch.png?v=1731569108",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/COCONUT-MATTER-BEAUTY-HYDRATING-NATURAL-LIPBALM-TINT-ALL-SHADES_9f5c7538-ac19-46ac-991f-2feb5080a28a.png?v=1686806197",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-vegan-natural-tinted-lip-balm-before-after-review.png?v=1731988520",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-tinted-lip-balm-all-natural-ingredients.png?v=1718684383",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-tinted-lip-balm-all-natural-benefits.png?v=1718684383",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-sparks-swatch.png?v=1731569108",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-cheer-swatch.png?v=1731569108",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-passion-swatch.png?v=1731569108"
+      ],
+      "price_min": 19,
+      "price_max": 19,
+      "default_offer_id": "external_seed:ext_c840771410198f627d75673a",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "COCONUT MATTER TINTED COCONUT LIP BALM is a lightweight sheer tinted lip balm described around natural-looking lip color and nourishing lip-care positioning.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "COCONUT MATTER",
+        "Lip Treatment"
+      ],
+      "sort_keys": {
+        "price_min": 19,
+        "price_max": 19,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_c840771410198f627d75673a"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_18d55245c66a1c337b9673be",
+      "sellable_item_group_id": "sig_18d55245c66a1c337b9673be",
+      "product_line_id": "pl_0d70699a9151610560548951",
+      "review_family_id": "rf_0d70699a9151610560548951",
+      "brand_name": "COCONUT MATTER",
+      "category_paths": [
+        "Shampoo"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Goji Shake Shampoo Concentrate | For Treated Hair",
+      "subtitle": "Goji Shake Shampoo Concentrate",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/15.png?v=1763307713",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/15.png?v=1763307713",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/16.png?v=1763307713",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/17.png?v=1763307713",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-natural-shampoo-concentrate-goji-shake-reviews.png?v=1763307713",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/19.png?v=1763307713"
+      ],
+      "price_min": 25,
+      "price_max": 25,
+      "default_offer_id": "external_seed:ext_a7f414cda657f8c5857fafe8",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "COCONUT MATTER Goji Shake is a shampoo concentrate for treated hair, based on the official PDP title and reviewed shampoo category.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "COCONUT MATTER",
+        "Shampoo"
+      ],
+      "sort_keys": {
+        "price_min": 25,
+        "price_max": 25,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_a7f414cda657f8c5857fafe8"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_2d065c767b6e18a4d7f4a660",
+      "sellable_item_group_id": "sig_2d065c767b6e18a4d7f4a660",
+      "product_line_id": "pl_7f52f3cb18dea57eab9a16cd",
+      "review_family_id": "rf_7f52f3cb18dea57eab9a16cd",
+      "brand_name": "COCONUT MATTER",
+      "category_paths": [
+        "Shampoo"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Matcha Shake Shampoo Concentrate | For All Hair Types",
+      "subtitle": "Matcha Shake Shampoo Concentrate",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/1_f9e1fb1d-a484-4b41-b3b4-70ff8dcda8db.png?v=1763292731",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/1_f9e1fb1d-a484-4b41-b3b4-70ff8dcda8db.png?v=1763292731",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/3_e19226d6-86b1-4d9c-a977-5f0bdcc54cdb.png?v=1763292731",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/5_4bfd3984-bd4e-4283-b8aa-4e4d28f10f24.png?v=1763292850",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/liquidshampoovspowder_88a67b62-b3a6-405c-b15d-712b049e04e6.png?v=1763292850",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-matcha-shake-shampoo-natural-vegan-beforeafter2.png?v=1763292850",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-matcha-shake-shampoo-natural-vegan-beforeafter3.png?v=1763292850",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-matcha-shake-shampoo-natural-vegan-features.png?v=1763292850",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-matcha-shake-shampoo-natural-vegan-reviews.png?v=1763292850"
+      ],
+      "price_min": 25,
+      "price_max": 25,
+      "default_offer_id": "external_seed:ext_9518e81076efc5c5138214ee",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "COCONUT MATTER Matcha Shake is a shampoo concentrate for all hair types, based on the official PDP title and reviewed shampoo category.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "COCONUT MATTER",
+        "Shampoo"
+      ],
+      "sort_keys": {
+        "price_min": 25,
+        "price_max": 25,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_9518e81076efc5c5138214ee"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_cd6ca146b0bc7efe26834866",
+      "sellable_item_group_id": "sig_cd6ca146b0bc7efe26834866",
+      "product_line_id": "pl_6029041f7f356100d8858990",
+      "review_family_id": "rf_6029041f7f356100d8858990",
+      "brand_name": "COCONUT MATTER",
+      "category_paths": [
+        "Body Cleanser"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Oaty Shake Body Wash Concentrate",
+      "subtitle": "Oaty Shake Body Wash Concentrate",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/20.png?v=1763371394",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/20.png?v=1763371394",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/21.png?v=1763371394",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/22.png?v=1763371394",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/5_a9dfa538-4bb1-422b-8dfe-966bc461fbde.png?v=1763371394",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-all-natural-body-wash-concentrate-oaty-shake-reviews.png?v=1763371394",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/23.png?v=1763371394"
+      ],
+      "price_min": 25,
+      "price_max": 25,
+      "default_offer_id": "external_seed:ext_57fe66e03e7b47b972b78c30",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "COCONUT MATTER Oaty Shake is a body wash concentrate; the official-source description is thin, so the KB keeps the product as a body-cleanse concentrate without adding benefit claims.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "COCONUT MATTER",
+        "Body Cleanser"
+      ],
+      "sort_keys": {
+        "price_min": 25,
+        "price_max": 25,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_57fe66e03e7b47b972b78c30"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_bf0b6eefa60f65c056fa90c3",
+      "sellable_item_group_id": "sig_bf0b6eefa60f65c056fa90c3",
+      "product_line_id": "pl_f52d9ef18be312ad54546aaf",
+      "review_family_id": "rf_f52d9ef18be312ad54546aaf",
+      "brand_name": "Active Drip",
+      "category_paths": [
+        "Eye Treatment"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "HA + PEPTIDES EYE CARE",
+      "subtitle": "Moisturises, nourishes and reduces puffiness appearance. \n\nFirms eye area \n\nReduces puffiness \n\nImproves hydration \n\nAwakes and rejuvenates",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/f088c032-5909-435a-918b-b5fc7fbbc589.png?v=1778592038",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/f088c032-5909-435a-918b-b5fc7fbbc589.png?v=1778592038",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/eye-contour-peptides-applied-under-eye-glowing-skin.png?v=1778768143",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/eye-contour-hyaluronic-acid-peptides-collagen-dark-circles.png?v=1778768170",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/eye-contour-clinical-results-3-weeks-gentle-plumper-undereye.png?v=1778768228",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/eye-contour-clinical-results-3-weeks-gentle-plumper-undereyes.png?v=1778768256",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/plumping-eye-cream-lab-tested-sensitive-skin-fragrance-free.png?v=1778768300"
+      ],
+      "price_min": 41.9,
+      "price_max": 41.9,
+      "default_offer_id": "external_seed:ext_94e9169cdf21031b65f760c9",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Active Drip HA + PEPTIDES EYE CARE is an eye treatment described around hyaluronic acid, peptides, hydration, nourishment, and the look of puffiness.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Active Drip",
+        "Eye Treatment"
+      ],
+      "sort_keys": {
+        "price_min": 41.9,
+        "price_max": 41.9,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_94e9169cdf21031b65f760c9"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_d0887c6192dc04533b1643d8",
+      "sellable_item_group_id": "sig_d0887c6192dc04533b1643d8",
+      "product_line_id": "pl_0a48ca569b74107332dd9d98",
+      "review_family_id": "rf_0a48ca569b74107332dd9d98",
+      "brand_name": "Active Drip",
+      "category_paths": [
+        "Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "CICA MILK DRIP",
+      "subtitle": "Intensively repairing formula: soothes and protects sensitive, redness-prone skin \n\nCalms irritation \n\nRetains and replenishes hydration \n\nRestores skin balance \n\nPromotes healing process",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-cica-milk-drip-cica-b5-recovery-serum.png?v=1778769634",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-cica-milk-drip-cica-b5-recovery-serum.png?v=1778769634",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/cica-milk-drip-calming-soothing-serum-redness-irritation.png?v=1778769658",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/cica-milk-drip-centella-asiatica-panthenol-skin-barrier-repair.png?v=1778769676",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/cica-milk-drip-before-and-after-2-weeks-redness-reduction.png?v=1778769694",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/cica-milk-drip-clinical-results-2-weeks-redness-hydration-soothing.png?v=1778769721",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/calming-serum-cica-b5-lab-tested-sensitive-skin-fragrance-free.png?v=1778769752"
+      ],
+      "price_min": 58.5,
+      "price_max": 58.5,
+      "default_offer_id": "external_seed:ext_daba06ea03080351d96dd6f9",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Active Drip CICA MILK DRIP is a cica and B5 recovery serum described for sensitive and redness-prone routines, hydration replenishment, and barrier-comfort positioning.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Active Drip",
+        "Serum"
+      ],
+      "sort_keys": {
+        "price_min": 58.5,
+        "price_max": 58.5,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_daba06ea03080351d96dd6f9"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_059a529bc3acbb6e14d8a572",
+      "sellable_item_group_id": "sig_059a529bc3acbb6e14d8a572",
+      "product_line_id": "pl_f1d65081da00a08b5c777ef5",
+      "review_family_id": "rf_f1d65081da00a08b5c777ef5",
+      "brand_name": "Active Drip",
+      "category_paths": [
+        "Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "HYDRATE DRIP",
+      "subtitle": "T hree active ingredients that: intensively hydrates and rejuvenates the skin. \n\nIncreases moisture \n\nDeeply hydrates \n\nIncreases smoothness \n\nPlumps and rejuvenates skin",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/AI_images_21.png?v=1778588482",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/AI_images_21.png?v=1778588482",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/Copy_of_Boutiqaat_Visual_Assets_3_5.png?v=1772057490",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/17_8abe977d-33a8-4dc5-8a79-1344a0208f9c.png?v=1772057490",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/18_a517ed74-0027-46b0-8318-1f144eb32937.png?v=1772057490",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/19_a5af25ee-1558-47ae-a112-9d7f5b67b680.png?v=1772057490",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/20_a48a29fe-b15f-4eec-8821-8e07eb27430e.png?v=1772057490"
+      ],
+      "price_min": 52.9,
+      "price_max": 52.9,
+      "default_offer_id": "external_seed:ext_441b5d142009ef8ae5082262",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Active Drip HYDRATE DRIP is a serum whose official PDP frames hyaluronic acid, B12, and B5 around hydration, moisture, smoothness, and plump-looking skin.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Active Drip",
+        "Serum"
+      ],
+      "sort_keys": {
+        "price_min": 52.9,
+        "price_max": 52.9,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_441b5d142009ef8ae5082262"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_edf6265ef8f5fea9d8f515b1",
+      "sellable_item_group_id": "sig_edf6265ef8f5fea9d8f515b1",
+      "product_line_id": "pl_40036ac8420b1b0f0dabb8ef",
+      "review_family_id": "rf_40036ac8420b1b0f0dabb8ef",
+      "brand_name": "Active Drip",
+      "category_paths": [
+        "Moisturizer"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "THE ICONIC MOISTURISER",
+      "subtitle": "Essential all-in-one moisturiser. Prevents ageing, restores and supports healthy skin barrier. \n\nSuper-hydrating formula. \n\nSoftens skin. \n\nLeaves a silky finish. \n\nLight feel.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-iconic-moisturiser-vitamin-c-hyaluronic-acid.png?v=1778767780",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-iconic-moisturiser-vitamin-c-hyaluronic-acid.png?v=1778767780",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/AI_images_25.png?v=1778590284",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/Copy_of_Boutiqaat_Visual_Assets_3_3.png?v=1769184186",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/iconic-moisturiser-vitamin-c-hyaluronic-acid-benefits.png?v=1778767841",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/iconic-moisturiser-before-and-after-day-1-day-28.png?v=1778767880",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/iconic-moisturiser-clinical-results-3-weeks-hydrated-skin-barrier.png?v=1778767931",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/iconic-moisturiser-hygienic-soft-touch-applicator.png?v=1778768001",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/41_31fcdd83-0e74-41c2-a5fe-6c92030128e7.png?v=1769184186"
+      ],
+      "price_min": 59.9,
+      "price_max": 59.9,
+      "default_offer_id": "external_seed:ext_7e270c8cb635a23a446a76f9",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Active Drip THE ICONIC MOISTURISER is an all-in-one moisturizer described around hydration, soft-feeling skin, a silky finish, and barrier-support positioning.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Active Drip",
+        "Moisturizer"
+      ],
+      "sort_keys": {
+        "price_min": 59.9,
+        "price_max": 59.9,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_7e270c8cb635a23a446a76f9"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_14610235032af8eede7f0783",
+      "sellable_item_group_id": "sig_14610235032af8eede7f0783",
+      "product_line_id": "pl_aba7922389c9f39dfd209259",
+      "review_family_id": "rf_aba7922389c9f39dfd209259",
+      "brand_name": "Active Drip",
+      "category_paths": [
+        "Eye Treatment"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "R-Q10 EYE CARE",
+      "subtitle": "Helps reduce wrinkles, firms, and brightens tired eyes. \n\nAddress signs of ageing \n\nImproves skin texture \n\nBoosts collagen \n\nYouthful and revitalised look",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-retinol-q10-anti-age-eyes-contour-cream.png?v=1778768556",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-retinol-q10-anti-age-eyes-contour-cream.png?v=1778768556",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/retinol-q10-eyes-cream-anti-ageing-wrinkles-firming.png?v=1778768522",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/retinol-q10-ingredients-skin-elasticity-fight-ageing.png?v=1778768582",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/retinol-q10-eye-cream-before-and-after-6-weeks-wrinkles.png?v=1778768602",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/retinol-q10-clinical-results-6-weeks-firmer-undereye-brighter.png?v=1778768622",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/firming-eye-cream-lab-tested-sensitive-skin-fragrance-free.png?v=1778768641"
+      ],
+      "price_min": 41.9,
+      "price_max": 41.9,
+      "default_offer_id": "external_seed:ext_833660ffbf5c744869351463",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Active Drip R-Q10 EYE CARE is an eye treatment whose official PDP frames retinol and Q10 around the look of wrinkles, firmness, brightness, and tired-eye routines.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Active Drip",
+        "Eye Treatment"
+      ],
+      "sort_keys": {
+        "price_min": 41.9,
+        "price_max": 41.9,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_833660ffbf5c744869351463"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_2cbeb024c2e87aa7359f3677",
+      "sellable_item_group_id": "sig_2cbeb024c2e87aa7359f3677",
+      "product_line_id": "pl_9b8329bc5f668e83f25cbd07",
+      "review_family_id": "rf_9b8329bc5f668e83f25cbd07",
+      "brand_name": "COCONUT MATTER",
+      "category_paths": [
+        "Lip Treatment"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "CLEAR LIP CARE",
+      "subtitle": "For those days you may want your lips CLEAR. It feels luxurious and creamy as it’s in omega fatty acids and antioxidants for intensive instant relief to dry lips. It’s so soft, you can even use it on babies. If applied in the nighttime, you’ll have plumped and hydrated pout in the morning. Say bye to harsh winters and cracked lips! Not only does it work wonders on dry, cracked lips — as well as chapped areas anywhere on the body — but it's also lightweight, non-sticky, and leaves behind a silky sheen that doesn't disappear after an hour. You can't go wrong with this one.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/products/CLEARLIPCARE.jpg?v=1652685794",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/products/CLEARLIPCARE.jpg?v=1652685794"
+      ],
+      "price_min": 25,
+      "price_max": 25,
+      "default_offer_id": "external_seed:ext_8982e4384c3bd70a5718c899",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "COCONUT MATTER CLEAR LIP CARE is a clear lip-care balm described for dry-feeling lips, a creamy feel, lightweight wear, and a silky sheen.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "COCONUT MATTER",
+        "Lip Treatment"
+      ],
+      "sort_keys": {
+        "price_min": 25,
+        "price_max": 25,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_8982e4384c3bd70a5718c899"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_e96f8431d6e888b0f426f3c1",
+      "sellable_item_group_id": "sig_e96f8431d6e888b0f426f3c1",
+      "product_line_id": "pl_aa6656481b38744162e7bfbd",
+      "review_family_id": "rf_aa6656481b38744162e7bfbd",
+      "brand_name": "Active Drip",
+      "category_paths": [
+        "Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "C + E DRIP",
+      "subtitle": "Revitalises, brightens and boosts skin radiance. \n\nTightens skin \n\nImproves luminosity \n\nIdeal revitaliser \n\nProtects skin",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-c-e-drip-vitamin-c-e-serum-brightening.png?v=1778768734",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-c-e-drip-vitamin-c-e-serum-brightening.png?v=1778768734",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/c-e-drip-vitamin-c-serum-dropper-glowing-skin.png?v=1778768770",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/vitamin-c-e-serum-ingredients-antioxidants-collagen-brighten.png?v=1778768803",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/c-e-drip-before-and-after-3-weeks-skin-texture-dark-spots.png?v=1778768831",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/c-e-drip-clinical-results-3-weeks-brighter-protected-skin.png?v=1778768855",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/brightening-serum-lab-tested-sensitive-skin-fragrance-free.png?v=1778768878"
+      ],
+      "price_min": 59.9,
+      "price_max": 59.9,
+      "default_offer_id": "external_seed:ext_eea9ddc94177c421b32a1ed5",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Active Drip C + E DRIP is a vitamin C and E serum described around radiance, luminosity, and revitalized-looking skin.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Active Drip",
+        "Serum"
+      ],
+      "sort_keys": {
+        "price_min": 59.9,
+        "price_max": 59.9,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_eea9ddc94177c421b32a1ed5"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_d96d3d4d7ab909300b7e3fda",
+      "sellable_item_group_id": "sig_d96d3d4d7ab909300b7e3fda",
+      "product_line_id": "pl_2873ff99bf3803d671edfc17",
+      "review_family_id": "rf_2873ff99bf3803d671edfc17",
+      "brand_name": "Active Drip",
+      "category_paths": [
+        "Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "RETINOL DRIP",
+      "subtitle": "It fights wrinkles appearance, rejuvenates and nourishes the skin. \n\nGentle on sensitive skin. \n\nReplenishes skin. \n\nDiminishes wrinkles. \n\nShields and brightens.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-retinol-drip-anti-wrinkle-serum.png?v=1778768974",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-retinol-drip-anti-wrinkle-serum.png?v=1778768974",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/retinol-drip-vitamin-a-serum-dropper-application.png?v=1778768997",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/retinol-drip-vitamin-a-aha-anti-ageing-ingredients.png?v=1778769019",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/retinol-drip-before-and-after-4-weeks-fine-lines.png?v=1778769041",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/retinol-drip-clinical-results-4-weeks-wrinkles-texture-tone.png?v=1778769068",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/bestselling-anti-ageing-retinol-serum-lab-tested-sensitive-skin.png?v=1778769099"
+      ],
+      "price_min": 59.9,
+      "price_max": 59.9,
+      "default_offer_id": "external_seed:ext_edef015844086dd8eaa792b2",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Active Drip RETINOL DRIP is a retinol serum described around the appearance of wrinkles, nourishment, replenishment, and brighter-looking skin.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Active Drip",
+        "Serum"
+      ],
+      "sort_keys": {
+        "price_min": 59.9,
+        "price_max": 59.9,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_edef015844086dd8eaa792b2"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_836b576047d491db3b856375",
+      "sellable_item_group_id": "sig_836b576047d491db3b856375",
+      "product_line_id": "pl_fc8ad53d0f7c035398bf1af6",
+      "review_family_id": "rf_fc8ad53d0f7c035398bf1af6",
+      "brand_name": "Active Drip",
+      "category_paths": [
+        "Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "KOJIC DRIP",
+      "subtitle": "Inspired by Japanese fermentation traditions.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-kojic-drip-niacinamide-serum-bottle.png?v=1778767043",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-kojic-drip-niacinamide-serum-bottle.png?v=1778767043",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/kojic-drip-niacinamide-serum-bottle-dropper.png?v=1778767200",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/kojic-drip-benefits-fades-acne-marks-hyperpigmentation.jpg?v=1778767306",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/kojic-drip-clinically-proven-fade-brighten-even-skin-tone.jpg?v=1778767350",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/how-to-layer-skincare-routine-with-kojic-drip-serum.jpg?v=1778767393",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/kojic-drip-clinical-study-results-after-4-weeks.jpg?v=1778767469",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/kojic-drip-niacinamide-5-kojic-acid-0-3-ingredients.jpg?v=1778767515",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/how-to-use-kojic-drip-niacinamide-serum-am-pm.jpg?v=1778767558"
+      ],
+      "price_min": 59.9,
+      "price_max": 59.9,
+      "default_offer_id": "external_seed:ext_11509e4feaf83a2419d8c77d",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Active Drip KOJIC DRIP is an official-source serum attached to a niacinamide and kojic-acid glow-and-corrective PDP, with source copy referencing Japanese fermentation inspiration.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Active Drip",
+        "Serum"
+      ],
+      "sort_keys": {
+        "price_min": 59.9,
+        "price_max": 59.9,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_11509e4feaf83a2419d8c77d"
+      ]
+    }
+  ]
+}

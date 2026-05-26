@@ -1,0 +1,20 @@
+domain,brand,target_products,catalog_pdp_products,catalog_pdp_coverage_pct,db_serving_ready_products,db_serving_ready_coverage_pct,identity_ready_products,reviewed_product_intel_products,high_quality_product_intel_products,high_quality_intel_coverage_pct,explicit_blocker_products,blocker_summary
+joujoubotanicals.com,JouJou,11,11,100,0,0,11,11,11,100,11,low_quality:11
+786cosmetics.com,786 Cosmetics,10,10,100,0,0,10,10,10,100,10,low_quality:10
+nubest.com,NuBest,10,10,100,0,0,10,10,10,100,10,low_quality:10
+activedrip.com,Active Drip,8,8,100,0,0,8,8,8,100,8,low_quality:8
+khus-khus.com,KHUS KHUS,8,8,100,0,0,8,8,8,100,8,low_quality:8
+nalacare.com,Nala Care,8,8,100,0,0,8,8,8,100,8,low_quality:8
+coconutmatter.com,COCONUT MATTER,7,7,100,0,0,6,6,6,85.7,7,low_quality:6 | no_seed:1
+delicatedaisys.com,Delicate Daisys Botanical Beauty,7,7,100,1,14.3,7,7,7,100,6,low_quality:6
+abyssianhaircare.com,Abyssian,6,6,100,1,16.7,6,6,6,100,5,low_quality:5
+lhamour.com,Lhamour,6,6,100,0,0,6,6,6,100,6,low_quality:6
+7journeys.com,7Journeys,5,5,100,0,0,5,5,5,100,5,low_quality:5
+apiceuticals.com,Apiceuticals,5,5,100,0,0,5,5,5,100,5,no_image:5
+lucamarskincare.com,Lucamar Skin Care,5,5,100,0,0,5,5,5,100,5,no_image:3 | low_quality:2
+lovemasami.com,MASAMI,4,4,100,0,0,4,4,4,100,4,no_image:4
+seresilk.com.au,Seresilk,4,4,100,0,0,4,4,4,100,4,low_quality:4
+daebyskin.com,DAEBY,2,2,100,0,0,2,2,2,100,2,low_quality:2
+joocyee.com,Joocyee,2,2,100,0,0,2,2,2,100,2,low_quality:2
+rohrremedy.com,Rohr Remedy,2,2,100,0,0,2,2,2,100,2,low_quality:2
+aetasofficial.com,Aetās,1,1,100,0,0,1,1,1,100,1,low_quality:1

@@ -1,0 +1,56 @@
+{
+  "market": "US",
+  "reviewed_by": "codex_review",
+  "reason": "markato_quality_repair_nala_official_features_how_to_normalization",
+  "source_kind": "official_pdp_features_benefits_section",
+  "entries": [
+    {
+      "external_product_id": "ext_e08d2e62205f1691dfe30753",
+      "source_url": "https://nalacare.com/products/coastal-waters-natural-deodorant-extra-strength",
+      "evidence": "Production seed details captured the official PDP Features & Benefits section for Coastal Waters, including the use-direction text: A little goes a long way. 2 swipes is all it takes. In the beginning reapply as necessary.",
+      "pdp_how_to_use_raw": "A little goes a long way. 2 swipes is all it takes. In the beginning reapply as necessary."
+    },
+    {
+      "external_product_id": "ext_e5f66cf29d6c516775bb0fce",
+      "source_url": "https://nalacare.com/products/essence-of-rosewood-extra-strength-deodorant",
+      "evidence": "Production seed details captured the official PDP Features & Benefits section for Essence of Rosewood, including the use-direction text: A little goes a long way. 2 swipes is all it takes. In the beginning reapply as necessary.",
+      "pdp_how_to_use_raw": "A little goes a long way. 2 swipes is all it takes. In the beginning reapply as necessary."
+    },
+    {
+      "external_product_id": "ext_446a5f126507ff6adba46258",
+      "source_url": "https://nalacare.com/products/eucalyptus-natural-deodorant",
+      "evidence": "Production seed details captured the official PDP Features & Benefits section for Eucalyptus & Champa, including the use-direction text: A little goes a long way. 2 swipes is all it takes. In the beginning reapply as necessary.",
+      "pdp_how_to_use_raw": "A little goes a long way. 2 swipes is all it takes. In the beginning reapply as necessary."
+    },
+    {
+      "external_product_id": "ext_b36935c92dc89857bf62f25e",
+      "source_url": "https://nalacare.com/products/grapefruit-neroli-natural-deodorant",
+      "evidence": "Production seed details captured the official PDP Features & Benefits section for Grapefruit & Neroli, including the use-direction text: A little goes a long way. 2 swipes is all it takes. In the beginning reapply as necessary.",
+      "pdp_how_to_use_raw": "A little goes a long way. 2 swipes is all it takes. In the beginning reapply as necessary."
+    },
+    {
+      "external_product_id": "ext_21216a67b62b16d88661367f",
+      "source_url": "https://nalacare.com/products/lavender-and-vetiver-charcoal-natural-deodorant",
+      "evidence": "Production seed details captured the official PDP Features & Benefits section for Lavender & Vetiver, including the use-direction text: A little goes a long way. 2 swipes is all it takes. In the beginning reapply as necessary.",
+      "pdp_how_to_use_raw": "A little goes a long way. 2 swipes is all it takes. In the beginning reapply as necessary."
+    },
+    {
+      "external_product_id": "ext_2ef1955968e55d0bfdf5fe78",
+      "source_url": "https://nalacare.com/products/palo-santo-sage-natural-deodorant",
+      "evidence": "Production seed details captured the official PDP Features & Benefits section for Palo Santo & Sage, including the use-direction text: A little goes a long way. 2 swipes is all it takes. In the beginning reapply as necessary.",
+      "pdp_how_to_use_raw": "A little goes a long way. 2 swipes is all it takes. In the beginning reapply as necessary."
+    },
+    {
+      "external_product_id": "ext_8136f11be69e6c18781a7f02",
+      "source_url": "https://nalacare.com/products/natural-deodorant-peppermint-charcoal",
+      "evidence": "Production seed details captured the official PDP Features & Benefits section for Peppermint & Activated Charcoal, including the use-direction text: A little goes a long way. 2 swipes is all it takes. In the beginning reapply as necessary.",
+      "pdp_how_to_use_raw": "A little goes a long way. 2 swipes is all it takes. In the beginning reapply as necessary."
+    },
+    {
+      "external_product_id": "ext_5975f96c1d90b02d02329960",
+      "source_url": "https://nalacare.com/products/unscented-natural-deodorant",
+      "evidence": "Production seed details captured the official PDP Features & Benefits section for Unscented, including the use-direction text: A little goes a long way. 2 swipes is all it takes. In the beginning reapply as necessary.",
+      "pdp_how_to_use_raw": "A little goes a long way. 2 swipes is all it takes. In the beginning reapply as necessary."
+    }
+  ]
+}

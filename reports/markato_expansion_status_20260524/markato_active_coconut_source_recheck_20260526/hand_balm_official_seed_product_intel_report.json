@@ -1,0 +1,276 @@
+{
+  "meta": {
+    "generated_at": "2026-05-26T13:01:11.535Z",
+    "source": "reviewed_official_seed_product_intel_report",
+    "batch_name": "markato_coconut_hand_balm_official_seed_product_intel_20260526",
+    "inventory": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/markato_active_coconut_source_recheck_20260526/hand_balm_readiness_before_product_intel/commerce_index_kb_readiness_inventory.json",
+    "selected_cases": 1,
+    "reviewer": "codex_markato_active_coconut_quality",
+    "reviewer_kind": "assistant",
+    "candidate_quality_summary": {
+      "public_ready": 1,
+      "high_quality_ready": 1,
+      "evidence_profile": {
+        "seller_plus_formula": 1
+      }
+    }
+  },
+  "rows": [
+    {
+      "case_id": "live_ext_fda8be630c6dc79ef599df3c",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_markato_active_coconut_quality",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-26T13:01:11.535Z",
+      "notes": "Approved official-PDP-seed rewrite for NOURISHING HAND BALM; evidence_profile=seller_plus_formula; source_url=https://coconutmatter.com/products/nourishing-hand-balm",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_markato_active_coconut_quality",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_fda8be630c6dc79ef599df3c",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_fda8be630c6dc79ef599df3c",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_5d8d07b8dea0c405f7a34d56e5301278",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Hand balm identity",
+              "body": "A COCONUT MATTER hand balm listed on the brand source page as NOURISHING HAND BALM. The source description identifies: Crafted with a deeply moisturising blend of plant-based ingredients like jojoba oil and our signature WILD virgin coconut oil, it absorbs immediately into the skin and nourishes without leaving a greasy feel."
+            },
+            "best_for": [
+              {
+                "tag": "beauty_product_shoppers",
+                "label": "Hand balm shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "Crafted with a deeply moisturising blend of plant-based ingredients like jojoba oil and our signature WILD virgin coconut oil, it absorbs immediately into the skin and nourishes without leaving a greasy feel.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Vitis vinifera seed oil, Cocos nucifera oil, Jojoba oil, Butyrospermum parkii butter, Euphorbia cerifera cera. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "beauty",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the hand balm context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-26T13:01:11.535Z",
+              "source_version": "markato_coconut_hand_balm_official_seed_product_intel_20260526"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://coconutmatter.com/products/nourishing-hand-balm"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 13,
+                "source_url": "https://coconutmatter.com/products/nourishing-hand-balm"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "hand balm",
+            "texture": "beauty_product",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://coconutmatter.com/products/nourishing-hand-balm"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 13,
+              "source_url": "https://coconutmatter.com/products/nourishing-hand-balm"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-26T13:01:11.535Z",
+            "source_version": "markato_coconut_hand_balm_official_seed_product_intel_20260526"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_markato_active_coconut_quality",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-26T13:01:11.535Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "markato_coconut_hand_balm_official_seed_product_intel_20260526",
+            "official_source_url": "https://coconutmatter.com/products/nourishing-hand-balm",
+            "official_source_ingredient_count": 13,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "NOURISHING HAND BALM",
+            "subtitle": "Hand Balm",
+            "highlight": "Hand Balm format detail",
+            "intro": "A COCONUT MATTER hand balm listed on the brand source page as NOURISHING HAND BALM. The source description identifies: Crafted with a deeply moisturising blend of plant-based ingredients like jojoba oil and our signature WILD virgin coconut oil, it absorbs immediately into the skin and nourishes without leaving a greasy feel.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "NOURISHING HAND BALM",
+            "compact_candidate": "Hand Balm",
+            "highlight_candidate": "Hand Balm format detail",
+            "intro_candidate": "A COCONUT MATTER hand balm listed on the brand source page as NOURISHING HAND BALM. The source description identifies: Crafted with a deeply moisturising blend of plant-based ingredients like jojoba oil and our signature WILD virgin coconut oil, it absorbs immediately into the skin and nourishes without leaving a greasy feel.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    }
+  ]
+}

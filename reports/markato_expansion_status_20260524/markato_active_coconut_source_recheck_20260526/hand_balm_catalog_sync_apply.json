@@ -1,0 +1,240 @@
+{
+  "generated_at": "2026-05-26T12:55:37.472Z",
+  "mode": "apply",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": true,
+  "requested_ids": 1,
+  "fetched_rows": 1,
+  "mirror_rows": 1,
+  "planned_sku_rows": 3,
+  "planned_offer_rows": 3,
+  "planned_index_state_rows": 1,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "apply",
+    "existing_before": {
+      "catalog_products": 1,
+      "catalog_skus": 0,
+      "catalog_offers": 0,
+      "product_group_members": 0
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 3
+    },
+    "product_upserts": 1,
+    "sku_upserts": 3,
+    "offer_upserts": 3,
+    "group_member_upserts": 1,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 1,
+    "index_state_upserts": 1,
+    "identity_live_read_updates": 0
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_fda8be630c6dc79ef599df3c",
+      "product_key": "prod::external_seed::external_seed::ext_fda8be630c6dc79ef599df3c",
+      "product_group_id": "sig_5d8d07b8dea0c405f7a34d56e5301278",
+      "title": "NOURISHING HAND BALM",
+      "brand": "COCONUT MATTER",
+      "product_type": "Hand Balm",
+      "category": "Hand Balm",
+      "category_path": "beauty/body/hand-care",
+      "canonical_url": "https://coconutmatter.com/products/nourishing-hand-balm",
+      "pivota_signature_id": "sig_5d8d07b8dea0c405f7a34d56e5301278",
+      "sku_rows": 3,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_fda8be630c6dc79ef599df3c::sku_6c0ab410b57c89798e81",
+        "product_key": "prod::external_seed::external_seed::ext_fda8be630c6dc79ef599df3c",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_fda8be630c6dc79ef599df3c",
+        "source_variant_id": "ext_fda8be630c6dc79ef599df3c:39951549431890",
+        "source_domain": "coconutmatter.com",
+        "sku": "CM14-BLUES",
+        "barcode": null,
+        "title": "NOURISHING HAND BALM",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/products/NoMoreBluesLavenderHandBalm_aac94b81-cae7-4f38-b6d9-2e826e975e2e.png?v=1653378699",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_fda8be630c6dc79ef599df3c",
+          "raw_variant_id": "39951549431890",
+          "source_variant_id": "ext_fda8be630c6dc79ef599df3c:39951549431890",
+          "variant_sku": "CM14-BLUES",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://coconutmatter.com/products/nourishing-hand-balm",
+          "external_redirect_url": "https://coconutmatter.com/products/nourishing-hand-balm",
+          "price": "12",
+          "price_amount": 12,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/products/NoMoreBluesLavenderHandBalm_aac94b81-cae7-4f38-b6d9-2e826e975e2e.png?v=1653378699",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "CM14-BLUES",
+            "url": "https://coconutmatter.com/products/nourishing-hand-balm",
+            "price": "12",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/products/NoMoreBluesLavenderHandBalm_aac94b81-cae7-4f38-b6d9-2e826e975e2e.png?v=1653378699",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/products/NoMoreBluesLavenderHandBalm_aac94b81-cae7-4f38-b6d9-2e826e975e2e.png?v=1653378699",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/products/JoyofLoveRoseHandBalm_2760207f-63aa-403e-ae7b-ced6368b0944.webp?v=1653378699",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/products/OnCloudNineJasmineHandBalm_16eb3434-b67c-4297-b9cc-3928b2c94840.webp?v=1653378699"
+            ],
+            "variant_id": "39951549431890",
+            "description": "Crafted with a deeply moisturising blend of plant-based ingredients like jojoba oil and our signature WILD virgin coconut oil, it absorbs immediately into the skin and nourishes without leaving a greasy feel. Choose from scents infused by Bulgaria Rose, Bulgaria Lavender or Egypt Jasmine. Feel the balm on your hands as it works wonders on dry, irritated, or cracked skin.",
+            "option_name": "Scents",
+            "option_value": "Lavender"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:8324d3b9cc26bfc16c5f9bef23a0b568",
+        "sku_key": "prod::external_seed::external_seed::ext_fda8be630c6dc79ef599df3c::sku_6c0ab410b57c89798e81",
+        "product_key": "prod::external_seed::external_seed::ext_fda8be630c6dc79ef599df3c",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 12,
+        "merchant_effective_price": 12,
+        "estimated_best_price": 12,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_5de59eb0b35b9735762c5e8d",
+        "source_domain": "coconutmatter.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_5de59eb0b35b9735762c5e8d",
+          "external_product_id": "ext_fda8be630c6dc79ef599df3c",
+          "domain": "coconutmatter.com",
+          "market": "US",
+          "product_title": "NOURISHING HAND BALM",
+          "variant_title": "NOURISHING HAND BALM",
+          "variant_sku": "CM14-BLUES",
+          "raw_variant_id": "39951549431890",
+          "url": "https://coconutmatter.com/products/nourishing-hand-balm",
+          "offer_url": "https://coconutmatter.com/products/nourishing-hand-balm",
+          "canonical_url": "https://coconutmatter.com/products/nourishing-hand-balm",
+          "destination_url": "https://coconutmatter.com/products/nourishing-hand-balm",
+          "external_redirect_url": "https://coconutmatter.com/products/nourishing-hand-balm",
+          "merchant_display_name": "COCONUT MATTER",
+          "price": "12",
+          "price_amount": 12,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T01:06:29.717Z",
+            "evidence_url": "https://coconutmatter.com/products/nourishing-hand-balm",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "low",
+              "checked_at": "2026-05-24T01:06:29.717Z",
+              "reason_codes": [
+                "market_currency_not_verified",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://coconutmatter.com/products/nourishing-hand-balm"
+            },
+            "regional_price": {
+              "amount": 12,
+              "currency": "USD",
+              "display_raw": "12.00",
+              "price_type": "list",
+              "compare_at_amount": 12,
+              "compare_at_currency": null,
+              "compare_at_display_raw": "12.00",
+              "tax_included": "unknown",
+              "confidence": "low",
+              "market_switch_status": "unknown",
+              "observed_currency": "USD",
+              "source_url": "https://coconutmatter.com/products/nourishing-hand-balm",
+              "captured_at": "2026-05-24T01:06:29.717Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:06:29.717Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T01:06:29.717Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T01:06:29.717Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "status": "unverified",
+              "reason": "low_confidence_or_market_mismatch"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:06:29.717Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 373
+      }
+    }
+  ]
+}

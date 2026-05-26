@@ -1,0 +1,2806 @@
+{
+  "generated_at": "2026-05-26T12:41:45.463Z",
+  "mode": "apply",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": false,
+  "requested_ids": 14,
+  "fetched_rows": 14,
+  "mirror_rows": 13,
+  "planned_sku_rows": 19,
+  "planned_offer_rows": 19,
+  "planned_index_state_rows": 13,
+  "missing_ids": [],
+  "skipped": [
+    {
+      "external_product_id": "ext_fda8be630c6dc79ef599df3c",
+      "reason": "identity_review_required"
+    }
+  ],
+  "applied": {
+    "mode": "apply",
+    "existing_before": {
+      "catalog_products": 13,
+      "catalog_skus": 19,
+      "catalog_offers": 19,
+      "product_group_members": 13
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 19
+    },
+    "product_upserts": 13,
+    "sku_upserts": 19,
+    "offer_upserts": 19,
+    "group_member_upserts": 13,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 13,
+    "identity_live_read_updates": 0
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_94e9169cdf21031b65f760c9",
+      "product_key": "prod::external_seed::external_seed::ext_94e9169cdf21031b65f760c9",
+      "product_group_id": "sig_bf0b6eefa60f65c056fa90c3",
+      "title": "HA + PEPTIDES EYE CARE",
+      "brand": "Active Drip",
+      "product_type": "Eye Treatment",
+      "category": "Eye Treatment",
+      "category_path": "beauty/skincare/eye-care",
+      "canonical_url": "https://activedrip.com/products/hyaluronic-acid-peptides-eye-contour",
+      "pivota_signature_id": "sig_bf0b6eefa60f65c056fa90c3",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_94e9169cdf21031b65f760c9::sku_53919bb6d30d94cc494f",
+        "product_key": "prod::external_seed::external_seed::ext_94e9169cdf21031b65f760c9",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_94e9169cdf21031b65f760c9",
+        "source_variant_id": "ext_94e9169cdf21031b65f760c9:40877937492002",
+        "source_domain": "activedrip.com",
+        "sku": "8436585435180",
+        "barcode": null,
+        "title": "HA + PEPTIDES EYE CARE",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/f088c032-5909-435a-918b-b5fc7fbbc589.png?v=1778592038",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_94e9169cdf21031b65f760c9",
+          "raw_variant_id": "40877937492002",
+          "source_variant_id": "ext_94e9169cdf21031b65f760c9:40877937492002",
+          "variant_sku": "8436585435180",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://activedrip.com/products/hyaluronic-acid-peptides-eye-contour",
+          "external_redirect_url": "https://activedrip.com/products/hyaluronic-acid-peptides-eye-contour",
+          "price": "41.9",
+          "price_amount": 41.9,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/f088c032-5909-435a-918b-b5fc7fbbc589.png?v=1778592038",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "8436585435180",
+            "url": "https://activedrip.com/products/hyaluronic-acid-peptides-eye-contour",
+            "price": "41.9",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/f088c032-5909-435a-918b-b5fc7fbbc589.png?v=1778592038",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/f088c032-5909-435a-918b-b5fc7fbbc589.png?v=1778592038",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/eye-contour-peptides-applied-under-eye-glowing-skin.png?v=1778768143",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/eye-contour-hyaluronic-acid-peptides-collagen-dark-circles.png?v=1778768170",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/eye-contour-clinical-results-3-weeks-gentle-plumper-undereye.png?v=1778768228",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/eye-contour-clinical-results-3-weeks-gentle-plumper-undereyes.png?v=1778768256",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/plumping-eye-cream-lab-tested-sensitive-skin-fragrance-free.png?v=1778768300"
+            ],
+            "variant_id": "40877937492002",
+            "description": "Moisturises, nourishes and reduces puffiness appearance. \n\nFirms eye area \n\nReduces puffiness \n\nImproves hydration \n\nAwakes and rejuvenates",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:3b4bf7b0d1f1553d68f14d7818a52fc0",
+        "sku_key": "prod::external_seed::external_seed::ext_94e9169cdf21031b65f760c9::sku_53919bb6d30d94cc494f",
+        "product_key": "prod::external_seed::external_seed::ext_94e9169cdf21031b65f760c9",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 41.9,
+        "merchant_effective_price": 41.9,
+        "estimated_best_price": 41.9,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_f0ee015ae7eba47da94e4e74",
+        "source_domain": "activedrip.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_f0ee015ae7eba47da94e4e74",
+          "external_product_id": "ext_94e9169cdf21031b65f760c9",
+          "domain": "activedrip.com",
+          "market": "US",
+          "product_title": "HA + PEPTIDES EYE CARE",
+          "variant_title": "HA + PEPTIDES EYE CARE",
+          "variant_sku": "8436585435180",
+          "raw_variant_id": "40877937492002",
+          "url": "https://activedrip.com/products/hyaluronic-acid-peptides-eye-contour",
+          "offer_url": "https://activedrip.com/products/hyaluronic-acid-peptides-eye-contour",
+          "canonical_url": "https://activedrip.com/products/hyaluronic-acid-peptides-eye-contour",
+          "destination_url": "https://activedrip.com/products/hyaluronic-acid-peptides-eye-contour",
+          "external_redirect_url": "https://activedrip.com/products/hyaluronic-acid-peptides-eye-contour",
+          "merchant_display_name": "Active Drip",
+          "price": "41.9",
+          "price_amount": 41.9,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T01:07:13.798Z",
+            "evidence_url": "https://activedrip.com/products/hyaluronic-acid-peptides-eye-contour",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-24T01:07:13.798Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://activedrip.com/products/hyaluronic-acid-peptides-eye-contour"
+            },
+            "regional_price": {
+              "amount": 41.9,
+              "currency": "USD",
+              "display_raw": "41.90",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://activedrip.com/products/hyaluronic-acid-peptides-eye-contour",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T01:07:13.798Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T01:07:13.798Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 41.9,
+              "currency": "USD",
+              "display_raw": "41.90",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://activedrip.com/products/hyaluronic-acid-peptides-eye-contour",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 83,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 139
+      }
+    },
+    {
+      "external_product_id": "ext_833660ffbf5c744869351463",
+      "product_key": "prod::external_seed::external_seed::ext_833660ffbf5c744869351463",
+      "product_group_id": "sig_14610235032af8eede7f0783",
+      "title": "R-Q10 EYE CARE",
+      "brand": "Active Drip",
+      "product_type": "Eye Treatment",
+      "category": "Eye Treatment",
+      "category_path": "beauty/skincare/eye-care",
+      "canonical_url": "https://activedrip.com/products/retinol-q10-anti-age-eye-contour",
+      "pivota_signature_id": "sig_14610235032af8eede7f0783",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_833660ffbf5c744869351463::sku_6027cd80b1636cd9a59d",
+        "product_key": "prod::external_seed::external_seed::ext_833660ffbf5c744869351463",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_833660ffbf5c744869351463",
+        "source_variant_id": "ext_833660ffbf5c744869351463:40877937426466",
+        "source_domain": "activedrip.com",
+        "sku": "8436585435173",
+        "barcode": null,
+        "title": "R-Q10 EYE CARE",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-retinol-q10-anti-age-eyes-contour-cream.png?v=1778768556",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_833660ffbf5c744869351463",
+          "raw_variant_id": "40877937426466",
+          "source_variant_id": "ext_833660ffbf5c744869351463:40877937426466",
+          "variant_sku": "8436585435173",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://activedrip.com/products/retinol-q10-anti-age-eye-contour",
+          "external_redirect_url": "https://activedrip.com/products/retinol-q10-anti-age-eye-contour",
+          "price": "41.9",
+          "price_amount": 41.9,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-retinol-q10-anti-age-eyes-contour-cream.png?v=1778768556",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "8436585435173",
+            "url": "https://activedrip.com/products/retinol-q10-anti-age-eye-contour",
+            "price": "41.9",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-retinol-q10-anti-age-eyes-contour-cream.png?v=1778768556",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-retinol-q10-anti-age-eyes-contour-cream.png?v=1778768556",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/retinol-q10-eyes-cream-anti-ageing-wrinkles-firming.png?v=1778768522",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/retinol-q10-ingredients-skin-elasticity-fight-ageing.png?v=1778768582",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/retinol-q10-eye-cream-before-and-after-6-weeks-wrinkles.png?v=1778768602",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/retinol-q10-clinical-results-6-weeks-firmer-undereye-brighter.png?v=1778768622",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/firming-eye-cream-lab-tested-sensitive-skin-fragrance-free.png?v=1778768641"
+            ],
+            "variant_id": "40877937426466",
+            "description": "Helps reduce wrinkles, firms, and brightens tired eyes. \n\nAddress signs of ageing \n\nImproves skin texture \n\nBoosts collagen \n\nYouthful and revitalised look",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:2629120c1f95e7075099c2cb99d6136b",
+        "sku_key": "prod::external_seed::external_seed::ext_833660ffbf5c744869351463::sku_6027cd80b1636cd9a59d",
+        "product_key": "prod::external_seed::external_seed::ext_833660ffbf5c744869351463",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 41.9,
+        "merchant_effective_price": 41.9,
+        "estimated_best_price": 41.9,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_5d751ca5bd7874a40bc43f1d",
+        "source_domain": "activedrip.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_5d751ca5bd7874a40bc43f1d",
+          "external_product_id": "ext_833660ffbf5c744869351463",
+          "domain": "activedrip.com",
+          "market": "US",
+          "product_title": "R-Q10 EYE CARE",
+          "variant_title": "R-Q10 EYE CARE",
+          "variant_sku": "8436585435173",
+          "raw_variant_id": "40877937426466",
+          "url": "https://activedrip.com/products/retinol-q10-anti-age-eye-contour",
+          "offer_url": "https://activedrip.com/products/retinol-q10-anti-age-eye-contour",
+          "canonical_url": "https://activedrip.com/products/retinol-q10-anti-age-eye-contour",
+          "destination_url": "https://activedrip.com/products/retinol-q10-anti-age-eye-contour",
+          "external_redirect_url": "https://activedrip.com/products/retinol-q10-anti-age-eye-contour",
+          "merchant_display_name": "Active Drip",
+          "price": "41.9",
+          "price_amount": 41.9,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T01:07:13.798Z",
+            "evidence_url": "https://activedrip.com/products/retinol-q10-anti-age-eye-contour",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-24T01:07:13.798Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://activedrip.com/products/retinol-q10-anti-age-eye-contour"
+            },
+            "regional_price": {
+              "amount": 41.9,
+              "currency": "USD",
+              "display_raw": "41.90",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://activedrip.com/products/retinol-q10-anti-age-eye-contour",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T01:07:13.798Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T01:07:13.798Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 41.9,
+              "currency": "USD",
+              "display_raw": "41.90",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://activedrip.com/products/retinol-q10-anti-age-eye-contour",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 155
+      }
+    },
+    {
+      "external_product_id": "ext_daba06ea03080351d96dd6f9",
+      "product_key": "prod::external_seed::external_seed::ext_daba06ea03080351d96dd6f9",
+      "product_group_id": "sig_d0887c6192dc04533b1643d8",
+      "title": "CICA MILK DRIP",
+      "brand": "Active Drip",
+      "product_type": "Serum",
+      "category": "Serum",
+      "category_path": "beauty/skincare/serum",
+      "canonical_url": "https://activedrip.com/products/cica-b5-recovery-serum",
+      "pivota_signature_id": "sig_d0887c6192dc04533b1643d8",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_daba06ea03080351d96dd6f9::sku_9a748f1231707b8c3f02",
+        "product_key": "prod::external_seed::external_seed::ext_daba06ea03080351d96dd6f9",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_daba06ea03080351d96dd6f9",
+        "source_variant_id": "ext_daba06ea03080351d96dd6f9:40823318708258",
+        "source_domain": "activedrip.com",
+        "sku": "8436585435166",
+        "barcode": null,
+        "title": "CICA MILK DRIP",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-cica-milk-drip-cica-b5-recovery-serum.png?v=1778769634",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_daba06ea03080351d96dd6f9",
+          "raw_variant_id": "40823318708258",
+          "source_variant_id": "ext_daba06ea03080351d96dd6f9:40823318708258",
+          "variant_sku": "8436585435166",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://activedrip.com/products/cica-b5-recovery-serum",
+          "external_redirect_url": "https://activedrip.com/products/cica-b5-recovery-serum",
+          "price": "58.5",
+          "price_amount": 58.5,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-cica-milk-drip-cica-b5-recovery-serum.png?v=1778769634",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "8436585435166",
+            "url": "https://activedrip.com/products/cica-b5-recovery-serum",
+            "price": "58.5",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-cica-milk-drip-cica-b5-recovery-serum.png?v=1778769634",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-cica-milk-drip-cica-b5-recovery-serum.png?v=1778769634",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/cica-milk-drip-calming-soothing-serum-redness-irritation.png?v=1778769658",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/cica-milk-drip-centella-asiatica-panthenol-skin-barrier-repair.png?v=1778769676",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/cica-milk-drip-before-and-after-2-weeks-redness-reduction.png?v=1778769694",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/cica-milk-drip-clinical-results-2-weeks-redness-hydration-soothing.png?v=1778769721",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/calming-serum-cica-b5-lab-tested-sensitive-skin-fragrance-free.png?v=1778769752"
+            ],
+            "variant_id": "40823318708258",
+            "description": "Intensively repairing formula: soothes and protects sensitive, redness-prone skin \n\nCalms irritation \n\nRetains and replenishes hydration \n\nRestores skin balance \n\nPromotes healing process",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:c7fc3322e566fa409a701ec163fc0fb7",
+        "sku_key": "prod::external_seed::external_seed::ext_daba06ea03080351d96dd6f9::sku_9a748f1231707b8c3f02",
+        "product_key": "prod::external_seed::external_seed::ext_daba06ea03080351d96dd6f9",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 58.5,
+        "merchant_effective_price": 58.5,
+        "estimated_best_price": 58.5,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_26bfa88c0df072e2479a6438",
+        "source_domain": "activedrip.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_26bfa88c0df072e2479a6438",
+          "external_product_id": "ext_daba06ea03080351d96dd6f9",
+          "domain": "activedrip.com",
+          "market": "US",
+          "product_title": "CICA MILK DRIP",
+          "variant_title": "CICA MILK DRIP",
+          "variant_sku": "8436585435166",
+          "raw_variant_id": "40823318708258",
+          "url": "https://activedrip.com/products/cica-b5-recovery-serum",
+          "offer_url": "https://activedrip.com/products/cica-b5-recovery-serum",
+          "canonical_url": "https://activedrip.com/products/cica-b5-recovery-serum",
+          "destination_url": "https://activedrip.com/products/cica-b5-recovery-serum",
+          "external_redirect_url": "https://activedrip.com/products/cica-b5-recovery-serum",
+          "merchant_display_name": "Active Drip",
+          "price": "58.5",
+          "price_amount": 58.5,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T01:07:13.798Z",
+            "evidence_url": "https://activedrip.com/products/cica-b5-recovery-serum",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-24T01:07:13.798Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://activedrip.com/products/cica-b5-recovery-serum"
+            },
+            "regional_price": {
+              "amount": 58.5,
+              "currency": "USD",
+              "display_raw": "58.50",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://activedrip.com/products/cica-b5-recovery-serum",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T01:07:13.798Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T01:07:13.798Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 58.5,
+              "currency": "USD",
+              "display_raw": "58.50",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://activedrip.com/products/cica-b5-recovery-serum",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 187
+      }
+    },
+    {
+      "external_product_id": "ext_eea9ddc94177c421b32a1ed5",
+      "product_key": "prod::external_seed::external_seed::ext_eea9ddc94177c421b32a1ed5",
+      "product_group_id": "sig_e96f8431d6e888b0f426f3c1",
+      "title": "C + E DRIP",
+      "brand": "Active Drip",
+      "product_type": "Serum",
+      "category": "Serum",
+      "category_path": "beauty/skincare/serum",
+      "canonical_url": "https://activedrip.com/products/vitamin-c-e-serum",
+      "pivota_signature_id": "sig_e96f8431d6e888b0f426f3c1",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_eea9ddc94177c421b32a1ed5::sku_22a1b7e032dc1369bc8c",
+        "product_key": "prod::external_seed::external_seed::ext_eea9ddc94177c421b32a1ed5",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_eea9ddc94177c421b32a1ed5",
+        "source_variant_id": "ext_eea9ddc94177c421b32a1ed5:40823317168162",
+        "source_domain": "activedrip.com",
+        "sku": "8436585435159",
+        "barcode": null,
+        "title": "C + E DRIP",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-c-e-drip-vitamin-c-e-serum-brightening.png?v=1778768734",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_eea9ddc94177c421b32a1ed5",
+          "raw_variant_id": "40823317168162",
+          "source_variant_id": "ext_eea9ddc94177c421b32a1ed5:40823317168162",
+          "variant_sku": "8436585435159",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://activedrip.com/products/vitamin-c-e-serum",
+          "external_redirect_url": "https://activedrip.com/products/vitamin-c-e-serum",
+          "price": "59.9",
+          "price_amount": 59.9,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-c-e-drip-vitamin-c-e-serum-brightening.png?v=1778768734",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "8436585435159",
+            "url": "https://activedrip.com/products/vitamin-c-e-serum",
+            "price": "59.9",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-c-e-drip-vitamin-c-e-serum-brightening.png?v=1778768734",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-c-e-drip-vitamin-c-e-serum-brightening.png?v=1778768734",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/c-e-drip-vitamin-c-serum-dropper-glowing-skin.png?v=1778768770",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/vitamin-c-e-serum-ingredients-antioxidants-collagen-brighten.png?v=1778768803",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/c-e-drip-before-and-after-3-weeks-skin-texture-dark-spots.png?v=1778768831",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/c-e-drip-clinical-results-3-weeks-brighter-protected-skin.png?v=1778768855",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/brightening-serum-lab-tested-sensitive-skin-fragrance-free.png?v=1778768878"
+            ],
+            "variant_id": "40823317168162",
+            "description": "Revitalises, brightens and boosts skin radiance. \n\nTightens skin \n\nImproves luminosity \n\nIdeal revitaliser \n\nProtects skin",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:8824bb08982f46c57564a7b76c457594",
+        "sku_key": "prod::external_seed::external_seed::ext_eea9ddc94177c421b32a1ed5::sku_22a1b7e032dc1369bc8c",
+        "product_key": "prod::external_seed::external_seed::ext_eea9ddc94177c421b32a1ed5",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 59.9,
+        "merchant_effective_price": 59.9,
+        "estimated_best_price": 59.9,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_e1559acb34ff118e7583a696",
+        "source_domain": "activedrip.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_e1559acb34ff118e7583a696",
+          "external_product_id": "ext_eea9ddc94177c421b32a1ed5",
+          "domain": "activedrip.com",
+          "market": "US",
+          "product_title": "C + E DRIP",
+          "variant_title": "C + E DRIP",
+          "variant_sku": "8436585435159",
+          "raw_variant_id": "40823317168162",
+          "url": "https://activedrip.com/products/vitamin-c-e-serum",
+          "offer_url": "https://activedrip.com/products/vitamin-c-e-serum",
+          "canonical_url": "https://activedrip.com/products/vitamin-c-e-serum",
+          "destination_url": "https://activedrip.com/products/vitamin-c-e-serum",
+          "external_redirect_url": "https://activedrip.com/products/vitamin-c-e-serum",
+          "merchant_display_name": "Active Drip",
+          "price": "59.9",
+          "price_amount": 59.9,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T01:07:13.798Z",
+            "evidence_url": "https://activedrip.com/products/vitamin-c-e-serum",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-24T01:07:13.798Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://activedrip.com/products/vitamin-c-e-serum"
+            },
+            "regional_price": {
+              "amount": 59.9,
+              "currency": "USD",
+              "display_raw": "59.90",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://activedrip.com/products/vitamin-c-e-serum",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T01:07:13.798Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T01:07:13.798Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 59.9,
+              "currency": "USD",
+              "display_raw": "59.90",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://activedrip.com/products/vitamin-c-e-serum",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 83,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 122
+      }
+    },
+    {
+      "external_product_id": "ext_edef015844086dd8eaa792b2",
+      "product_key": "prod::external_seed::external_seed::ext_edef015844086dd8eaa792b2",
+      "product_group_id": "sig_d96d3d4d7ab909300b7e3fda",
+      "title": "RETINOL DRIP",
+      "brand": "Active Drip",
+      "product_type": "Serum",
+      "category": "Serum",
+      "category_path": "beauty/skincare/serum",
+      "canonical_url": "https://activedrip.com/products/retinol-anti-wrinkle-serum",
+      "pivota_signature_id": "sig_d96d3d4d7ab909300b7e3fda",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_edef015844086dd8eaa792b2::sku_e23cee7d2c262485664a",
+        "product_key": "prod::external_seed::external_seed::ext_edef015844086dd8eaa792b2",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_edef015844086dd8eaa792b2",
+        "source_variant_id": "ext_edef015844086dd8eaa792b2:40823313465378",
+        "source_domain": "activedrip.com",
+        "sku": "8436585435142",
+        "barcode": null,
+        "title": "RETINOL DRIP",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-retinol-drip-anti-wrinkle-serum.png?v=1778768974",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_edef015844086dd8eaa792b2",
+          "raw_variant_id": "40823313465378",
+          "source_variant_id": "ext_edef015844086dd8eaa792b2:40823313465378",
+          "variant_sku": "8436585435142",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://activedrip.com/products/retinol-anti-wrinkle-serum",
+          "external_redirect_url": "https://activedrip.com/products/retinol-anti-wrinkle-serum",
+          "price": "59.9",
+          "price_amount": 59.9,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-retinol-drip-anti-wrinkle-serum.png?v=1778768974",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "8436585435142",
+            "url": "https://activedrip.com/products/retinol-anti-wrinkle-serum",
+            "price": "59.9",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-retinol-drip-anti-wrinkle-serum.png?v=1778768974",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-retinol-drip-anti-wrinkle-serum.png?v=1778768974",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/retinol-drip-vitamin-a-serum-dropper-application.png?v=1778768997",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/retinol-drip-vitamin-a-aha-anti-ageing-ingredients.png?v=1778769019",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/retinol-drip-before-and-after-4-weeks-fine-lines.png?v=1778769041",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/retinol-drip-clinical-results-4-weeks-wrinkles-texture-tone.png?v=1778769068",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/bestselling-anti-ageing-retinol-serum-lab-tested-sensitive-skin.png?v=1778769099"
+            ],
+            "variant_id": "40823313465378",
+            "description": "It fights wrinkles appearance, rejuvenates and nourishes the skin. \n\nGentle on sensitive skin. \n\nReplenishes skin. \n\nDiminishes wrinkles. \n\nShields and brightens.",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:a1e485d73d3b15c543998273d165eb6f",
+        "sku_key": "prod::external_seed::external_seed::ext_edef015844086dd8eaa792b2::sku_e23cee7d2c262485664a",
+        "product_key": "prod::external_seed::external_seed::ext_edef015844086dd8eaa792b2",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 59.9,
+        "merchant_effective_price": 59.9,
+        "estimated_best_price": 59.9,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_a6510b980d592be3a98d30e6",
+        "source_domain": "activedrip.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_a6510b980d592be3a98d30e6",
+          "external_product_id": "ext_edef015844086dd8eaa792b2",
+          "domain": "activedrip.com",
+          "market": "US",
+          "product_title": "RETINOL DRIP",
+          "variant_title": "RETINOL DRIP",
+          "variant_sku": "8436585435142",
+          "raw_variant_id": "40823313465378",
+          "url": "https://activedrip.com/products/retinol-anti-wrinkle-serum",
+          "offer_url": "https://activedrip.com/products/retinol-anti-wrinkle-serum",
+          "canonical_url": "https://activedrip.com/products/retinol-anti-wrinkle-serum",
+          "destination_url": "https://activedrip.com/products/retinol-anti-wrinkle-serum",
+          "external_redirect_url": "https://activedrip.com/products/retinol-anti-wrinkle-serum",
+          "merchant_display_name": "Active Drip",
+          "price": "59.9",
+          "price_amount": 59.9,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T01:07:13.798Z",
+            "evidence_url": "https://activedrip.com/products/retinol-anti-wrinkle-serum",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-24T01:07:13.798Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://activedrip.com/products/retinol-anti-wrinkle-serum"
+            },
+            "regional_price": {
+              "amount": 59.9,
+              "currency": "USD",
+              "display_raw": "59.90",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://activedrip.com/products/retinol-anti-wrinkle-serum",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T01:07:13.798Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T01:07:13.798Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 59.9,
+              "currency": "USD",
+              "display_raw": "59.90",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://activedrip.com/products/retinol-anti-wrinkle-serum",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 162
+      }
+    },
+    {
+      "external_product_id": "ext_11509e4feaf83a2419d8c77d",
+      "product_key": "prod::external_seed::external_seed::ext_11509e4feaf83a2419d8c77d",
+      "product_group_id": "sig_836b576047d491db3b856375",
+      "title": "KOJIC DRIP",
+      "brand": "Active Drip",
+      "product_type": "Serum",
+      "category": "Serum",
+      "category_path": "beauty/skincare/serum",
+      "canonical_url": "https://activedrip.com/products/niacinamide-kojic-acid-glow-and-corrective-serum",
+      "pivota_signature_id": "sig_836b576047d491db3b856375",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_11509e4feaf83a2419d8c77d::sku_574849ea23b6e615549b",
+        "product_key": "prod::external_seed::external_seed::ext_11509e4feaf83a2419d8c77d",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_11509e4feaf83a2419d8c77d",
+        "source_variant_id": "ext_11509e4feaf83a2419d8c77d:40823241572386",
+        "source_domain": "activedrip.com",
+        "sku": "8436585435135",
+        "barcode": null,
+        "title": "KOJIC DRIP",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-kojic-drip-niacinamide-serum-bottle.png?v=1778767043",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_11509e4feaf83a2419d8c77d",
+          "raw_variant_id": "40823241572386",
+          "source_variant_id": "ext_11509e4feaf83a2419d8c77d:40823241572386",
+          "variant_sku": "8436585435135",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://activedrip.com/products/niacinamide-kojic-acid-glow-and-corrective-serum",
+          "external_redirect_url": "https://activedrip.com/products/niacinamide-kojic-acid-glow-and-corrective-serum",
+          "price": "59.9",
+          "price_amount": 59.9,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-kojic-drip-niacinamide-serum-bottle.png?v=1778767043",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "8436585435135",
+            "url": "https://activedrip.com/products/niacinamide-kojic-acid-glow-and-corrective-serum",
+            "price": "59.9",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-kojic-drip-niacinamide-serum-bottle.png?v=1778767043",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-kojic-drip-niacinamide-serum-bottle.png?v=1778767043",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/kojic-drip-niacinamide-serum-bottle-dropper.png?v=1778767200",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/kojic-drip-benefits-fades-acne-marks-hyperpigmentation.jpg?v=1778767306",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/kojic-drip-clinically-proven-fade-brighten-even-skin-tone.jpg?v=1778767350",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/how-to-layer-skincare-routine-with-kojic-drip-serum.jpg?v=1778767393",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/kojic-drip-clinical-study-results-after-4-weeks.jpg?v=1778767469",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/kojic-drip-niacinamide-5-kojic-acid-0-3-ingredients.jpg?v=1778767515",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/how-to-use-kojic-drip-niacinamide-serum-am-pm.jpg?v=1778767558",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/kojic-drip-before-and-after-results-acne-marks.jpg?v=1778767592",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/woman-with-glowing-skin-holding-kojic-drip-serum.png?v=1778767635",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/kojic-drip-niacinamide-serum-texture-lightweight-formula.png?v=1778767672"
+            ],
+            "variant_id": "40823241572386",
+            "description": "Inspired by Japanese fermentation traditions.",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:736eb70561f7ddf2a33f1e535f49421a",
+        "sku_key": "prod::external_seed::external_seed::ext_11509e4feaf83a2419d8c77d::sku_574849ea23b6e615549b",
+        "product_key": "prod::external_seed::external_seed::ext_11509e4feaf83a2419d8c77d",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 59.9,
+        "merchant_effective_price": 59.9,
+        "estimated_best_price": 59.9,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_d59fad188d62afa3cf2f56fd",
+        "source_domain": "activedrip.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_d59fad188d62afa3cf2f56fd",
+          "external_product_id": "ext_11509e4feaf83a2419d8c77d",
+          "domain": "activedrip.com",
+          "market": "US",
+          "product_title": "KOJIC DRIP",
+          "variant_title": "KOJIC DRIP",
+          "variant_sku": "8436585435135",
+          "raw_variant_id": "40823241572386",
+          "url": "https://activedrip.com/products/niacinamide-kojic-acid-glow-and-corrective-serum",
+          "offer_url": "https://activedrip.com/products/niacinamide-kojic-acid-glow-and-corrective-serum",
+          "canonical_url": "https://activedrip.com/products/niacinamide-kojic-acid-glow-and-corrective-serum",
+          "destination_url": "https://activedrip.com/products/niacinamide-kojic-acid-glow-and-corrective-serum",
+          "external_redirect_url": "https://activedrip.com/products/niacinamide-kojic-acid-glow-and-corrective-serum",
+          "merchant_display_name": "Active Drip",
+          "price": "59.9",
+          "price_amount": 59.9,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T01:07:13.798Z",
+            "evidence_url": "https://activedrip.com/products/niacinamide-kojic-acid-glow-and-corrective-serum",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-24T01:07:13.798Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://activedrip.com/products/niacinamide-kojic-acid-glow-and-corrective-serum"
+            },
+            "regional_price": {
+              "amount": 59.9,
+              "currency": "USD",
+              "display_raw": "59.90",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://activedrip.com/products/niacinamide-kojic-acid-glow-and-corrective-serum",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T01:07:13.798Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T01:07:13.798Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 59.9,
+              "currency": "USD",
+              "display_raw": "59.90",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://activedrip.com/products/niacinamide-kojic-acid-glow-and-corrective-serum",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 83,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 45
+      }
+    },
+    {
+      "external_product_id": "ext_441b5d142009ef8ae5082262",
+      "product_key": "prod::external_seed::external_seed::ext_441b5d142009ef8ae5082262",
+      "product_group_id": "sig_059a529bc3acbb6e14d8a572",
+      "title": "HYDRATE DRIP",
+      "brand": "Active Drip",
+      "product_type": "Serum",
+      "category": "Serum",
+      "category_path": "beauty/skincare/serum",
+      "canonical_url": "https://activedrip.com/products/hyaluronic-acid-b12-b5-serum",
+      "pivota_signature_id": "sig_059a529bc3acbb6e14d8a572",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_441b5d142009ef8ae5082262::sku_cfafe01ac7f28125721f",
+        "product_key": "prod::external_seed::external_seed::ext_441b5d142009ef8ae5082262",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_441b5d142009ef8ae5082262",
+        "source_variant_id": "ext_441b5d142009ef8ae5082262:40823175151650",
+        "source_domain": "activedrip.com",
+        "sku": "8436585435128",
+        "barcode": null,
+        "title": "HYDRATE DRIP",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/AI_images_21.png?v=1778588482",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_441b5d142009ef8ae5082262",
+          "raw_variant_id": "40823175151650",
+          "source_variant_id": "ext_441b5d142009ef8ae5082262:40823175151650",
+          "variant_sku": "8436585435128",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://activedrip.com/products/hyaluronic-acid-b12-b5-serum",
+          "external_redirect_url": "https://activedrip.com/products/hyaluronic-acid-b12-b5-serum",
+          "price": "52.9",
+          "price_amount": 52.9,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/AI_images_21.png?v=1778588482",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "8436585435128",
+            "url": "https://activedrip.com/products/hyaluronic-acid-b12-b5-serum",
+            "price": "52.9",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/AI_images_21.png?v=1778588482",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/AI_images_21.png?v=1778588482",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/Copy_of_Boutiqaat_Visual_Assets_3_5.png?v=1772057490",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/17_8abe977d-33a8-4dc5-8a79-1344a0208f9c.png?v=1772057490",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/18_a517ed74-0027-46b0-8318-1f144eb32937.png?v=1772057490",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/19_a5af25ee-1558-47ae-a112-9d7f5b67b680.png?v=1772057490",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/20_a48a29fe-b15f-4eec-8821-8e07eb27430e.png?v=1772057490"
+            ],
+            "variant_id": "40823175151650",
+            "description": "T hree active ingredients that: intensively hydrates and rejuvenates the skin. \n\nIncreases moisture \n\nDeeply hydrates \n\nIncreases smoothness \n\nPlumps and rejuvenates skin",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:b6c2bfd658eceffbb792c7e1c63eb0d4",
+        "sku_key": "prod::external_seed::external_seed::ext_441b5d142009ef8ae5082262::sku_cfafe01ac7f28125721f",
+        "product_key": "prod::external_seed::external_seed::ext_441b5d142009ef8ae5082262",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 52.9,
+        "merchant_effective_price": 52.9,
+        "estimated_best_price": 52.9,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_6bee4780bb22777b33fc2a96",
+        "source_domain": "activedrip.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_6bee4780bb22777b33fc2a96",
+          "external_product_id": "ext_441b5d142009ef8ae5082262",
+          "domain": "activedrip.com",
+          "market": "US",
+          "product_title": "HYDRATE DRIP",
+          "variant_title": "HYDRATE DRIP",
+          "variant_sku": "8436585435128",
+          "raw_variant_id": "40823175151650",
+          "url": "https://activedrip.com/products/hyaluronic-acid-b12-b5-serum",
+          "offer_url": "https://activedrip.com/products/hyaluronic-acid-b12-b5-serum",
+          "canonical_url": "https://activedrip.com/products/hyaluronic-acid-b12-b5-serum",
+          "destination_url": "https://activedrip.com/products/hyaluronic-acid-b12-b5-serum",
+          "external_redirect_url": "https://activedrip.com/products/hyaluronic-acid-b12-b5-serum",
+          "merchant_display_name": "Active Drip",
+          "price": "52.9",
+          "price_amount": 52.9,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T01:07:13.798Z",
+            "evidence_url": "https://activedrip.com/products/hyaluronic-acid-b12-b5-serum",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-24T01:07:13.798Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://activedrip.com/products/hyaluronic-acid-b12-b5-serum"
+            },
+            "regional_price": {
+              "amount": 52.9,
+              "currency": "USD",
+              "display_raw": "52.90",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://activedrip.com/products/hyaluronic-acid-b12-b5-serum",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T01:07:13.798Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T01:07:13.798Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 52.9,
+              "currency": "USD",
+              "display_raw": "52.90",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://activedrip.com/products/hyaluronic-acid-b12-b5-serum",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 170
+      }
+    },
+    {
+      "external_product_id": "ext_7e270c8cb635a23a446a76f9",
+      "product_key": "prod::external_seed::external_seed::ext_7e270c8cb635a23a446a76f9",
+      "product_group_id": "sig_edf6265ef8f5fea9d8f515b1",
+      "title": "THE ICONIC MOISTURISER",
+      "brand": "Active Drip",
+      "product_type": "Moisturizer",
+      "category": "Moisturizer",
+      "category_path": "beauty/skincare/moisturizer",
+      "canonical_url": "https://activedrip.com/products/vitamin-c-hyaluronic-acid-moisturising-and-antioxidant-cream",
+      "pivota_signature_id": "sig_edf6265ef8f5fea9d8f515b1",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_7e270c8cb635a23a446a76f9::sku_8d76b8ae21089e183140",
+        "product_key": "prod::external_seed::external_seed::ext_7e270c8cb635a23a446a76f9",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_7e270c8cb635a23a446a76f9",
+        "source_variant_id": "ext_7e270c8cb635a23a446a76f9:40823173316642",
+        "source_domain": "activedrip.com",
+        "sku": "8436585435098",
+        "barcode": null,
+        "title": "THE ICONIC MOISTURISER",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-iconic-moisturiser-vitamin-c-hyaluronic-acid.png?v=1778767780",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_7e270c8cb635a23a446a76f9",
+          "raw_variant_id": "40823173316642",
+          "source_variant_id": "ext_7e270c8cb635a23a446a76f9:40823173316642",
+          "variant_sku": "8436585435098",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://activedrip.com/products/vitamin-c-hyaluronic-acid-moisturising-and-antioxidant-cream",
+          "external_redirect_url": "https://activedrip.com/products/vitamin-c-hyaluronic-acid-moisturising-and-antioxidant-cream",
+          "price": "59.9",
+          "price_amount": 59.9,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-iconic-moisturiser-vitamin-c-hyaluronic-acid.png?v=1778767780",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "8436585435098",
+            "url": "https://activedrip.com/products/vitamin-c-hyaluronic-acid-moisturising-and-antioxidant-cream",
+            "price": "59.9",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-iconic-moisturiser-vitamin-c-hyaluronic-acid.png?v=1778767780",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-iconic-moisturiser-vitamin-c-hyaluronic-acid.png?v=1778767780",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/AI_images_25.png?v=1778590284",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/Copy_of_Boutiqaat_Visual_Assets_3_3.png?v=1769184186",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/iconic-moisturiser-vitamin-c-hyaluronic-acid-benefits.png?v=1778767841",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/iconic-moisturiser-before-and-after-day-1-day-28.png?v=1778767880",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/iconic-moisturiser-clinical-results-3-weeks-hydrated-skin-barrier.png?v=1778767931",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/iconic-moisturiser-hygienic-soft-touch-applicator.png?v=1778768001",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/41_31fcdd83-0e74-41c2-a5fe-6c92030128e7.png?v=1769184186"
+            ],
+            "variant_id": "40823173316642",
+            "description": "Essential all-in-one moisturiser. Prevents ageing, restores and supports healthy skin barrier. \n\nSuper-hydrating formula. \n\nSoftens skin. \n\nLeaves a silky finish. \n\nLight feel.",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:6a784e51568ef95ae0b4d770f8e45589",
+        "sku_key": "prod::external_seed::external_seed::ext_7e270c8cb635a23a446a76f9::sku_8d76b8ae21089e183140",
+        "product_key": "prod::external_seed::external_seed::ext_7e270c8cb635a23a446a76f9",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 59.9,
+        "merchant_effective_price": 59.9,
+        "estimated_best_price": 59.9,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_633a1262b01a320dccb6adfe",
+        "source_domain": "activedrip.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_633a1262b01a320dccb6adfe",
+          "external_product_id": "ext_7e270c8cb635a23a446a76f9",
+          "domain": "activedrip.com",
+          "market": "US",
+          "product_title": "THE ICONIC MOISTURISER",
+          "variant_title": "THE ICONIC MOISTURISER",
+          "variant_sku": "8436585435098",
+          "raw_variant_id": "40823173316642",
+          "url": "https://activedrip.com/products/vitamin-c-hyaluronic-acid-moisturising-and-antioxidant-cream",
+          "offer_url": "https://activedrip.com/products/vitamin-c-hyaluronic-acid-moisturising-and-antioxidant-cream",
+          "canonical_url": "https://activedrip.com/products/vitamin-c-hyaluronic-acid-moisturising-and-antioxidant-cream",
+          "destination_url": "https://activedrip.com/products/vitamin-c-hyaluronic-acid-moisturising-and-antioxidant-cream",
+          "external_redirect_url": "https://activedrip.com/products/vitamin-c-hyaluronic-acid-moisturising-and-antioxidant-cream",
+          "merchant_display_name": "Active Drip",
+          "price": "59.9",
+          "price_amount": 59.9,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T01:07:13.798Z",
+            "evidence_url": "https://activedrip.com/products/vitamin-c-hyaluronic-acid-moisturising-and-antioxidant-cream",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-24T01:07:13.798Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://activedrip.com/products/vitamin-c-hyaluronic-acid-moisturising-and-antioxidant-cream"
+            },
+            "regional_price": {
+              "amount": 59.9,
+              "currency": "USD",
+              "display_raw": "59.90",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://activedrip.com/products/vitamin-c-hyaluronic-acid-moisturising-and-antioxidant-cream",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T01:07:13.798Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T01:07:13.798Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 59.9,
+              "currency": "USD",
+              "display_raw": "59.90",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://activedrip.com/products/vitamin-c-hyaluronic-acid-moisturising-and-antioxidant-cream",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 176
+      }
+    },
+    {
+      "external_product_id": "ext_c840771410198f627d75673a",
+      "product_key": "prod::external_seed::external_seed::ext_c840771410198f627d75673a",
+      "product_group_id": "sig_ab0548c0101059f42676a642",
+      "title": "TINTED COCONUT LIP BALM",
+      "brand": "COCONUT MATTER",
+      "product_type": "Lip Treatment",
+      "category": "Lip Treatment",
+      "category_path": "beauty/skincare/lip",
+      "canonical_url": "https://coconutmatter.com/products/tinted-coconut-lip-balm",
+      "pivota_signature_id": "sig_ab0548c0101059f42676a642",
+      "sku_rows": 7,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_c840771410198f627d75673a::sku_a98610fbeac9de2b4d6c",
+        "product_key": "prod::external_seed::external_seed::ext_c840771410198f627d75673a",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_c840771410198f627d75673a",
+        "source_variant_id": "ext_c840771410198f627d75673a:39954773442642",
+        "source_domain": "coconutmatter.com",
+        "sku": "CM08-SMOOCH",
+        "barcode": null,
+        "title": "TINTED COCONUT LIP BALM",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-smooch-swatch.png?v=1731569108",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_c840771410198f627d75673a",
+          "raw_variant_id": "39954773442642",
+          "source_variant_id": "ext_c840771410198f627d75673a:39954773442642",
+          "variant_sku": "CM08-SMOOCH",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://coconutmatter.com/products/tinted-coconut-lip-balm",
+          "external_redirect_url": "https://coconutmatter.com/products/tinted-coconut-lip-balm",
+          "price": "19",
+          "price_amount": 19,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-smooch-swatch.png?v=1731569108",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "CM08-SMOOCH",
+            "url": "https://coconutmatter.com/products/tinted-coconut-lip-balm",
+            "price": "19",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-smooch-swatch.png?v=1731569108",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-smooch-swatch.png?v=1731569108",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/COCONUT-MATTER-BEAUTY-HYDRATING-NATURAL-LIPBALM-TINT-ALL-SHADES_9f5c7538-ac19-46ac-991f-2feb5080a28a.png?v=1686806197",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-vegan-natural-tinted-lip-balm-before-after-review.png?v=1731988520",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-tinted-lip-balm-all-natural-ingredients.png?v=1718684383",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-tinted-lip-balm-all-natural-benefits.png?v=1718684383",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-sparks-swatch.png?v=1731569108",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-cheer-swatch.png?v=1731569108",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-passion-swatch.png?v=1731569108",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-glow-swatch.png?v=1731569108",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-sunrise-swatch.png?v=1731569108",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-coral-swatch.png?v=1731569108"
+            ],
+            "variant_id": "39954773442642",
+            "description": "Lightweight, sheer, and intensely nourishing, our tinted coconut lip balms are one of the easiest way to boost your natural lip color. \n\nAvailable in five sheer shade. Depending on swipe strength, the color can range from a sheer tint to a juicier, more saturated sheen.",
+            "option_name": "Colour",
+            "option_value": "SMOOCH"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:f43c63844bd1d763e9fb667e60193bda",
+        "sku_key": "prod::external_seed::external_seed::ext_c840771410198f627d75673a::sku_a98610fbeac9de2b4d6c",
+        "product_key": "prod::external_seed::external_seed::ext_c840771410198f627d75673a",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 19,
+        "merchant_effective_price": 19,
+        "estimated_best_price": 19,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_355b1bbbc78f41a16577c1fa",
+        "source_domain": "coconutmatter.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_355b1bbbc78f41a16577c1fa",
+          "external_product_id": "ext_c840771410198f627d75673a",
+          "domain": "coconutmatter.com",
+          "market": "US",
+          "product_title": "TINTED COCONUT LIP BALM",
+          "variant_title": "TINTED COCONUT LIP BALM",
+          "variant_sku": "CM08-SMOOCH",
+          "raw_variant_id": "39954773442642",
+          "url": "https://coconutmatter.com/products/tinted-coconut-lip-balm",
+          "offer_url": "https://coconutmatter.com/products/tinted-coconut-lip-balm",
+          "canonical_url": "https://coconutmatter.com/products/tinted-coconut-lip-balm",
+          "destination_url": "https://coconutmatter.com/products/tinted-coconut-lip-balm",
+          "external_redirect_url": "https://coconutmatter.com/products/tinted-coconut-lip-balm",
+          "merchant_display_name": "COCONUT MATTER",
+          "price": "19",
+          "price_amount": 19,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T01:06:29.717Z",
+            "evidence_url": "https://coconutmatter.com/products/tinted-coconut-lip-balm",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "low",
+              "checked_at": "2026-05-24T01:06:29.717Z",
+              "reason_codes": [
+                "market_currency_not_verified",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://coconutmatter.com/products/tinted-coconut-lip-balm"
+            },
+            "regional_price": {
+              "amount": 19,
+              "currency": "USD",
+              "display_raw": "19.00",
+              "price_type": "list",
+              "compare_at_amount": 19,
+              "compare_at_currency": null,
+              "compare_at_display_raw": "19.00",
+              "tax_included": "unknown",
+              "confidence": "low",
+              "market_switch_status": "unknown",
+              "observed_currency": "USD",
+              "source_url": "https://coconutmatter.com/products/tinted-coconut-lip-balm",
+              "captured_at": "2026-05-24T01:06:29.717Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:06:29.717Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T01:06:29.717Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T01:06:29.717Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "status": "unverified",
+              "reason": "low_confidence_or_market_mismatch"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:06:29.717Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 270
+      }
+    },
+    {
+      "external_product_id": "ext_a7f414cda657f8c5857fafe8",
+      "product_key": "prod::external_seed::external_seed::ext_a7f414cda657f8c5857fafe8",
+      "product_group_id": "sig_18d55245c66a1c337b9673be",
+      "title": "Goji Shake Shampoo Concentrate | For Treated Hair",
+      "brand": "COCONUT MATTER",
+      "product_type": "Shampoo",
+      "category": "Shampoo",
+      "category_path": "beauty/hair/shampoo",
+      "canonical_url": "https://coconutmatter.com/products/goji-shake-shampoo-concentrate",
+      "pivota_signature_id": "sig_18d55245c66a1c337b9673be",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_a7f414cda657f8c5857fafe8::sku_4f78afa3967532ed0390",
+        "product_key": "prod::external_seed::external_seed::ext_a7f414cda657f8c5857fafe8",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_a7f414cda657f8c5857fafe8",
+        "source_variant_id": "ext_a7f414cda657f8c5857fafe8:40609716666450",
+        "source_domain": "coconutmatter.com",
+        "sku": "CM60-Goji",
+        "barcode": null,
+        "title": "Goji Shake Shampoo Concentrate | For Treated Hair",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/15.png?v=1763307713",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_a7f414cda657f8c5857fafe8",
+          "raw_variant_id": "40609716666450",
+          "source_variant_id": "ext_a7f414cda657f8c5857fafe8:40609716666450",
+          "variant_sku": "CM60-Goji",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://coconutmatter.com/products/goji-shake-shampoo-concentrate",
+          "external_redirect_url": "https://coconutmatter.com/products/goji-shake-shampoo-concentrate",
+          "price": "25",
+          "price_amount": 25,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/15.png?v=1763307713",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "CM60-Goji",
+            "url": "https://coconutmatter.com/products/goji-shake-shampoo-concentrate",
+            "price": "25",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/15.png?v=1763307713",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/15.png?v=1763307713",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/16.png?v=1763307713",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/17.png?v=1763307713",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-natural-shampoo-concentrate-goji-shake-reviews.png?v=1763307713",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/19.png?v=1763307713"
+            ],
+            "variant_id": "40609716666450",
+            "description": "Goji Shake Shampoo Concentrate",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:116be49d49d3dc79864e8ea92407677b",
+        "sku_key": "prod::external_seed::external_seed::ext_a7f414cda657f8c5857fafe8::sku_4f78afa3967532ed0390",
+        "product_key": "prod::external_seed::external_seed::ext_a7f414cda657f8c5857fafe8",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 25,
+        "merchant_effective_price": 25,
+        "estimated_best_price": 25,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_00026571cb7185b58fb61b65",
+        "source_domain": "coconutmatter.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_00026571cb7185b58fb61b65",
+          "external_product_id": "ext_a7f414cda657f8c5857fafe8",
+          "domain": "coconutmatter.com",
+          "market": "US",
+          "product_title": "Goji Shake Shampoo Concentrate | For Treated Hair",
+          "variant_title": "Goji Shake Shampoo Concentrate | For Treated Hair",
+          "variant_sku": "CM60-Goji",
+          "raw_variant_id": "40609716666450",
+          "url": "https://coconutmatter.com/products/goji-shake-shampoo-concentrate",
+          "offer_url": "https://coconutmatter.com/products/goji-shake-shampoo-concentrate",
+          "canonical_url": "https://coconutmatter.com/products/goji-shake-shampoo-concentrate",
+          "destination_url": "https://coconutmatter.com/products/goji-shake-shampoo-concentrate",
+          "external_redirect_url": "https://coconutmatter.com/products/goji-shake-shampoo-concentrate",
+          "merchant_display_name": "COCONUT MATTER",
+          "price": "25",
+          "price_amount": 25,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T01:06:29.717Z",
+            "evidence_url": "https://coconutmatter.com/products/goji-shake-shampoo-concentrate",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "low",
+              "checked_at": "2026-05-24T01:06:29.717Z",
+              "reason_codes": [
+                "market_currency_not_verified",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://coconutmatter.com/products/goji-shake-shampoo-concentrate"
+            },
+            "regional_price": {
+              "amount": 25,
+              "currency": "USD",
+              "display_raw": "25.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "low",
+              "market_switch_status": "unknown",
+              "observed_currency": "USD",
+              "source_url": "https://coconutmatter.com/products/goji-shake-shampoo-concentrate",
+              "captured_at": "2026-05-24T01:06:29.717Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:06:29.717Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T01:06:29.717Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T01:06:29.717Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "status": "unverified",
+              "reason": "low_confidence_or_market_mismatch"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:06:29.717Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 75,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 30
+      }
+    },
+    {
+      "external_product_id": "ext_9518e81076efc5c5138214ee",
+      "product_key": "prod::external_seed::external_seed::ext_9518e81076efc5c5138214ee",
+      "product_group_id": "sig_2d065c767b6e18a4d7f4a660",
+      "title": "Matcha Shake Shampoo Concentrate | For All Hair Types",
+      "brand": "COCONUT MATTER",
+      "product_type": "Shampoo",
+      "category": "Shampoo",
+      "category_path": "beauty/hair/shampoo",
+      "canonical_url": "https://coconutmatter.com/products/matcha-shake-shampoo-concentrate",
+      "pivota_signature_id": "sig_2d065c767b6e18a4d7f4a660",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_9518e81076efc5c5138214ee::sku_46e9e864d1ba419d5d8a",
+        "product_key": "prod::external_seed::external_seed::ext_9518e81076efc5c5138214ee",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_9518e81076efc5c5138214ee",
+        "source_variant_id": "ext_9518e81076efc5c5138214ee:40607486378066",
+        "source_domain": "coconutmatter.com",
+        "sku": "CM60-Matcha",
+        "barcode": null,
+        "title": "Matcha Shake Shampoo Concentrate | For All Hair Types",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/1_f9e1fb1d-a484-4b41-b3b4-70ff8dcda8db.png?v=1763292731",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_9518e81076efc5c5138214ee",
+          "raw_variant_id": "40607486378066",
+          "source_variant_id": "ext_9518e81076efc5c5138214ee:40607486378066",
+          "variant_sku": "CM60-Matcha",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://coconutmatter.com/products/matcha-shake-shampoo-concentrate",
+          "external_redirect_url": "https://coconutmatter.com/products/matcha-shake-shampoo-concentrate",
+          "price": "25",
+          "price_amount": 25,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/1_f9e1fb1d-a484-4b41-b3b4-70ff8dcda8db.png?v=1763292731",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "CM60-Matcha",
+            "url": "https://coconutmatter.com/products/matcha-shake-shampoo-concentrate",
+            "price": "25",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/1_f9e1fb1d-a484-4b41-b3b4-70ff8dcda8db.png?v=1763292731",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/1_f9e1fb1d-a484-4b41-b3b4-70ff8dcda8db.png?v=1763292731",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/3_e19226d6-86b1-4d9c-a977-5f0bdcc54cdb.png?v=1763292731",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/5_4bfd3984-bd4e-4283-b8aa-4e4d28f10f24.png?v=1763292850",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/liquidshampoovspowder_88a67b62-b3a6-405c-b15d-712b049e04e6.png?v=1763292850",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-matcha-shake-shampoo-natural-vegan-beforeafter2.png?v=1763292850",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-matcha-shake-shampoo-natural-vegan-beforeafter3.png?v=1763292850",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-matcha-shake-shampoo-natural-vegan-features.png?v=1763292850",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-matcha-shake-shampoo-natural-vegan-reviews.png?v=1763292850",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/11.png?v=1763292850",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/1bottlelastsupto50washes_71299936-45c0-4f1a-bd22-5dc74c3e7584.png?v=1763292850"
+            ],
+            "variant_id": "40607486378066",
+            "description": "Matcha Shake Shampoo Concentrate",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:f97dc6d83ee1134252d7dce16e2f93b5",
+        "sku_key": "prod::external_seed::external_seed::ext_9518e81076efc5c5138214ee::sku_46e9e864d1ba419d5d8a",
+        "product_key": "prod::external_seed::external_seed::ext_9518e81076efc5c5138214ee",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 25,
+        "merchant_effective_price": 25,
+        "estimated_best_price": 25,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_b62d981a219a498ecd7b94ed",
+        "source_domain": "coconutmatter.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_b62d981a219a498ecd7b94ed",
+          "external_product_id": "ext_9518e81076efc5c5138214ee",
+          "domain": "coconutmatter.com",
+          "market": "US",
+          "product_title": "Matcha Shake Shampoo Concentrate | For All Hair Types",
+          "variant_title": "Matcha Shake Shampoo Concentrate | For All Hair Types",
+          "variant_sku": "CM60-Matcha",
+          "raw_variant_id": "40607486378066",
+          "url": "https://coconutmatter.com/products/matcha-shake-shampoo-concentrate",
+          "offer_url": "https://coconutmatter.com/products/matcha-shake-shampoo-concentrate",
+          "canonical_url": "https://coconutmatter.com/products/matcha-shake-shampoo-concentrate",
+          "destination_url": "https://coconutmatter.com/products/matcha-shake-shampoo-concentrate",
+          "external_redirect_url": "https://coconutmatter.com/products/matcha-shake-shampoo-concentrate",
+          "merchant_display_name": "COCONUT MATTER",
+          "price": "25",
+          "price_amount": 25,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T01:06:29.717Z",
+            "evidence_url": "https://coconutmatter.com/products/matcha-shake-shampoo-concentrate",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "low",
+              "checked_at": "2026-05-24T01:06:29.717Z",
+              "reason_codes": [
+                "market_currency_not_verified",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://coconutmatter.com/products/matcha-shake-shampoo-concentrate"
+            },
+            "regional_price": {
+              "amount": 25,
+              "currency": "USD",
+              "display_raw": "25.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "low",
+              "market_switch_status": "unknown",
+              "observed_currency": "USD",
+              "source_url": "https://coconutmatter.com/products/matcha-shake-shampoo-concentrate",
+              "captured_at": "2026-05-24T01:06:29.717Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:06:29.717Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T01:06:29.717Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T01:06:29.717Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "status": "unverified",
+              "reason": "low_confidence_or_market_mismatch"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:06:29.717Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 75,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 32
+      }
+    },
+    {
+      "external_product_id": "ext_57fe66e03e7b47b972b78c30",
+      "product_key": "prod::external_seed::external_seed::ext_57fe66e03e7b47b972b78c30",
+      "product_group_id": "sig_cd6ca146b0bc7efe26834866",
+      "title": "Oaty Shake Body Wash Concentrate",
+      "brand": "COCONUT MATTER",
+      "product_type": "Body Cleanser",
+      "category": "Body Cleanser",
+      "category_path": "beauty/body/body-wash",
+      "canonical_url": "https://coconutmatter.com/products/oaty-shake-body-wash-concentrate",
+      "pivota_signature_id": "sig_cd6ca146b0bc7efe26834866",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_57fe66e03e7b47b972b78c30::sku_d769697a6eb905c8bf97",
+        "product_key": "prod::external_seed::external_seed::ext_57fe66e03e7b47b972b78c30",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_57fe66e03e7b47b972b78c30",
+        "source_variant_id": "ext_57fe66e03e7b47b972b78c30:40610296954962",
+        "source_domain": "coconutmatter.com",
+        "sku": "CM60-Oaty",
+        "barcode": null,
+        "title": "Oaty Shake Body Wash Concentrate",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/20.png?v=1763371394",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_57fe66e03e7b47b972b78c30",
+          "raw_variant_id": "40610296954962",
+          "source_variant_id": "ext_57fe66e03e7b47b972b78c30:40610296954962",
+          "variant_sku": "CM60-Oaty",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://coconutmatter.com/products/oaty-shake-body-wash-concentrate",
+          "external_redirect_url": "https://coconutmatter.com/products/oaty-shake-body-wash-concentrate",
+          "price": "25",
+          "price_amount": 25,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/20.png?v=1763371394",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "CM60-Oaty",
+            "url": "https://coconutmatter.com/products/oaty-shake-body-wash-concentrate",
+            "price": "25",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/20.png?v=1763371394",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/20.png?v=1763371394",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/21.png?v=1763371394",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/22.png?v=1763371394",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/5_a9dfa538-4bb1-422b-8dfe-966bc461fbde.png?v=1763371394",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-all-natural-body-wash-concentrate-oaty-shake-reviews.png?v=1763371394",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/23.png?v=1763371394"
+            ],
+            "variant_id": "40610296954962",
+            "description": "Oaty Shake Body Wash Concentrate",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:21e1e080179a041f0ddb79851cdcb8e7",
+        "sku_key": "prod::external_seed::external_seed::ext_57fe66e03e7b47b972b78c30::sku_d769697a6eb905c8bf97",
+        "product_key": "prod::external_seed::external_seed::ext_57fe66e03e7b47b972b78c30",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 25,
+        "merchant_effective_price": 25,
+        "estimated_best_price": 25,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_ccfacc32c00451497b119be2",
+        "source_domain": "coconutmatter.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_ccfacc32c00451497b119be2",
+          "external_product_id": "ext_57fe66e03e7b47b972b78c30",
+          "domain": "coconutmatter.com",
+          "market": "US",
+          "product_title": "Oaty Shake Body Wash Concentrate",
+          "variant_title": "Oaty Shake Body Wash Concentrate",
+          "variant_sku": "CM60-Oaty",
+          "raw_variant_id": "40610296954962",
+          "url": "https://coconutmatter.com/products/oaty-shake-body-wash-concentrate",
+          "offer_url": "https://coconutmatter.com/products/oaty-shake-body-wash-concentrate",
+          "canonical_url": "https://coconutmatter.com/products/oaty-shake-body-wash-concentrate",
+          "destination_url": "https://coconutmatter.com/products/oaty-shake-body-wash-concentrate",
+          "external_redirect_url": "https://coconutmatter.com/products/oaty-shake-body-wash-concentrate",
+          "merchant_display_name": "COCONUT MATTER",
+          "price": "25",
+          "price_amount": 25,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T01:06:29.717Z",
+            "evidence_url": "https://coconutmatter.com/products/oaty-shake-body-wash-concentrate",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "low",
+              "checked_at": "2026-05-24T01:06:29.717Z",
+              "reason_codes": [
+                "market_currency_not_verified",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://coconutmatter.com/products/oaty-shake-body-wash-concentrate"
+            },
+            "regional_price": {
+              "amount": 25,
+              "currency": "USD",
+              "display_raw": "25.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "low",
+              "market_switch_status": "unknown",
+              "observed_currency": "USD",
+              "source_url": "https://coconutmatter.com/products/oaty-shake-body-wash-concentrate",
+              "captured_at": "2026-05-24T01:06:29.717Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:06:29.717Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T01:06:29.717Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T01:06:29.717Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "status": "unverified",
+              "reason": "low_confidence_or_market_mismatch"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:06:29.717Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 75,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 32
+      }
+    },
+    {
+      "external_product_id": "ext_8982e4384c3bd70a5718c899",
+      "product_key": "prod::external_seed::external_seed::ext_8982e4384c3bd70a5718c899",
+      "product_group_id": "sig_2cbeb024c2e87aa7359f3677",
+      "title": "CLEAR LIP CARE",
+      "brand": "COCONUT MATTER",
+      "product_type": "Lip Treatment",
+      "category": "Lip Treatment",
+      "category_path": "beauty/skincare/lip",
+      "canonical_url": "https://coconutmatter.com/products/clear-lip-care",
+      "pivota_signature_id": "sig_2cbeb024c2e87aa7359f3677",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_8982e4384c3bd70a5718c899::sku_377c4545659f32b26886",
+        "product_key": "prod::external_seed::external_seed::ext_8982e4384c3bd70a5718c899",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_8982e4384c3bd70a5718c899",
+        "source_variant_id": "ext_8982e4384c3bd70a5718c899:39947209244754",
+        "source_domain": "coconutmatter.com",
+        "sku": "CM08-CLEAR",
+        "barcode": null,
+        "title": "CLEAR LIP CARE",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/products/CLEARLIPCARE.jpg?v=1652685794",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_8982e4384c3bd70a5718c899",
+          "raw_variant_id": "39947209244754",
+          "source_variant_id": "ext_8982e4384c3bd70a5718c899:39947209244754",
+          "variant_sku": "CM08-CLEAR",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://coconutmatter.com/products/clear-lip-care",
+          "external_redirect_url": "https://coconutmatter.com/products/clear-lip-care",
+          "price": "25",
+          "price_amount": 25,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/products/CLEARLIPCARE.jpg?v=1652685794",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "CM08-CLEAR",
+            "url": "https://coconutmatter.com/products/clear-lip-care",
+            "price": "25",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/products/CLEARLIPCARE.jpg?v=1652685794",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/products/CLEARLIPCARE.jpg?v=1652685794"
+            ],
+            "variant_id": "39947209244754",
+            "description": "For those days you may want your lips CLEAR. It feels luxurious and creamy as it’s in omega fatty acids and antioxidants for intensive instant relief to dry lips. It’s so soft, you can even use it on babies. If applied in the nighttime, you’ll have plumped and hydrated pout in the morning. Say bye to harsh winters and cracked lips! Not only does it work wonders on dry, cracked lips — as well as chapped areas anywhere on the body — but it's also lightweight, non-sticky, and leaves behind a silky sheen that doesn't disappear after an hour. You can't go wrong with this one.",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:96dbc19859c0493df77de00f05b9a422",
+        "sku_key": "prod::external_seed::external_seed::ext_8982e4384c3bd70a5718c899::sku_377c4545659f32b26886",
+        "product_key": "prod::external_seed::external_seed::ext_8982e4384c3bd70a5718c899",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 25,
+        "merchant_effective_price": 25,
+        "estimated_best_price": 25,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_92e6a704c5c54c367fc1b58e",
+        "source_domain": "coconutmatter.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_92e6a704c5c54c367fc1b58e",
+          "external_product_id": "ext_8982e4384c3bd70a5718c899",
+          "domain": "coconutmatter.com",
+          "market": "US",
+          "product_title": "CLEAR LIP CARE",
+          "variant_title": "CLEAR LIP CARE",
+          "variant_sku": "CM08-CLEAR",
+          "raw_variant_id": "39947209244754",
+          "url": "https://coconutmatter.com/products/clear-lip-care",
+          "offer_url": "https://coconutmatter.com/products/clear-lip-care",
+          "canonical_url": "https://coconutmatter.com/products/clear-lip-care",
+          "destination_url": "https://coconutmatter.com/products/clear-lip-care",
+          "external_redirect_url": "https://coconutmatter.com/products/clear-lip-care",
+          "merchant_display_name": "COCONUT MATTER",
+          "price": "25",
+          "price_amount": 25,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T01:06:29.717Z",
+            "evidence_url": "https://coconutmatter.com/products/clear-lip-care",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "low",
+              "checked_at": "2026-05-24T01:06:29.717Z",
+              "reason_codes": [
+                "market_currency_not_verified",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://coconutmatter.com/products/clear-lip-care"
+            },
+            "regional_price": {
+              "amount": 25,
+              "currency": "USD",
+              "display_raw": "25.00",
+              "price_type": "list",
+              "compare_at_amount": 25,
+              "compare_at_currency": null,
+              "compare_at_display_raw": "25.00",
+              "tax_included": "unknown",
+              "confidence": "low",
+              "market_switch_status": "unknown",
+              "observed_currency": "USD",
+              "source_url": "https://coconutmatter.com/products/clear-lip-care",
+              "captured_at": "2026-05-24T01:06:29.717Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:06:29.717Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T01:06:29.717Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T01:06:29.717Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "status": "unverified",
+              "reason": "low_confidence_or_market_mismatch"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:06:29.717Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 577
+      }
+    }
+  ]
+}
