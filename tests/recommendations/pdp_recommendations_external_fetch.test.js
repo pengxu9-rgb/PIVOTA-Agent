@@ -33,7 +33,57 @@ function makeExternalRow({
   };
 }
 
+function makeCatalogRow({
+  product_key = 'cat_1',
+  source_product_id = 'ext_cat_1',
+  pivota_signature_id = 'sig_cat_1',
+  title = 'KraveBeauty Barrier Serum',
+  brand = 'KraveBeauty',
+  category = 'Serum',
+  category_path = 'beauty/skincare/serum',
+  image_url = 'https://kravebeauty.com/catalog-image.jpg',
+  merchant_id = 'external_seed',
+  platform = 'external_seed',
+} = {}) {
+  return {
+    product_key,
+    content_key: `ck_${product_key}`,
+    merchant_id,
+    platform,
+    source_product_id,
+    product_title: title,
+    product_description: 'Catalog-live serum candidate',
+    brand,
+    product_type: category,
+    category,
+    category_path,
+    canonical_url: `https://kravebeauty.com/products/${source_product_id}`,
+    product_image_url: image_url,
+    product_payload: {
+      price_amount: 28,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        brand,
+        category,
+        snapshot: {
+          brand,
+          product_type: category,
+          image_url,
+        },
+      },
+    },
+    pivota_signature_id,
+    pivota_canonical_url: `https://agent.pivota.cc/products/${pivota_signature_id}`,
+    updated_at: new Date().toISOString(),
+  };
+}
+
 describe('RecommendationEngine external candidate fetch', () => {
+  beforeEach(() => {
+    process.env.PDP_SIMILAR_CATALOG_ONLY = 'false';
+  });
+
   afterEach(() => {
     jest.resetModules();
     jest.clearAllMocks();
@@ -42,6 +92,7 @@ describe('RecommendationEngine external candidate fetch', () => {
     delete process.env.PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS;
     delete process.env.PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS;
     delete process.env.PDP_RECS_VISIBLE_FALLBACKS_ENABLED;
+    delete process.env.PDP_SIMILAR_CATALOG_ONLY;
   });
 
   test('external recall queries use database statement and lock timeouts', async () => {
@@ -108,6 +159,82 @@ describe('RecommendationEngine external candidate fetch', () => {
     expect(products.__externalFetchStats.aborted).toBe(true);
     expect(products.__externalFetchStats.stages.length).toBeGreaterThan(0);
     expect(products.__externalFetchStats.stages.every((stage) => stage.aborted === true)).toBe(true);
+  });
+
+  test('recommend defaults PDP similar to catalog_products only and skips legacy fallbacks', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+    delete process.env.PDP_SIMILAR_CATALOG_ONLY;
+
+    const queryMock = jest.fn(async (sql) => {
+      throw new Error(`legacy query should not be used: ${String(sql).slice(0, 120)}`);
+    });
+    const queryWithStatementTimeoutMock = jest.fn(async (sql) => {
+      const text = String(sql);
+      if (text.includes('products_cache') || text.includes('external_product_seeds')) {
+        throw new Error(`legacy fallback query should not be used: ${text.slice(0, 160)}`);
+      }
+      if (!text.includes('FROM catalog_products cp')) return { rows: [] };
+      expect(text).toContain('index_pipeline_state ips');
+      expect(text).toContain('ips.serving_eligible = TRUE');
+      return {
+        rows: [
+          makeCatalogRow({
+            product_key: 'cat_serum_1',
+            source_product_id: 'ext_serum_1',
+            pivota_signature_id: 'sig_serum_1',
+            title: 'KraveBeauty Great Barrier Relief',
+          }),
+          makeCatalogRow({
+            product_key: 'cat_serum_2',
+            source_product_id: 'ext_serum_2',
+            pivota_signature_id: 'sig_serum_2',
+            title: 'KraveBeauty Oil La La',
+          }),
+        ],
+      };
+    });
+
+    jest.doMock('../../src/db', () => ({
+      query: queryMock,
+      queryWithStatementTimeout: queryWithStatementTimeoutMock,
+    }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { recommend } = require('../../src/services/RecommendationEngine');
+    const result = await recommend({
+      pdp_product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_base',
+        external_product_id: 'ext_base',
+        title: 'KraveBeauty Barrier Serum',
+        brand: 'KraveBeauty',
+        category: 'Serum',
+        product_type: 'Serum',
+        category_path: 'beauty/skincare/serum',
+        image_url: 'https://kravebeauty.com/base.jpg',
+        price_amount: 28,
+        availability: 'in_stock',
+        source: 'external_seed',
+      },
+      k: 2,
+      options: {
+        hydrate_product_intel_cards: false,
+        no_cache: true,
+      },
+    });
+
+    expect(queryMock).not.toHaveBeenCalled();
+    expect(
+      queryWithStatementTimeoutMock.mock.calls.filter((call) =>
+        String(call[0]).includes('FROM catalog_products cp'),
+      ),
+    ).toHaveLength(1);
+    expect(result.metadata.catalog_only).toBe(true);
+    expect(result.metadata.runtime_recall_source).toBe('catalog_products');
+    expect(result.debug.fetch_strategy.catalog_only).toBe(true);
+    expect(result.debug.fetch_strategy.catalog_recall_debug.source).toBe('catalog_products');
+    expect(result.debug.history_fallback.used).toBe(false);
+    expect(result.items.map((item) => item.pivota_signature_id)).toEqual(['sig_serum_1', 'sig_serum_2']);
   });
 
   test('external recall filters a small same-domain lip pool before slow broad stages', async () => {

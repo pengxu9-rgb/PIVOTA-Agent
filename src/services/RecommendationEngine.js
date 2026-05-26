@@ -69,6 +69,14 @@ const PDP_RECS_EXTERNAL_BASE_FETCH_TIMEOUT_MS = Math.max(
   PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS,
   parseTimeoutMs(process.env.PDP_RECS_EXTERNAL_BASE_FETCH_TIMEOUT_MS, 5000),
 );
+const PDP_RECS_CATALOG_FETCH_TIMEOUT_MS = Math.max(
+  200,
+  parseTimeoutMs(
+    process.env.PDP_SIMILAR_CATALOG_FETCH_TIMEOUT_MS ||
+      process.env.PDP_RECS_CATALOG_FETCH_TIMEOUT_MS,
+    1200,
+  ),
+);
 const PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS = Math.max(
   50,
   parseTimeoutMs(process.env.PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS, 2200),
@@ -173,6 +181,32 @@ function abortSoftTimeoutController(controller, reason) {
   } catch {
     controller.abort();
   }
+}
+
+function parseBooleanLike(value, fallback = false) {
+  if (value === true || value === false) return value;
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (!normalized) return fallback;
+  if (['1', 'true', 'yes', 'y', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'n', 'off'].includes(normalized)) return false;
+  return fallback;
+}
+
+function pdpSimilarCatalogOnlyEnabled(options = {}) {
+  const optionValue =
+    options?.catalog_only ??
+    options?.catalogOnly ??
+    options?.catalog_products_only ??
+    options?.catalogProductsOnly ??
+    options?.pdp_similar_catalog_only ??
+    options?.pdpSimilarCatalogOnly;
+  if (optionValue !== undefined && optionValue !== null && String(optionValue).trim() !== '') {
+    return parseBooleanLike(optionValue, true);
+  }
+  return parseBooleanLike(
+    process.env.PDP_SIMILAR_CATALOG_ONLY ?? process.env.PDP_RECS_CATALOG_ONLY,
+    true,
+  );
 }
 
 function visibleFallbacksEnabled() {
@@ -2180,6 +2214,248 @@ function buildCatalogProductRecommendationCandidate(row, options = {}) {
     ...(semanticVertical ? { semantic_vertical: semanticVertical, recall_vertical: semanticVertical } : {}),
   };
   return isExternalSeedCatalogRow ? applyExternalSeedRuntimeProductClass(candidate) : candidate;
+}
+
+function buildCatalogVerticalPathPatterns(vertical) {
+  const normalized = normalizeStoredSemanticVertical(vertical);
+  if (normalized === 'skincare') return ['beauty/skincare/%'];
+  if (normalized === 'makeup') return ['beauty/makeup/%'];
+  if (normalized === 'fragrance') return ['beauty/fragrance/%'];
+  if (normalized === 'haircare') return ['beauty/haircare/%', 'beauty/hair/%'];
+  if (normalized === 'bodycare') return ['beauty/bodycare/%', 'beauty/body/%'];
+  if (normalized === 'tools') return ['beauty/tools/%', 'beauty/beauty tools/%'];
+  return [];
+}
+
+function splitCandidatesByRuntimeClass(candidates = []) {
+  const internalCandidates = [];
+  const externalCandidates = [];
+  for (const candidate of Array.isArray(candidates) ? candidates : []) {
+    if (!candidate || typeof candidate !== 'object') continue;
+    if (isExternalProduct(candidate)) externalCandidates.push(candidate);
+    else internalCandidates.push(candidate);
+  }
+  return { internalCandidates, externalCandidates };
+}
+
+async function fetchCatalogCandidates({
+  brandHint,
+  categoryHint,
+  categoryPathHint = '',
+  verticalHint = '',
+  intentFamilyHint = '',
+  limit,
+  minFocusedCandidates = 6,
+  queryTimeoutCapMs = null,
+  signal = null,
+}) {
+  if (!process.env.DATABASE_URL) {
+    throw buildDatabaseNotConfiguredError('pdp_recommendations_catalog_candidates');
+  }
+
+  const safeLimit = Math.min(Math.max(1, Number(limit || 180)), 500);
+  const safeMinFocusedCandidates = Math.max(
+    1,
+    Math.min(30, Number(minFocusedCandidates || 6) || 6),
+  );
+  const catalogCategoryPath = normalizeCatalogCategoryPath(categoryPathHint);
+  const categoryAliases = buildNormalizedAliases(categoryHint);
+  const brandAliases = buildNormalizedAliases(brandHint).map((value) => value.replace(/\s+/g, ''));
+  const verticalPathPatterns = buildCatalogVerticalPathPatterns(verticalHint);
+  const intentFamily = String(intentFamilyHint || '').trim();
+  const intentFamilyLikePatterns = getSimilarIntentFamilySqlLikePatterns(intentFamily);
+  const params = [];
+  const addParam = (value) => {
+    params.push(value);
+    return `$${params.length}`;
+  };
+  const matchClauses = [];
+  const orderClauses = [];
+  const stats = {
+    source: 'catalog_products',
+    catalog_only: true,
+    safe_limit: safeLimit,
+    min_focused_candidates: safeMinFocusedCandidates,
+    brand_hint: normalizeText(brandHint) || null,
+    category_hint: normalizeText(categoryHint) || null,
+    category_path_hint: catalogCategoryPath || null,
+    vertical_hint: normalizeStoredSemanticVertical(verticalHint) || null,
+    intent_family_hint: intentFamily || null,
+    timed_out: false,
+    aborted: false,
+  };
+
+  function attachCatalogFetchStats(products) {
+    const out = Array.isArray(products) ? products : [];
+    try {
+      Object.defineProperty(out, '__catalogFetchStats', {
+        value: {
+          ...stats,
+          returned_count: out.length,
+          aborted: isAbortSignalAborted(signal),
+        },
+        enumerable: false,
+        configurable: true,
+      });
+    } catch {
+      // Non-critical debug attachment.
+    }
+    return out;
+  }
+
+  if (isAbortSignalAborted(signal)) return attachCatalogFetchStats([]);
+
+  let categoryAliasParam = '';
+  if (catalogCategoryPath) {
+    const p = addParam(catalogCategoryPath);
+    matchClauses.push(`cp.category_path = ${p}`);
+    orderClauses.push(`CASE WHEN cp.category_path = ${p} THEN 0 ELSE 1 END`);
+  }
+
+  if (categoryAliases.length) {
+    categoryAliasParam = addParam(categoryAliases);
+    matchClauses.push(`(
+      lower(coalesce(cp.category, '')) = ANY(${categoryAliasParam}::text[])
+      OR lower(coalesce(cp.product_type, '')) = ANY(${categoryAliasParam}::text[])
+      OR lower(regexp_replace(coalesce(cp.category_path, ''), '^.*/', '')) = ANY(${categoryAliasParam}::text[])
+      OR lower(coalesce(cp.product_payload->>'category', '')) = ANY(${categoryAliasParam}::text[])
+      OR lower(coalesce(cp.product_payload->>'product_type', '')) = ANY(${categoryAliasParam}::text[])
+    )`);
+  }
+
+  let verticalParam = '';
+  if (verticalPathPatterns.length) {
+    verticalParam = addParam(verticalPathPatterns);
+    matchClauses.push(`lower(coalesce(cp.category_path, '')) LIKE ANY(${verticalParam}::text[])`);
+  }
+
+  if (intentFamilyLikePatterns.length) {
+    const p = addParam(intentFamilyLikePatterns);
+    matchClauses.push(`lower(coalesce(cp.title, '')) LIKE ANY(${p}::text[])`);
+  }
+
+  if (brandAliases.length && (categoryAliasParam || verticalParam || catalogCategoryPath)) {
+    const brandParam = addParam(brandAliases);
+    const scopedClauses = [];
+    if (categoryAliasParam) {
+      scopedClauses.push(`(
+        lower(coalesce(cp.category, '')) = ANY(${categoryAliasParam}::text[])
+        OR lower(coalesce(cp.product_type, '')) = ANY(${categoryAliasParam}::text[])
+        OR lower(regexp_replace(coalesce(cp.category_path, ''), '^.*/', '')) = ANY(${categoryAliasParam}::text[])
+      )`);
+    }
+    if (verticalParam) {
+      scopedClauses.push(`lower(coalesce(cp.category_path, '')) LIKE ANY(${verticalParam}::text[])`);
+    }
+    if (catalogCategoryPath) {
+      const p = addParam(catalogCategoryPath);
+      scopedClauses.push(`cp.category_path = ${p}`);
+    }
+    matchClauses.push(`(
+      regexp_replace(lower(coalesce(cp.brand, cp.product_payload->>'brand', cp.product_payload->>'vendor', '')), '[^a-z0-9]+', '', 'g') = ANY(${brandParam}::text[])
+      AND (${scopedClauses.join(' OR ')})
+    )`);
+    orderClauses.push(`CASE WHEN regexp_replace(lower(coalesce(cp.brand, cp.product_payload->>'brand', cp.product_payload->>'vendor', '')), '[^a-z0-9]+', '', 'g') = ANY(${brandParam}::text[]) THEN 0 ELSE 1 END`);
+  }
+
+  if (!matchClauses.length) {
+    stats.reason = 'no_catalog_match_hints';
+    return attachCatalogFetchStats([]);
+  }
+
+  const effectiveTimeoutMs =
+    queryTimeoutCapMs != null
+      ? Math.min(normalizeRecsDbTimeoutMs(PDP_RECS_CATALOG_FETCH_TIMEOUT_MS), normalizeRecsDbTimeoutMs(queryTimeoutCapMs))
+      : PDP_RECS_CATALOG_FETCH_TIMEOUT_MS;
+  const limitParam = addParam(Math.min(safeLimit * 3, Math.max(safeLimit, safeMinFocusedCandidates * 3)));
+
+  try {
+    const res = await withSoftTimeout(
+      queryWithStatementTimeout(
+        `
+          SELECT
+            cp.product_key,
+            cp.content_key,
+            cp.merchant_id,
+            cp.platform,
+            cp.source_product_id,
+            cp.title AS product_title,
+            cp.description AS product_description,
+            cp.brand,
+            cp.product_type,
+            cp.category,
+            cp.category_path,
+            cp.canonical_url,
+            cp.image_url AS product_image_url,
+            cp.product_payload,
+            cp.pivota_signature_id,
+            cp.pivota_canonical_url,
+            cp.updated_at
+          FROM catalog_products cp
+          LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id
+          INNER JOIN index_pipeline_state ips
+            ON ips.content_key = cp.content_key
+           AND ips.serving_eligible = TRUE
+          WHERE cp.sync_status = 'live'
+            AND cp.pivota_signature_id IS NOT NULL
+            AND cp.pivota_signature_id LIKE 'sig\\_%' ESCAPE '\\'
+            AND coalesce(nullif(trim(cp.title), ''), '') <> ''
+            AND coalesce(
+              nullif(trim(cp.image_url), ''),
+              nullif(trim(cp.product_payload->>'image_url'), ''),
+              nullif(trim(cp.product_payload->>'image'), '')
+            ) <> ''
+            AND ${activeCatalogProductSourceWhere('cp', 'cm')}
+            AND (${matchClauses.join(' OR ')})
+          ORDER BY
+            ${orderClauses.length ? `${orderClauses.join(',\n            ')},` : ''}
+            cp.updated_at DESC NULLS LAST,
+            cp.product_key ASC
+          LIMIT ${limitParam}
+        `,
+        params,
+        buildRecsDbTimeoutOptions(effectiveTimeoutMs),
+      ),
+      effectiveTimeoutMs,
+      null,
+      () => {
+        stats.timed_out = true;
+        recordRecsTimeout('catalog_products');
+        logger.warn(
+          { timeout_ms: effectiveTimeoutMs, category_path: catalogCategoryPath || null, category: categoryHint || null },
+          'recommendations catalog query timed out',
+        );
+      },
+      { signal },
+    );
+    if (!res || isAbortSignalAborted(signal)) {
+      stats.aborted = isAbortSignalAborted(signal);
+      return attachCatalogFetchStats([]);
+    }
+    const products = [];
+    for (const row of res.rows || []) {
+      const p = buildCatalogProductRecommendationCandidate(row, {
+        fallbackBrand: brandHint,
+        fallbackCategory: categoryHint,
+      });
+      if (p) {
+        p.retrieval_source = 'catalog_products';
+        p.runtime_recall_source = 'catalog_products';
+        products.push(p);
+      }
+    }
+    return attachCatalogFetchStats(products);
+  } catch (err) {
+    if (isDbTimeoutError(err)) {
+      stats.timed_out = true;
+      recordRecsTimeout('catalog_products');
+    }
+    logger.warn(
+      { err: err?.message || String(err), category_path: catalogCategoryPath || null, category: categoryHint || null },
+      'recommendations catalog query failed',
+    );
+    return attachCatalogFetchStats([]);
+  }
 }
 
 const EXTERNAL_SEED_RECOMMENDATION_SELECT = `
@@ -5032,9 +5308,11 @@ async function recommend({
       : [];
   const excludedCandidates = buildExcludedCandidateState(excludeItems);
 
+  const catalogOnly = pdpSimilarCatalogOnlyEnabled(options);
   const baseCurrency = currency || normalizeCurrency(rawBaseProduct, 'USD');
   const cacheKey = JSON.stringify({
     contract: PDP_RECS_CARD_KB_CONTRACT_VERSION,
+    catalog_only: catalogOnly,
     merchant_id: baseMerchantId || null,
     product_id: baseProductId,
     k: safeK,
@@ -5089,6 +5367,13 @@ async function recommend({
   const effectiveExternalFetchTimeoutMs = requestedExternalFetchTimeoutMs > 0
     ? Math.max(300, requestedExternalFetchTimeoutMs)
     : defaultExternalFetchTimeoutMs;
+  const effectiveCatalogFetchTimeoutMs = Math.min(
+    effectiveExternalFetchTimeoutMs,
+    Math.max(
+      200,
+      parseTimeoutMs(options?.catalog_fetch_timeout_ms ?? options?.catalogFetchTimeoutMs, PDP_RECS_CATALOG_FETCH_TIMEOUT_MS),
+    ),
+  );
 
   const shouldFetchInternalCandidates = Boolean(providedInternal) || !baseProductIsExternal;
   const externalFetchLimit = Math.max(
@@ -5099,94 +5384,150 @@ async function recommend({
 
   let internalTimedOut = false;
   let externalTimedOut = false;
-  const internalCandidatesAbortController = createSoftTimeoutAbortController();
-  const externalCandidatesAbortController = createSoftTimeoutAbortController();
-  const internalCandidatesTask = withSoftTimeout(
-    providedInternal
-      ? Promise.resolve(providedInternal)
-      : shouldFetchInternalCandidates
-        ? fetchInternalCandidates({
-            merchantId: getMerchantId(baseProduct),
-            limit: Math.max(60, candidateK * 10),
-            excludeMerchantId: getMerchantId(baseProduct),
-            categoryHint: baseLeaf,
-            signal: internalCandidatesAbortController?.signal || null,
-          })
-        : Promise.resolve([]),
-    PDP_RECS_INTERNAL_FETCH_TIMEOUT_MS,
-    [],
-    () => {
-      internalTimedOut = true;
-      abortSoftTimeoutController(internalCandidatesAbortController, 'pdp_recs_internal_fetch_timeout');
-      logger.warn(
-        {
-          product_id: baseProductId,
-          timeout_ms: PDP_RECS_INTERNAL_FETCH_TIMEOUT_MS,
-        },
-        'PDP recommendations internal candidate fetch timed out',
-      );
-    },
-  );
-  const externalCandidatesTask = withSoftTimeout(
-    providedExternal
-      ? Promise.resolve(providedExternal)
-      : fetchExternalCandidates({
-          brandHint: baseBrand,
-          categoryHint: baseLeaf,
-          categoryPathHint: baseCategoryPath,
-          verticalHint: baseSemantic?.vertical || '',
-          intentFamilyHint: baseIntentFamily,
-          domainHints: baseDomains,
-          limit: externalFetchLimit,
-          minFocusedCandidates: externalFocusedRecallTarget,
-          deepDomainRecall: baseProductIsExternal,
-          queryTimeoutCapMs: effectiveExternalFetchTimeoutMs,
-          signal: externalCandidatesAbortController?.signal || null,
-        }),
-    effectiveExternalFetchTimeoutMs,
-    [],
-    () => {
-      externalTimedOut = true;
-      abortSoftTimeoutController(externalCandidatesAbortController, 'pdp_recs_external_fetch_timeout');
-      logger.warn(
-        {
-          product_id: baseProductId,
-          timeout_ms: effectiveExternalFetchTimeoutMs,
-        },
-        'PDP recommendations external candidate fetch timed out',
-      );
-    },
-  ).catch((err) => {
-    logger.warn(
-      { err: err?.message || String(err), product_id: baseProductId },
-      'PDP recommendations external candidate fetch failed',
-    );
-    return [];
-  });
-  const internalCandidates = await internalCandidatesTask;
-
-  const internalCount = Array.isArray(internalCandidates) ? internalCandidates.length : 0;
-  const externalSkipEligibleInternalCount = countExternalSkipEligibleInternalCandidates(
-    baseProduct,
-    internalCandidates,
-  );
   const skipExternalMin = Math.max(
     PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_ABS,
     Math.ceil(candidateK * PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_MULTIPLIER),
   );
-  const shouldSkipExternal =
-    !providedExternal &&
-    externalSkipEligibleInternalCount >= skipExternalMin &&
-    baseSemanticStrong &&
-    !baseProductIsExternal;
+  let catalogTimedOut = false;
+  let internalCandidates = [];
+  let externalCandidates = [];
+  let catalogFetchStats = null;
+  let externalFetchStats = null;
+  let externalSkipEligibleInternalCount = 0;
+  let shouldSkipExternal = false;
 
-  const externalCandidates = shouldSkipExternal
-    ? []
-    : await externalCandidatesTask;
-  const externalFetchStats =
-    externalCandidates && typeof externalCandidates === 'object'
-      ? externalCandidates.__externalFetchStats || null
-      : null;
+  if (catalogOnly && !providedInternal && !providedExternal) {
+    const catalogCandidatesAbortController = createSoftTimeoutAbortController();
+    const catalogCandidates = await withSoftTimeout(
+      fetchCatalogCandidates({
+        brandHint: baseBrand,
+        categoryHint: baseLeaf,
+        categoryPathHint: baseCategoryPath,
+        verticalHint: baseSemantic?.vertical || '',
+        intentFamilyHint: baseIntentFamily,
+        limit: externalFetchLimit,
+        minFocusedCandidates: externalFocusedRecallTarget,
+        queryTimeoutCapMs: effectiveCatalogFetchTimeoutMs,
+        signal: catalogCandidatesAbortController?.signal || null,
+      }),
+      effectiveCatalogFetchTimeoutMs,
+      [],
+      () => {
+        catalogTimedOut = true;
+        externalTimedOut = true;
+        abortSoftTimeoutController(catalogCandidatesAbortController, 'pdp_recs_catalog_fetch_timeout');
+        logger.warn(
+          {
+            product_id: baseProductId,
+            timeout_ms: effectiveCatalogFetchTimeoutMs,
+          },
+          'PDP recommendations catalog candidate fetch timed out',
+        );
+      },
+      { signal: catalogCandidatesAbortController?.signal || null },
+    ).catch((err) => {
+      logger.warn(
+        { err: err?.message || String(err), product_id: baseProductId },
+        'PDP recommendations catalog candidate fetch failed',
+      );
+      return [];
+    });
+    catalogFetchStats =
+      catalogCandidates && typeof catalogCandidates === 'object'
+        ? catalogCandidates.__catalogFetchStats || null
+        : null;
+    const splitCatalogCandidates = splitCandidatesByRuntimeClass(catalogCandidates);
+    internalCandidates = splitCatalogCandidates.internalCandidates;
+    externalCandidates = splitCatalogCandidates.externalCandidates;
+    if (catalogFetchStats?.timed_out || catalogFetchStats?.aborted) {
+      catalogTimedOut = true;
+      externalTimedOut = true;
+    }
+  } else {
+    const internalCandidatesAbortController = createSoftTimeoutAbortController();
+    const externalCandidatesAbortController = createSoftTimeoutAbortController();
+    const internalCandidatesTask = withSoftTimeout(
+      providedInternal
+        ? Promise.resolve(providedInternal)
+        : shouldFetchInternalCandidates
+          ? fetchInternalCandidates({
+              merchantId: getMerchantId(baseProduct),
+              limit: Math.max(60, candidateK * 10),
+              excludeMerchantId: getMerchantId(baseProduct),
+              categoryHint: baseLeaf,
+              signal: internalCandidatesAbortController?.signal || null,
+            })
+          : Promise.resolve([]),
+      PDP_RECS_INTERNAL_FETCH_TIMEOUT_MS,
+      [],
+      () => {
+        internalTimedOut = true;
+        abortSoftTimeoutController(internalCandidatesAbortController, 'pdp_recs_internal_fetch_timeout');
+        logger.warn(
+          {
+            product_id: baseProductId,
+            timeout_ms: PDP_RECS_INTERNAL_FETCH_TIMEOUT_MS,
+          },
+          'PDP recommendations internal candidate fetch timed out',
+        );
+      },
+    );
+    const externalCandidatesTask = withSoftTimeout(
+      providedExternal
+        ? Promise.resolve(providedExternal)
+        : fetchExternalCandidates({
+            brandHint: baseBrand,
+            categoryHint: baseLeaf,
+            categoryPathHint: baseCategoryPath,
+            verticalHint: baseSemantic?.vertical || '',
+            intentFamilyHint: baseIntentFamily,
+            domainHints: baseDomains,
+            limit: externalFetchLimit,
+            minFocusedCandidates: externalFocusedRecallTarget,
+            deepDomainRecall: baseProductIsExternal,
+            queryTimeoutCapMs: effectiveExternalFetchTimeoutMs,
+            signal: externalCandidatesAbortController?.signal || null,
+          }),
+      effectiveExternalFetchTimeoutMs,
+      [],
+      () => {
+        externalTimedOut = true;
+        abortSoftTimeoutController(externalCandidatesAbortController, 'pdp_recs_external_fetch_timeout');
+        logger.warn(
+          {
+            product_id: baseProductId,
+            timeout_ms: effectiveExternalFetchTimeoutMs,
+          },
+          'PDP recommendations external candidate fetch timed out',
+        );
+      },
+    ).catch((err) => {
+      logger.warn(
+        { err: err?.message || String(err), product_id: baseProductId },
+        'PDP recommendations external candidate fetch failed',
+      );
+      return [];
+    });
+    internalCandidates = await internalCandidatesTask;
+
+    externalSkipEligibleInternalCount = countExternalSkipEligibleInternalCandidates(
+      baseProduct,
+      internalCandidates,
+    );
+    shouldSkipExternal =
+      !providedExternal &&
+      externalSkipEligibleInternalCount >= skipExternalMin &&
+      baseSemanticStrong &&
+      !baseProductIsExternal;
+
+    externalCandidates = shouldSkipExternal
+      ? []
+      : await externalCandidatesTask;
+    externalFetchStats =
+      externalCandidates && typeof externalCandidates === 'object'
+        ? externalCandidates.__externalFetchStats || null
+        : null;
+  }
 
   let filteredInternalCandidates = filterCandidateCollection(internalCandidates, effectiveExcludedCandidates);
   let filteredExternalCandidates = filterCandidateCollection(externalCandidates, effectiveExcludedCandidates);
@@ -5216,7 +5557,7 @@ async function recommend({
     added_count: 0,
   };
 
-  if (finalItems.length === 0 && normalizedRecentViews.length > 0 && visibleFallbacksEnabled()) {
+  if (!catalogOnly && finalItems.length === 0 && normalizedRecentViews.length > 0 && visibleFallbacksEnabled()) {
     const historyExcludedCandidates = mergeExcludedCandidateStates(
       excludedCandidates,
       buildExcludedCandidateState(
@@ -5316,8 +5657,9 @@ async function recommend({
       'RECENT_VIEWS_FALLBACK_USED',
     );
   }
-  if (!historyFallbackDebug.used && normalizedRecentViews.length > 0 && !visibleFallbacksEnabled()) {
+  if (!historyFallbackDebug.used && normalizedRecentViews.length > 0 && (catalogOnly || !visibleFallbacksEnabled())) {
     historyFallbackDebug.disabled = true;
+    if (catalogOnly) historyFallbackDebug.disabled_reason = 'catalog_only';
   }
 
   const finalUnderfill = Math.max(0, safeK - finalItems.length);
@@ -5333,6 +5675,8 @@ async function recommend({
     finalMetadata.similar_status = 'empty';
   }
   finalMetadata.fallback_policy = fallbackPolicy;
+  finalMetadata.runtime_recall_source = catalogOnly ? 'catalog_products' : 'mixed_legacy';
+  finalMetadata.catalog_only = catalogOnly;
 
   const result = {
     items: finalItems,
@@ -5341,6 +5685,13 @@ async function recommend({
       ...picked.debug,
       timing_ms: elapsedMs,
       fetch_strategy: {
+        catalog_only: catalogOnly,
+        catalog_count: catalogOnly
+          ? filteredInternalCandidates.length + filteredExternalCandidates.length
+          : 0,
+        catalog_timed_out: catalogTimedOut,
+        catalog_fetch_timeout_ms: effectiveCatalogFetchTimeoutMs,
+        catalog_recall_debug: catalogFetchStats,
         internal_count: Array.isArray(filteredInternalCandidates) ? filteredInternalCandidates.length : 0,
         external_count: Array.isArray(filteredExternalCandidates) ? filteredExternalCandidates.length : 0,
         internal_timed_out: internalTimedOut,
@@ -5386,6 +5737,7 @@ async function recommend({
       low_confidence: Boolean(finalMetadata.low_confidence),
       underfill: Math.max(0, safeK - finalItems.length),
       history_fallback_used: historyFallbackDebug.used,
+      catalog_only: catalogOnly,
     },
     'PDP recommendations generated',
   );
@@ -5424,6 +5776,7 @@ module.exports = {
     hydrateRecommendationItemsWithReviewedProductIntel,
     buildExternalSeedRecommendationCandidate,
     hasOfficialExternalSeedCard,
+    fetchCatalogCandidates,
     fetchExternalCandidates,
     fetchInternalCandidates,
     loadLiveIdentityRowsForRecommendationProducts,
@@ -5437,5 +5790,6 @@ module.exports = {
     productMatchesFocusedIntentFamily,
     isCacheableRecommendationResult,
     isUnavailableRecommendationResult,
+    pdpSimilarCatalogOnlyEnabled,
   },
 };
