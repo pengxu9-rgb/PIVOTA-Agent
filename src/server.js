@@ -4907,44 +4907,61 @@ async function fetchApprovedLiveIdentityGroupMembersForOffers({
     .filter(Boolean);
 }
 
-async function resolveCatalogProductRefFromPivotaSignature(productId) {
+function normalizeCatalogSignatureResolveOptions(options = {}) {
+  const hydrateIdentityListing = options?.hydrateIdentityListing !== false;
+  const hydrateIdentityGroupMembers =
+    hydrateIdentityListing && options?.hydrateIdentityGroupMembers !== false;
+  return {
+    hydrateIdentityListing,
+    hydrateIdentityGroupMembers,
+    cacheVariant: hydrateIdentityListing
+      ? hydrateIdentityGroupMembers
+        ? 'rich'
+        : 'identity'
+      : 'lite',
+  };
+}
+
+async function resolveCatalogProductRefFromPivotaSignature(productId, options = {}) {
   if (!process.env.DATABASE_URL) return null;
   const normalizedProductId = String(productId || '').trim();
   if (!isPivotaSignatureProductId(normalizedProductId)) return null;
+  const resolveOptions = normalizeCatalogSignatureResolveOptions(options);
+  const cacheKey = `${normalizedProductId}::${resolveOptions.cacheVariant}`;
 
   if (RESOLVE_CATALOG_SIGNATURE_CACHE_ENABLED) {
-    const cached = RESOLVE_CATALOG_SIGNATURE_CACHE.get(normalizedProductId);
+    const cached = RESOLVE_CATALOG_SIGNATURE_CACHE.get(cacheKey);
     if (cached && cached.expiresAtMs > Date.now()) {
       return cached.value;
     }
-    if (cached) RESOLVE_CATALOG_SIGNATURE_CACHE.delete(normalizedProductId);
+    if (cached) RESOLVE_CATALOG_SIGNATURE_CACHE.delete(cacheKey);
 
-    const inflight = RESOLVE_CATALOG_SIGNATURE_INFLIGHT.get(normalizedProductId);
+    const inflight = RESOLVE_CATALOG_SIGNATURE_INFLIGHT.get(cacheKey);
     if (inflight) return inflight;
 
-    const promise = resolveCatalogProductRefFromPivotaSignatureInner(normalizedProductId)
+    const promise = resolveCatalogProductRefFromPivotaSignatureInner(normalizedProductId, resolveOptions)
       .then((value) => {
         if (RESOLVE_CATALOG_SIGNATURE_CACHE.size >= RESOLVE_CATALOG_SIGNATURE_CACHE_MAX_ENTRIES) {
           const firstKey = RESOLVE_CATALOG_SIGNATURE_CACHE.keys().next().value;
           if (firstKey !== undefined) RESOLVE_CATALOG_SIGNATURE_CACHE.delete(firstKey);
         }
-        RESOLVE_CATALOG_SIGNATURE_CACHE.set(normalizedProductId, {
+        RESOLVE_CATALOG_SIGNATURE_CACHE.set(cacheKey, {
           value,
           expiresAtMs: Date.now() + RESOLVE_CATALOG_SIGNATURE_CACHE_TTL_MS,
         });
         return value;
       })
       .finally(() => {
-        RESOLVE_CATALOG_SIGNATURE_INFLIGHT.delete(normalizedProductId);
+        RESOLVE_CATALOG_SIGNATURE_INFLIGHT.delete(cacheKey);
       });
-    RESOLVE_CATALOG_SIGNATURE_INFLIGHT.set(normalizedProductId, promise);
+    RESOLVE_CATALOG_SIGNATURE_INFLIGHT.set(cacheKey, promise);
     return promise;
   }
 
-  return resolveCatalogProductRefFromPivotaSignatureInner(normalizedProductId);
+  return resolveCatalogProductRefFromPivotaSignatureInner(normalizedProductId, resolveOptions);
 }
 
-async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProductId) {
+async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProductId, options = {}) {
   try {
     const exactResult = await query(
       `
@@ -5011,7 +5028,11 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
     const exactSourceProductId = String(exactRow?.source_product_id || '').trim();
     if (exactMerchantId && exactSourceProductId) {
       let exactIdentityRow = null;
-      if (exactMerchantId === EXTERNAL_SEED_MERCHANT_ID && isExternalSeedProductId(exactSourceProductId)) {
+      if (
+        options.hydrateIdentityListing !== false &&
+        exactMerchantId === EXTERNAL_SEED_MERCHANT_ID &&
+        isExternalSeedProductId(exactSourceProductId)
+      ) {
         try {
           const identityResult = await query(
             `
@@ -5047,7 +5068,7 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
       }
       const exactIdentityGroupId = firstNonEmptyString(exactIdentityRow?.sellable_item_group_id);
       let exactIdentityGroup = null;
-      if (exactIdentityGroupId) {
+      if (options.hydrateIdentityGroupMembers !== false && exactIdentityGroupId) {
         try {
           const groupRowsResult = await query(
             `
@@ -5158,7 +5179,11 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
           }
         }
       }
-      if (exactIdentityGroupId && !exactIdentityGroup?.group_members?.length) {
+      if (
+        options.hydrateIdentityGroupMembers !== false &&
+        exactIdentityGroupId &&
+        !exactIdentityGroup?.group_members?.length
+      ) {
         try {
           exactIdentityGroup = await resolveLivePdpIdentityGroupForPdp({
             productGroupId: exactIdentityGroupId,
@@ -35026,13 +35051,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           let signatureExternalSeedPrecheckProduct = null;
           let signaturePrefetchedServingEligibility = null;
           let signaturePrefetchedPdpContentProductId = null;
-			      if (
+		      if (
 			        productId &&
 			        String(productId).trim().toLowerCase().startsWith('sig_') &&
 			        (!requestedMerchantId || requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID)
 			      ) {
 		        const signatureResolveStartedAt = Date.now();
-		        const signatureProductRef = await resolveCatalogProductRefFromPivotaSignature(productId);
+		        const signatureProductRef = await resolveCatalogProductRefFromPivotaSignature(productId, {
+              hydrateIdentityListing: true,
+              hydrateIdentityGroupMembers: wantsOffers,
+            });
 		        markPdpV2Phase('resolve_catalog_signature', signatureResolveStartedAt);
 		        if (signatureProductRef?.product_id && signatureProductRef?.merchant_id) {
               requestedPivotaSignatureId = requestedProductIdForDiagnostics;
@@ -40875,7 +40903,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               isPivotaSignatureProductId(productId) &&
               (!merchantId || merchantId === EXTERNAL_SEED_MERCHANT_ID)
             ) {
-              resolvedSignatureRef = await resolveCatalogProductRefFromPivotaSignature(productId).catch(() => null);
+              resolvedSignatureRef = await resolveCatalogProductRefFromPivotaSignature(productId, {
+                hydrateIdentityListing: false,
+                hydrateIdentityGroupMembers: false,
+              }).catch(() => null);
               const resolvedExternalSeedProductId =
                 resolvedSignatureRef?.merchant_id === EXTERNAL_SEED_MERCHANT_ID &&
                 resolvedSignatureRef?.product_id &&

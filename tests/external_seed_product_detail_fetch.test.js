@@ -1014,6 +1014,11 @@ describe('external seed product detail hydration', () => {
         String(sql || '').includes('LEFT JOIN index_pipeline_state ips'),
       ),
     ).toHaveLength(0);
+    expect(
+      db.query.mock.calls.filter(([sql]) =>
+        String(sql || '').includes('WHERE pil.sellable_item_group_id = $1'),
+      ),
+    ).toHaveLength(0);
     expect(res.body.subject).toEqual(
       expect.objectContaining({
         type: 'product_group',
@@ -2347,6 +2352,11 @@ describe('external seed product detail hydration', () => {
         product_id: channelExt,
       }),
     );
+    expect(
+      db.query.mock.calls.filter(([sql]) =>
+        String(sql || '').includes('WHERE pil.sellable_item_group_id = $1'),
+      ),
+    ).toHaveLength(1);
     const servingGateCall = db.query.mock.calls.find(([sql]) =>
       String(sql || '').includes('FROM catalog_products cp') &&
       String(sql || '').includes('LEFT JOIN index_pipeline_state ips'),
