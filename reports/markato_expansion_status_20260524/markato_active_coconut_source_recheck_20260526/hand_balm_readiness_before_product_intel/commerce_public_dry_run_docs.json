@@ -1,0 +1,62 @@
+{
+  "generated_at": "2026-05-26T13:00:55.251Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 1,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_5d8d07b8dea0c405f7a34d56e5301278",
+      "sellable_item_group_id": "sig_5d8d07b8dea0c405f7a34d56e5301278",
+      "product_line_id": "pl_4272654ccd247748c8497e05",
+      "review_family_id": "rf_4272654ccd247748c8497e05",
+      "brand_name": "COCONUT MATTER",
+      "category_paths": [
+        "Hand Balm"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "NOURISHING HAND BALM",
+      "subtitle": "Crafted with a deeply moisturising blend of plant-based ingredients like jojoba oil and our signature WILD virgin coconut oil, it absorbs immediately into the skin and nourishes without leaving a greasy feel. Choose from scents infused by Bulgaria Rose, Bulgaria Lavender or Egypt Jasmine. Feel the balm on your hands as it works wonders on dry, irritated, or cracked skin.",
+      "variant_axes": {
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/products/NoMoreBluesLavenderHandBalm_aac94b81-cae7-4f38-b6d9-2e826e975e2e.png?v=1653378699",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/products/NoMoreBluesLavenderHandBalm_aac94b81-cae7-4f38-b6d9-2e826e975e2e.png?v=1653378699",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/products/JoyofLoveRoseHandBalm_2760207f-63aa-403e-ae7b-ced6368b0944.webp?v=1653378699",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/products/OnCloudNineJasmineHandBalm_16eb3434-b67c-4297-b9cc-3928b2c94840.webp?v=1653378699"
+      ],
+      "price_min": 12,
+      "price_max": 12,
+      "default_offer_id": "external_seed:ext_fda8be630c6dc79ef599df3c",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "COCONUT MATTER",
+        "Hand Balm"
+      ],
+      "sort_keys": {
+        "price_min": 12,
+        "price_max": 12,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_fda8be630c6dc79ef599df3c"
+      ]
+    }
+  ]
+}
