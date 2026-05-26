@@ -4764,6 +4764,101 @@ function buildCatalogSignatureGroupMemberFromIdentityRow(row, canonicalRef = {})
   };
 }
 
+async function fetchApprovedLiveIdentityGroupMembersForOffers({
+  sellableItemGroupId,
+  excludeMerchantId,
+  excludeProductId,
+  queryFn = query,
+} = {}) {
+  const groupId = firstNonEmptyString(sellableItemGroupId);
+  const merchantId = firstNonEmptyString(excludeMerchantId);
+  const productId = firstNonEmptyString(excludeProductId);
+  if (!groupId || !merchantId || !productId || typeof queryFn !== 'function') return [];
+  const result = await queryFn(
+    `
+      SELECT
+        pil.source_listing_ref,
+        pil.merchant_id,
+        pil.product_id,
+        pil.source_kind,
+        pil.source_tier,
+        pil.source_payload,
+        pil.variant_axes,
+        cp_offer.platform,
+        cp_offer.title AS catalog_title,
+        cp_offer.brand AS catalog_brand,
+        cp_offer.canonical_url AS catalog_canonical_url,
+        cp_offer.image_url AS catalog_image_url,
+        offer_row.offer_id AS catalog_offer_id,
+        offer_row.sku_key AS catalog_sku_key,
+        offer_row.currency AS catalog_offer_currency,
+        COALESCE(
+          offer_row.merchant_effective_price,
+          offer_row.estimated_best_price,
+          offer_row.list_price
+        ) AS catalog_offer_price,
+        offer_row.source_system AS catalog_offer_source_system,
+        offer_row.source_ref AS catalog_offer_source_ref
+      FROM pdp_identity_listing pil
+      LEFT JOIN catalog_products cp_offer
+        ON cp_offer.merchant_id = pil.merchant_id
+       AND cp_offer.source_product_id = pil.product_id
+      LEFT JOIN LATERAL (
+        SELECT
+          o.offer_id,
+          o.sku_key,
+          o.currency,
+          o.merchant_effective_price,
+          o.estimated_best_price,
+          o.list_price,
+          o.source_system,
+          o.source_ref
+        FROM catalog_skus s
+        JOIN catalog_offers o ON o.sku_key = s.sku_key
+        WHERE s.product_key = cp_offer.product_key
+        ORDER BY
+          CASE WHEN o.availability ILIKE 'in%stock%' THEN 0 ELSE 1 END,
+          o.updated_at DESC NULLS LAST,
+          o.offer_id ASC
+        LIMIT 1
+      ) offer_row ON true
+      WHERE pil.sellable_item_group_id = $1
+        AND pil.identity_status = 'approved'
+        AND pil.live_read_enabled IS TRUE
+        AND COALESCE(pil.review_required, false) IS NOT TRUE
+        AND NOT (pil.merchant_id = $2 AND pil.product_id = $3)
+        AND (
+          pil.source_kind <> 'external_seed'
+          OR EXISTS (
+            SELECT 1
+            FROM external_product_seeds eps
+            JOIN catalog_products cp_active
+              ON cp_active.merchant_id = 'external_seed'
+             AND cp_active.platform = 'external_seed'
+             AND cp_active.source_system = 'external_product_seeds_mirror_v1'
+             AND cp_active.source_product_id = eps.external_product_id
+             AND cp_active.sync_status = 'live'
+            JOIN index_pipeline_state ips_active
+              ON ips_active.content_key = cp_active.content_key
+             AND ips_active.serving_eligible = TRUE
+            WHERE eps.external_product_id = pil.product_id
+              AND eps.status = 'active'
+          )
+        )
+      ORDER BY
+        CASE WHEN pil.source_tier = 'brand' THEN 0 ELSE 1 END,
+        pil.identity_confidence DESC NULLS LAST,
+        pil.updated_at DESC NULLS LAST,
+        pil.created_at DESC NULLS LAST
+      LIMIT 200
+    `,
+    [groupId, merchantId, productId],
+  );
+  return (Array.isArray(result?.rows) ? result.rows : [])
+    .map((row) => buildCatalogSignatureGroupMemberFromIdentityRow(row))
+    .filter(Boolean);
+}
+
 async function resolveCatalogProductRefFromPivotaSignature(productId) {
   if (!process.env.DATABASE_URL) return null;
   const normalizedProductId = String(productId || '').trim();
@@ -35958,7 +36053,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const identityGroupMembersMissing =
         Boolean(identityBackedGroupExpected) &&
         (!Array.isArray(groupMembers) || groupMembers.length === 0);
-      const offerSource = groupMembers.length > 0
+      let offerSource = groupMembers.length > 0
         ? 'group_fused'
         : identityGroupMembersMissing
           ? 'multi_offer_blocked'
@@ -36168,6 +36263,40 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 quality_state: 'transaction_held_no_fallback',
               };
             } else {
+              const identityGateFailed =
+                Boolean(catalogIdentity?.sellable_item_group_id) &&
+                (
+                  catalogIdentity?.review_required === true ||
+                  catalogIdentity?.live_read_enabled !== true ||
+                  firstNonEmptyString(catalogIdentity?.identity_status) !== 'approved'
+                );
+              const siblingGroupMembers =
+                identityGateFailed &&
+                canonicalProductRef?.merchant_id &&
+                canonicalProductRef?.merchant_id !== EXTERNAL_SEED_MERCHANT_ID &&
+                canonicalProductRef?.product_id
+                  ? await fetchApprovedLiveIdentityGroupMembersForOffers({
+                      sellableItemGroupId: effectiveSellableItemGroupId,
+                      excludeMerchantId: canonicalProductRef.merchant_id,
+                      excludeProductId: canonicalProductRef.product_id,
+                    }).catch(() => [])
+                  : [];
+              const siblingOffersData = siblingGroupMembers.length
+                ? await buildOffersFromGroupMembers({
+                    productGroupId: fallbackProductGroupId,
+                    members: siblingGroupMembers,
+                    checkoutToken,
+                    bypassCache,
+                    limit: Math.max(1, Number(payload?.offers?.limit || 10) - 1),
+                    preferredMerchantId: requestedMerchantId || null,
+                    preferredProductId: selectedCommerceProductIdForPdp || null,
+                    debug,
+                    prefetchedProducts: [],
+                  })
+                : null;
+              const siblingOffers = Array.isArray(siblingOffersData?.offers)
+                ? siblingOffersData.offers
+                : [];
               const fallbackOfferVariants = buildOfferVariantsForPayload(
                 canonicalProductForPdp,
                 canonicalProductForPdp.currency || 'USD',
@@ -36176,7 +36305,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 status: 'success',
                 product_group_id: fallbackProductGroupId,
                 canonical_product_ref: canonicalProductRef,
-                offers_count: 1,
+                offers_count: 1 + siblingOffers.length,
                 offers: [
                   {
                     offer_id: (() => {
@@ -36224,9 +36353,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     ...buildOfferPurchaseMetadataFromProduct(canonicalProductForPdp),
                     risk_tier: 'standard',
                   },
+                  ...siblingOffers,
                 ],
                 default_offer_id: null,
-                best_price_offer_id: null,
+                best_price_offer_id: siblingOffersData?.best_price_offer_id || null,
+                ...(siblingOffers.length ? { offer_source: 'group_fused' } : {}),
               };
             }
           }
@@ -36243,6 +36374,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               : identityGroupMembersMissing
                 ? 'multi_offer_blocked'
                 : 'self');
+          offerSource = resolvedOffersSource;
+          modules[0].data.offer_source = resolvedOffersSource;
           const offersProductGroupId =
             String(effectiveSellableItemGroupId || offersData.product_group_id || productGroupId || '').trim() ||
             null;
