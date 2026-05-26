@@ -690,6 +690,21 @@ function reviewStatusToLabelState(status) {
 }
 
 function extractReasonFlags(humanReview) {
+  return collectFlagsFromHumanReview(humanReview, () => true);
+}
+
+// Failure flags = flags from reviewer-decision lanes that voted reject.
+// Use this for Phase B preflight-gate sizing and Phase D recalibration —
+// the broader extractReasonFlags() mixes positive-signal flags (from
+// approving lanes on rejected edges) and inflates negative-signal counts.
+function extractFailureReasonFlags(humanReview) {
+  return collectFlagsFromHumanReview(
+    humanReview,
+    (decision) => normalizeLower(decision && decision.status, 32) === 'reject',
+  );
+}
+
+function collectFlagsFromHumanReview(humanReview, lanePredicate) {
   if (!isPlainObject(humanReview)) return [];
   const raw = humanReview.reviewer_decisions || humanReview.reviewerDecisions;
   const decisions = Array.isArray(raw)
@@ -700,6 +715,7 @@ function extractReasonFlags(humanReview) {
   const flags = new Set();
   for (const decision of decisions) {
     if (!isPlainObject(decision)) continue;
+    if (!lanePredicate(decision)) continue;
     const list = Array.isArray(decision.flags) ? decision.flags : [];
     for (const item of list) {
       const flag = normalizeLower(item, 160);
@@ -859,6 +875,7 @@ module.exports = {
   upsertRelationshipCandidateLabel,
   reviewStatusToLabelState,
   extractReasonFlags,
+  extractFailureReasonFlags,
   __internal: {
     extractBrand,
     getPriceRatio,
