@@ -2173,8 +2173,10 @@ function isDecorativePdpMediaUrl(url) {
     const parsed = new URL(normalized);
     const pathname = decodeURIComponent(String(parsed.pathname || '')).toLowerCase();
     filename = decodeURIComponent(String(parsed.pathname.split('/').pop() || '')).toLowerCase();
+    const isTheOrdinaryProductAsset = pathname.includes('/images/products/the ordinary/');
     if (
       /\/(?:before[-_ ]?after|infographics?)\//i.test(pathname) ||
+      (isTheOrdinaryProductAsset && /(?:^|[-_])benefits?(?:[-_.]|$)/i.test(filename)) ||
       /(?:^|[-_])kem[-_]/i.test(filename) ||
       /(?:^|[-_])(?:promotion|promo|pop[-_ ]?ups?|birthday[-_ ]?teaser)(?:[-_.]|$)/i.test(filename)
     ) {
