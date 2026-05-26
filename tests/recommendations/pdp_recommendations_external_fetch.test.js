@@ -166,9 +166,6 @@ describe('RecommendationEngine external candidate fetch', () => {
     delete process.env.PDP_SIMILAR_CATALOG_ONLY;
 
     const queryMock = jest.fn(async (sql) => {
-      throw new Error(`legacy query should not be used: ${String(sql).slice(0, 120)}`);
-    });
-    const queryWithStatementTimeoutMock = jest.fn(async (sql) => {
       const text = String(sql);
       if (text.includes('products_cache') || text.includes('external_product_seeds')) {
         throw new Error(`legacy fallback query should not be used: ${text.slice(0, 160)}`);
@@ -197,6 +194,13 @@ describe('RecommendationEngine external candidate fetch', () => {
           }),
         ],
       };
+    });
+    const queryWithStatementTimeoutMock = jest.fn(async (sql) => {
+      const text = String(sql);
+      if (text.includes('FROM catalog_products cp')) {
+        throw new Error(`exact catalog recall should not use statement-timeout transaction: ${text.slice(0, 120)}`);
+      }
+      return { rows: [] };
     });
 
     jest.doMock('../../src/db', () => ({
@@ -228,16 +232,21 @@ describe('RecommendationEngine external candidate fetch', () => {
       },
     });
 
-    expect(queryMock).not.toHaveBeenCalled();
+    expect(
+      queryMock.mock.calls.filter((call) =>
+        String(call[0]).includes('FROM catalog_products cp'),
+      ),
+    ).toHaveLength(1);
     expect(
       queryWithStatementTimeoutMock.mock.calls.filter((call) =>
         String(call[0]).includes('FROM catalog_products cp'),
       ),
-    ).toHaveLength(1);
+    ).toHaveLength(0);
     expect(result.metadata.catalog_only).toBe(true);
     expect(result.metadata.runtime_recall_source).toBe('catalog_products');
     expect(result.debug.fetch_strategy.catalog_only).toBe(true);
     expect(result.debug.fetch_strategy.catalog_recall_debug.source).toBe('catalog_products');
+    expect(result.debug.fetch_strategy.catalog_recall_debug.query_roundtrip_mode).toBe('single_query');
     expect(result.debug.history_fallback.used).toBe(false);
     expect(result.items.map((item) => item.pivota_signature_id)).toEqual(['sig_serum_1', 'sig_serum_2']);
   });
@@ -246,11 +255,11 @@ describe('RecommendationEngine external candidate fetch', () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
     delete process.env.PDP_SIMILAR_CATALOG_ONLY;
 
-    const queryMock = jest.fn(async (sql) => {
-      throw new Error(`legacy query should not be used: ${String(sql).slice(0, 120)}`);
-    });
-    const queryWithStatementTimeoutMock = jest.fn(async (sql, params) => {
+    const queryMock = jest.fn(async (sql, params) => {
       const text = String(sql);
+      if (text.includes('products_cache') || text.includes('external_product_seeds')) {
+        throw new Error(`legacy fallback query should not be used: ${text.slice(0, 160)}`);
+      }
       if (!text.includes('FROM catalog_products cp')) return { rows: [] };
       expect(params).toEqual(['beauty/skincare/serum', 8]);
       return {
@@ -269,6 +278,13 @@ describe('RecommendationEngine external candidate fetch', () => {
           }),
         ],
       };
+    });
+    const queryWithStatementTimeoutMock = jest.fn(async (sql) => {
+      const text = String(sql);
+      if (text.includes('FROM catalog_products cp')) {
+        throw new Error(`exact catalog recall should not use statement-timeout transaction: ${text.slice(0, 120)}`);
+      }
+      return { rows: [] };
     });
 
     jest.doMock('../../src/db', () => ({
@@ -303,16 +319,21 @@ describe('RecommendationEngine external candidate fetch', () => {
       },
     });
 
-    expect(queryMock).not.toHaveBeenCalled();
-    const catalogCalls = queryWithStatementTimeoutMock.mock.calls.filter((call) =>
+    const catalogCalls = queryMock.mock.calls.filter((call) =>
       String(call[0]).includes('FROM catalog_products cp'),
     );
     expect(catalogCalls).toHaveLength(1);
+    expect(
+      queryWithStatementTimeoutMock.mock.calls.filter((call) =>
+        String(call[0]).includes('FROM catalog_products cp'),
+      ),
+    ).toHaveLength(0);
     expect(result.debug.fetch_strategy.catalog_fetch_limit).toBe(8);
     expect(result.debug.fetch_strategy.catalog_fetch_overfetch_multiplier).toBe(1);
     expect(result.debug.fetch_strategy.identity_dedupe_timeout_ms).toBe(80);
     expect(result.debug.fetch_strategy.catalog_recall_debug.safe_limit).toBe(8);
     expect(result.debug.fetch_strategy.catalog_recall_debug.overfetch_multiplier).toBe(1);
+    expect(result.debug.fetch_strategy.catalog_recall_debug.query_roundtrip_mode).toBe('single_query');
     expect(result.debug.stage_timing_ms).toEqual(
       expect.objectContaining({
         base_enrichment: expect.any(Number),

@@ -2387,50 +2387,51 @@ async function fetchCatalogCandidates({
     Math.max(safeLimit, safeMinFocusedCandidates * safeOverfetchMultiplier),
   );
   const limitParam = addParam(queryLimit);
+  const useSingleRoundTripCatalogQuery = Boolean(catalogCategoryPath && externalSeedSourceOnly);
+  stats.query_roundtrip_mode = useSingleRoundTripCatalogQuery ? 'single_query' : 'statement_timeout_transaction';
 
   try {
+    const catalogSql = `
+      SELECT
+        cp.product_key,
+        cp.content_key,
+        cp.merchant_id,
+        cp.platform,
+        cp.source_product_id,
+        cp.title AS product_title,
+        '' AS product_description,
+        cp.brand,
+        cp.product_type,
+        cp.category,
+        cp.category_path,
+        cp.canonical_url,
+        cp.image_url AS product_image_url,
+        '{}'::jsonb AS product_payload,
+        cp.pivota_signature_id,
+        cp.pivota_canonical_url,
+        cp.updated_at
+      FROM catalog_products cp
+      ${externalSeedSourceOnly ? '' : 'LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id'}
+      INNER JOIN index_pipeline_state ips
+        ON ips.content_key = cp.content_key
+       AND ips.serving_eligible = TRUE
+      WHERE cp.sync_status = 'live'
+        AND ${externalSeedSourceOnly ? `cp.merchant_id = '${EXTERNAL_SEED_MERCHANT_ID}'` : activeCatalogProductSourceWhere('cp', 'cm')}
+        AND cp.pivota_signature_id IS NOT NULL
+        AND cp.pivota_signature_id LIKE 'sig\\_%' ESCAPE '\\'
+        AND coalesce(nullif(trim(cp.title), ''), '') <> ''
+        AND coalesce(nullif(trim(cp.image_url), ''), '') <> ''
+        AND (${matchClauses.join(' OR ')})
+      ORDER BY
+        ${orderClauses.length ? `${orderClauses.join(',\n  ')},` : ''}
+        cp.updated_at DESC NULLS LAST,
+        cp.product_key ASC
+      LIMIT ${limitParam}
+    `;
     const res = await withSoftTimeout(
-      queryWithStatementTimeout(
-        `
-          SELECT
-            cp.product_key,
-            cp.content_key,
-            cp.merchant_id,
-            cp.platform,
-            cp.source_product_id,
-            cp.title AS product_title,
-            '' AS product_description,
-            cp.brand,
-            cp.product_type,
-            cp.category,
-            cp.category_path,
-            cp.canonical_url,
-            cp.image_url AS product_image_url,
-            '{}'::jsonb AS product_payload,
-            cp.pivota_signature_id,
-            cp.pivota_canonical_url,
-            cp.updated_at
-          FROM catalog_products cp
-          ${externalSeedSourceOnly ? '' : 'LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id'}
-          INNER JOIN index_pipeline_state ips
-            ON ips.content_key = cp.content_key
-           AND ips.serving_eligible = TRUE
-          WHERE cp.sync_status = 'live'
-            AND ${externalSeedSourceOnly ? `cp.merchant_id = '${EXTERNAL_SEED_MERCHANT_ID}'` : activeCatalogProductSourceWhere('cp', 'cm')}
-            AND cp.pivota_signature_id IS NOT NULL
-            AND cp.pivota_signature_id LIKE 'sig\\_%' ESCAPE '\\'
-            AND coalesce(nullif(trim(cp.title), ''), '') <> ''
-            AND coalesce(nullif(trim(cp.image_url), ''), '') <> ''
-            AND (${matchClauses.join(' OR ')})
-          ORDER BY
-            ${orderClauses.length ? `${orderClauses.join(',\n            ')},` : ''}
-            cp.updated_at DESC NULLS LAST,
-            cp.product_key ASC
-          LIMIT ${limitParam}
-        `,
-        params,
-        buildRecsDbTimeoutOptions(effectiveTimeoutMs),
-      ),
+      useSingleRoundTripCatalogQuery
+        ? query(catalogSql, params)
+        : queryWithStatementTimeout(catalogSql, params, buildRecsDbTimeoutOptions(effectiveTimeoutMs)),
       effectiveTimeoutMs,
       null,
       () => {
