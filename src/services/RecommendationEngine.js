@@ -155,6 +155,24 @@ function recordRecsTimeout(stage) {
   }
 }
 
+function isAbortSignalAborted(signal) {
+  return Boolean(signal && signal.aborted === true);
+}
+
+function createSoftTimeoutAbortController() {
+  if (typeof AbortController !== 'function') return null;
+  return new AbortController();
+}
+
+function abortSoftTimeoutController(controller, reason) {
+  if (!controller || !controller.signal || controller.signal.aborted) return;
+  try {
+    controller.abort(reason);
+  } catch {
+    controller.abort();
+  }
+}
+
 function visibleFallbacksEnabled() {
   return String(process.env.PDP_RECS_VISIBLE_FALLBACKS_ENABLED || '').trim().toLowerCase() === 'true';
 }
@@ -244,12 +262,18 @@ function stableHashShort(input) {
   return crypto.createHash('sha256').update(String(input || ''), 'utf8').digest('hex').slice(0, 12);
 }
 
-async function withSoftTimeout(promise, timeoutMs, fallbackValue, onTimeout) {
+async function withSoftTimeout(promise, timeoutMs, fallbackValue, onTimeout, options = {}) {
   const timeout = Number(timeoutMs);
+  const signal = options?.signal || null;
+  if (isAbortSignalAborted(signal)) {
+    return fallbackValue;
+  }
   if (!Number.isFinite(timeout) || timeout <= 0) {
     return promise;
   }
   let timer = null;
+  let abortHandler = null;
+  const racers = [promise];
   const timeoutPromise = new Promise((resolve) => {
     timer = setTimeout(() => {
       if (typeof onTimeout === 'function') {
@@ -262,10 +286,20 @@ async function withSoftTimeout(promise, timeoutMs, fallbackValue, onTimeout) {
       resolve(fallbackValue);
     }, timeout);
   });
+  racers.push(timeoutPromise);
+  if (signal && typeof signal.addEventListener === 'function') {
+    racers.push(new Promise((resolve) => {
+      abortHandler = () => resolve(fallbackValue);
+      signal.addEventListener('abort', abortHandler, { once: true });
+    }));
+  }
   try {
-    return await Promise.race([promise, timeoutPromise]);
+    return await Promise.race(racers);
   } finally {
     if (timer) clearTimeout(timer);
+    if (signal && abortHandler && typeof signal.removeEventListener === 'function') {
+      signal.removeEventListener('abort', abortHandler);
+    }
   }
 }
 
@@ -958,6 +992,236 @@ function isSellable(product, options = {}) {
     }
   }
   return true;
+}
+
+const RECOMMENDATION_CARD_BLOCKING_QUALITY_TOKENS = new Set([
+  'bad',
+  'blocked',
+  'content_low_quality_drift',
+  'default_label',
+  'error',
+  'fallback',
+  'fallback_success',
+  'force_filled',
+  'force_filled_pending_source',
+  'generic',
+  'hold',
+  'hold_source_defect',
+  'legacy_contract',
+  'low_quality',
+  'low_quality_drift',
+  'missing',
+  'missing_bundle',
+  'missing_source',
+  'mock',
+  'not_conversion_ready',
+  'placeholder',
+  'polluted',
+  'source_defect',
+  'source_unavailable',
+  'synthetic',
+  'terminal_hold',
+  'terminal_source_unavailable',
+  'underfilled',
+  'unavailable',
+]);
+
+function normalizeRecommendationQualityToken(value) {
+  return recCardString(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function getNestedQualityValue(source, path) {
+  let current = source;
+  for (const key of path) {
+    if (!current || typeof current !== 'object') return undefined;
+    current = current[key];
+  }
+  return current;
+}
+
+function addRecommendationQualitySource(sources, seen, value) {
+  const object = ensureJsonObject(value);
+  if (!object || !Object.keys(object).length || seen.has(object)) return;
+  seen.add(object);
+  sources.push(object);
+}
+
+function collectRecommendationQualitySources(product) {
+  const sources = [];
+  const seen = new Set();
+  addRecommendationQualitySource(sources, seen, product);
+  addRecommendationQualitySource(sources, seen, product?.product_payload);
+  addRecommendationQualitySource(sources, seen, product?.seed_data);
+  addRecommendationQualitySource(sources, seen, product?.snapshot);
+  addRecommendationQualitySource(sources, seen, product?.external_seed);
+  addRecommendationQualitySource(sources, seen, product?.external_seed?.seed_data);
+  for (const source of sources.slice()) {
+    addRecommendationQualitySource(sources, seen, source.seed_data);
+    addRecommendationQualitySource(sources, seen, source.snapshot);
+    addRecommendationQualitySource(sources, seen, source.pdp_readiness);
+    addRecommendationQualitySource(sources, seen, source.module_health);
+    addRecommendationQualitySource(sources, seen, source.product_intel);
+    addRecommendationQualitySource(sources, seen, source.product_intel_v1);
+    addRecommendationQualitySource(sources, seen, source.index_pipeline_state);
+  }
+  return sources;
+}
+
+function markerBlocksRecommendationCard(marker) {
+  const object = ensureJsonObject(marker);
+  if (!object || !Object.keys(object).length) return false;
+  const status = normalizeRecommendationQualityToken(object.status || object.state || object.reason_code);
+  const contractVersion = recCardString(object.contract_version);
+  return (
+    contractVersion === 'external_seed.source_unavailable.v1' ||
+    status === 'source_unavailable' ||
+    status === 'terminal_source_unavailable' ||
+    status === 'terminal_hold'
+  );
+}
+
+function hasExplicitNumericPrice(product) {
+  if (!product || typeof product !== 'object') return false;
+  if (product.price_amount != null || product.priceAmount != null) return true;
+  if (product.price != null && typeof product.price !== 'object') return true;
+  if (product.price?.amount != null || product.price?.current?.amount != null) return true;
+  if (Array.isArray(product.variants) && product.variants.some((variant) => variant?.price != null || variant?.price_amount != null || variant?.priceAmount != null)) {
+    return true;
+  }
+  return false;
+}
+
+function hasRecommendationAvailabilitySignal(product) {
+  if (!product || typeof product !== 'object') return false;
+  return (
+    product.availability != null ||
+    product.in_stock != null ||
+    product.inventory_quantity != null ||
+    product.inventoryQuantity != null ||
+    product.available_quantity != null ||
+    product.availableQuantity != null ||
+    product.inventory?.quantity != null
+  );
+}
+
+function hasSourceBackedRecommendationTitle(product) {
+  const title = firstNonEmptyText(product?.title, product?.name);
+  if (!title) return false;
+  const normalizedTitle = normalizeText(title);
+  if (/^(?:https?:\/\/|www\.)/i.test(title)) return false;
+  for (const id of [
+    product?.product_id,
+    product?.external_product_id,
+    product?.source_product_id,
+    product?.canonical_url,
+    product?.destination_url,
+    product?.source_url,
+    product?.url,
+  ]) {
+    const normalizedId = normalizeText(id);
+    if (normalizedId && normalizedTitle === normalizedId) return false;
+  }
+  return true;
+}
+
+function isPlaceholderRecommendationImageUrl(value) {
+  const imageUrl = firstImageUrl(value);
+  if (!imageUrl) return false;
+  return /\b(?:placeholder|image-unavailable|image_unavailable|no-image|no_image|missing-image|missing_image|blank)\b/i.test(imageUrl);
+}
+
+function collectRecommendationPdpQualityBlockers(product, options = {}) {
+  const blockers = new Set();
+  if (!product || typeof product !== 'object') return ['invalid_product'];
+
+  const sources = collectRecommendationQualitySources(product);
+  for (const source of sources) {
+    for (const path of [
+      ['source_unavailable_v1'],
+      ['transaction_readiness_blocker_v1'],
+      ['snapshot', 'source_unavailable_v1'],
+      ['snapshot', 'transaction_readiness_blocker_v1'],
+    ]) {
+      if (markerBlocksRecommendationCard(getNestedQualityValue(source, path))) {
+        blockers.add('source_unavailable');
+      }
+    }
+
+    for (const field of [
+      'pdp_quality_status',
+      'pdp_quality_state',
+      'pdp_serving_status',
+      'content_quality_bucket',
+      'content_quality_state',
+      'quality_status',
+      'quality_state',
+      'source_quality_status',
+      'module_health_severity',
+      'module_health_status',
+      'serving_status',
+      'readiness_status',
+    ]) {
+      const token = normalizeRecommendationQualityToken(source[field]);
+      if (RECOMMENDATION_CARD_BLOCKING_QUALITY_TOKENS.has(token)) {
+        blockers.add(`quality_${token}`);
+      }
+    }
+
+    const servingEligible = source.serving_eligible ?? source.index_pipeline_state?.serving_eligible;
+    if (servingEligible === false) blockers.add('not_serving_eligible');
+    if (source.module_degrade_applied === true) blockers.add('module_degrade_applied');
+    if (source.fallback_success === true || source.synthetic === true || source.mock === true) {
+      blockers.add('fallback_or_synthetic_content');
+    }
+  }
+
+  if (hasExplicitNumericPrice(product) && getPriceAmount(product) <= 0) {
+    blockers.add('invalid_price');
+  }
+
+  if (options.enforceDisplayContract) {
+    if (!hasSourceBackedRecommendationTitle(product)) blockers.add('missing_title');
+    if (!firstImageUrl(product.image_url, product.image, product.product_image_url)) blockers.add('missing_image');
+    if (isPlaceholderRecommendationImageUrl(firstImageUrl(product.image_url, product.image, product.product_image_url))) {
+      blockers.add('placeholder_image');
+    }
+    if (!hasExplicitNumericPrice(product) || getPriceAmount(product) <= 0) blockers.add('missing_valid_price');
+    if (!hasRecommendationAvailabilitySignal(product)) blockers.add('missing_availability_signal');
+  }
+
+  return Array.from(blockers);
+}
+
+function isRecommendationPdpCardEligible(product, options = {}) {
+  return collectRecommendationPdpQualityBlockers(product, options).length === 0;
+}
+
+function applyRecommendationPdpQualityCardGate(items, options = {}) {
+  const input = Array.isArray(items) ? items : [];
+  const reasonCounts = {};
+  const kept = [];
+  for (const item of input) {
+    const blockers = collectRecommendationPdpQualityBlockers(item, options);
+    if (!blockers.length) {
+      kept.push(item);
+      continue;
+    }
+    for (const blocker of blockers) {
+      reasonCounts[blocker] = (reasonCounts[blocker] || 0) + 1;
+    }
+  }
+  return {
+    items: kept,
+    stats: {
+      input_count: input.length,
+      output_count: kept.length,
+      suppressed_count: Math.max(0, input.length - kept.length),
+      reason_counts: reasonCounts,
+    },
+  };
 }
 
 function toCandidate(product, overrides = {}) {
@@ -1819,7 +2083,7 @@ function buildExternalSeedRecommendationCandidate(row, options = {}) {
       ? !['out_of_stock', 'sold_out', 'unavailable', 'discontinued'].includes(normalizedAvailability)
       : true;
 
-  return applyExternalSeedRuntimeProductClass({
+  const candidate = applyExternalSeedRuntimeProductClass({
     merchant_id: EXTERNAL_SEED_MERCHANT_ID,
     product_id: externalProductId,
     external_product_id: externalProductId,
@@ -1852,6 +2116,16 @@ function buildExternalSeedRecommendationCandidate(row, options = {}) {
         }
       : {}),
   });
+  return isRecommendationPdpCardEligible(
+    {
+      ...candidate,
+      seed_data: seedData,
+      snapshot,
+    },
+    { enforceDisplayContract: true },
+  )
+    ? candidate
+    : null;
 }
 
 function normalizeCatalogCategoryPath(value) {
@@ -2032,7 +2306,18 @@ function buildCatalogProductRecommendationCandidate(row, options = {}) {
     retrieval_source: 'catalog_category_path',
     ...(semanticVertical ? { semantic_vertical: semanticVertical, recall_vertical: semanticVertical } : {}),
   };
-  return isExternalSeedCatalogRow ? applyExternalSeedRuntimeProductClass(candidate) : candidate;
+  const runtimeCandidate = isExternalSeedCatalogRow ? applyExternalSeedRuntimeProductClass(candidate) : candidate;
+  return isRecommendationPdpCardEligible(
+    {
+      ...runtimeCandidate,
+      product_payload: productPayload,
+      seed_data: seedData,
+      snapshot,
+    },
+    { enforceDisplayContract: true },
+  )
+    ? runtimeCandidate
+    : null;
 }
 
 const EXTERNAL_SEED_RECOMMENDATION_SELECT = `
@@ -3033,6 +3318,7 @@ function pickLayeredRecommendations({
   let filteredByVertical = 0;
   let filteredByConfidence = 0;
   let filteredByExternalBrandAuthority = 0;
+  let filteredByPdpQuality = 0;
 
   const rawCandidates = [
     ...(Array.isArray(internalCandidates) ? internalCandidates : []),
@@ -3041,6 +3327,11 @@ function pickLayeredRecommendations({
     .map((p) => {
       if (!p || typeof p !== 'object') return null;
       if (!isSellable(p, { inStockOnly: true })) return null;
+      const pdpQualityBlockers = collectRecommendationPdpQualityBlockers(p);
+      if (pdpQualityBlockers.length) {
+        filteredByPdpQuality += 1;
+        return null;
+      }
       const pid = getProductId(p);
       const mid = getMerchantId(p);
       if (!pid || !mid) return null;
@@ -3327,6 +3618,7 @@ function pickLayeredRecommendations({
   if (filteredByExternalBrandAuthority > 0) {
     lowConfidenceReasonCodes.push('EXTERNAL_BASE_BLOCKED_OTHER_BRAND_INTERNAL');
   }
+  if (filteredByPdpQuality > 0) lowConfidenceReasonCodes.push('PDP_QUALITY_BLOCKED');
   if (selected.length < readyMinCount) lowConfidenceReasonCodes.push('UNDERFILL_FOR_QUALITY');
   if (!lowConfidenceReasonCodes.length && lowConfidence) lowConfidenceReasonCodes.push('INSUFFICIENT_HIGH_CONFIDENCE');
 
@@ -3374,13 +3666,14 @@ function pickLayeredRecommendations({
         by_vertical: filteredByVertical,
         by_confidence: filteredByConfidence,
         by_external_brand_authority: filteredByExternalBrandAuthority,
+        by_pdp_quality: filteredByPdpQuality,
       },
       fallback_policy: recommendationFallbackPolicy(),
     },
   };
 }
 
-async function fetchInternalCandidates({ merchantId, limit, excludeMerchantId, categoryHint }) {
+async function fetchInternalCandidates({ merchantId, limit, excludeMerchantId, categoryHint, signal = null }) {
   const mid = String(merchantId || '').trim();
   const safeLimit = Math.min(Math.max(1, Number(limit || 120)), 400);
   const categoryAliases = buildNormalizedAliases(categoryHint);
@@ -3391,6 +3684,7 @@ async function fetchInternalCandidates({ merchantId, limit, excludeMerchantId, c
   }
   const out = [];
   const activeCacheWhere = activeProductsCacheSourceWhere('products_cache');
+  if (isAbortSignalAborted(signal)) return [];
 
   try {
     if (mid && mid !== EXTERNAL_SEED_MERCHANT_ID && categoryAliases.length) {
@@ -3425,6 +3719,7 @@ async function fetchInternalCandidates({ merchantId, limit, excludeMerchantId, c
       'recommendations internal focused query failed',
     );
   }
+  if (isAbortSignalAborted(signal)) return uniqueByKey(out.filter(Boolean), (p) => `${getMerchantId(p)}::${getProductId(p)}`).slice(0, safeLimit * 4);
 
   try {
     if (mid && mid !== EXTERNAL_SEED_MERCHANT_ID) {
@@ -3448,6 +3743,7 @@ async function fetchInternalCandidates({ merchantId, limit, excludeMerchantId, c
   } catch (err) {
     logger.warn({ err: err?.message || String(err), merchantId: mid }, 'recommendations internal merchant query failed');
   }
+  if (isAbortSignalAborted(signal)) return uniqueByKey(out.filter(Boolean), (p) => `${getMerchantId(p)}::${getProductId(p)}`).slice(0, safeLimit * 4);
 
   if (allowVisibleFallbacks) {
     try {
@@ -3493,6 +3789,7 @@ async function fetchExternalCandidates({
   limit,
   minFocusedCandidates = 6,
   deepDomainRecall = false,
+  signal = null,
 }) {
   if (!process.env.DATABASE_URL) {
     throw buildDatabaseNotConfiguredError('pdp_recommendations_external_candidates');
@@ -3553,6 +3850,16 @@ async function fetchExternalCandidates({
                 seed_data->'snapshot'->>'availability',
                 ''
               )) NOT IN ('out_of_stock', 'sold_out', 'unavailable', 'discontinued')
+              AND NOT (
+                lower(coalesce(seed_data #>> '{source_unavailable_v1,status}', '')) = 'source_unavailable'
+                OR coalesce(seed_data #>> '{source_unavailable_v1,contract_version}', '') = 'external_seed.source_unavailable.v1'
+                OR lower(coalesce(seed_data #>> '{snapshot,source_unavailable_v1,status}', '')) = 'source_unavailable'
+                OR coalesce(seed_data #>> '{snapshot,source_unavailable_v1,contract_version}', '') = 'external_seed.source_unavailable.v1'
+                OR lower(coalesce(seed_data #>> '{transaction_readiness_blocker_v1,status}', '')) = 'source_unavailable'
+                OR coalesce(seed_data #>> '{transaction_readiness_blocker_v1,contract_version}', '') = 'external_seed.source_unavailable.v1'
+                OR lower(coalesce(seed_data #>> '{snapshot,transaction_readiness_blocker_v1,status}', '')) = 'source_unavailable'
+                OR coalesce(seed_data #>> '{snapshot,transaction_readiness_blocker_v1,contract_version}', '') = 'external_seed.source_unavailable.v1'
+              )
   `;
   const attachedSeedRecallFilterSql = deepDomainRecall ? '' : 'AND attached_product_key IS NULL';
 
@@ -3610,6 +3917,7 @@ async function fetchExternalCandidates({
       total_returned_count: out.length,
       total_elapsed_ms: fetchStats.stages.reduce((sum, stage) => sum + (Number(stage.elapsed_ms) || 0), 0),
       timed_out_count: fetchStats.stages.filter((stage) => stage.timed_out).length,
+      aborted: isAbortSignalAborted(signal),
     };
     try {
       Object.defineProperty(out, '__externalFetchStats', {
@@ -3625,7 +3933,11 @@ async function fetchExternalCandidates({
 
   function displayUniqueCandidateCount(products) {
     return uniqueByKey(
-      (Array.isArray(products) ? products : []).filter((product) => isSellable(product, { inStockOnly: true })),
+      (Array.isArray(products) ? products : []).filter(
+        (product) =>
+          isSellable(product, { inStockOnly: true }) &&
+          isRecommendationPdpCardEligible(product),
+      ),
       (product) =>
         buildVariantAgnosticTitleKey(product) ||
         buildRecommendationTitleDedupeKey(product) ||
@@ -3888,9 +4200,36 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
             cp.updated_at
           FROM catalog_products cp
           LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id
+          JOIN index_pipeline_state ips
+            ON ips.content_key = cp.content_key
+           AND ips.serving_eligible = TRUE
           WHERE cp.sync_status = 'live'
             AND ${activeCatalogProductSourceWhere('cp', 'cm')}
             AND cp.category_path = $1
+            AND NOT (
+              cp.merchant_id = 'external_seed'
+              AND (
+                lower(coalesce(cp.product_payload #>> '{source_unavailable_v1,status}', '')) = 'source_unavailable'
+                OR coalesce(cp.product_payload #>> '{source_unavailable_v1,contract_version}', '') = 'external_seed.source_unavailable.v1'
+                OR lower(coalesce(cp.product_payload #>> '{transaction_readiness_blocker_v1,status}', '')) = 'source_unavailable'
+                OR coalesce(cp.product_payload #>> '{transaction_readiness_blocker_v1,contract_version}', '') = 'external_seed.source_unavailable.v1'
+                OR EXISTS (
+                  SELECT 1
+                  FROM external_product_seeds eps_unavailable
+                  WHERE eps_unavailable.external_product_id = cp.source_product_id
+                    AND (
+                      lower(coalesce(eps_unavailable.seed_data #>> '{source_unavailable_v1,status}', '')) = 'source_unavailable'
+                      OR coalesce(eps_unavailable.seed_data #>> '{source_unavailable_v1,contract_version}', '') = 'external_seed.source_unavailable.v1'
+                      OR lower(coalesce(eps_unavailable.seed_data #>> '{snapshot,source_unavailable_v1,status}', '')) = 'source_unavailable'
+                      OR coalesce(eps_unavailable.seed_data #>> '{snapshot,source_unavailable_v1,contract_version}', '') = 'external_seed.source_unavailable.v1'
+                      OR lower(coalesce(eps_unavailable.seed_data #>> '{transaction_readiness_blocker_v1,status}', '')) = 'source_unavailable'
+                      OR coalesce(eps_unavailable.seed_data #>> '{transaction_readiness_blocker_v1,contract_version}', '') = 'external_seed.source_unavailable.v1'
+                      OR lower(coalesce(eps_unavailable.seed_data #>> '{snapshot,transaction_readiness_blocker_v1,status}', '')) = 'source_unavailable'
+                      OR coalesce(eps_unavailable.seed_data #>> '{snapshot,transaction_readiness_blocker_v1,contract_version}', '') = 'external_seed.source_unavailable.v1'
+                    )
+                )
+              )
+            )
           ORDER BY
             CASE WHEN lower(coalesce(cp.brand, '')) = ANY($2::text[]) THEN 0 ELSE 1 END,
             cp.updated_at DESC NULLS LAST
@@ -3921,12 +4260,24 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
 
   async function runTimedExternalQuery(queryName, task, timeoutMs = PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS) {
     const startedAt = Date.now();
+    if (isAbortSignalAborted(signal)) {
+      fetchStats.stages.push({
+        name: queryName,
+        elapsed_ms: 0,
+        returned_count: 0,
+        timed_out: false,
+        timeout_ms: timeoutMs,
+        aborted: true,
+      });
+      return [];
+    }
     let timedOut = false;
     const products = await withSoftTimeout(
       Promise.resolve().then(() => task(timeoutMs)),
       timeoutMs,
       [],
       (timeoutMs) => {
+        if (isAbortSignalAborted(signal)) return;
         timedOut = true;
         recordRecsTimeout(queryName);
         logger.warn(
@@ -3934,15 +4285,18 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
           'recommendations external query timed out',
         );
       },
+      { signal },
     );
+    const aborted = isAbortSignalAborted(signal);
     fetchStats.stages.push({
       name: queryName,
       elapsed_ms: Math.max(0, Date.now() - startedAt),
-      returned_count: Array.isArray(products) ? products.length : 0,
+      returned_count: aborted ? 0 : Array.isArray(products) ? products.length : 0,
       timed_out: timedOut,
       timeout_ms: timeoutMs,
+      aborted,
     });
-    return products;
+    return aborted ? [] : products;
   }
 
   const loadCategoryMatches = () =>
@@ -4818,6 +5172,8 @@ async function recommend({
 
   let internalTimedOut = false;
   let externalTimedOut = false;
+  const internalCandidatesAbortController = createSoftTimeoutAbortController();
+  const externalCandidatesAbortController = createSoftTimeoutAbortController();
   const internalCandidatesTask = withSoftTimeout(
     providedInternal
       ? Promise.resolve(providedInternal)
@@ -4827,12 +5183,14 @@ async function recommend({
             limit: Math.max(60, candidateK * 10),
             excludeMerchantId: getMerchantId(baseProduct),
             categoryHint: baseLeaf,
+            signal: internalCandidatesAbortController?.signal || null,
           })
         : Promise.resolve([]),
     PDP_RECS_INTERNAL_FETCH_TIMEOUT_MS,
     [],
     () => {
       internalTimedOut = true;
+      abortSoftTimeoutController(internalCandidatesAbortController, 'pdp_recs_internal_fetch_timeout');
       logger.warn(
         {
           product_id: baseProductId,
@@ -4855,11 +5213,13 @@ async function recommend({
           limit: externalFetchLimit,
           minFocusedCandidates: externalFocusedRecallTarget,
           deepDomainRecall: baseProductIsExternal,
+          signal: externalCandidatesAbortController?.signal || null,
         }),
     effectiveExternalFetchTimeoutMs,
     [],
     () => {
       externalTimedOut = true;
+      abortSoftTimeoutController(externalCandidatesAbortController, 'pdp_recs_external_fetch_timeout');
       logger.warn(
         {
           product_id: baseProductId,
@@ -5005,6 +5365,8 @@ async function recommend({
     productIntelCardHydration = await hydrateRecommendationItemsWithReviewedProductIntel(finalItems);
     finalItems = productIntelCardHydration.items;
   }
+  const pdpQualityCardGate = applyRecommendationPdpQualityCardGate(finalItems);
+  finalItems = pdpQualityCardGate.items;
 
   const elapsedMs = Date.now() - start;
   const finalSourceCounts = countRecommendationSources(finalItems);
@@ -5018,6 +5380,7 @@ async function recommend({
       ? { identity_dedupe: identityDedupe.stats }
       : {}),
     product_intel_card_hydration: productIntelCardHydration.stats,
+    pdp_quality_card_gate: pdpQualityCardGate.stats,
   };
 
   if (historyFallbackDebug.used) {
@@ -5073,6 +5436,7 @@ async function recommend({
       sources: finalSourceCounts,
       history_fallback: historyFallbackDebug,
       product_intel_card_hydration: productIntelCardHydration.stats,
+      pdp_quality_card_gate: pdpQualityCardGate.stats,
       base_semantic: baseSemantic || null,
       fallback_policy: fallbackPolicy,
       cache_key_hash: debugEnabled ? stableHashShort(cacheKey) : undefined,
@@ -5097,6 +5461,7 @@ async function recommend({
       low_confidence: Boolean(finalMetadata.low_confidence),
       underfill: Math.max(0, safeK - finalItems.length),
       history_fallback_used: historyFallbackDebug.used,
+      pdp_quality_suppressed_count: pdpQualityCardGate.stats.suppressed_count,
     },
     'PDP recommendations generated',
   );
@@ -5138,6 +5503,9 @@ module.exports = {
     extractProductDomains,
     normalizeHostname,
     recommendationFallbackPolicy,
+    collectRecommendationPdpQualityBlockers,
+    isRecommendationPdpCardEligible,
+    applyRecommendationPdpQualityCardGate,
     getSimilarIntentFamilyFromText,
     getSimilarIntentFamilyFromFeatures,
     getSimilarIntentFamilyFromProductTitle,

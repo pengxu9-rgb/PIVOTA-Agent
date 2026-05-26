@@ -7,7 +7,14 @@ function makeExternalRow({
   catalog_category_path = '',
   domain = 'kravebeauty.com',
   description = 'Focused same-brand serum candidate',
+  seed_data: seedDataOverride = null,
 } = {}) {
+  const seedData = seedDataOverride || {
+    snapshot: {
+      brand,
+      product_type: category,
+    },
+  };
   return {
     id: id || 'eps_1',
     external_product_id: external_product_id || 'ext_1',
@@ -24,12 +31,7 @@ function makeExternalRow({
     seed_category: category,
     seed_product_type: category,
     seed_description: description,
-    seed_data: {
-      snapshot: {
-        brand,
-        product_type: category,
-      },
-    },
+    seed_data: seedData,
   };
 }
 
@@ -79,6 +81,125 @@ describe('RecommendationEngine external candidate fetch', () => {
       expect(call[2].lockTimeoutMs).toBeGreaterThan(0);
       expect(call[2].lockTimeoutMs).toBeLessThanOrEqual(call[2].statementTimeoutMs);
     }
+    const sqlText = queryWithStatementTimeoutMock.mock.calls.map(([sql]) => String(sql)).join('\n');
+    expect(sqlText).toMatch(/source_unavailable_v1,status/);
+    expect(sqlText).toMatch(/external_seed\.source_unavailable\.v1/);
+    expect(sqlText).toMatch(/transaction_readiness_blocker_v1,status/);
+  });
+
+  test('external recall stops before DB work when candidate fetch is already aborted', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const queryWithStatementTimeoutMock = jest.fn(async () => ({ rows: [] }));
+
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async () => ({ rows: [] })),
+      queryWithStatementTimeout: queryWithStatementTimeoutMock,
+    }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const controller = new AbortController();
+    controller.abort('test_timeout');
+
+    const products = await _internals.fetchExternalCandidates({
+      brandHint: 'Krave Beauty',
+      categoryHint: 'Serum',
+      limit: 12,
+      signal: controller.signal,
+    });
+
+    expect(products).toEqual([]);
+    expect(queryWithStatementTimeoutMock).not.toHaveBeenCalled();
+    expect(products.__externalFetchStats.aborted).toBe(true);
+    expect(products.__externalFetchStats.stages.length).toBeGreaterThan(0);
+    expect(products.__externalFetchStats.stages.every((stage) => stage.aborted === true)).toBe(true);
+  });
+
+  test('recommendation card gate suppresses source-unavailable PDPs', () => {
+    const { _internals, pickLayeredRecommendations } = require('../../src/services/RecommendationEngine');
+    const badCandidate = {
+      merchant_id: 'external_seed',
+      product_id: 'ext_bad_source',
+      title: 'KraveBeauty Serum Bad Source',
+      brand: 'KraveBeauty',
+      category: 'Serum',
+      product_type: 'Serum',
+      price_amount: 28,
+      currency: 'USD',
+      availability: 'in_stock',
+      in_stock: true,
+      source: 'external_seed',
+      source_unavailable_v1: {
+        contract_version: 'external_seed.source_unavailable.v1',
+        status: 'source_unavailable',
+      },
+    };
+
+    expect(_internals.collectRecommendationPdpQualityBlockers(badCandidate)).toContain('source_unavailable');
+
+    const picked = pickLayeredRecommendations({
+      baseProduct: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_base',
+        title: 'KraveBeauty Serum Base',
+        brand: 'KraveBeauty',
+        category: 'Serum',
+        product_type: 'Serum',
+        price_amount: 28,
+        currency: 'USD',
+        availability: 'in_stock',
+        in_stock: true,
+        source: 'external_seed',
+      },
+      internalCandidates: [],
+      externalCandidates: [badCandidate],
+      k: 4,
+    });
+
+    expect(picked.items).toEqual([]);
+    expect(picked.debug.filters.by_pdp_quality).toBe(1);
+    expect(picked.metadata.low_confidence_reason_codes).toContain('PDP_QUALITY_BLOCKED');
+  });
+
+  test('external candidate builder drops held source rows even when a mock DB returns them', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const queryWithStatementTimeoutMock = jest.fn(async () => ({
+      rows: [
+        makeExternalRow({
+          external_product_id: 'ext_source_unavailable',
+          seed_data: {
+            brand: 'KraveBeauty',
+            category: 'Serum',
+            source_unavailable_v1: {
+              contract_version: 'external_seed.source_unavailable.v1',
+              status: 'source_unavailable',
+            },
+            snapshot: {
+              brand: 'KraveBeauty',
+              product_type: 'Serum',
+            },
+          },
+        }),
+      ],
+    }));
+
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async () => ({ rows: [] })),
+      queryWithStatementTimeout: queryWithStatementTimeoutMock,
+    }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const products = await _internals.fetchExternalCandidates({
+      brandHint: 'KraveBeauty',
+      categoryHint: 'Serum',
+      limit: 12,
+    });
+
+    expect(products).toEqual([]);
+    expect(queryWithStatementTimeoutMock).toHaveBeenCalled();
   });
 
   test('identity dedupe lookup uses database statement and lock timeouts', async () => {
