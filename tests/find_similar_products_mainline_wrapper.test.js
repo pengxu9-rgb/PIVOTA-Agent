@@ -724,6 +724,27 @@ describe('find_similar_products mainline wrapper', () => {
     expect(out[0].canonical_product_ref.catalog_product_key).toBeUndefined();
     expect(out[0].product_ref.product_key).toBeUndefined();
     expect(out[0].product_intel.canonical_product_ref.product_id).not.toBe('ext_into_you_w725');
+
+    const cachedOut = await app._debug.hydrateVisibleSimilarProductSigIdsFromCatalog([
+      {
+        product_id: 'ext_into_you_w725',
+        external_product_id: 'ext_into_you_w725',
+        merchant_id: 'external_seed',
+        platform: 'external_seed',
+        source_kind: 'external_seed',
+        title: 'Seed Watery Lip Matt W725',
+        card_highlight: 'Seed card copy',
+        card_highlight_source: 'official_external_seed_card',
+        product_intel: {
+          canonical_product_ref: {
+            merchant_id: 'external_seed',
+            product_id: 'ext_into_you_w725',
+          },
+        },
+      },
+    ]);
+    expect(cachedOut[0].product_id).toBe('sig_1a310126e75795655997ed9e');
+    expect(dbQueryMock).toHaveBeenCalledTimes(1);
   });
 
   it('collects only reviewed external seed component refs for PDP similar', async () => {

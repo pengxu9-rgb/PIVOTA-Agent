@@ -2891,6 +2891,17 @@ const PDP_SIMILAR_CARD_ENRICH_CACHE_MAX_ENTRIES = Math.max(
   Number(process.env.PDP_SIMILAR_CARD_ENRICH_CACHE_MAX_ENTRIES || 1000) || 1000,
 );
 const PDP_SIMILAR_CARD_ENRICH_CACHE = new Map();
+const PDP_SIMILAR_VISIBLE_SIG_HYDRATION_CACHE_ENABLED =
+  process.env.PDP_SIMILAR_VISIBLE_SIG_HYDRATION_CACHE_ENABLED !== 'false';
+const PDP_SIMILAR_VISIBLE_SIG_HYDRATION_CACHE_TTL_MS = Math.max(
+  5_000,
+  parseTimeoutMs(process.env.PDP_SIMILAR_VISIBLE_SIG_HYDRATION_CACHE_TTL_MS, 60_000),
+);
+const PDP_SIMILAR_VISIBLE_SIG_HYDRATION_CACHE_MAX_ENTRIES = Math.max(
+  50,
+  Number(process.env.PDP_SIMILAR_VISIBLE_SIG_HYDRATION_CACHE_MAX_ENTRIES || 1000) || 1000,
+);
+const PDP_SIMILAR_VISIBLE_SIG_HYDRATION_CACHE = new Map();
 const PDP_SIMILAR_BASE_DETAIL_BUDGET_MS = Math.max(
   50,
   parseTimeoutMs(process.env.PDP_SIMILAR_BASE_DETAIL_BUDGET_MS, 450),
@@ -24470,6 +24481,75 @@ function finishSimilarCardEnrichmentResult(items = [], metadata = {}, cacheKey =
   return result;
 }
 
+function buildVisibleSimilarSigHydrationCacheKey(products = []) {
+  if (!PDP_SIMILAR_VISIBLE_SIG_HYDRATION_CACHE_ENABLED) return '';
+  const list = Array.isArray(products) ? products : [];
+  if (!list.length) return '';
+  const fingerprintItems = list.slice(0, Math.min(list.length, 60)).map((item) => {
+    if (!item || typeof item !== 'object') return null;
+    return {
+      merchant_id: firstNonEmptyString(item.merchant_id, item.merchant?.id, item.merchant_uuid),
+      product_id: firstNonEmptyString(
+        item.product_id,
+        item.productId,
+        item.id,
+        item.source_product_id,
+        item.external_product_id,
+        item.platform_product_id,
+      ),
+      external_ids: collectExternalSeedIdCandidatesForVisibleCatalogHydration(item),
+      title: firstNonEmptyString(item.card_title, item.title, item.name),
+      image_url: firstNonEmptyString(
+        item.image_url,
+        item.image,
+        Array.isArray(item.images) ? item.images[0] : null,
+        Array.isArray(item.image_urls) ? item.image_urls[0] : null,
+      ),
+      card_highlight: firstNonEmptyString(
+        item.card_highlight,
+        item.cardHighlight,
+        item.shopping_card?.highlight,
+        item.search_card?.highlight_candidate,
+      ),
+    };
+  });
+  return createHash('sha1')
+    .update(JSON.stringify({
+      item_count: list.length,
+      items: fingerprintItems,
+    }))
+    .digest('hex');
+}
+
+function readVisibleSimilarSigHydrationCache(cacheKey, nowMs = Date.now()) {
+  if (!cacheKey) return null;
+  const cached = PDP_SIMILAR_VISIBLE_SIG_HYDRATION_CACHE.get(cacheKey);
+  if (!cached) return null;
+  if (Number(cached.expiresAtMs || 0) <= nowMs) {
+    PDP_SIMILAR_VISIBLE_SIG_HYDRATION_CACHE.delete(cacheKey);
+    return null;
+  }
+  PDP_SIMILAR_VISIBLE_SIG_HYDRATION_CACHE.delete(cacheKey);
+  PDP_SIMILAR_VISIBLE_SIG_HYDRATION_CACHE.set(cacheKey, cached);
+  return (Array.isArray(cached.products) ? cached.products : []).map((item) =>
+    cloneSimilarCardEnrichmentItem(item),
+  );
+}
+
+function writeVisibleSimilarSigHydrationCache(cacheKey, products = [], nowMs = Date.now()) {
+  if (!cacheKey) return;
+  PDP_SIMILAR_VISIBLE_SIG_HYDRATION_CACHE.delete(cacheKey);
+  PDP_SIMILAR_VISIBLE_SIG_HYDRATION_CACHE.set(cacheKey, {
+    products: (Array.isArray(products) ? products : []).map((item) => cloneSimilarCardEnrichmentItem(item)),
+    expiresAtMs: nowMs + PDP_SIMILAR_VISIBLE_SIG_HYDRATION_CACHE_TTL_MS,
+  });
+  while (PDP_SIMILAR_VISIBLE_SIG_HYDRATION_CACHE.size > PDP_SIMILAR_VISIBLE_SIG_HYDRATION_CACHE_MAX_ENTRIES) {
+    const oldestKey = PDP_SIMILAR_VISIBLE_SIG_HYDRATION_CACHE.keys().next().value;
+    if (oldestKey === undefined) break;
+    PDP_SIMILAR_VISIBLE_SIG_HYDRATION_CACHE.delete(oldestKey);
+  }
+}
+
 function mergeSimilarCardEnrichment(candidate = {}, detail = {}) {
   const next = { ...candidate };
   const copyIfMissing = (targetKey, ...values) => {
@@ -25278,9 +25358,12 @@ function buildSimilarCatalogProductProjection(product = {}, catalogRow = {}) {
   };
 }
 
-async function hydrateVisibleSimilarProductSigIdsFromCatalog(products) {
+async function hydrateVisibleSimilarProductSigIdsFromCatalog(products, options = {}) {
   const promoted = promoteVisibleSimilarProductSigIds(products);
   if (!process.env.DATABASE_URL || !promoted.length) return promoted;
+  const cacheKey = options?.bypassCache ? '' : buildVisibleSimilarSigHydrationCacheKey(promoted);
+  const cached = readVisibleSimilarSigHydrationCache(cacheKey);
+  if (cached) return cached;
 
   const unresolvedExternalIds = Array.from(
     new Set(
@@ -25289,7 +25372,10 @@ async function hydrateVisibleSimilarProductSigIdsFromCatalog(products) {
         .filter((productId) => isExternalSeedProductId(productId)),
     ),
   );
-  if (!unresolvedExternalIds.length) return promoted;
+  if (!unresolvedExternalIds.length) {
+    writeVisibleSimilarSigHydrationCache(cacheKey, promoted);
+    return promoted;
+  }
 
   const catalogBySourceProductId = new Map();
   const sigBySourceProductId = new Map();
@@ -25380,9 +25466,12 @@ async function hydrateVisibleSimilarProductSigIdsFromCatalog(products) {
     }
   }
 
-  if (!sigBySourceProductId.size) return promoted;
+  if (!sigBySourceProductId.size) {
+    writeVisibleSimilarSigHydrationCache(cacheKey, promoted);
+    return promoted;
+  }
   try {
-    return promoted.map((product) => {
+    const hydrated = promoted.map((product) => {
       const externalSeedIds = collectExternalSeedIdCandidatesForVisibleCatalogHydration(product);
       const catalogRow = externalSeedIds
         .map((productId) => catalogBySourceProductId.get(productId))
@@ -25400,6 +25489,8 @@ async function hydrateVisibleSimilarProductSigIdsFromCatalog(products) {
           })
         : product;
     });
+    writeVisibleSimilarSigHydrationCache(cacheKey, hydrated);
+    return hydrated;
   } catch (err) {
     logger.warn(
       {
@@ -36574,7 +36665,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           enrichedRelatedProducts,
           { baseProduct: canonicalProductForPdp },
         );
-        const hydratedSimilarCandidates = await hydrateVisibleSimilarProductSigIdsFromCatalog(displayableSimilarCandidates);
+        const hydratedSimilarCandidates = await hydrateVisibleSimilarProductSigIdsFromCatalog(
+          displayableSimilarCandidates,
+          { bypassCache },
+        );
         const publicSimilarCandidates = filterPublicVisibleSimilarProducts(hydratedSimilarCandidates);
         const componentScopedSimilar = scopeBundleSimilarToReviewedComponents({
           products: publicSimilarCandidates,
@@ -41161,7 +41255,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             const visibleSimilarCandidates = filterSimilarProductsWithCardHighlights(enrichedProducts, {
               baseProduct,
             });
-            const hydratedSimilarCandidates = await hydrateVisibleSimilarProductSigIdsFromCatalog(visibleSimilarCandidates);
+            const hydratedSimilarCandidates = await hydrateVisibleSimilarProductSigIdsFromCatalog(
+              visibleSimilarCandidates,
+              { bypassCache },
+            );
             const publicSimilarCandidates = filterPublicVisibleSimilarProducts(hydratedSimilarCandidates);
             const products = publicSimilarCandidates.slice(0, limit);
             const publicExternalIdFilteredCount = Math.max(
