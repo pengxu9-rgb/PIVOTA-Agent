@@ -2171,8 +2171,10 @@ function isDecorativePdpMediaUrl(url) {
   let filename = normalized;
   try {
     const parsed = new URL(normalized);
+    const pathname = decodeURIComponent(String(parsed.pathname || '')).toLowerCase();
     filename = decodeURIComponent(String(parsed.pathname.split('/').pop() || '')).toLowerCase();
     if (
+      /\/(?:before[-_ ]?after|infographics?)\//i.test(pathname) ||
       /(?:^|[-_])kem[-_]/i.test(filename) ||
       /(?:^|[-_])(?:promotion|promo|pop[-_ ]?ups?|birthday[-_ ]?teaser)(?:[-_.]|$)/i.test(filename)
     ) {

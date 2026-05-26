@@ -711,6 +711,8 @@ describe('pdpBuilder structured PDP modules', () => {
           'https://cdn.media.amplience.net/i/deciem/ORD-Lash-Brow-Serum-primary',
           'https://cdn.media.amplience.net/i/deciem/ORD-April-Promotion-Pop-ups-Birthday-Teaser',
           'https://cdn.media.amplience.net/i/deciem/KEM-Glycolic-Acid?fmt=auto&$poi$&sm=aspect&w=500&aspect=1:1',
+          'https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dwc29f3e0a/Images/products/The%20Ordinary/Before-After/ord-multi-peptide-lash-brow-before-afters-lash-density-graphic.jpg?sw=900&sh=900&sm=fit',
+          'https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dw233a3a1a/Images/products/The%20Ordinary/infographics/ord-multi-peptide-lash-brow-benefits-graphic.jpg?sw=900&sh=900&sm=fit',
         ],
         price: { amount: 14.9, currency: 'USD' },
       },
