@@ -231,7 +231,6 @@ describe('RecommendationEngine external candidate fetch', () => {
         no_cache: true,
       },
     });
-
     expect(
       queryMock.mock.calls.filter((call) =>
         String(call[0]).includes('FROM catalog_products cp'),
@@ -340,6 +339,82 @@ describe('RecommendationEngine external candidate fetch', () => {
         catalog_fetch: expect.any(Number),
         identity_dedupe: expect.any(Number),
         pick_layered: expect.any(Number),
+      }),
+    );
+  });
+
+  test('catalog-only sig recall skips identity DB lookup when inline signatures cover all refs', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+    delete process.env.PDP_SIMILAR_CATALOG_ONLY;
+
+    const queryMock = jest.fn(async (sql) => {
+      const text = String(sql);
+      if (!text.includes('FROM catalog_products cp')) return { rows: [] };
+      return {
+        rows: [
+          makeCatalogRow({
+            product_key: 'cat_serum_1',
+            source_product_id: 'ext_serum_1',
+            pivota_signature_id: 'sig_serum1',
+            title: 'KraveBeauty Great Barrier Relief',
+          }),
+          makeCatalogRow({
+            product_key: 'cat_serum_2',
+            source_product_id: 'ext_serum_2',
+            pivota_signature_id: 'sig_serum2',
+            title: 'KraveBeauty Oil La La',
+          }),
+        ],
+      };
+    });
+    const queryWithStatementTimeoutMock = jest.fn(async (sql) => {
+      const text = String(sql);
+      if (text.includes('FROM pdp_identity_listing')) {
+        throw new Error('identity DB lookup should be skipped when inline signatures cover every source ref');
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('../../src/db', () => ({
+      query: queryMock,
+      queryWithStatementTimeout: queryWithStatementTimeoutMock,
+    }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { recommend } = require('../../src/services/RecommendationEngine');
+    const result = await recommend({
+      pdp_product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_base',
+        external_product_id: 'ext_base',
+        pivota_signature_id: 'sig_base',
+        requested_product_id: 'sig_base',
+        title: 'KraveBeauty Barrier Serum',
+        brand: 'KraveBeauty',
+        category: 'Serum',
+        product_type: 'Serum',
+        category_path: 'beauty/skincare/serum',
+        image_url: 'https://kravebeauty.com/base.jpg',
+        source: 'external_seed',
+      },
+      k: 2,
+      options: {
+        hydrate_product_intel_cards: false,
+        no_cache: true,
+        identity_dedupe_timeout_ms: 80,
+      },
+    });
+    expect(
+      queryWithStatementTimeoutMock.mock.calls.filter((call) =>
+        String(call[0]).includes('FROM pdp_identity_listing'),
+      ),
+    ).toHaveLength(0);
+    expect(result.metadata.identity_dedupe).toEqual(
+      expect.objectContaining({
+        applied: true,
+        identity_lookup_skipped: true,
+        inline_identity_complete: true,
+        inline_rows_loaded: 3,
       }),
     );
   });

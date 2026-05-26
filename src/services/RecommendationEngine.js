@@ -1533,6 +1533,57 @@ function normalizeIdentityRows(rows = []) {
     .filter(Boolean);
 }
 
+function getInlineIdentitySigId(product = {}) {
+  for (const value of [
+    product?.sellable_item_group_id,
+    product?.pivota_signature_id,
+    product?.signature_id,
+    product?.requested_product_id,
+    product?.product_group_id,
+    product?.product_id,
+    product?.id,
+  ]) {
+    const text = String(value || '').trim();
+    if (/^sig_[a-z0-9]+$/i.test(text)) return text;
+  }
+  return '';
+}
+
+function buildInlineIdentityRowsForRecommendationProducts(products = []) {
+  return normalizeIdentityRows(
+    (Array.isArray(products) ? products : []).map((product) => {
+      const sourceListingRef = buildSourceListingRef(product);
+      const sigId = getInlineIdentitySigId(product);
+      return sourceListingRef && sigId
+        ? {
+            source_listing_ref: sourceListingRef,
+            sellable_item_group_id: sigId,
+          }
+        : null;
+    }),
+  );
+}
+
+function mergeIdentityRows(primaryRows = [], fallbackRows = []) {
+  const merged = new Map();
+  for (const row of normalizeIdentityRows(primaryRows)) {
+    merged.set(row.source_listing_ref, row);
+  }
+  for (const row of normalizeIdentityRows(fallbackRows)) {
+    if (!merged.has(row.source_listing_ref)) merged.set(row.source_listing_ref, row);
+  }
+  return Array.from(merged.values());
+}
+
+function identityRowsCoverAllSourceRefs(rows = [], products = []) {
+  const coveredRefs = new Set(normalizeIdentityRows(rows).map((row) => row.source_listing_ref));
+  const sourceRefs = uniqueByKey(
+    (Array.isArray(products) ? products : []).map((product) => buildSourceListingRef(product)).filter(Boolean),
+    (value) => value,
+  );
+  return sourceRefs.length > 0 && sourceRefs.every((ref) => coveredRefs.has(ref));
+}
+
 async function loadLiveIdentityRowsForRecommendationProducts(products, options = {}) {
   const timeoutMs = normalizeRecsDbTimeoutMs(
     options.timeoutMs,
@@ -1615,15 +1666,25 @@ async function dedupeRecommendationCandidatesByIdentity({
     base_identity_excluded: 0,
     same_product_line_shade_alternatives_kept: 0,
     rows_loaded: 0,
+    inline_rows_loaded: 0,
+    inline_identity_complete: false,
+    identity_lookup_skipped: false,
   };
 
   let rows = normalizeIdentityRows(identityRows);
+  const inlineRows = rows.length ? [] : buildInlineIdentityRowsForRecommendationProducts(productsForLookup);
+  const inlineIdentityComplete = identityRowsCoverAllSourceRefs(inlineRows, productsForLookup);
+  stats.inline_rows_loaded = inlineRows.length;
+  stats.inline_identity_complete = inlineIdentityComplete;
   if (!rows.length) {
-    if (typeof identityRowsResolverFn === 'function') {
+    if (inlineIdentityComplete) {
+      rows = inlineRows;
+      stats.identity_lookup_skipped = true;
+    } else if (typeof identityRowsResolverFn === 'function') {
       rows = normalizeIdentityRows(await identityRowsResolverFn(productsForLookup));
     } else if (process.env.DATABASE_URL) {
       const effectiveTimeoutMs = normalizeRecsDbTimeoutMs(timeoutMs, PDP_RECS_IDENTITY_DEDUPE_TIMEOUT_MS);
-      rows = normalizeIdentityRows(
+      rows = mergeIdentityRows(
         await withSoftTimeout(
           loadLiveIdentityRowsForRecommendationProducts(productsForLookup, {
             timeoutMs: effectiveTimeoutMs,
@@ -1638,6 +1699,7 @@ async function dedupeRecommendationCandidatesByIdentity({
             );
           },
         ),
+        inlineRows,
       );
     }
   }
