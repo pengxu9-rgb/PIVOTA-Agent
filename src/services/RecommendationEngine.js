@@ -608,6 +608,11 @@ const SIMILAR_INTENT_FAMILY_RULES = Object.freeze([
     sql: '\\m(lip\\s*(barrier|care|cream|gloss|balm|butter|(sleep(ing)?\\s*)?mask|relief|repair|restore|rescue|serum|sleep|soften(er|ing)?|treat|treatment|nourish(er|ing)?|plump(er|ing)?|luminiz(er|ers?)?|glow|lift|blush|tint|stain|matt(e)?)|lipgloss|lipglow|liplift|lipblush|liptint|lipstain|liptreat|lipnourish(er|ing)?)\\M',
   },
   {
+    id: 'lash_mascara',
+    js: /\b(?:mascara|lash(?:es)?|eyelash(?:es)?|lash\s*(?:booster|curl|curler|finisher|primer|serum|treatment))\b/i,
+    sql: '\\m(mascara|lash(es)?|eyelash(es)?|lash\\s*(booster|curl|curler|finisher|primer|serum|treatment))\\M',
+  },
+  {
     id: 'highlighter',
     js: /\b(?:highlighter|illuminator)\b/i,
     sql: '\\m(highlighter|illuminator)\\M',
@@ -2569,7 +2574,7 @@ function buildCatalogVerticalPathPatterns(vertical) {
 }
 
 function shouldExpandCatalogPathByIntentFamily(intentFamily) {
-  return String(intentFamily || '').trim() === 'eye_cream';
+  return ['eye_cream', 'lash_mascara'].includes(String(intentFamily || '').trim());
 }
 
 function splitCandidatesByRuntimeClass(candidates = []) {
@@ -3566,6 +3571,20 @@ function getSimilarIntentFamilySqlLikePatterns(intentFamily) {
       '%lipstain%',
       '%lip matt%',
       '%lip matte%',
+    ];
+  }
+  if (id === 'lash_mascara') {
+    return [
+      '%mascara%',
+      '%lash%',
+      '%lashes%',
+      '%eyelash%',
+      '%eyelashes%',
+      '%lash primer%',
+      '%lash serum%',
+      '%lash booster%',
+      '%lash finisher%',
+      '%lash curl%',
     ];
   }
   if (id === 'hand_cream') return ['%hand cream%', '%hand balm%', '%hand lotion%'];

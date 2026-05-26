@@ -2573,6 +2573,8 @@ describe('RecommendationEngine external candidate fetch', () => {
     expect(_internals.getSimilarIntentFamilyFromText('Moisture Replenishing Day Cream')).toBe('moisturizer');
     expect(_internals.getSimilarIntentFamilyFromText('My Glow Black Honey Lip Oil')).toBe('lip_oil');
     expect(_internals.getSimilarIntentFamilyFromText('Skin Tint Blurring Elixir')).toBe('foundation');
+    expect(_internals.getSimilarIntentFamilyFromText('Lash Curl Finisher')).toBe('lash_mascara');
+    expect(_internals.getSimilarIntentFamilyFromText('Lash Icon Lengthening & Volumizing Tubing Mascara')).toBe('lash_mascara');
     expect(_internals.getSimilarIntentFamilyFromFeatures({
       normalizedTitle: 'herbal recovery cream',
       leafCategory: 'cream',
@@ -2589,6 +2591,60 @@ describe('RecommendationEngine external candidate fetch', () => {
       leafCategory: 'brightener',
       parentCategory: 'eye',
     })).toBe('eye_cream');
+  });
+
+  test('catalog recall expands sparse lash products into mascara siblings', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const queryMock = jest.fn(async (sql, params) => {
+      if (
+        String(sql).includes('lower(coalesce(cp.category_path, \'\')) LIKE ANY') &&
+        Array.isArray(params?.[1]) &&
+        params[1].includes('%mascara%')
+      ) {
+        return {
+          rows: [
+            makeCatalogRow({
+              source_product_id: 'ext_mascara_1',
+              title: 'Lash Icon Lengthening & Volumizing Tubing Mascara',
+              brand: 'Sigma Beauty',
+              category_path: 'beauty/makeup/eye/mascara',
+              image_url: 'https://example.test/mascara-1.jpg',
+            }),
+            makeCatalogRow({
+              source_product_id: 'ext_mascara_2',
+              title: 'Kylash Volume Mascara',
+              brand: 'Kylie Cosmetics',
+              category_path: 'beauty/makeup/eye/mascara',
+              image_url: 'https://example.test/mascara-2.jpg',
+            }),
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const products = await _internals.fetchCatalogCandidates({
+      brandHint: 'The Ordinary',
+      categoryHint: 'Lash',
+      categoryPathHint: 'beauty/makeup/eyes/lash',
+      verticalHint: 'makeup',
+      intentFamilyHint: 'lash_mascara',
+      sourceMerchantHint: 'external_seed',
+      limit: 6,
+      minFocusedCandidates: 6,
+    });
+
+    expect(products.map((product) => product.product_id)).toEqual(
+      expect.arrayContaining(['ext_mascara_1', 'ext_mascara_2']),
+    );
+    expect(
+      queryMock.mock.calls.some(([, params]) => Array.isArray(params?.[1]) && params[1].includes('%mascara%')),
+    ).toBe(true);
   });
 
   test('strict sunscreen deep-domain recall does not count incidental category rows as focused coverage', async () => {

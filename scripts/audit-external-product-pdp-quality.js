@@ -917,6 +917,7 @@ async function auditRow(row, {
     livePdpGate,
     similarGate,
     variantGate,
+    terminalHold,
   });
   return {
     ...result,

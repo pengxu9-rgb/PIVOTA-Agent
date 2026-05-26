@@ -128,7 +128,7 @@ describe('externalSeedPdpQuality', () => {
         status: 'failed',
         failure_reasons: ['product_intel_module_empty_or_blocked'],
       },
-      livePdpGate: { status: 'passed', failure_reasons: [] },
+      livePdpGate: { status: 'failed', failure_reasons: ['live_pdp_probe_failed'] },
       similarGate: { status: 'exempt', failure_reasons: ['similar_underfill'] },
       variantGate: { status: 'passed', failure_reasons: [] },
     });
@@ -140,8 +140,31 @@ describe('externalSeedPdpQuality', () => {
       expect.arrayContaining([
         'missing_pdp_identity',
         'product_intel_module_empty_or_blocked',
+        'live_pdp_probe_failed',
         'similar_underfill',
       ]),
+    );
+  });
+
+  test('exempts reviewed terminal holds from live PDP probe failures', () => {
+    const result = buildExternalSeedQualityResult({
+      seedId: 'eps_gift_card',
+      externalProductId: 'ext_gift_card',
+      seedGate: { status: 'passed', failure_reasons: [] },
+      extractorGate: { status: 'passed', failure_reasons: [] },
+      identityGate: { status: 'skipped', failure_reasons: [] },
+      productIntelGate: { status: 'skipped', failure_reasons: [] },
+      livePdpGate: { status: 'failed', failure_reasons: ['live_pdp_probe_failed'] },
+      similarGate: { status: 'exempt', failure_reasons: ['similar_underfill'] },
+      variantGate: { status: 'passed', failure_reasons: [] },
+      terminalHold: true,
+    });
+
+    expect(result.status).toBe('passed');
+    expect(result.terminal_hold).toBe(true);
+    expect(result.failure_reasons).toEqual([]);
+    expect(result.suppressed_failure_reasons).toEqual(
+      expect.arrayContaining(['live_pdp_probe_failed', 'similar_underfill']),
     );
   });
 
