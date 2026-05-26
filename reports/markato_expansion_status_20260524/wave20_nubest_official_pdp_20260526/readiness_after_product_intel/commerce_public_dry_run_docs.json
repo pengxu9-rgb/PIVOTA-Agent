@@ -1,0 +1,648 @@
+{
+  "generated_at": "2026-05-26T00:09:22.481Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 10,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_261c572920501e7609d27c07",
+      "sellable_item_group_id": "sig_261c572920501e7609d27c07",
+      "product_line_id": "pl_4c7397cbf542f63a6416b61b",
+      "review_family_id": "rf_4c7397cbf542f63a6416b61b",
+      "brand_name": "NuBest",
+      "category_paths": [
+        "Wellness Supplement"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "NuBest Tall 10+ - Powerful Growth Support for Teens - 60 Capsules",
+      "subtitle": "This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+      "variant_axes": {
+        "pack": "1pack",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/new-formula-nubesttall10-slide-01-avatar.png?v=1761719891",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/new-formula-nubesttall10-slide-01-avatar.png?v=1761719891",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/new-formula-nubesttall10-slide-02.png?v=1775630871",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/original-formula-nubesttall10-slide-03.png?v=1761719891",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/original-formula-nubesttall10-slide-04.png?v=1761719891",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/original-formula-nubesttall10-slide-05.png?v=1761719891",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/original-formula-nubesttall10-slide-06.png?v=1774930008",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/original-formula-nubesttall10-slide-07.png?v=1774930008",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/original-formula-nubesttall10-slide-08.png?v=1774930008"
+      ],
+      "price_min": 55,
+      "price_max": 55,
+      "default_offer_id": "external_seed:ext_97ffa9c22f3a8ea415454e83",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A NuBest wellness supplement listed on the brand source page as NuBest Tall 10+ - Powerful Growth Support for Teens - 60 Capsules. The source description identifies: This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "NuBest",
+        "Wellness Supplement",
+        "Kids & Teens",
+        "Pack Single",
+        "Promotion Online Store",
+        "SnS 1-month supply"
+      ],
+      "sort_keys": {
+        "price_min": 55,
+        "price_max": 55,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_97ffa9c22f3a8ea415454e83"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_4c93831a6ac6280cdb74c78f",
+      "sellable_item_group_id": "sig_4c93831a6ac6280cdb74c78f",
+      "product_line_id": "pl_729558ed418c57efc0b0d821",
+      "review_family_id": "rf_729558ed418c57efc0b0d821",
+      "brand_name": "NuBest",
+      "category_paths": [
+        "Wellness Supplement"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Doctor Taller Kids – Grape Multivitamin Chewables for Children Ages 2–9, 60 Vegan Gummies",
+      "subtitle": "This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+      "variant_axes": {
+        "pack": "1pack",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/doctortallerkids60-avatar.png?v=1770968188",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/doctortallerkids60-avatar.png?v=1770968188",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/doctortallerkids60-slide-02.jpg?v=1711771755",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/doctortallerkids60-slide-03.jpg?v=1754644727",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/doctortallerkids60-slide-04.jpg?v=1770968394",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/doctortallerkids60-slide-05.jpg?v=1711771764",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/doctortallerkids60-slide-06.jpg?v=1711771743",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/doctortallerkids60-slide-07.jpg?v=1711771746",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/doctortallerkids60-slide-07-0129062023.jpg?v=1711771770"
+      ],
+      "price_min": 39.9,
+      "price_max": 39.9,
+      "default_offer_id": "external_seed:ext_1030e828c320440354e98895",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A NuBest wellness supplement listed on the brand source page as Doctor Taller Kids – Grape Multivitamin Chewables for Children Ages 2–9, 60 Vegan Gummies. The source description identifies: This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "NuBest",
+        "Wellness Supplement",
+        "exclude_rebuy",
+        "Kids & Teens",
+        "Promotion Online Store",
+        "Shopping Ads",
+        "SnS 1-month supply"
+      ],
+      "sort_keys": {
+        "price_min": 39.9,
+        "price_max": 39.9,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_1030e828c320440354e98895"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_2ee2ceed34ed871302742e19",
+      "sellable_item_group_id": "sig_2ee2ceed34ed871302742e19",
+      "product_line_id": "pl_7888a1284dd8c19642e87de0",
+      "review_family_id": "rf_7888a1284dd8c19642e87de0",
+      "brand_name": "NuBest",
+      "category_paths": [
+        "Wellness Supplement"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "NuBest Immune Gummies for Kids (Ages 4+) - 19 Essential Nutrients for Immune Support & Healthy Development - Raspberry Flavor (60 Count)",
+      "subtitle": "This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+      "variant_axes": {
+        "pack": "1pack",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/immunegummies-avatar.png?v=1768539034",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/immunegummies-avatar.png?v=1768539034",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/immunegummies-slide-02.png?v=1768539059",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/immunegummies-slide-03.png?v=1768539060",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/immunegummies-slide-04.png?v=1768539061",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/immunegummies-slide-05.png?v=1768539060",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/immunegummies-slide-06.png?v=1768539059",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/immunegummies-slide-07.png?v=1768539061",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/immunegummies-slide-08.png?v=1768539061"
+      ],
+      "price_min": 26.99,
+      "price_max": 26.99,
+      "default_offer_id": "external_seed:ext_d6eb3ee536ac3d49561aaa5f",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A NuBest wellness supplement listed on the brand source page as NuBest Immune Gummies for Kids (Ages 4+) - 19 Essential Nutrients for Immune Support & Healthy Development - Raspberry Flavor (60 Count).",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "NuBest",
+        "Wellness Supplement",
+        "Gummies",
+        "Kids & Teens",
+        "kids immunity vitamins",
+        "Pack Single",
+        "Promotion Online Store",
+        "SnS 1-month supply",
+        "Vegan"
+      ],
+      "sort_keys": {
+        "price_min": 26.99,
+        "price_max": 26.99,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_d6eb3ee536ac3d49561aaa5f"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_460f1dfa79504abc86ed16a3",
+      "sellable_item_group_id": "sig_460f1dfa79504abc86ed16a3",
+      "product_line_id": "pl_9f7b8f92ba90ef3469d2c6d1",
+      "review_family_id": "rf_9f7b8f92ba90ef3469d2c6d1",
+      "brand_name": "NuBest",
+      "category_paths": [
+        "Wellness Supplement"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "NuBest Tall Protein Vanilla Shake for Kids Ages 4+, 10 Vegan Servings - Pack 1",
+      "subtitle": "This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/nubesttallprotein-vanilla-avatar_4719f602-ad3c-40b7-b651-921d74c9b654.png?v=1762447249",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/nubesttallprotein-vanilla-avatar_4719f602-ad3c-40b7-b651-921d74c9b654.png?v=1762447249",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/nubesttallprotein-vanilla-slide-02.jpg?v=1717403661",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/nubesttallprotein-vanilla-slide-03.jpg?v=1754644169",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/nubesttallprotein-vanilla-slide-04_ba354611-fe05-4142-b660-19267515171f.jpg?v=1717403661",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/nubesttallprotein-vanilla-slide-05.jpg?v=1717403661",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/nubesttallprotein-vanilla-slide-06.jpg?v=1717403661",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/nubesttallprotein-vanilla-slide-07.jpg?v=1717403661",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/nubesttallprotein-vanilla-slide-08.jpg?v=1717403661"
+      ],
+      "price_min": 35.99,
+      "price_max": 35.99,
+      "default_offer_id": "external_seed:ext_d6f78ec76732918fef0b7d5b",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A NuBest wellness supplement listed on the brand source page as NuBest Tall Protein Vanilla Shake for Kids Ages 4+, 10 Vegan Servings - Pack 1. The source description identifies: This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "NuBest",
+        "Wellness Supplement",
+        "exclude_rebuy",
+        "Gift Shaker",
+        "Kids & Teens",
+        "Promotion Online Store",
+        "Shopping Ads"
+      ],
+      "sort_keys": {
+        "price_min": 35.99,
+        "price_max": 35.99,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_d6f78ec76732918fef0b7d5b"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_98b4b303ba933a3767f0a2e4",
+      "sellable_item_group_id": "sig_98b4b303ba933a3767f0a2e4",
+      "product_line_id": "pl_c6f4876b395bea5de1b8feac",
+      "review_family_id": "rf_c6f4876b395bea5de1b8feac",
+      "brand_name": "NuBest",
+      "category_paths": [
+        "Wellness Supplement"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "NuBest Tall Protein, Chocolate Shake, 15 servings - Pack 1",
+      "subtitle": "This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/nubest-tall-protein-chocolate-avatar_e5df9755-93aa-44e4-976c-f73988583c5f.png?v=1762446879",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/nubest-tall-protein-chocolate-avatar_e5df9755-93aa-44e4-976c-f73988583c5f.png?v=1762446879",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/nubesttallprotein-chocolate-slide-02.jpg?v=1774864261",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/nubesttallprotein-chocolate-slide-03.jpg?v=1774864261",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/nubesttallprotein-chocolate-slide-04.jpg?v=1774864261",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/nubesttallprotein-chocolate-slide-05.jpg?v=1774864261",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/nubesttallprotein-chocolate-slide-07.jpg?v=1774864261",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/nubesttallprotein-chocolate-slide-08.jpg?v=1774864261",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/nubesttallprotein-chocolate-slide-11.jpg?v=1774864261"
+      ],
+      "price_min": 45.99,
+      "price_max": 45.99,
+      "default_offer_id": "external_seed:ext_461efc4478853cf6cac8d4e9",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A NuBest wellness supplement listed on the brand source page as NuBest Tall Protein, Chocolate Shake, 15 servings - Pack 1. The source description identifies: This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "NuBest",
+        "Wellness Supplement",
+        "exclude_rebuy",
+        "Gift Shaker",
+        "Kids & Teens",
+        "Promotion Online Store",
+        "Shopping Ads"
+      ],
+      "sort_keys": {
+        "price_min": 45.99,
+        "price_max": 45.99,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_461efc4478853cf6cac8d4e9"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_b4865783d67e45dd3b829932",
+      "sellable_item_group_id": "sig_b4865783d67e45dd3b829932",
+      "product_line_id": "pl_ad3adc8c8f1756c1187f4dd8",
+      "review_family_id": "rf_ad3adc8c8f1756c1187f4dd8",
+      "brand_name": "NuBest",
+      "category_paths": [
+        "Wellness Supplement"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Doctor Taller Kids Multivitamins – Grape Flavor, Vegan Chewables for Ages 2–9 (90 Count)",
+      "subtitle": "This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+      "variant_axes": {
+        "pack": "90pack",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/doctortallerkids90-avatar.png?v=1770968893",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/doctortallerkids90-avatar.png?v=1770968893",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/doctortallerkids90-slide-02.jpg?v=1711772122",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/doctortallerkids90-slide-03.jpg?v=1754644694",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/doctortallerkids90-slide-04.jpg?v=1770968988",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/doctortallerkids90-slide-05.jpg?v=1711772130",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/doctortallerkids90-slide-06.jpg?v=1711772136",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/doctortallerkids90-slide-07.jpg?v=1711772139",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/doctortallerkids90-slide-08.jpg?v=1711772142"
+      ],
+      "price_min": 59,
+      "price_max": 59,
+      "default_offer_id": "external_seed:ext_fb76b45f22e546e331d4904f",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A NuBest wellness supplement listed on the brand source page as Doctor Taller Kids Multivitamins – Grape Flavor, Vegan Chewables for Ages 2–9 (90 Count). The source description identifies: This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "NuBest",
+        "Wellness Supplement",
+        "exclude_rebuy",
+        "Kids & Teens",
+        "Promotion Online Store",
+        "Shopping Ads",
+        "SnS 45-day supply"
+      ],
+      "sort_keys": {
+        "price_min": 59,
+        "price_max": 59,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_fb76b45f22e546e331d4904f"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_ede8efb8e75e43519dbf3987",
+      "sellable_item_group_id": "sig_ede8efb8e75e43519dbf3987",
+      "product_line_id": "pl_66927800e191f205bccfae36",
+      "review_family_id": "rf_66927800e191f205bccfae36",
+      "brand_name": "NuBest",
+      "category_paths": [
+        "Wellness Supplement"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "NuBest Tall Kids – Berry Multivitamin Chewables for Ages 2–9, 60 Count",
+      "subtitle": "This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+      "variant_axes": {
+        "pack": "60pack",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/nubesttallkids60-avatar.png?v=1770969540",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/nubesttallkids60-avatar.png?v=1770969540",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/nubesttallkids60-slide-02.jpg?v=1776064409",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/nubesttallkids60-slide-03.jpg?v=1776064409",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/nubesttallkids60-slide-04.jpg?v=1776064409",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/nubesttallkids60-slide-05.jpg?v=1776063824",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/nubesttallkids60-slide-06.jpg?v=1776063891",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/nubesttallkids60-slide-07.jpg?v=1776064080",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/nubesttallkids60-slide-07-01-23052023.jpg?v=1776064083"
+      ],
+      "price_min": 39,
+      "price_max": 39,
+      "default_offer_id": "external_seed:ext_acff84a9f77766e338b83f44",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A NuBest wellness supplement listed on the brand source page as NuBest Tall Kids – Berry Multivitamin Chewables for Ages 2–9, 60 Count. The source description identifies: This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "NuBest",
+        "Wellness Supplement",
+        "exclude_rebuy",
+        "Kids & Teens",
+        "Promotion Online Store",
+        "Shopping Ads",
+        "SnS 1-month supply"
+      ],
+      "sort_keys": {
+        "price_min": 39,
+        "price_max": 39,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_acff84a9f77766e338b83f44"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_d13ab80163787fb4f49ee372",
+      "sellable_item_group_id": "sig_d13ab80163787fb4f49ee372",
+      "product_line_id": "pl_97e06afff18d8e65f1ddc868",
+      "review_family_id": "rf_97e06afff18d8e65f1ddc868",
+      "brand_name": "NuBest",
+      "category_paths": [
+        "Wellness Supplement"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Omega-3 Vegan Gummies for Kids & Teens - 60 Count",
+      "subtitle": "This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+      "variant_axes": {
+        "pack": "1pack",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/omega3gummies-avatar.png?v=1762449925",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/omega3gummies-avatar.png?v=1762449925",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/omega3gummies-slide-04.png?v=1736759095",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/omega3gummies-slide-02.png?v=1736759095",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/omega3gummies-slide-03.png?v=1736759095",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/omega3gummies-slide-05.png?v=1736759095",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/omega3gummies-slide-06.png?v=1736759095",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/omega3gummies-slide-07.png?v=1736759095",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/files/omega3gummies-slide-08.png?v=1736759095"
+      ],
+      "price_min": 26.99,
+      "price_max": 26.99,
+      "default_offer_id": "external_seed:ext_9fbfa632c4a275917f5a0da0",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A NuBest wellness supplement listed on the brand source page as Omega-3 Vegan Gummies for Kids & Teens - 60 Count. The source description identifies: This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "NuBest",
+        "Wellness Supplement",
+        "exclude_rebuy",
+        "Kids & Teens",
+        "Promotion Online Store",
+        "Shopping Ads",
+        "SnS 1-month supply"
+      ],
+      "sort_keys": {
+        "price_min": 26.99,
+        "price_max": 26.99,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_9fbfa632c4a275917f5a0da0"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_317ceee757853418a819770f",
+      "sellable_item_group_id": "sig_317ceee757853418a819770f",
+      "product_line_id": "pl_819f22828b1eabe1de6545ea",
+      "review_family_id": "rf_819f22828b1eabe1de6545ea",
+      "brand_name": "NuBest",
+      "category_paths": [
+        "Wellness Supplement"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Doctor Plus, For Children & Teens - 60 Capsules",
+      "subtitle": "This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+      "variant_axes": {
+        "pack": "1pack",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/doctorplus-avatar.png?v=1762446718",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/doctorplus-avatar.png?v=1762446718",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/doctorplus-slide-0212072023.jpg?v=1711771488",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/doctorplus-slide-0312072023.jpg?v=1754644809",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/doctorplus-slide-0412072023.jpg?v=1761805754",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/doctorplus-slide-0512072023.jpg?v=1711771500",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/doctorplus-slide-0612072023.jpg?v=1711771503",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/doctorplus-slide-0712072023.jpg?v=1711771505",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/doctorplus-slide-0812072023.jpg?v=1711771508"
+      ],
+      "price_min": 57,
+      "price_max": 57,
+      "default_offer_id": "external_seed:ext_2da6f7615154860df7bdb07b",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A NuBest wellness supplement listed on the brand source page as Doctor Plus, For Children & Teens - 60 Capsules. The source description identifies: This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "NuBest",
+        "Wellness Supplement",
+        "exclude_rebuy",
+        "Kids & Teens",
+        "Promotion Online Store",
+        "Shopping Ads",
+        "SnS 1-month supply"
+      ],
+      "sort_keys": {
+        "price_min": 57,
+        "price_max": 57,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_2da6f7615154860df7bdb07b"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_ee74af93bb94cc4e12818554",
+      "sellable_item_group_id": "sig_ee74af93bb94cc4e12818554",
+      "product_line_id": "pl_90bcfbd9c787f5bf48761157",
+      "review_family_id": "rf_90bcfbd9c787f5bf48761157",
+      "brand_name": "NuBest",
+      "category_paths": [
+        "Wellness Supplement"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Grow Power Capsules for Kids & Teens – 60 Count",
+      "subtitle": "This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+      "variant_axes": {
+        "pack": "60pack",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/growpower-avatar.png?v=1768268426",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/growpower-avatar.png?v=1768268426",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/growpower-slide-02.jpg?v=1768268892",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/growpower-slide-03.jpg?v=1768268892",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/growpower-slide-04.jpg?v=1768268892",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/growpower-slide-05-26042023.jpg?v=1768268892",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/growpower-slide-06.jpg?v=1768268892",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/growpower-slide-07.jpg?v=1768268892",
+        "https://cdn.shopify.com/s/files/1/0799/8432/8989/products/growpower-slide-08.jpg?v=1768268892"
+      ],
+      "price_min": 38.79,
+      "price_max": 38.79,
+      "default_offer_id": "external_seed:ext_4e7ae04d68622ea157a494da",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A NuBest wellness supplement listed on the brand source page as Grow Power Capsules for Kids & Teens – 60 Count. The source description identifies: This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "NuBest",
+        "Wellness Supplement",
+        "exclude_rebuy",
+        "Kids & Teens",
+        "Promotion Online Store",
+        "Shopping Ads",
+        "SnS 1-month supply"
+      ],
+      "sort_keys": {
+        "price_min": 38.79,
+        "price_max": 38.79,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_4e7ae04d68622ea157a494da"
+      ]
+    }
+  ]
+}

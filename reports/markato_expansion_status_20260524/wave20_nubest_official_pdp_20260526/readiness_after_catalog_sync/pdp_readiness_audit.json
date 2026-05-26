@@ -1,0 +1,1337 @@
+{
+  "generated_at": "2026-05-26T00:06:13.332Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": null,
+    "externalProductIds": [
+      "ext_d6eb3ee536ac3d49561aaa5f",
+      "ext_97ffa9c22f3a8ea415454e83",
+      "ext_d6f78ec76732918fef0b7d5b",
+      "ext_461efc4478853cf6cac8d4e9",
+      "ext_fb76b45f22e546e331d4904f",
+      "ext_1030e828c320440354e98895",
+      "ext_acff84a9f77766e338b83f44",
+      "ext_9fbfa632c4a275917f5a0da0",
+      "ext_2da6f7615154860df7bdb07b",
+      "ext_4e7ae04d68622ea157a494da"
+    ],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/wave20_nubest_official_pdp_20260526/readiness_after_catalog_sync/pdp_readiness_checkpoint",
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": true,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json"
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 10,
+    "by_market": {
+      "US": 10
+    },
+    "by_domain": [
+      {
+        "key": "nubest.com",
+        "count": 10
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 10
+      }
+    ],
+    "coverage": {
+      "missing_inci": 0,
+      "missing_active_raw": 0,
+      "missing_details": 0,
+      "missing_how_to": 0,
+      "missing_faq": 10
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 0,
+        "high_quality_ready": 0,
+        "missing_kb": 10,
+        "not_displayable": 0
+      },
+      "effective": {
+        "displayable": 0,
+        "high_quality_ready": 0,
+        "missing_kb": 10,
+        "not_displayable": 0,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [
+        {
+          "key": "missing_kb",
+          "count": 10
+        }
+      ],
+      "effective_issue_domains": [
+        {
+          "key": "nubest.com::missing_kb",
+          "count": 10
+        }
+      ],
+      "quality_state": [
+        {
+          "key": "missing",
+          "count": 10
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "missing",
+          "count": 10
+        }
+      ],
+      "samples": {
+        "missing_kb": [
+          {
+            "external_product_id": "ext_97ffa9c22f3a8ea415454e83",
+            "domain": "nubest.com",
+            "title": "NuBest Tall 10+ - Powerful Growth Support for Teens - 60 Capsules",
+            "used_product_id": "ext_97ffa9c22f3a8ea415454e83",
+            "quality_state": "missing",
+            "evidence_profile": "missing"
+          },
+          {
+            "external_product_id": "ext_1030e828c320440354e98895",
+            "domain": "nubest.com",
+            "title": "Doctor Taller Kids – Grape Multivitamin Chewables for Children Ages 2–9, 60 Vegan Gummies",
+            "used_product_id": "ext_1030e828c320440354e98895",
+            "quality_state": "missing",
+            "evidence_profile": "missing"
+          },
+          {
+            "external_product_id": "ext_d6eb3ee536ac3d49561aaa5f",
+            "domain": "nubest.com",
+            "title": "NuBest Immune Gummies for Kids (Ages 4+) - 19 Essential Nutrients for Immune Support & Healthy Development - Raspberry Flavor (60 Count)",
+            "used_product_id": "ext_d6eb3ee536ac3d49561aaa5f",
+            "quality_state": "missing",
+            "evidence_profile": "missing"
+          },
+          {
+            "external_product_id": "ext_d6f78ec76732918fef0b7d5b",
+            "domain": "nubest.com",
+            "title": "NuBest Tall Protein Vanilla Shake for Kids Ages 4+, 10 Vegan Servings - Pack 1",
+            "used_product_id": "ext_d6f78ec76732918fef0b7d5b",
+            "quality_state": "missing",
+            "evidence_profile": "missing"
+          },
+          {
+            "external_product_id": "ext_461efc4478853cf6cac8d4e9",
+            "domain": "nubest.com",
+            "title": "NuBest Tall Protein, Chocolate Shake, 15 servings - Pack 1",
+            "used_product_id": "ext_461efc4478853cf6cac8d4e9",
+            "quality_state": "missing",
+            "evidence_profile": "missing"
+          },
+          {
+            "external_product_id": "ext_fb76b45f22e546e331d4904f",
+            "domain": "nubest.com",
+            "title": "Doctor Taller Kids Multivitamins – Grape Flavor, Vegan Chewables for Ages 2–9 (90 Count)",
+            "used_product_id": "ext_fb76b45f22e546e331d4904f",
+            "quality_state": "missing",
+            "evidence_profile": "missing"
+          },
+          {
+            "external_product_id": "ext_acff84a9f77766e338b83f44",
+            "domain": "nubest.com",
+            "title": "NuBest Tall Kids – Berry Multivitamin Chewables for Ages 2–9, 60 Count",
+            "used_product_id": "ext_acff84a9f77766e338b83f44",
+            "quality_state": "missing",
+            "evidence_profile": "missing"
+          },
+          {
+            "external_product_id": "ext_9fbfa632c4a275917f5a0da0",
+            "domain": "nubest.com",
+            "title": "Omega-3 Vegan Gummies for Kids & Teens - 60 Count",
+            "used_product_id": "ext_9fbfa632c4a275917f5a0da0",
+            "quality_state": "missing",
+            "evidence_profile": "missing"
+          },
+          {
+            "external_product_id": "ext_2da6f7615154860df7bdb07b",
+            "domain": "nubest.com",
+            "title": "Doctor Plus, For Children & Teens - 60 Capsules",
+            "used_product_id": "ext_2da6f7615154860df7bdb07b",
+            "quality_state": "missing",
+            "evidence_profile": "missing"
+          },
+          {
+            "external_product_id": "ext_4e7ae04d68622ea157a494da",
+            "domain": "nubest.com",
+            "title": "Grow Power Capsules for Kids & Teens – 60 Count",
+            "used_product_id": "ext_4e7ae04d68622ea157a494da",
+            "quality_state": "missing",
+            "evidence_profile": "missing"
+          }
+        ]
+      }
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 8,
+      "any_active_items": 6,
+      "status": [
+        {
+          "key": "ready_hero",
+          "count": 6
+        },
+        {
+          "key": "missing_hero",
+          "count": 2
+        },
+        {
+          "key": "not_expected_missing",
+          "count": 2
+        }
+      ],
+      "issues": [
+        {
+          "key": "active_raw_may_be_full_inci",
+          "count": 3
+        },
+        {
+          "key": "missing_hero",
+          "count": 2
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "nubest.com::active_raw_may_be_full_inci",
+          "count": 3
+        },
+        {
+          "key": "nubest.com::missing_hero",
+          "count": 2
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "pdp_section",
+          "count": 10
+        }
+      ],
+      "samples": {
+        "active_raw_may_be_full_inci": [
+          {
+            "external_product_id": "ext_acff84a9f77766e338b83f44",
+            "domain": "nubest.com",
+            "title": "NuBest Tall Kids – Berry Multivitamin Chewables for Ages 2–9, 60 Count",
+            "status": "ready_hero",
+            "active_items": [
+              "Calcium (as Calcium Carbonate)",
+              "Vitamin A (as Beta Carotene)",
+              "Thiamine (as Thiamine HCl)",
+              "Riboflavin (Vitamin B2)",
+              "Niacin (as Niacinamide)",
+              "Vitamin B6 (as Pyridoxine HCl)",
+              "Biotin",
+              "Folate (as Folic Acid)"
+            ],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_2da6f7615154860df7bdb07b",
+            "domain": "nubest.com",
+            "title": "Doctor Plus, For Children & Teens - 60 Capsules",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_4e7ae04d68622ea157a494da",
+            "domain": "nubest.com",
+            "title": "Grow Power Capsules for Kids & Teens – 60 Count",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          }
+        ],
+        "missing_hero": [
+          {
+            "external_product_id": "ext_2da6f7615154860df7bdb07b",
+            "domain": "nubest.com",
+            "title": "Doctor Plus, For Children & Teens - 60 Capsules",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_4e7ae04d68622ea157a494da",
+            "domain": "nubest.com",
+            "title": "Grow Power Capsules for Kids & Teens – 60 Count",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 8
+        },
+        {
+          "key": "no_visible_variant_axis",
+          "count": 2
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_9dd6aeba20e815deb77f0fcd",
+      "external_product_id": "ext_97ffa9c22f3a8ea415454e83",
+      "market": "US",
+      "domain": "nubest.com",
+      "title": "NuBest Tall 10+ - Powerful Growth Support for Teens - 60 Capsules",
+      "canonical_url": "https://www.nubest.com/products/nubest-tall-10-powerful-growth-support-for-teens-60-capsules",
+      "product_family": "single_formula",
+      "product_line_id": "pl_4c7397cbf542f63a6416b61b",
+      "identity_variant_axes": {
+        "pack": "1pack",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_97ffa9c22f3a8ea415454e83",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "effective": {
+          "product_id": "ext_97ffa9c22f3a8ea415454e83",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "product_line_id": "pl_4c7397cbf542f63a6416b61b",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 358,
+          "inci_chars": 295,
+          "active_ingredients_chars": 256,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 295,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_not_displayable"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 4,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 358,
+        "inci_chars": 295,
+        "active_ingredients_chars": 256,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 295,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_fa653c2abb9f5615a7210ba4",
+      "external_product_id": "ext_1030e828c320440354e98895",
+      "market": "US",
+      "domain": "nubest.com",
+      "title": "Doctor Taller Kids – Grape Multivitamin Chewables for Children Ages 2–9, 60 Vegan Gummies",
+      "canonical_url": "https://www.nubest.com/products/shopping-doctor-taller-kids-grape-multivitamins-ages-2-9-60-vegan-chewables",
+      "product_family": "single_formula",
+      "product_line_id": "pl_729558ed418c57efc0b0d821",
+      "identity_variant_axes": {
+        "pack": "1pack",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_1030e828c320440354e98895",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "effective": {
+          "product_id": "ext_1030e828c320440354e98895",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "product_line_id": "pl_729558ed418c57efc0b0d821",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Vitamin A (as Beta-Carotene)",
+          "Vitamin C (as Ascorbic Acid)",
+          "Vitamin D3 (as Cholecalciferol)",
+          "Vitamin E (D-Alpha Mixed Tocopherols)",
+          "Thiamine (as Thiamine HCI)",
+          "Riboflavin (Vitamin B2)",
+          "Niacin (as Niacinamide)",
+          "Vitamin B6 (as Pyridoxine HCI)",
+          "Folate (as Folic Acid)",
+          "Vitamin B12 (as Cyanocobalamin)",
+          "Biotin",
+          "Calcium",
+          "Magnesium (as Magnesium Oxide)",
+          "Zinc (as Zinc Citrate)",
+          "Copper (as Copper Oxide)",
+          "Eucommia Bark Extract"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 354,
+          "inci_chars": 678,
+          "active_ingredients_chars": 455,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 678,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 3,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 354,
+        "inci_chars": 678,
+        "active_ingredients_chars": 455,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 678,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_01535ed893abbdd17702a9e8",
+      "external_product_id": "ext_d6eb3ee536ac3d49561aaa5f",
+      "market": "US",
+      "domain": "nubest.com",
+      "title": "NuBest Immune Gummies for Kids (Ages 4+) - 19 Essential Nutrients for Immune Support & Healthy Development - Raspberry Flavor (60 Count)",
+      "canonical_url": "https://www.nubest.com/products/nubest-immune-gummies",
+      "product_family": "single_formula",
+      "product_line_id": "pl_7888a1284dd8c19642e87de0",
+      "identity_variant_axes": {
+        "pack": "1pack",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_d6eb3ee536ac3d49561aaa5f",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "effective": {
+          "product_id": "ext_d6eb3ee536ac3d49561aaa5f",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "product_line_id": "pl_7888a1284dd8c19642e87de0",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Vitamin A (as Retinol Acetate)",
+          "Vitamin C (Ascorbic Acid)",
+          "Vitamin D2 (as Ergocalciferol)",
+          "Vitamin E (as dl-𝛂-tocopheryl Acetate)",
+          "Vitamin K (as Phytomenadione)",
+          "Vitamin B1 (as Thiamine Mononitrate)",
+          "Vitamin B2 (as Riboflavin)",
+          "Vitamin B3 (as Nicotinamide)",
+          "Vitamin B6 (as Pyridoxine HCl)",
+          "Folate (from Folic Acid)",
+          "Vitamin B12 (as Cyanocobalamin)",
+          "Biotin",
+          "Pantothenic Acid",
+          "Iron (as Ferrous Fumarate)",
+          "Zinc (as Zinc Gluconate)",
+          "Selenium (as Sodium Selenite)"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 196,
+          "inci_chars": 890,
+          "active_ingredients_chars": 557,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 890,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 3,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 196,
+        "inci_chars": 890,
+        "active_ingredients_chars": 557,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 890,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_d8a263899760ccf29cf80dc6",
+      "external_product_id": "ext_d6f78ec76732918fef0b7d5b",
+      "market": "US",
+      "domain": "nubest.com",
+      "title": "NuBest Tall Protein Vanilla Shake for Kids Ages 4+, 10 Vegan Servings - Pack 1",
+      "canonical_url": "https://www.nubest.com/products/shopping-nubest-tall-protein-vanilla-shake-for-kids-ages-4-10-vegan-servings-pack-1",
+      "product_family": "single_formula",
+      "product_line_id": "pl_9f7b8f92ba90ef3469d2c6d1",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_d6f78ec76732918fef0b7d5b",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "effective": {
+          "product_id": "ext_d6f78ec76732918fef0b7d5b",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "product_line_id": "pl_9f7b8f92ba90ef3469d2c6d1",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Protein",
+          "Vitamin A",
+          "Vitamin C",
+          "Vitamin D",
+          "Vitamin E",
+          "Thiamine",
+          "Riboflavin",
+          "Niacin",
+          "Vitamin B6",
+          "Folate",
+          "Vitamin B12",
+          "Biotin",
+          "Pantothenic Acid",
+          "Choline",
+          "Calcium",
+          "Iron"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 356,
+          "inci_chars": 623,
+          "active_ingredients_chars": 419,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 623,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 356,
+        "inci_chars": 623,
+        "active_ingredients_chars": 419,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 623,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_77a653b4d6e670302f050821",
+      "external_product_id": "ext_461efc4478853cf6cac8d4e9",
+      "market": "US",
+      "domain": "nubest.com",
+      "title": "NuBest Tall Protein, Chocolate Shake, 15 servings - Pack 1",
+      "canonical_url": "https://www.nubest.com/products/shopping-nubest-tall-protein-chocolate-shake-15-servings-pack-1",
+      "product_family": "single_formula",
+      "product_line_id": "pl_c6f4876b395bea5de1b8feac",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_461efc4478853cf6cac8d4e9",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "effective": {
+          "product_id": "ext_461efc4478853cf6cac8d4e9",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "product_line_id": "pl_c6f4876b395bea5de1b8feac",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Protein",
+          "Vitamin A",
+          "Vitamin C",
+          "Vitamin D",
+          "Vitamin E",
+          "Thiamine",
+          "Riboflavin",
+          "Niacin",
+          "Vitamin B6",
+          "Folate",
+          "Vitamin B12",
+          "Biotin",
+          "Pantothenic Acid",
+          "Choline",
+          "Calcium",
+          "Iron"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 387,
+          "inci_chars": 705,
+          "active_ingredients_chars": 419,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 705,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 387,
+        "inci_chars": 705,
+        "active_ingredients_chars": 419,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 705,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_9c8a2cdfd47ea3ea8212ab35",
+      "external_product_id": "ext_fb76b45f22e546e331d4904f",
+      "market": "US",
+      "domain": "nubest.com",
+      "title": "Doctor Taller Kids Multivitamins – Grape Flavor, Vegan Chewables for Ages 2–9 (90 Count)",
+      "canonical_url": "https://www.nubest.com/products/shopping-doctor-taller-kids-grape-multivitamins-ages-2-9-90-vegan-chewables",
+      "product_family": "single_formula",
+      "product_line_id": "pl_ad3adc8c8f1756c1187f4dd8",
+      "identity_variant_axes": {
+        "pack": "90pack",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_fb76b45f22e546e331d4904f",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "effective": {
+          "product_id": "ext_fb76b45f22e546e331d4904f",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "product_line_id": "pl_ad3adc8c8f1756c1187f4dd8",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Vitamin A (as Beta-Carotene)",
+          "Vitamin C (as Ascorbic Acid)",
+          "Vitamin D3 (as Cholecalciferol)",
+          "Vitamin E (D-Alpha Mixed Tocopherols)",
+          "Thiamine (as Thiamine HCI)",
+          "Riboflavin (Vitamin B2)",
+          "Niacin (as Niacinamide)",
+          "Vitamin B6 (as Pyridoxine HCI)",
+          "Folate (as Folic Acid)",
+          "Vitamin B12 (as Cyanocobalamin)",
+          "Biotin",
+          "Calcium",
+          "Magnesium (as Magnesium Oxide)",
+          "Zinc (as Zinc Citrate)",
+          "Copper (as Copper Oxide)",
+          "Eucommia Bark Extract"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 354,
+          "inci_chars": 678,
+          "active_ingredients_chars": 455,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 678,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 3,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 354,
+        "inci_chars": 678,
+        "active_ingredients_chars": 455,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 678,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_31d729ede0a776565b6fcaac",
+      "external_product_id": "ext_acff84a9f77766e338b83f44",
+      "market": "US",
+      "domain": "nubest.com",
+      "title": "NuBest Tall Kids – Berry Multivitamin Chewables for Ages 2–9, 60 Count",
+      "canonical_url": "https://www.nubest.com/products/shopping-nubest-tall-kids-multivitamins-berry-flavor-ages-2-9-60-chewables",
+      "product_family": "single_formula",
+      "product_line_id": "pl_66927800e191f205bccfae36",
+      "identity_variant_axes": {
+        "pack": "60pack",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_acff84a9f77766e338b83f44",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "effective": {
+          "product_id": "ext_acff84a9f77766e338b83f44",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "product_line_id": "pl_66927800e191f205bccfae36",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [
+          "active_raw_may_be_full_inci"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Calcium (as Calcium Carbonate)",
+          "Vitamin A (as Beta Carotene)",
+          "Thiamine (as Thiamine HCl)",
+          "Riboflavin (Vitamin B2)",
+          "Niacin (as Niacinamide)",
+          "Vitamin B6 (as Pyridoxine HCl)",
+          "Biotin",
+          "Folate (as Folic Acid)",
+          "Vitamin B12 (as Cyanocobalamin)",
+          "Vitamin C (as Ascorbic Acid)"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 354,
+          "inci_chars": 608,
+          "active_ingredients_chars": 453,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 608,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 3,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 354,
+        "inci_chars": 608,
+        "active_ingredients_chars": 453,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 608,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_e0054cd1d3d5f54005acd0e1",
+      "external_product_id": "ext_9fbfa632c4a275917f5a0da0",
+      "market": "US",
+      "domain": "nubest.com",
+      "title": "Omega-3 Vegan Gummies for Kids & Teens - 60 Count",
+      "canonical_url": "https://www.nubest.com/products/shopping-omega-3-vegan-gummies-for-kids-teens-60-count",
+      "product_family": "single_formula",
+      "product_line_id": "pl_97e06afff18d8e65f1ddc868",
+      "identity_variant_axes": {
+        "pack": "1pack",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_9fbfa632c4a275917f5a0da0",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "effective": {
+          "product_id": "ext_9fbfa632c4a275917f5a0da0",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "product_line_id": "pl_97e06afff18d8e65f1ddc868",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 196,
+          "inci_chars": 218,
+          "active_ingredients_chars": 61,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 218,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_not_displayable"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 3,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 196,
+        "inci_chars": 218,
+        "active_ingredients_chars": 61,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 218,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_4dce931262d1bdefd8a7b3a4",
+      "external_product_id": "ext_2da6f7615154860df7bdb07b",
+      "market": "US",
+      "domain": "nubest.com",
+      "title": "Doctor Plus, For Children & Teens - 60 Capsules",
+      "canonical_url": "https://www.nubest.com/products/shopping-doctor-plus-for-children-teens-60-capsules",
+      "product_family": "single_formula",
+      "product_line_id": "pl_819f22828b1eabe1de6545ea",
+      "identity_variant_axes": {
+        "pack": "1pack",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_2da6f7615154860df7bdb07b",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "effective": {
+          "product_id": "ext_2da6f7615154860df7bdb07b",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "product_line_id": "pl_819f22828b1eabe1de6545ea",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero",
+          "active_raw_may_be_full_inci"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 301,
+          "inci_chars": 412,
+          "active_ingredients_chars": 331,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 412,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_not_displayable"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 6,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 301,
+        "inci_chars": 412,
+        "active_ingredients_chars": 331,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 412,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_f35503f232d28ef3c6a194cf",
+      "external_product_id": "ext_4e7ae04d68622ea157a494da",
+      "market": "US",
+      "domain": "nubest.com",
+      "title": "Grow Power Capsules for Kids & Teens – 60 Count",
+      "canonical_url": "https://www.nubest.com/products/shopping-grow-power-capsules-for-kids-teens-60-count",
+      "product_family": "single_formula",
+      "product_line_id": "pl_90bcfbd9c787f5bf48761157",
+      "identity_variant_axes": {
+        "pack": "60pack",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_4e7ae04d68622ea157a494da",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "effective": {
+          "product_id": "ext_4e7ae04d68622ea157a494da",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "product_line_id": "pl_90bcfbd9c787f5bf48761157",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero",
+          "active_raw_may_be_full_inci"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 257,
+          "inci_chars": 391,
+          "active_ingredients_chars": 308,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 391,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_not_displayable"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 3,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 257,
+        "inci_chars": 391,
+        "active_ingredients_chars": 308,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 391,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

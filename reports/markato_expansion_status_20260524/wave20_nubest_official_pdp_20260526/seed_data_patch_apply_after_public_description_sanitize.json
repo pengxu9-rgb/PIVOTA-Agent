@@ -1,0 +1,143 @@
+{
+  "ok": true,
+  "generated_at": "2026-05-26T00:04:34.414Z",
+  "mode": "apply",
+  "manifest_path": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/wave20_nubest_official_pdp_20260526/wave20_nubest_official_candidate_manifest.json",
+  "selected_rows": 10,
+  "updated": 10,
+  "would_update": 0,
+  "unchanged": 0,
+  "missing": 0,
+  "plans": [
+    {
+      "external_product_id": "ext_d6eb3ee536ac3d49561aaa5f",
+      "seed_id": "eps_01535ed893abbdd17702a9e8",
+      "title": "NuBest Immune Gummies for Kids (Ages 4+) - 19 Essential Nutrients for Immune Support & Healthy Development - Raspberry Flavor (60 Count)",
+      "status": "updated",
+      "before_hash": "3f13fc13a19bc4a8",
+      "after_hash": "96a65134944b8351",
+      "variant_axis_kinds": [
+        "size",
+        "size",
+        "size"
+      ]
+    },
+    {
+      "external_product_id": "ext_97ffa9c22f3a8ea415454e83",
+      "seed_id": "eps_9dd6aeba20e815deb77f0fcd",
+      "title": "NuBest Tall 10+ - Powerful Growth Support for Teens - 60 Capsules",
+      "status": "updated",
+      "before_hash": "6ecfc30bfa862e95",
+      "after_hash": "e71cc356139ce134",
+      "variant_axis_kinds": [
+        "size",
+        "size",
+        "size",
+        "size"
+      ]
+    },
+    {
+      "external_product_id": "ext_d6f78ec76732918fef0b7d5b",
+      "seed_id": "eps_d8a263899760ccf29cf80dc6",
+      "title": "NuBest Tall Protein Vanilla Shake for Kids Ages 4+, 10 Vegan Servings - Pack 1",
+      "status": "updated",
+      "before_hash": "4426005cf910e1e0",
+      "after_hash": "01fb7f05bbc3356e",
+      "variant_axis_kinds": [
+        "size"
+      ]
+    },
+    {
+      "external_product_id": "ext_461efc4478853cf6cac8d4e9",
+      "seed_id": "eps_77a653b4d6e670302f050821",
+      "title": "NuBest Tall Protein, Chocolate Shake, 15 servings - Pack 1",
+      "status": "updated",
+      "before_hash": "cfdaa253651be5d2",
+      "after_hash": "afcfbdf806843ab0",
+      "variant_axis_kinds": [
+        "size"
+      ]
+    },
+    {
+      "external_product_id": "ext_fb76b45f22e546e331d4904f",
+      "seed_id": "eps_9c8a2cdfd47ea3ea8212ab35",
+      "title": "Doctor Taller Kids Multivitamins – Grape Flavor, Vegan Chewables for Ages 2–9 (90 Count)",
+      "status": "updated",
+      "before_hash": "bf10aab7fe1ffedf",
+      "after_hash": "40b9a9ee1a274cd5",
+      "variant_axis_kinds": [
+        "size",
+        "size",
+        "size"
+      ]
+    },
+    {
+      "external_product_id": "ext_1030e828c320440354e98895",
+      "seed_id": "eps_fa653c2abb9f5615a7210ba4",
+      "title": "Doctor Taller Kids – Grape Multivitamin Chewables for Children Ages 2–9, 60 Vegan Gummies",
+      "status": "updated",
+      "before_hash": "cc39ac886919c1c4",
+      "after_hash": "608f40750eee99a1",
+      "variant_axis_kinds": [
+        "size",
+        "size",
+        "size"
+      ]
+    },
+    {
+      "external_product_id": "ext_acff84a9f77766e338b83f44",
+      "seed_id": "eps_31d729ede0a776565b6fcaac",
+      "title": "NuBest Tall Kids – Berry Multivitamin Chewables for Ages 2–9, 60 Count",
+      "status": "updated",
+      "before_hash": "1b03accbe50f261a",
+      "after_hash": "a3e4f88de1d6f60c",
+      "variant_axis_kinds": [
+        "size",
+        "size",
+        "size"
+      ]
+    },
+    {
+      "external_product_id": "ext_9fbfa632c4a275917f5a0da0",
+      "seed_id": "eps_e0054cd1d3d5f54005acd0e1",
+      "title": "Omega-3 Vegan Gummies for Kids & Teens - 60 Count",
+      "status": "updated",
+      "before_hash": "2a74902e84ad621b",
+      "after_hash": "7c8221780962eb6e",
+      "variant_axis_kinds": [
+        "size",
+        "size",
+        "size"
+      ]
+    },
+    {
+      "external_product_id": "ext_2da6f7615154860df7bdb07b",
+      "seed_id": "eps_4dce931262d1bdefd8a7b3a4",
+      "title": "Doctor Plus, For Children & Teens - 60 Capsules",
+      "status": "updated",
+      "before_hash": "88c9bfb842ccb98e",
+      "after_hash": "0ee1bdc11abebfc8",
+      "variant_axis_kinds": [
+        "size",
+        "size",
+        "size",
+        "size",
+        "size",
+        "size"
+      ]
+    },
+    {
+      "external_product_id": "ext_4e7ae04d68622ea157a494da",
+      "seed_id": "eps_f35503f232d28ef3c6a194cf",
+      "title": "Grow Power Capsules for Kids & Teens – 60 Count",
+      "status": "updated",
+      "before_hash": "4b68fe73052d3796",
+      "after_hash": "3dad277e1623c684",
+      "variant_axis_kinds": [
+        "size",
+        "size",
+        "size"
+      ]
+    }
+  ]
+}

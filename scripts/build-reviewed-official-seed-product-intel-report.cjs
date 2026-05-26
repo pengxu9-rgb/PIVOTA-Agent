@@ -535,6 +535,12 @@ function inferKind(title, category, categoryPath, description = '') {
   const descriptionText = `${description}`.toLowerCase();
   const haystack = `${titleCategoryText} ${descriptionText}`;
   const reviewedPath = `${categoryPath}`.toLowerCase().replace(/\\/g, '/');
+  if (
+    /\bwellness\/supplements?\b/.test(reviewedPath) ||
+    /\bwellness\s+supplements?\b/.test(titleCategoryText)
+  ) {
+    return 'wellness_supplement';
+  }
   if (/\bbeauty\/bodycare\/body-oil\b/.test(reviewedPath)) return 'body_oil';
   if (/\bbeauty\/skincare\/face-balm\b/.test(reviewedPath)) return 'face_balm';
   if (/\bbeauty\/skincare\/serum\b/.test(reviewedPath) && /\bserum\b/.test(titleCategoryText)) return 'serum';
@@ -744,6 +750,7 @@ function kindLabel(kind, category) {
     makeup_set: 'makeup set',
     eye_care_set: 'eye care set',
     lip_set: 'lip set',
+    wellness_supplement: 'wellness supplement',
     beauty_product: text(category).toLowerCase() || 'beauty product',
   };
   return labels[kind] || labels.beauty_product;
@@ -819,6 +826,7 @@ function displayCategoryForKind(kind, category) {
     makeup_set: 'Makeup Set',
     eye_care_set: 'Eye Care Set',
     lip_set: 'Lip Set',
+    wellness_supplement: 'Wellness Supplement',
     beauty_product: 'Beauty Product',
   };
   const controlledCategoryKinds = new Set([
@@ -843,6 +851,7 @@ function displayCategoryForKind(kind, category) {
     'fragrance_set',
     'eye_care_set',
     'body_mist',
+    'wellness_supplement',
     'dry_shampoo',
     'shampoo',
     'conditioner',
@@ -950,6 +959,7 @@ function routineStep(kind) {
     makeup_set: 'set',
     eye_care_set: 'set',
     lip_set: 'set',
+    wellness_supplement: 'wellness',
     beauty_product: 'beauty',
   };
   return steps[kind] || 'beauty';
@@ -1206,6 +1216,7 @@ function buildHighlightPhrase(kind, category, description, title = '') {
   }
   if (kind === 'body_mist') return 'Hair-and-body mist detail';
   if (kind === 'fragrance_set') return 'Fragrance gift set';
+  if (kind === 'wellness_supplement') return 'Source-backed supplement detail';
   if (kind === 'fragrance' && /(?:amber|leather|vanilla|floral|wood|rose|oud|citrus|ginger|cardamom)/.test(signalText)) {
     const noteTerms = [
       ['ginger', 'Ginger'],

@@ -1,0 +1,30 @@
+{
+  "status": "ok",
+  "mode": "dry_run_validate_replacements",
+  "report": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/wave20_nubest_official_pdp_20260526/official_seed_product_intel_report_10.json",
+  "rows": [
+    "live_ext_97ffa9c22f3a8ea415454e83",
+    "live_ext_1030e828c320440354e98895",
+    "live_ext_d6eb3ee536ac3d49561aaa5f",
+    "live_ext_d6f78ec76732918fef0b7d5b",
+    "live_ext_461efc4478853cf6cac8d4e9",
+    "live_ext_fb76b45f22e546e331d4904f",
+    "live_ext_acff84a9f77766e338b83f44",
+    "live_ext_9fbfa632c4a275917f5a0da0",
+    "live_ext_2da6f7615154860df7bdb07b",
+    "live_ext_4e7ae04d68622ea157a494da"
+  ],
+  "entries": [
+    "product:ext_97ffa9c22f3a8ea415454e83",
+    "product:ext_1030e828c320440354e98895",
+    "product:ext_d6eb3ee536ac3d49561aaa5f",
+    "product:ext_d6f78ec76732918fef0b7d5b",
+    "product:ext_461efc4478853cf6cac8d4e9",
+    "product:ext_fb76b45f22e546e331d4904f",
+    "product:ext_acff84a9f77766e338b83f44",
+    "product:ext_9fbfa632c4a275917f5a0da0",
+    "product:ext_2da6f7615154860df7bdb07b",
+    "product:ext_4e7ae04d68622ea157a494da"
+  ],
+  "skipped_rows": []
+}

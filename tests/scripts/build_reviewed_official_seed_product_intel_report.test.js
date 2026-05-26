@@ -69,6 +69,49 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     ).toBe('eye_treatment');
   });
 
+  test('classifies wellness supplement seeds without beauty template leakage', () => {
+    expect(
+      inferKind(
+        'NuBest Tall 10+ - Powerful Growth Support for Teens - 60 Capsules',
+        'Wellness Supplement',
+        'wellness/supplements',
+        'This NuBest supplement is listed on the brand PDP with source-backed ingredients and directions.',
+      ),
+    ).toBe('wellness_supplement');
+
+    const bundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_nubest_tall_10',
+        title: 'NuBest Tall 10+ - Powerful Growth Support for Teens - 60 Capsules',
+        canonical_url: 'https://www.nubest.com/products/nubest-tall-10',
+        seed_data: {
+          brand: 'NuBest',
+          category: 'Wellness Supplement',
+          category_path: ['wellness', 'supplements'],
+          description:
+            'This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.',
+          ingredients_inci: ['Calcium', 'Phosphorus', 'Collagen Hydrolysate', 'Vitamin D3', 'Vitamin K2'],
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_nubest_tall_10',
+        sellable_item_group_id: 'sig_nubest_tall_10',
+      },
+      generatedAt: '2026-05-26T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+
+    expect(bundle.product_intel_core.best_for[0]).toMatchObject({
+      tag: 'wellness_supplement_shoppers',
+      label: 'Wellness supplement shoppers',
+    });
+    expect(bundle.product_intel_core.routine_fit.step).toBe('wellness');
+    expect(bundle.texture_finish.texture).toBe('wellness_supplement');
+    expect(bundle.shopping_card.highlight).toBe('Source-backed supplement detail');
+    expect(JSON.stringify(bundle)).not.toMatch(/beauty_product_shoppers|step":"beauty"|"texture":"beauty_product"/i);
+  });
+
   test('classifies reviewed Pixi set and patch patterns by title before component copy', () => {
     expect(inferKind('On-the-Glow Bronze Collection', '', '', 'Hydrating balm bronzers with fruit extracts.')).toBe(
       'makeup_set',

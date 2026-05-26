@@ -1,0 +1,2580 @@
+{
+  "meta": {
+    "generated_at": "2026-05-26T00:08:02.578Z",
+    "source": "reviewed_official_seed_product_intel_report",
+    "batch_name": "wave20_nubest_official_seed_product_intel",
+    "inventory": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave7-20260524/reports/markato_expansion_status_20260524/wave20_nubest_official_pdp_20260526/readiness_after_catalog_sync/commerce_index_kb_readiness_inventory.json",
+    "selected_cases": 10,
+    "reviewer": "codex_quality_reviewer_owner_delegated",
+    "reviewer_kind": "assistant",
+    "candidate_quality_summary": {
+      "public_ready": 10,
+      "high_quality_ready": 10,
+      "evidence_profile": {
+        "seller_plus_formula": 10
+      }
+    }
+  },
+  "rows": [
+    {
+      "case_id": "live_ext_97ffa9c22f3a8ea415454e83",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-26T00:08:02.578Z",
+      "notes": "Approved official-PDP-seed rewrite for NuBest Tall 10+ - Powerful Growth Support for Teens - 60 Capsules; evidence_profile=seller_plus_formula; source_url=https://www.nubest.com/products/nubest-tall-10-powerful-growth-support-for-teens-60-capsules",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_97ffa9c22f3a8ea415454e83",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_97ffa9c22f3a8ea415454e83",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_261c572920501e7609d27c07",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Wellness supplement identity",
+              "body": "A NuBest wellness supplement listed on the brand source page as NuBest Tall 10+ - Powerful Growth Support for Teens - 60 Capsules. The source description identifies: This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability."
+            },
+            "best_for": [
+              {
+                "tag": "wellness_supplement_shoppers",
+                "label": "Wellness supplement shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Calcium, Phosphorus, Collagen Hydrolysate, Vitamin D3, Vitamin K2. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "wellness",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the wellness supplement context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-26T00:08:02.578Z",
+              "source_version": "wave20_nubest_official_seed_product_intel"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.nubest.com/products/nubest-tall-10-powerful-growth-support-for-teens-60-capsules"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 13,
+                "source_url": "https://www.nubest.com/products/nubest-tall-10-powerful-growth-support-for-teens-60-capsules"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "wellness supplement",
+            "texture": "wellness_supplement",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.nubest.com/products/nubest-tall-10-powerful-growth-support-for-teens-60-capsules"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 13,
+              "source_url": "https://www.nubest.com/products/nubest-tall-10-powerful-growth-support-for-teens-60-capsules"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-26T00:08:02.578Z",
+            "source_version": "wave20_nubest_official_seed_product_intel"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-26T00:08:02.578Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave20_nubest_official_seed_product_intel",
+            "official_source_url": "https://www.nubest.com/products/nubest-tall-10-powerful-growth-support-for-teens-60-capsules",
+            "official_source_ingredient_count": 13,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "NuBest Tall 10+ - Powerful Growth Support for Teens - 60 Capsules",
+            "subtitle": "Wellness Supplement",
+            "highlight": "Source-backed supplement detail",
+            "intro": "A NuBest wellness supplement listed on the brand source page as NuBest Tall 10+ - Powerful Growth Support for Teens - 60 Capsules. The source description identifies: This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "NuBest Tall 10+ - Powerful Growth Support for Teens - 60 Capsules",
+            "compact_candidate": "Wellness Supplement",
+            "highlight_candidate": "Source-backed supplement detail",
+            "intro_candidate": "A NuBest wellness supplement listed on the brand source page as NuBest Tall 10+ - Powerful Growth Support for Teens - 60 Capsules. The source description identifies: This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_1030e828c320440354e98895",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-26T00:08:02.578Z",
+      "notes": "Approved official-PDP-seed rewrite for Doctor Taller Kids – Grape Multivitamin Chewables for Children Ages 2–9, 60 Vegan Gummies; evidence_profile=seller_plus_formula; source_url=https://www.nubest.com/products/shopping-doctor-taller-kids-grape-multivitamins-ages-2-9-60-vegan-chewables",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_1030e828c320440354e98895",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_1030e828c320440354e98895",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_4c93831a6ac6280cdb74c78f",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Wellness supplement identity",
+              "body": "A NuBest wellness supplement listed on the brand source page as Doctor Taller Kids – Grape Multivitamin Chewables for Children Ages 2–9, 60 Vegan Gummies. The source description identifies: This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability."
+            },
+            "best_for": [
+              {
+                "tag": "wellness_supplement_shoppers",
+                "label": "Wellness supplement shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Vitamin A (as Beta-Carotene), Vitamin C (as Ascorbic Acid), Vitamin D3 (as Cholecalciferol), Vitamin E (D-Alpha Mixed Tocopherols), Thiamine (as Thiamine HCI). Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "wellness",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the wellness supplement context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-26T00:08:02.578Z",
+              "source_version": "wave20_nubest_official_seed_product_intel"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.nubest.com/products/shopping-doctor-taller-kids-grape-multivitamins-ages-2-9-60-vegan-chewables"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 27,
+                "source_url": "https://www.nubest.com/products/shopping-doctor-taller-kids-grape-multivitamins-ages-2-9-60-vegan-chewables"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "wellness supplement",
+            "texture": "wellness_supplement",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.nubest.com/products/shopping-doctor-taller-kids-grape-multivitamins-ages-2-9-60-vegan-chewables"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 27,
+              "source_url": "https://www.nubest.com/products/shopping-doctor-taller-kids-grape-multivitamins-ages-2-9-60-vegan-chewables"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-26T00:08:02.578Z",
+            "source_version": "wave20_nubest_official_seed_product_intel"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-26T00:08:02.578Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave20_nubest_official_seed_product_intel",
+            "official_source_url": "https://www.nubest.com/products/shopping-doctor-taller-kids-grape-multivitamins-ages-2-9-60-vegan-chewables",
+            "official_source_ingredient_count": 27,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Doctor Taller Kids – Grape Multivitamin Chewables for Children Ages 2–9, 60 Vegan Gummies",
+            "subtitle": "Wellness Supplement",
+            "highlight": "Source-backed supplement detail",
+            "intro": "A NuBest wellness supplement listed on the brand source page as Doctor Taller Kids – Grape Multivitamin Chewables for Children Ages 2–9, 60 Vegan Gummies. The source description identifies: This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Doctor Taller Kids – Grape Multivitamin Chewables for Children Ages 2–9, 60 Vegan Gummies",
+            "compact_candidate": "Wellness Supplement",
+            "highlight_candidate": "Source-backed supplement detail",
+            "intro_candidate": "A NuBest wellness supplement listed on the brand source page as Doctor Taller Kids – Grape Multivitamin Chewables for Children Ages 2–9, 60 Vegan Gummies. The source description identifies: This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_d6eb3ee536ac3d49561aaa5f",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-26T00:08:02.578Z",
+      "notes": "Approved official-PDP-seed rewrite for NuBest Immune Gummies for Kids (Ages 4+) - 19 Essential Nutrients for Immune Support & Healthy Development - Raspberry Flavor (60 Count); evidence_profile=seller_plus_formula; source_url=https://www.nubest.com/products/nubest-immune-gummies",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_d6eb3ee536ac3d49561aaa5f",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_d6eb3ee536ac3d49561aaa5f",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_2ee2ceed34ed871302742e19",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Wellness supplement identity",
+              "body": "A NuBest wellness supplement listed on the brand source page as NuBest Immune Gummies for Kids (Ages 4+) - 19 Essential Nutrients for Immune Support & Healthy Development - Raspberry Flavor (60 Count). The source description identifies: This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability."
+            },
+            "best_for": [
+              {
+                "tag": "wellness_supplement_shoppers",
+                "label": "Wellness supplement shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Vitamin A (as Retinol Acetate), Vitamin C (Ascorbic Acid), Vitamin D2 (as Ergocalciferol), Vitamin E (as dl-𝛂-tocopheryl Acetate), Vitamin K (as Phytomenadione). Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "wellness",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the wellness supplement context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-26T00:08:02.578Z",
+              "source_version": "wave20_nubest_official_seed_product_intel"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.nubest.com/products/nubest-immune-gummies"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 34,
+                "source_url": "https://www.nubest.com/products/nubest-immune-gummies"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "wellness supplement",
+            "texture": "wellness_supplement",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.nubest.com/products/nubest-immune-gummies"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 34,
+              "source_url": "https://www.nubest.com/products/nubest-immune-gummies"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-26T00:08:02.578Z",
+            "source_version": "wave20_nubest_official_seed_product_intel"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-26T00:08:02.578Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave20_nubest_official_seed_product_intel",
+            "official_source_url": "https://www.nubest.com/products/nubest-immune-gummies",
+            "official_source_ingredient_count": 34,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "NuBest Immune Gummies for Kids (Ages 4+) - 19 Essential Nutrients for Immune Support & Healthy Development - Raspberry Flavor (60 Count)",
+            "subtitle": "Wellness Supplement",
+            "highlight": "Source-backed supplement detail",
+            "intro": "A NuBest wellness supplement listed on the brand source page as NuBest Immune Gummies for Kids (Ages 4+) - 19 Essential Nutrients for Immune Support & Healthy Development - Raspberry Flavor (60 Count). The source description identifies: This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "NuBest Immune Gummies for Kids (Ages 4+) - 19 Essential Nutrients for Immune Support & Healthy Development - Raspberry Flavor (60 Count)",
+            "compact_candidate": "Wellness Supplement",
+            "highlight_candidate": "Source-backed supplement detail",
+            "intro_candidate": "A NuBest wellness supplement listed on the brand source page as NuBest Immune Gummies for Kids (Ages 4+) - 19 Essential Nutrients for Immune Support & Healthy Development - Raspberry Flavor (60 Count). The source description identifies: This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_d6f78ec76732918fef0b7d5b",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-26T00:08:02.578Z",
+      "notes": "Approved official-PDP-seed rewrite for NuBest Tall Protein Vanilla Shake for Kids Ages 4+, 10 Vegan Servings - Pack 1; evidence_profile=seller_plus_formula; source_url=https://www.nubest.com/products/shopping-nubest-tall-protein-vanilla-shake-for-kids-ages-4-10-vegan-servings-pack-1",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_d6f78ec76732918fef0b7d5b",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_d6f78ec76732918fef0b7d5b",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_460f1dfa79504abc86ed16a3",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Wellness supplement identity",
+              "body": "A NuBest wellness supplement listed on the brand source page as NuBest Tall Protein Vanilla Shake for Kids Ages 4+, 10 Vegan Servings - Pack 1. The source description identifies: This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability."
+            },
+            "best_for": [
+              {
+                "tag": "wellness_supplement_shoppers",
+                "label": "Wellness supplement shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Protein, Vitamin A, Vitamin C, Vitamin D, Vitamin E. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "wellness",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the wellness supplement context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-26T00:08:02.578Z",
+              "source_version": "wave20_nubest_official_seed_product_intel"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.nubest.com/products/shopping-nubest-tall-protein-vanilla-shake-for-kids-ages-4-10-vegan-servings-pack-1"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 39,
+                "source_url": "https://www.nubest.com/products/shopping-nubest-tall-protein-vanilla-shake-for-kids-ages-4-10-vegan-servings-pack-1"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "wellness supplement",
+            "texture": "wellness_supplement",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.nubest.com/products/shopping-nubest-tall-protein-vanilla-shake-for-kids-ages-4-10-vegan-servings-pack-1"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 39,
+              "source_url": "https://www.nubest.com/products/shopping-nubest-tall-protein-vanilla-shake-for-kids-ages-4-10-vegan-servings-pack-1"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-26T00:08:02.578Z",
+            "source_version": "wave20_nubest_official_seed_product_intel"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-26T00:08:02.578Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave20_nubest_official_seed_product_intel",
+            "official_source_url": "https://www.nubest.com/products/shopping-nubest-tall-protein-vanilla-shake-for-kids-ages-4-10-vegan-servings-pack-1",
+            "official_source_ingredient_count": 39,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "NuBest Tall Protein Vanilla Shake for Kids Ages 4+, 10 Vegan Servings - Pack 1",
+            "subtitle": "Wellness Supplement",
+            "highlight": "Source-backed supplement detail",
+            "intro": "A NuBest wellness supplement listed on the brand source page as NuBest Tall Protein Vanilla Shake for Kids Ages 4+, 10 Vegan Servings - Pack 1. The source description identifies: This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "NuBest Tall Protein Vanilla Shake for Kids Ages 4+, 10 Vegan Servings - Pack 1",
+            "compact_candidate": "Wellness Supplement",
+            "highlight_candidate": "Source-backed supplement detail",
+            "intro_candidate": "A NuBest wellness supplement listed on the brand source page as NuBest Tall Protein Vanilla Shake for Kids Ages 4+, 10 Vegan Servings - Pack 1. The source description identifies: This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_461efc4478853cf6cac8d4e9",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-26T00:08:02.578Z",
+      "notes": "Approved official-PDP-seed rewrite for NuBest Tall Protein, Chocolate Shake, 15 servings - Pack 1; evidence_profile=seller_plus_formula; source_url=https://www.nubest.com/products/shopping-nubest-tall-protein-chocolate-shake-15-servings-pack-1",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_461efc4478853cf6cac8d4e9",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_461efc4478853cf6cac8d4e9",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_98b4b303ba933a3767f0a2e4",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Wellness supplement identity",
+              "body": "A NuBest wellness supplement listed on the brand source page as NuBest Tall Protein, Chocolate Shake, 15 servings - Pack 1. The source description identifies: This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability."
+            },
+            "best_for": [
+              {
+                "tag": "wellness_supplement_shoppers",
+                "label": "Wellness supplement shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Protein, Vitamin A, Vitamin C, Vitamin D, Vitamin E. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "wellness",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the wellness supplement context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-26T00:08:02.578Z",
+              "source_version": "wave20_nubest_official_seed_product_intel"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.nubest.com/products/shopping-nubest-tall-protein-chocolate-shake-15-servings-pack-1"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 43,
+                "source_url": "https://www.nubest.com/products/shopping-nubest-tall-protein-chocolate-shake-15-servings-pack-1"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "wellness supplement",
+            "texture": "wellness_supplement",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.nubest.com/products/shopping-nubest-tall-protein-chocolate-shake-15-servings-pack-1"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 43,
+              "source_url": "https://www.nubest.com/products/shopping-nubest-tall-protein-chocolate-shake-15-servings-pack-1"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-26T00:08:02.578Z",
+            "source_version": "wave20_nubest_official_seed_product_intel"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-26T00:08:02.578Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave20_nubest_official_seed_product_intel",
+            "official_source_url": "https://www.nubest.com/products/shopping-nubest-tall-protein-chocolate-shake-15-servings-pack-1",
+            "official_source_ingredient_count": 43,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "NuBest Tall Protein, Chocolate Shake, 15 servings - Pack 1",
+            "subtitle": "Wellness Supplement",
+            "highlight": "Source-backed supplement detail",
+            "intro": "A NuBest wellness supplement listed on the brand source page as NuBest Tall Protein, Chocolate Shake, 15 servings - Pack 1. The source description identifies: This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "NuBest Tall Protein, Chocolate Shake, 15 servings - Pack 1",
+            "compact_candidate": "Wellness Supplement",
+            "highlight_candidate": "Source-backed supplement detail",
+            "intro_candidate": "A NuBest wellness supplement listed on the brand source page as NuBest Tall Protein, Chocolate Shake, 15 servings - Pack 1. The source description identifies: This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_fb76b45f22e546e331d4904f",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-26T00:08:02.578Z",
+      "notes": "Approved official-PDP-seed rewrite for Doctor Taller Kids Multivitamins – Grape Flavor, Vegan Chewables for Ages 2–9 (90 Count); evidence_profile=seller_plus_formula; source_url=https://www.nubest.com/products/shopping-doctor-taller-kids-grape-multivitamins-ages-2-9-90-vegan-chewables",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_fb76b45f22e546e331d4904f",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_fb76b45f22e546e331d4904f",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_b4865783d67e45dd3b829932",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Wellness supplement identity",
+              "body": "A NuBest wellness supplement listed on the brand source page as Doctor Taller Kids Multivitamins – Grape Flavor, Vegan Chewables for Ages 2–9 (90 Count). The source description identifies: This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability."
+            },
+            "best_for": [
+              {
+                "tag": "wellness_supplement_shoppers",
+                "label": "Wellness supplement shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Vitamin A (as Beta-Carotene), Vitamin C (as Ascorbic Acid), Vitamin D3 (as Cholecalciferol), Vitamin E (D-Alpha Mixed Tocopherols), Thiamine (as Thiamine HCI). Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "wellness",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the wellness supplement context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-26T00:08:02.578Z",
+              "source_version": "wave20_nubest_official_seed_product_intel"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.nubest.com/products/shopping-doctor-taller-kids-grape-multivitamins-ages-2-9-90-vegan-chewables"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 27,
+                "source_url": "https://www.nubest.com/products/shopping-doctor-taller-kids-grape-multivitamins-ages-2-9-90-vegan-chewables"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "wellness supplement",
+            "texture": "wellness_supplement",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.nubest.com/products/shopping-doctor-taller-kids-grape-multivitamins-ages-2-9-90-vegan-chewables"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 27,
+              "source_url": "https://www.nubest.com/products/shopping-doctor-taller-kids-grape-multivitamins-ages-2-9-90-vegan-chewables"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-26T00:08:02.578Z",
+            "source_version": "wave20_nubest_official_seed_product_intel"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-26T00:08:02.578Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave20_nubest_official_seed_product_intel",
+            "official_source_url": "https://www.nubest.com/products/shopping-doctor-taller-kids-grape-multivitamins-ages-2-9-90-vegan-chewables",
+            "official_source_ingredient_count": 27,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Doctor Taller Kids Multivitamins – Grape Flavor, Vegan Chewables for Ages 2–9 (90 Count)",
+            "subtitle": "Wellness Supplement",
+            "highlight": "Source-backed supplement detail",
+            "intro": "A NuBest wellness supplement listed on the brand source page as Doctor Taller Kids Multivitamins – Grape Flavor, Vegan Chewables for Ages 2–9 (90 Count). The source description identifies: This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Doctor Taller Kids Multivitamins – Grape Flavor, Vegan Chewables for Ages 2–9 (90 Count)",
+            "compact_candidate": "Wellness Supplement",
+            "highlight_candidate": "Source-backed supplement detail",
+            "intro_candidate": "A NuBest wellness supplement listed on the brand source page as Doctor Taller Kids Multivitamins – Grape Flavor, Vegan Chewables for Ages 2–9 (90 Count). The source description identifies: This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_acff84a9f77766e338b83f44",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-26T00:08:02.578Z",
+      "notes": "Approved official-PDP-seed rewrite for NuBest Tall Kids – Berry Multivitamin Chewables for Ages 2–9, 60 Count; evidence_profile=seller_plus_formula; source_url=https://www.nubest.com/products/shopping-nubest-tall-kids-multivitamins-berry-flavor-ages-2-9-60-chewables",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_acff84a9f77766e338b83f44",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_acff84a9f77766e338b83f44",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_ede8efb8e75e43519dbf3987",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Wellness supplement identity",
+              "body": "A NuBest wellness supplement listed on the brand source page as NuBest Tall Kids – Berry Multivitamin Chewables for Ages 2–9, 60 Count. The source description identifies: This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability."
+            },
+            "best_for": [
+              {
+                "tag": "wellness_supplement_shoppers",
+                "label": "Wellness supplement shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Calcium (as Calcium Carbonate), Vitamin A (as Beta Carotene), Thiamine (as Thiamine HCl), Riboflavin (Vitamin B2), Niacin (as Niacinamide). Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "wellness",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the wellness supplement context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-26T00:08:02.578Z",
+              "source_version": "wave20_nubest_official_seed_product_intel"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.nubest.com/products/shopping-nubest-tall-kids-multivitamins-berry-flavor-ages-2-9-60-chewables"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 24,
+                "source_url": "https://www.nubest.com/products/shopping-nubest-tall-kids-multivitamins-berry-flavor-ages-2-9-60-chewables"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "wellness supplement",
+            "texture": "wellness_supplement",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.nubest.com/products/shopping-nubest-tall-kids-multivitamins-berry-flavor-ages-2-9-60-chewables"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 24,
+              "source_url": "https://www.nubest.com/products/shopping-nubest-tall-kids-multivitamins-berry-flavor-ages-2-9-60-chewables"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-26T00:08:02.578Z",
+            "source_version": "wave20_nubest_official_seed_product_intel"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-26T00:08:02.578Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave20_nubest_official_seed_product_intel",
+            "official_source_url": "https://www.nubest.com/products/shopping-nubest-tall-kids-multivitamins-berry-flavor-ages-2-9-60-chewables",
+            "official_source_ingredient_count": 24,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "NuBest Tall Kids – Berry Multivitamin Chewables for Ages 2–9, 60 Count",
+            "subtitle": "Wellness Supplement",
+            "highlight": "Source-backed supplement detail",
+            "intro": "A NuBest wellness supplement listed on the brand source page as NuBest Tall Kids – Berry Multivitamin Chewables for Ages 2–9, 60 Count. The source description identifies: This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "NuBest Tall Kids – Berry Multivitamin Chewables for Ages 2–9, 60 Count",
+            "compact_candidate": "Wellness Supplement",
+            "highlight_candidate": "Source-backed supplement detail",
+            "intro_candidate": "A NuBest wellness supplement listed on the brand source page as NuBest Tall Kids – Berry Multivitamin Chewables for Ages 2–9, 60 Count. The source description identifies: This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_9fbfa632c4a275917f5a0da0",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-26T00:08:02.578Z",
+      "notes": "Approved official-PDP-seed rewrite for Omega-3 Vegan Gummies for Kids & Teens - 60 Count; evidence_profile=seller_plus_formula; source_url=https://www.nubest.com/products/shopping-omega-3-vegan-gummies-for-kids-teens-60-count",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_9fbfa632c4a275917f5a0da0",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_9fbfa632c4a275917f5a0da0",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_d13ab80163787fb4f49ee372",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Wellness supplement identity",
+              "body": "A NuBest wellness supplement listed on the brand source page as Omega-3 Vegan Gummies for Kids & Teens - 60 Count. The source description identifies: This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability."
+            },
+            "best_for": [
+              {
+                "tag": "wellness_supplement_shoppers",
+                "label": "Wellness supplement shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Omega Fatty Acids (from flaxseed oil), Omega 3 (ALA), Sodium, Water, Sugar. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "wellness",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the wellness supplement context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-26T00:08:02.578Z",
+              "source_version": "wave20_nubest_official_seed_product_intel"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.nubest.com/products/shopping-omega-3-vegan-gummies-for-kids-teens-60-count"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 12,
+                "source_url": "https://www.nubest.com/products/shopping-omega-3-vegan-gummies-for-kids-teens-60-count"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "wellness supplement",
+            "texture": "wellness_supplement",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.nubest.com/products/shopping-omega-3-vegan-gummies-for-kids-teens-60-count"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 12,
+              "source_url": "https://www.nubest.com/products/shopping-omega-3-vegan-gummies-for-kids-teens-60-count"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-26T00:08:02.578Z",
+            "source_version": "wave20_nubest_official_seed_product_intel"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-26T00:08:02.578Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave20_nubest_official_seed_product_intel",
+            "official_source_url": "https://www.nubest.com/products/shopping-omega-3-vegan-gummies-for-kids-teens-60-count",
+            "official_source_ingredient_count": 12,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Omega-3 Vegan Gummies for Kids & Teens - 60 Count",
+            "subtitle": "Wellness Supplement",
+            "highlight": "Source-backed supplement detail",
+            "intro": "A NuBest wellness supplement listed on the brand source page as Omega-3 Vegan Gummies for Kids & Teens - 60 Count. The source description identifies: This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Omega-3 Vegan Gummies for Kids & Teens - 60 Count",
+            "compact_candidate": "Wellness Supplement",
+            "highlight_candidate": "Source-backed supplement detail",
+            "intro_candidate": "A NuBest wellness supplement listed on the brand source page as Omega-3 Vegan Gummies for Kids & Teens - 60 Count. The source description identifies: This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_2da6f7615154860df7bdb07b",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-26T00:08:02.578Z",
+      "notes": "Approved official-PDP-seed rewrite for Doctor Plus, For Children & Teens - 60 Capsules; evidence_profile=seller_plus_formula; source_url=https://www.nubest.com/products/shopping-doctor-plus-for-children-teens-60-capsules",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_2da6f7615154860df7bdb07b",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_2da6f7615154860df7bdb07b",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_317ceee757853418a819770f",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Wellness supplement identity",
+              "body": "A NuBest wellness supplement listed on the brand source page as Doctor Plus, For Children & Teens - 60 Capsules. The source description identifies: This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability."
+            },
+            "best_for": [
+              {
+                "tag": "wellness_supplement_shoppers",
+                "label": "Wellness supplement shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Vitamin D3 (as Cholecalciferol), Calcium (as Tricalcium Phosphate), Magnesium (as Magnesium Amino Acid Chelate and Magnesium Gluconate), Phosphorous (as Tricalcium Phosphate), Collagen Hydrolysate (Bovine). Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "wellness",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the wellness supplement context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-26T00:08:02.578Z",
+              "source_version": "wave20_nubest_official_seed_product_intel"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.nubest.com/products/shopping-doctor-plus-for-children-teens-60-capsules"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 13,
+                "source_url": "https://www.nubest.com/products/shopping-doctor-plus-for-children-teens-60-capsules"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "wellness supplement",
+            "texture": "wellness_supplement",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.nubest.com/products/shopping-doctor-plus-for-children-teens-60-capsules"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 13,
+              "source_url": "https://www.nubest.com/products/shopping-doctor-plus-for-children-teens-60-capsules"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-26T00:08:02.578Z",
+            "source_version": "wave20_nubest_official_seed_product_intel"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-26T00:08:02.578Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave20_nubest_official_seed_product_intel",
+            "official_source_url": "https://www.nubest.com/products/shopping-doctor-plus-for-children-teens-60-capsules",
+            "official_source_ingredient_count": 13,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Doctor Plus, For Children & Teens - 60 Capsules",
+            "subtitle": "Wellness Supplement",
+            "highlight": "Source-backed supplement detail",
+            "intro": "A NuBest wellness supplement listed on the brand source page as Doctor Plus, For Children & Teens - 60 Capsules. The source description identifies: This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Doctor Plus, For Children & Teens - 60 Capsules",
+            "compact_candidate": "Wellness Supplement",
+            "highlight_candidate": "Source-backed supplement detail",
+            "intro_candidate": "A NuBest wellness supplement listed on the brand source page as Doctor Plus, For Children & Teens - 60 Capsules. The source description identifies: This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_4e7ae04d68622ea157a494da",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-26T00:08:02.578Z",
+      "notes": "Approved official-PDP-seed rewrite for Grow Power Capsules for Kids & Teens – 60 Count; evidence_profile=seller_plus_formula; source_url=https://www.nubest.com/products/shopping-grow-power-capsules-for-kids-teens-60-count",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_4e7ae04d68622ea157a494da",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_4e7ae04d68622ea157a494da",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_ee74af93bb94cc4e12818554",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Wellness supplement identity",
+              "body": "A NuBest wellness supplement listed on the brand source page as Grow Power Capsules for Kids & Teens – 60 Count. The source description identifies: This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability."
+            },
+            "best_for": [
+              {
+                "tag": "wellness_supplement_shoppers",
+                "label": "Wellness supplement shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Vitamin D3 (as Cholecalciferol), Vitamin B6 (as Pyridoxine HCl), Calcium (as Tricalcium Phosphate), Magnesium (as Magnesium Amino Acid Chelate), Phosphorous (as Dicalcium Phosphate). Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "wellness",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the wellness supplement context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-26T00:08:02.578Z",
+              "source_version": "wave20_nubest_official_seed_product_intel"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.nubest.com/products/shopping-grow-power-capsules-for-kids-teens-60-count"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 12,
+                "source_url": "https://www.nubest.com/products/shopping-grow-power-capsules-for-kids-teens-60-count"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "wellness supplement",
+            "texture": "wellness_supplement",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.nubest.com/products/shopping-grow-power-capsules-for-kids-teens-60-count"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 12,
+              "source_url": "https://www.nubest.com/products/shopping-grow-power-capsules-for-kids-teens-60-count"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-26T00:08:02.578Z",
+            "source_version": "wave20_nubest_official_seed_product_intel"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-26T00:08:02.578Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave20_nubest_official_seed_product_intel",
+            "official_source_url": "https://www.nubest.com/products/shopping-grow-power-capsules-for-kids-teens-60-count",
+            "official_source_ingredient_count": 12,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Grow Power Capsules for Kids & Teens – 60 Count",
+            "subtitle": "Wellness Supplement",
+            "highlight": "Source-backed supplement detail",
+            "intro": "A NuBest wellness supplement listed on the brand source page as Grow Power Capsules for Kids & Teens – 60 Count. The source description identifies: This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Grow Power Capsules for Kids & Teens – 60 Count",
+            "compact_candidate": "Wellness Supplement",
+            "highlight_candidate": "Source-backed supplement detail",
+            "intro_candidate": "A NuBest wellness supplement listed on the brand source page as Grow Power Capsules for Kids & Teens – 60 Count. The source description identifies: This NuBest supplement is listed on the brand PDP with source-backed ingredients, directions, pricing, images, and availability.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    }
+  ]
+}
