@@ -698,6 +698,58 @@ describe('pdpBuilder structured PDP modules', () => {
     expect(payload.product.image_url).toBe('https://cdn.example.com/barrier-hero.jpg');
   });
 
+  test('filters merchant marketing and ingredient education assets from media_gallery', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_theordinary_gallery_guard',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Multi-Peptide Lash and Brow Serum',
+        category: 'Serum',
+        image_url: 'https://cdn.media.amplience.net/i/deciem/ORD-Lash-Brow-Serum-primary',
+        images: [
+          'https://cdn.media.amplience.net/i/deciem/ORD-Lash-Brow-Serum-primary',
+          'https://cdn.media.amplience.net/i/deciem/ORD-April-Promotion-Pop-ups-Birthday-Teaser',
+          'https://cdn.media.amplience.net/i/deciem/KEM-Glycolic-Acid?fmt=auto&$poi$&sm=aspect&w=500&aspect=1:1',
+        ],
+        price: { amount: 14.9, currency: 'USD' },
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const urls = findModule(payload, 'media_gallery')?.data?.items?.map((item) => item.url) || [];
+
+    expect(urls).toEqual([
+      'https://cdn.media.amplience.net/i/deciem/ORD-Lash-Brow-Serum-primary',
+    ]);
+    expect(payload.product.image_url).toBe('https://cdn.media.amplience.net/i/deciem/ORD-Lash-Brow-Serum-primary');
+  });
+
+  test('falls back from decorative primary image to first valid gallery image', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_theordinary_primary_guard',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Glycolic Acid 7% Exfoliating Toner',
+        image_url: 'https://cdn.media.amplience.net/i/deciem/ORD-April-Promotion-Pop-ups-Birthday-Teaser',
+        images: [
+          'https://cdn.media.amplience.net/i/deciem/ORD-Glycolic-Acid-7pct-primary',
+          'https://cdn.media.amplience.net/i/deciem/KEM-Glycolic-Acid?fmt=auto&$poi$&sm=aspect&w=500&aspect=1:1',
+        ],
+        price: { amount: 13, currency: 'USD' },
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    expect(findModule(payload, 'media_gallery')?.data?.items).toEqual([
+      expect.objectContaining({ url: 'https://cdn.media.amplience.net/i/deciem/ORD-Glycolic-Acid-7pct-primary' }),
+    ]);
+    expect(payload.product.image_url).toBe('https://cdn.media.amplience.net/i/deciem/ORD-Glycolic-Acid-7pct-primary');
+  });
+
   test('renders a clean captured external seed PDP description as overview details', () => {
     const payload = buildPdpPayload({
       product: {

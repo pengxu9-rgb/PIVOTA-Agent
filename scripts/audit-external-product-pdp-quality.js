@@ -3,6 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const axios = require('axios');
+const sharp = require('sharp');
 
 const { closePool, query } = require('../src/db');
 const { auditExternalSeedRow } = require('../src/services/externalSeedContentAudit');
@@ -598,7 +599,43 @@ function resolveImageProbeMaxAttempts(options = {}) {
   return Math.max(1, Math.min(4, Math.floor(requested)));
 }
 
-async function probeImageUrlOnce(url) {
+function resolveImageMinLongEdge(options = {}) {
+  return parsePositiveInt(
+    options.minLongEdge || process.env.EXTERNAL_PDP_QUALITY_IMAGE_MIN_LONG_EDGE,
+    800,
+    1,
+    10000,
+  );
+}
+
+async function readImageDimensions(target, requestConfig = {}, baseContentType = '') {
+  const response = await axios.get(target, {
+    ...requestConfig,
+    responseType: 'arraybuffer',
+    maxContentLength: 1024 * 1024 * 10,
+  });
+  const status = Number(response.status || 0);
+  const contentType = normalizeNonEmptyString(response.headers?.['content-type'] || baseContentType).toLowerCase();
+  if (status < 200 || status >= 400) {
+    return { dimension_ok: false, dimension_error: 'bad_status', dimension_status: status || null };
+  }
+  if (contentType && !contentType.includes('image/')) {
+    return { dimension_ok: false, dimension_error: 'non_image_content_type', dimension_status: status || null };
+  }
+  const metadata = await sharp(Buffer.from(response.data || [])).metadata();
+  const width = Number(metadata.width || 0);
+  const height = Number(metadata.height || 0);
+  const longEdge = Math.max(width, height);
+  return {
+    dimension_ok: width > 0 && height > 0,
+    dimension_status: status || null,
+    width: width || null,
+    height: height || null,
+    long_edge: longEdge || null,
+  };
+}
+
+async function probeImageUrlOnce(url, options = {}) {
   const target = normalizeUrlLike(url);
   if (!target) {
     return { url, ok: false, status: null, content_type: null, error: 'invalid_url' };
@@ -629,13 +666,33 @@ async function probeImageUrlOnce(url) {
     const status = Number(response.status || 0);
     const contentType = normalizeNonEmptyString(response.headers?.['content-type']).toLowerCase();
     const ok = status >= 200 && status < 400 && (!contentType || contentType.includes('image/'));
-    return {
+    const baseResult = {
       url: target,
       ok,
       status: status || null,
       content_type: contentType || null,
       ...(ok ? {} : { error: contentType && !contentType.includes('image/') ? 'non_image_content_type' : 'bad_status' }),
     };
+    if (!ok || !options.inspectDimensions) return baseResult;
+    try {
+      const dimensions = await readImageDimensions(target, requestConfig, contentType);
+      const minLongEdge = resolveImageMinLongEdge(options);
+      return {
+        ...baseResult,
+        ...dimensions,
+        min_long_edge_threshold: minLongEdge,
+        low_resolution:
+          dimensions.dimension_ok === true &&
+          Number.isFinite(Number(dimensions.long_edge)) &&
+          Number(dimensions.long_edge) < minLongEdge,
+      };
+    } catch (error) {
+      return {
+        ...baseResult,
+        dimension_ok: false,
+        dimension_error: normalizeNonEmptyString(error?.code || error?.message || 'dimension_probe_failed'),
+      };
+    }
   } catch (error) {
     return {
       url: target,
@@ -651,7 +708,7 @@ async function probeImageUrl(url, options = {}) {
   const maxAttempts = resolveImageProbeMaxAttempts(options);
   const retryErrors = [];
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    const result = await probeImageUrlOnce(url);
+    const result = await probeImageUrlOnce(url, options);
     if (!isTransientImageProbeResult(result) || attempt >= maxAttempts) {
       if (retryErrors.length > 0 && !result.ok) {
         return {
@@ -688,10 +745,19 @@ async function probeImageHealth(urls, options = {}) {
   const selectedUrls = uniqueUrls.slice(0, limit);
   const results = [];
   for (const url of selectedUrls) {
-    results.push(await probeImageUrl(url, { maxAttempts: options.maxAttempts }));
+    results.push(await probeImageUrl(url, {
+      maxAttempts: options.maxAttempts,
+      inspectDimensions: options.inspectDimensions,
+      minLongEdge: options.minLongEdge,
+    }));
   }
   const transientErrors = results.filter((result) => !result.ok && isTransientImageProbeResult(result));
   const broken = results.filter((result) => !result.ok && !isTransientImageProbeResult(result));
+  const dimensionErrors = results.filter((result) => result.ok && result.dimension_error);
+  const lowResolution = results.filter((result) => result.ok && result.low_resolution);
+  const measuredLongEdges = results
+    .map((result) => Number(result.long_edge))
+    .filter((value) => Number.isFinite(value) && value > 0);
   return {
     scanned_count: results.length,
     total_url_count: uniqueUrls.length,
@@ -699,6 +765,14 @@ async function probeImageHealth(urls, options = {}) {
     broken_urls: broken.slice(0, 20),
     transient_error_count: transientErrors.length,
     transient_error_urls: transientErrors.slice(0, 20),
+    dimension_check_enabled: options.inspectDimensions === true,
+    dimension_error_count: dimensionErrors.length,
+    dimension_error_urls: dimensionErrors.slice(0, 20),
+    low_resolution_count: lowResolution.length,
+    low_resolution_urls: lowResolution.slice(0, 20),
+    min_long_edge: measuredLongEdges.length ? Math.min(...measuredLongEdges) : null,
+    primary_long_edge: Number(results[0]?.long_edge) || null,
+    min_long_edge_threshold: resolveImageMinLongEdge(options),
     skipped: false,
     truncated: uniqueUrls.length > selectedUrls.length,
   };
@@ -786,6 +860,8 @@ async function auditRow(row, {
   gatewayUrl,
   imageHealthEnabled = true,
   imageHealthLimit = null,
+  imageDimensionCheck = false,
+  imageMinLongEdge = null,
   similarEnabled = true,
   catalogTimeoutMs = null,
   pdpTimeoutMs = null,
@@ -859,6 +935,8 @@ async function auditRow(row, {
   const imageHealth = await probeImageHealth(collectLiveGalleryImages(livePayload), {
     skip: !imageHealthEnabled,
     limit: imageHealthLimit,
+    inspectDimensions: imageDimensionCheck,
+    minLongEdge: imageMinLongEdge,
   });
   const audit = auditExternalSeedRow(row);
   const productKind = classifyExternalSeedProductKind(row);
@@ -934,6 +1012,8 @@ async function main() {
   const gatewayUrl = resolveGatewayUrl(argValue('gateway-url') || argValue('gateway') || argValue('gateway-base-url'));
   const imageHealthEnabled = !hasArg('skip-image-health');
   const imageHealthLimit = argValue('image-health-limit');
+  const imageDimensionCheck = hasArg('image-dimension-check') || hasArg('image-dimensions');
+  const imageMinLongEdge = argValue('image-min-long-edge');
   const similarEnabled = !hasArg('skip-similar') && !hasArg('fast-only');
   const pdpTimeoutMs = argValue('pdp-timeout-ms');
   const detailsPdpTimeoutMs = argValue('details-pdp-timeout-ms');
@@ -964,6 +1044,8 @@ async function main() {
           gatewayUrl,
           imageHealthEnabled,
           imageHealthLimit,
+          imageDimensionCheck,
+          imageMinLongEdge,
           similarEnabled,
           catalogTimeoutMs,
           pdpTimeoutMs,

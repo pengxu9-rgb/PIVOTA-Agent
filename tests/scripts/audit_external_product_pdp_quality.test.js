@@ -283,6 +283,47 @@ describe('audit-external-product-pdp-quality helpers', () => {
     expect(livePdpGate.failure_reasons).not.toContain('broken_gallery_image');
   });
 
+  test('flags low-resolution gallery images when dimension audit is enabled', async () => {
+    axios.head.mockResolvedValue({
+      status: 200,
+      headers: { 'content-type': 'image/png' },
+    });
+    axios.get.mockResolvedValue({
+      status: 200,
+      headers: { 'content-type': 'image/png' },
+      data: Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+        'base64',
+      ),
+    });
+
+    const imageHealth = await probeImageHealth(['https://cdn.example.com/tiny-product.png'], {
+      maxAttempts: 1,
+      inspectDimensions: true,
+      minLongEdge: 800,
+    });
+    const livePdpGate = buildLivePdpGate({
+      livePayload: {
+        modules: [
+          {
+            type: 'media_gallery',
+            data: {
+              items: [{ type: 'image', url: 'https://cdn.example.com/tiny-product.png' }],
+            },
+          },
+        ],
+      },
+      imageHealth,
+    });
+
+    expect(imageHealth.dimension_check_enabled).toBe(true);
+    expect(imageHealth.low_resolution_count).toBe(1);
+    expect(imageHealth.min_long_edge).toBe(1);
+    expect(livePdpGate.failure_reasons).toEqual(
+      expect.arrayContaining(['low_resolution_gallery_image']),
+    );
+  });
+
   test('wraps catalog extractor DNS failures as row-level extractor failures', () => {
     const response = buildExtractorProbeFailure(
       Object.assign(new Error('getaddrinfo ENOTFOUND pivota-catalog-intelligence-production.up.railway.app'), {
@@ -937,6 +978,41 @@ describe('audit-external-product-pdp-quality helpers', () => {
 
     expect(gate.failure_reasons).not.toContain('content_media_leaked_into_gallery');
     expect(gate.gallery_status.content_leak_count).toBe(0);
+  });
+
+  test('flags non-Shopify marketing and ingredient education assets mixed into gallery', () => {
+    const livePayload = {
+      product: {
+        product_id: 'ext_theordinary_media_leak',
+        merchant_id: 'external_seed',
+      },
+      modules: [
+        {
+          type: 'media_gallery',
+          data: {
+            items: [
+              {
+                type: 'image',
+                url: 'https://cdn.media.amplience.net/i/deciem/ORD-Lash-Brow-Serum-primary',
+              },
+              {
+                type: 'image',
+                url: 'https://cdn.media.amplience.net/i/deciem/ORD-April-Promotion-Pop-ups-Birthday-Teaser',
+              },
+              {
+                type: 'image',
+                url: 'https://cdn.media.amplience.net/i/deciem/KEM-Glycolic-Acid?fmt=auto&$poi$&sm=aspect&w=500&aspect=1:1',
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    const gate = buildLivePdpGate({ livePayload });
+
+    expect(gate.gallery_status.content_leak_count).toBeGreaterThan(0);
+    expect(gate.failure_reasons).toContain('content_media_leaked_into_gallery');
   });
 
   test('flags missing variant selector when named size evidence is trapped behind default-title identity pollution', () => {

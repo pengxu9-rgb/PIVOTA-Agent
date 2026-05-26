@@ -669,7 +669,7 @@ function looksLikeContentGalleryAssetUrl(url) {
   try {
     filename = decodeURIComponent(new URL(normalized).pathname.split('/').pop() || normalized).toLowerCase();
   } catch {}
-  return /(?:ingredient|ingredients|how[-_ ]?to|directions|routine|benefit|benefits|before[-_ ]?after|before|after|clinical|results|study|chart|diagram|infographic|claims?|ugc|review|reviews?)/i.test(filename);
+  return /(?:^kem[-_]|ingredient|ingredients|how[-_ ]?to|directions|routine|benefit|benefits|before[-_ ]?after|before|after|clinical|results|study|chart|diagram|infographic|claims?|ugc|review|reviews?|promotion|promo|pop[-_ ]?ups?|birthday[-_ ]?teaser)/i.test(filename);
 }
 
 function countDuplicateGalleryImages(urls = []) {
@@ -700,8 +700,10 @@ function countContentGalleryLeaks({ galleryImages = [], seedContentImageUrls = [
   for (const url of Array.isArray(galleryImages) ? galleryImages : []) {
     const dedupeKey = buildPdpImageDedupeKey(url) || normalizePdpImageUrl(url);
     const assetKind = classifyGalleryAsset(url);
+    const contentLikeAsset = looksLikeContentGalleryAssetUrl(url);
     if (assetKind === 'product') hasProductAssets = true;
-    if (assetKind === 'content' && looksLikeContentGalleryAssetUrl(url)) hasContentAssets = true;
+    if (!contentLikeAsset && assetKind !== 'content') hasProductAssets = true;
+    if ((assetKind === 'content' || assetKind === '') && contentLikeAsset) hasContentAssets = true;
     if (dedupeKey && contentKeys.has(dedupeKey)) {
       leakCount += 1;
     }
@@ -1265,6 +1267,9 @@ function buildLivePdpGate({
   if (imageHealth && Number(imageHealth.broken_count || 0) > 0) {
     failureReasons.push('broken_gallery_image');
   }
+  if (imageHealth && Number(imageHealth.low_resolution_count || 0) > 0) {
+    failureReasons.push('low_resolution_gallery_image');
+  }
 
   return {
     status: failureReasons.length ? 'failed' : 'passed',
@@ -1516,7 +1521,8 @@ function buildExternalSeedQualityResult({
     failureReasons.includes('duplicate_gallery_images') ||
     failureReasons.includes('content_media_leaked_into_gallery') ||
     failureReasons.includes('image_url_identity_stripped') ||
-    failureReasons.includes('broken_gallery_image')
+    failureReasons.includes('broken_gallery_image') ||
+    failureReasons.includes('low_resolution_gallery_image')
   ) {
     rootCauseClassification.push('image_asset_issue');
   }

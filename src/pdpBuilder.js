@@ -2168,6 +2168,17 @@ function pickDefaultVariant(product = {}, variants = []) {
 function isDecorativePdpMediaUrl(url) {
   const normalized = String(url || '').trim().toLowerCase();
   if (!normalized) return false;
+  let filename = normalized;
+  try {
+    const parsed = new URL(normalized);
+    filename = decodeURIComponent(String(parsed.pathname.split('/').pop() || '')).toLowerCase();
+    if (
+      /(?:^|[-_])kem[-_]/i.test(filename) ||
+      /(?:^|[-_])(?:promotion|promo|pop[-_ ]?ups?|birthday[-_ ]?teaser)(?:[-_.]|$)/i.test(filename)
+    ) {
+      return true;
+    }
+  } catch {}
   if (/\.(?:svg)(?:$|\?)/i.test(normalized)) return true;
   return ['menu', 'icon', 'logo', 'plpbanner', 'banner', 'navigation', 'cart'].some((token) =>
     normalized.includes(token),
@@ -4815,7 +4826,9 @@ function buildPdpPayload(args) {
   );
   const rawProductImageKey = buildPdpImageDedupeKey(rawProductImageUrl) || rawProductImageUrl;
   const productImageUrl =
-    rawProductImageKey && structuredContentImageKeys.has(rawProductImageKey)
+    rawProductImageUrl && isDecorativePdpMediaUrl(rawProductImageUrl)
+      ? mediaImageUrls[0] || undefined
+      : rawProductImageKey && structuredContentImageKeys.has(rawProductImageKey)
       ? mediaImageUrls[0] || undefined
       : rawProductImageUrl || mediaImageUrls[0] || undefined;
   const previewItems = Array.isArray(product.line_preview_images)
