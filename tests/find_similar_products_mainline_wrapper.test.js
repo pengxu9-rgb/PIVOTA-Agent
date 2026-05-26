@@ -75,9 +75,11 @@ describe('find_similar_products mainline wrapper', () => {
           external_fetch_timeout_ms: expect.any(Number),
           catalog_fetch_limit: 16,
           catalog_fetch_overfetch_multiplier: 1,
+          identity_dedupe_timeout_ms: expect.any(Number),
         }),
       }),
     );
+    expect(recommendMock.mock.calls[0][0].options.identity_dedupe_timeout_ms).toBeLessThanOrEqual(500);
     expect(recommendMock.mock.calls[0][0].options.external_fetch_timeout_ms).toBeGreaterThan(1800);
     expect(res.body.products).toEqual([
       expect.objectContaining({

@@ -1600,6 +1600,7 @@ async function dedupeRecommendationCandidatesByIdentity({
   externalCandidates = [],
   identityRows = null,
   identityRowsResolverFn = null,
+  timeoutMs = PDP_RECS_IDENTITY_DEDUPE_TIMEOUT_MS,
 } = {}) {
   const productsForLookup = [
     baseProduct,
@@ -1621,15 +1622,18 @@ async function dedupeRecommendationCandidatesByIdentity({
     if (typeof identityRowsResolverFn === 'function') {
       rows = normalizeIdentityRows(await identityRowsResolverFn(productsForLookup));
     } else if (process.env.DATABASE_URL) {
+      const effectiveTimeoutMs = normalizeRecsDbTimeoutMs(timeoutMs, PDP_RECS_IDENTITY_DEDUPE_TIMEOUT_MS);
       rows = normalizeIdentityRows(
         await withSoftTimeout(
-          loadLiveIdentityRowsForRecommendationProducts(productsForLookup),
-          PDP_RECS_IDENTITY_DEDUPE_TIMEOUT_MS,
+          loadLiveIdentityRowsForRecommendationProducts(productsForLookup, {
+            timeoutMs: effectiveTimeoutMs,
+          }),
+          effectiveTimeoutMs,
           [],
           () => {
             recordRecsTimeout('identity_dedupe');
             logger.warn(
-              { timeout_ms: PDP_RECS_IDENTITY_DEDUPE_TIMEOUT_MS },
+              { timeout_ms: effectiveTimeoutMs },
               'recommendations identity dedupe lookup timed out',
             );
           },
@@ -5356,7 +5360,10 @@ async function recommend({
   }
 
   const start = Date.now();
+  const stageTimingMs = {};
+  const baseEnrichmentStartedAt = Date.now();
   const { product: baseProduct, semantic: baseSemantic } = await enrichExternalBaseProduct(rawBaseProduct);
+  stageTimingMs.base_enrichment = Date.now() - baseEnrichmentStartedAt;
   const effectiveExcludedCandidates = mergeExcludedCandidateStates(
     excludedCandidates,
     buildExcludedCandidateState([baseProduct]),
@@ -5411,6 +5418,14 @@ async function recommend({
     1,
     Math.min(3, requestedCatalogOverfetchMultiplier || 3),
   );
+  const requestedIdentityDedupeTimeoutMs = parseTimeoutMs(
+    options?.identity_dedupe_timeout_ms ?? options?.identityDedupeTimeoutMs,
+    PDP_RECS_IDENTITY_DEDUPE_TIMEOUT_MS,
+  );
+  const effectiveIdentityDedupeTimeoutMs = Math.max(
+    50,
+    Math.min(PDP_RECS_IDENTITY_DEDUPE_TIMEOUT_MS, requestedIdentityDedupeTimeoutMs),
+  );
 
   let internalTimedOut = false;
   let externalTimedOut = false;
@@ -5428,6 +5443,7 @@ async function recommend({
 
   if (catalogOnly && !providedInternal && !providedExternal) {
     const catalogCandidatesAbortController = createSoftTimeoutAbortController();
+    const catalogFetchStartedAt = Date.now();
     const catalogCandidates = await withSoftTimeout(
       fetchCatalogCandidates({
         brandHint: baseBrand,
@@ -5464,6 +5480,7 @@ async function recommend({
       );
       return [];
     });
+    stageTimingMs.catalog_fetch = Date.now() - catalogFetchStartedAt;
     catalogFetchStats =
       catalogCandidates && typeof catalogCandidates === 'object'
         ? catalogCandidates.__catalogFetchStats || null
@@ -5540,7 +5557,9 @@ async function recommend({
       );
       return [];
     });
+    const internalFetchStartedAt = Date.now();
     internalCandidates = await internalCandidatesTask;
+    stageTimingMs.internal_fetch = Date.now() - internalFetchStartedAt;
 
     externalSkipEligibleInternalCount = countExternalSkipEligibleInternalCandidates(
       baseProduct,
@@ -5552,27 +5571,35 @@ async function recommend({
       baseSemanticStrong &&
       !baseProductIsExternal;
 
+    const externalFetchStartedAt = Date.now();
     externalCandidates = shouldSkipExternal
       ? []
       : await externalCandidatesTask;
+    stageTimingMs.external_fetch = Date.now() - externalFetchStartedAt;
     externalFetchStats =
       externalCandidates && typeof externalCandidates === 'object'
         ? externalCandidates.__externalFetchStats || null
         : null;
   }
 
+  const candidateFilterStartedAt = Date.now();
   let filteredInternalCandidates = filterCandidateCollection(internalCandidates, effectiveExcludedCandidates);
   let filteredExternalCandidates = filterCandidateCollection(externalCandidates, effectiveExcludedCandidates);
+  stageTimingMs.candidate_filter = Date.now() - candidateFilterStartedAt;
+  const identityDedupeStartedAt = Date.now();
   const identityDedupe = await dedupeRecommendationCandidatesByIdentity({
     baseProduct,
     internalCandidates: filteredInternalCandidates,
     externalCandidates: filteredExternalCandidates,
     identityRows: options?.identity_rows,
     identityRowsResolverFn: options?.identity_rows_resolver_fn,
+    timeoutMs: effectiveIdentityDedupeTimeoutMs,
   });
+  stageTimingMs.identity_dedupe = Date.now() - identityDedupeStartedAt;
   filteredInternalCandidates = identityDedupe.internalCandidates;
   filteredExternalCandidates = identityDedupe.externalCandidates;
 
+  const pickStartedAt = Date.now();
   const picked = pickLayeredRecommendations({
     baseProduct,
     internalCandidates: filteredInternalCandidates,
@@ -5580,6 +5607,7 @@ async function recommend({
     k: candidateK,
     baseSemantic,
   });
+  stageTimingMs.pick_layered = Date.now() - pickStartedAt;
 
   let finalItems = Array.isArray(picked.items) ? picked.items.slice(0, safeK) : [];
   const historyFallbackDebug = {
@@ -5663,7 +5691,9 @@ async function recommend({
     },
   };
   if (options?.hydrate_product_intel_cards !== false) {
+    const productIntelCardHydrationStartedAt = Date.now();
     productIntelCardHydration = await hydrateRecommendationItemsWithReviewedProductIntel(finalItems);
+    stageTimingMs.product_intel_card_hydration = Date.now() - productIntelCardHydrationStartedAt;
     finalItems = productIntelCardHydration.items;
   }
 
@@ -5739,11 +5769,13 @@ async function recommend({
         external_focused_recall_target: externalFocusedRecallTarget,
         catalog_fetch_limit: catalogOnly ? effectiveCatalogCandidateFetchLimit : null,
         catalog_fetch_overfetch_multiplier: catalogOnly ? effectiveCatalogOverfetchMultiplier : null,
+        identity_dedupe_timeout_ms: effectiveIdentityDedupeTimeoutMs,
         external_recall_debug: externalFetchStats,
         ready_min_count: finalReadyMinCount,
         requested_count: safeK,
         candidate_count: candidateK,
       },
+      stage_timing_ms: stageTimingMs,
       sources: finalSourceCounts,
       history_fallback: historyFallbackDebug,
       product_intel_card_hydration: productIntelCardHydration.stats,

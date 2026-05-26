@@ -2906,6 +2906,13 @@ const PDP_SIMILAR_BASE_DETAIL_BUDGET_MS = Math.max(
   50,
   parseTimeoutMs(process.env.PDP_SIMILAR_BASE_DETAIL_BUDGET_MS, 450),
 );
+const PDP_SIMILAR_IDENTITY_DEDUPE_BUDGET_MS = Math.max(
+  50,
+  Math.min(
+    500,
+    parseTimeoutMs(process.env.PDP_SIMILAR_IDENTITY_DEDUPE_BUDGET_MS, 250),
+  ),
+);
 const PDP_SIMILAR_EXTERNAL_FETCH_BUDGET_MS = Math.min(
   1800,
   Math.max(
@@ -4064,6 +4071,7 @@ function buildPdpSimilarFetchArgs({
         external_fetch_timeout_ms: externalFetchBudgetMs,
         catalog_fetch_limit: catalogFetchLimit,
         catalog_fetch_overfetch_multiplier: 1,
+        identity_dedupe_timeout_ms: PDP_SIMILAR_IDENTITY_DEDUPE_BUDGET_MS,
         hydrate_product_intel_cards: false,
       },
     },
@@ -41248,6 +41256,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   external_fetch_timeout_ms: PDP_SIMILAR_BACKGROUND_EXTERNAL_FETCH_BUDGET_MS,
                   catalog_fetch_limit: directCatalogFetchLimit,
                   catalog_fetch_overfetch_multiplier: 1,
+                  identity_dedupe_timeout_ms: PDP_SIMILAR_IDENTITY_DEDUPE_BUDGET_MS,
                   exclude_items: excludeItems,
                   recent_views: recentViews,
                 },

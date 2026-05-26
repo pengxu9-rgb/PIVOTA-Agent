@@ -163,5 +163,6 @@ describeIfRuntimeDeps('PDP similar first-paint budget', () => {
     expect(fetchArgs.k).toBe(18);
     expect(fetchArgs.options.catalog_fetch_limit).toBe(18);
     expect(fetchArgs.options.catalog_fetch_overfetch_multiplier).toBe(1);
+    expect(fetchArgs.options.identity_dedupe_timeout_ms).toBeLessThanOrEqual(500);
   });
 });

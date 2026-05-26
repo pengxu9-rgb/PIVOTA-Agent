@@ -299,6 +299,7 @@ describe('RecommendationEngine external candidate fetch', () => {
         no_cache: true,
         catalog_fetch_limit: 8,
         catalog_fetch_overfetch_multiplier: 1,
+        identity_dedupe_timeout_ms: 80,
       },
     });
 
@@ -309,8 +310,17 @@ describe('RecommendationEngine external candidate fetch', () => {
     expect(catalogCalls).toHaveLength(1);
     expect(result.debug.fetch_strategy.catalog_fetch_limit).toBe(8);
     expect(result.debug.fetch_strategy.catalog_fetch_overfetch_multiplier).toBe(1);
+    expect(result.debug.fetch_strategy.identity_dedupe_timeout_ms).toBe(80);
     expect(result.debug.fetch_strategy.catalog_recall_debug.safe_limit).toBe(8);
     expect(result.debug.fetch_strategy.catalog_recall_debug.overfetch_multiplier).toBe(1);
+    expect(result.debug.stage_timing_ms).toEqual(
+      expect.objectContaining({
+        base_enrichment: expect.any(Number),
+        catalog_fetch: expect.any(Number),
+        identity_dedupe: expect.any(Number),
+        pick_layered: expect.any(Number),
+      }),
+    );
   });
 
   test('external recall filters a small same-domain lip pool before slow broad stages', async () => {
