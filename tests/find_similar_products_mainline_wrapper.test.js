@@ -928,6 +928,30 @@ describe('find_similar_products mainline wrapper', () => {
         card_enrichment_official_seed_hit_count: 1,
       }),
     );
+
+    const cachedItems = await app._debug.enrichSimilarProductsForPdpCards({
+      items: [
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ext_component_1',
+          external_product_id: 'ext_component_1',
+          retrieval_source: 'reviewed_component_ref',
+          title: 'Great Barrier Relief',
+        },
+      ],
+      maxItems: 1,
+      budgetMs: 300,
+      productIntelBudgetMs: 1,
+    });
+    expect(app._debug.getSimilarCardEnrichmentMetadata(cachedItems)).toEqual(
+      expect.objectContaining({
+        card_enrichment_cache_hit: true,
+        card_enrichment_official_seed_hit_count: 1,
+      }),
+    );
+    expect(
+      dbQueryMock.mock.calls.filter(([sql]) => String(sql || '').includes('FROM external_product_seeds')),
+    ).toHaveLength(1);
   });
 
   it('hydrates official seed card sources when an external candidate has highlight but no image', () => {

@@ -2880,6 +2880,17 @@ const PDP_SIMILAR_CARD_DETAIL_BUDGET_MS = Math.max(
   50,
   parseTimeoutMs(process.env.PDP_SIMILAR_CARD_DETAIL_BUDGET_MS, 250),
 );
+const PDP_SIMILAR_CARD_ENRICH_CACHE_ENABLED =
+  process.env.PDP_SIMILAR_CARD_ENRICH_CACHE_ENABLED !== 'false';
+const PDP_SIMILAR_CARD_ENRICH_CACHE_TTL_MS = Math.max(
+  5_000,
+  parseTimeoutMs(process.env.PDP_SIMILAR_CARD_ENRICH_CACHE_TTL_MS, 60_000),
+);
+const PDP_SIMILAR_CARD_ENRICH_CACHE_MAX_ENTRIES = Math.max(
+  50,
+  Number(process.env.PDP_SIMILAR_CARD_ENRICH_CACHE_MAX_ENTRIES || 1000) || 1000,
+);
+const PDP_SIMILAR_CARD_ENRICH_CACHE = new Map();
 const PDP_SIMILAR_BASE_DETAIL_BUDGET_MS = Math.max(
   50,
   parseTimeoutMs(process.env.PDP_SIMILAR_BASE_DETAIL_BUDGET_MS, 450),
@@ -24343,6 +24354,122 @@ function shouldHydrateSimilarCardFromOfficialSeed(item = {}) {
   return isSellerOnlySimilarCardEvidence(item) || !hasSimilarCardPresentation(item) || !hasSimilarCardImage(item);
 }
 
+function buildSimilarCardEnrichmentCacheKey({
+  items = [],
+  maxItems = 0,
+  allowDetailHydration = false,
+} = {}) {
+  if (!PDP_SIMILAR_CARD_ENRICH_CACHE_ENABLED) return '';
+  const list = Array.isArray(items) ? items : [];
+  if (!list.length) return '';
+  const normalizedMaxItems = Math.max(0, Number(maxItems) || 0);
+  const fingerprintItems = list.slice(0, Math.min(list.length, 60)).map((item) => {
+    if (!item || typeof item !== 'object') return null;
+    return {
+      merchant_id: firstNonEmptyString(item.merchant_id, item.merchant?.id, item.merchant_uuid),
+      product_id: firstNonEmptyString(
+        item.product_id,
+        item.productId,
+        item.id,
+        item.source_product_id,
+        item.external_product_id,
+        item.platform_product_id,
+      ),
+      title: firstNonEmptyString(item.card_title, item.title, item.name),
+      image_url: firstNonEmptyString(
+        item.image_url,
+        item.image,
+        Array.isArray(item.images) ? item.images[0] : null,
+        Array.isArray(item.image_urls) ? item.image_urls[0] : null,
+      ),
+      card_highlight: firstNonEmptyString(
+        item.card_highlight,
+        item.cardHighlight,
+        item.shopping_card?.highlight,
+        item.search_card?.highlight_candidate,
+      ),
+      evidence_profile: firstNonEmptyString(
+        item.evidence_profile,
+        item.card_highlight_source,
+        item.shopping_card?.evidence_profile,
+        item.search_card?.evidence_profile,
+      ),
+    };
+  });
+  return createHash('sha1')
+    .update(JSON.stringify({
+      max_items: normalizedMaxItems,
+      allow_detail_hydration: allowDetailHydration === true,
+      item_count: list.length,
+      items: fingerprintItems,
+    }))
+    .digest('hex');
+}
+
+function cloneSimilarCardEnrichmentItem(item) {
+  if (!item || typeof item !== 'object' || Array.isArray(item)) return item;
+  return {
+    ...item,
+    ...(item.price && typeof item.price === 'object' && !Array.isArray(item.price)
+      ? { price: { ...item.price } }
+      : {}),
+    ...(item.merchant && typeof item.merchant === 'object' && !Array.isArray(item.merchant)
+      ? { merchant: { ...item.merchant } }
+      : {}),
+    ...(item.shopping_card && typeof item.shopping_card === 'object' && !Array.isArray(item.shopping_card)
+      ? { shopping_card: { ...item.shopping_card } }
+      : {}),
+    ...(item.search_card && typeof item.search_card === 'object' && !Array.isArray(item.search_card)
+      ? { search_card: { ...item.search_card } }
+      : {}),
+    ...(Array.isArray(item.external_highlight_signals)
+      ? { external_highlight_signals: item.external_highlight_signals.slice() }
+      : {}),
+  };
+}
+
+function cloneSimilarCardEnrichmentResult(items = [], metadata = {}) {
+  const cloned = (Array.isArray(items) ? items : []).map((item) => cloneSimilarCardEnrichmentItem(item));
+  return attachSimilarCardEnrichmentMetadata(cloned, {
+    ...(metadata && typeof metadata === 'object' ? metadata : {}),
+    card_enrichment_cache_hit: true,
+  });
+}
+
+function readSimilarCardEnrichmentCache(cacheKey, nowMs = Date.now()) {
+  if (!cacheKey) return null;
+  const cached = PDP_SIMILAR_CARD_ENRICH_CACHE.get(cacheKey);
+  if (!cached) return null;
+  if (Number(cached.expiresAtMs || 0) <= nowMs) {
+    PDP_SIMILAR_CARD_ENRICH_CACHE.delete(cacheKey);
+    return null;
+  }
+  PDP_SIMILAR_CARD_ENRICH_CACHE.delete(cacheKey);
+  PDP_SIMILAR_CARD_ENRICH_CACHE.set(cacheKey, cached);
+  return cloneSimilarCardEnrichmentResult(cached.items, cached.metadata);
+}
+
+function writeSimilarCardEnrichmentCache(cacheKey, items = [], metadata = {}, nowMs = Date.now()) {
+  if (!cacheKey) return;
+  PDP_SIMILAR_CARD_ENRICH_CACHE.delete(cacheKey);
+  PDP_SIMILAR_CARD_ENRICH_CACHE.set(cacheKey, {
+    items: (Array.isArray(items) ? items : []).map((item) => cloneSimilarCardEnrichmentItem(item)),
+    metadata: metadata && typeof metadata === 'object' ? { ...metadata } : {},
+    expiresAtMs: nowMs + PDP_SIMILAR_CARD_ENRICH_CACHE_TTL_MS,
+  });
+  while (PDP_SIMILAR_CARD_ENRICH_CACHE.size > PDP_SIMILAR_CARD_ENRICH_CACHE_MAX_ENTRIES) {
+    const oldestKey = PDP_SIMILAR_CARD_ENRICH_CACHE.keys().next().value;
+    if (oldestKey === undefined) break;
+    PDP_SIMILAR_CARD_ENRICH_CACHE.delete(oldestKey);
+  }
+}
+
+function finishSimilarCardEnrichmentResult(items = [], metadata = {}, cacheKey = '') {
+  const result = attachSimilarCardEnrichmentMetadata(items, metadata);
+  writeSimilarCardEnrichmentCache(cacheKey, result, metadata);
+  return result;
+}
+
 function mergeSimilarCardEnrichment(candidate = {}, detail = {}) {
   const next = { ...candidate };
   const copyIfMissing = (targetKey, ...values) => {
@@ -24649,6 +24776,15 @@ async function enrichSimilarProductsForPdpCards({
   const list = Array.isArray(items) ? items : [];
   let head = list.slice(0, Math.max(0, Number(maxItems) || 0));
   const tail = list.slice(head.length);
+  const cardEnrichmentCacheKey = bypassCache || checkoutToken || allowDetailHydration
+    ? ''
+    : buildSimilarCardEnrichmentCacheKey({
+        items: list,
+        maxItems,
+        allowDetailHydration,
+      });
+  const cachedCardEnrichment = readSimilarCardEnrichmentCache(cardEnrichmentCacheKey);
+  if (cachedCardEnrichment) return cachedCardEnrichment;
   const normalizedProductIntelBudgetMs = Math.max(1, Number(productIntelBudgetMs || 0) || 0);
   const detailHydrationEnabled = isSimilarCardDetailHydrationAllowed({ allowDetailHydration });
   let productIntelCardHydrationMetadata = {
@@ -24746,7 +24882,7 @@ async function enrichSimilarProductsForPdpCards({
     officialSeedHydrationCandidates.length <= 0 &&
     !head.some((item) => shouldEnrichSimilarCard(item, { allowDetailHydration }))
   ) {
-    return attachSimilarCardEnrichmentMetadata(fallback, metadata);
+    return finishSimilarCardEnrichmentResult(fallback, metadata, cardEnrichmentCacheKey);
   }
 
   const enrichmentTask = Promise.all(
@@ -24841,7 +24977,7 @@ async function enrichSimilarProductsForPdpCards({
   ) {
     metadata.card_enrichment_status = 'partial';
   }
-  return attachSimilarCardEnrichmentMetadata(result, metadata);
+  return finishSimilarCardEnrichmentResult(result, metadata, cardEnrichmentCacheKey);
 }
 
 function collectExternalSeedIdCandidatesForVisibleCatalogHydration(product = {}) {
