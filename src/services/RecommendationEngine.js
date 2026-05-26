@@ -2247,6 +2247,7 @@ async function fetchCatalogCandidates({
   sourceMerchantHint = '',
   limit,
   minFocusedCandidates = 6,
+  overfetchMultiplier = 3,
   queryTimeoutCapMs = null,
   signal = null,
 }) {
@@ -2258,6 +2259,10 @@ async function fetchCatalogCandidates({
   const safeMinFocusedCandidates = Math.max(
     1,
     Math.min(30, Number(minFocusedCandidates || 6) || 6),
+  );
+  const safeOverfetchMultiplier = Math.max(
+    1,
+    Math.min(3, Number(overfetchMultiplier || 3) || 3),
   );
   const catalogCategoryPath = normalizeCatalogCategoryPath(categoryPathHint);
   const categoryAliases = buildNormalizedAliases(categoryHint);
@@ -2285,6 +2290,7 @@ async function fetchCatalogCandidates({
     vertical_hint: normalizeStoredSemanticVertical(verticalHint) || null,
     intent_family_hint: intentFamily || null,
     source_merchant_hint: sourceMerchant || null,
+    overfetch_multiplier: safeOverfetchMultiplier,
     timed_out: false,
     aborted: false,
   };
@@ -2372,7 +2378,11 @@ async function fetchCatalogCandidates({
     queryTimeoutCapMs != null
       ? normalizeRecsDbTimeoutMs(queryTimeoutCapMs)
       : PDP_RECS_CATALOG_FETCH_TIMEOUT_MS;
-  const limitParam = addParam(Math.min(safeLimit * 3, Math.max(safeLimit, safeMinFocusedCandidates * 3)));
+  const queryLimit = Math.min(
+    safeLimit * safeOverfetchMultiplier,
+    Math.max(safeLimit, safeMinFocusedCandidates * safeOverfetchMultiplier),
+  );
+  const limitParam = addParam(queryLimit);
 
   try {
     const res = await withSoftTimeout(
@@ -5382,6 +5392,25 @@ async function recommend({
     Math.ceil(candidateK * PDP_RECS_EXTERNAL_FETCH_LIMIT_MULTIPLIER),
   );
   const externalFocusedRecallTarget = focusedExternalRecallTargetCount(safeK);
+  const requestedCatalogFetchLimit = Math.trunc(
+    Number(options?.catalog_fetch_limit ?? options?.catalogFetchLimit ?? 0) || 0,
+  );
+  const effectiveCatalogCandidateFetchLimit =
+    requestedCatalogFetchLimit > 0
+      ? Math.max(
+          externalFocusedRecallTarget,
+          Math.min(500, requestedCatalogFetchLimit),
+        )
+      : externalFetchLimit;
+  const requestedCatalogOverfetchMultiplier = Number(
+    options?.catalog_fetch_overfetch_multiplier ??
+      options?.catalogFetchOverfetchMultiplier ??
+      3,
+  );
+  const effectiveCatalogOverfetchMultiplier = Math.max(
+    1,
+    Math.min(3, requestedCatalogOverfetchMultiplier || 3),
+  );
 
   let internalTimedOut = false;
   let externalTimedOut = false;
@@ -5407,8 +5436,9 @@ async function recommend({
         verticalHint: baseSemantic?.vertical || '',
         intentFamilyHint: baseIntentFamily,
         sourceMerchantHint: baseProductIsExternal ? EXTERNAL_SEED_MERCHANT_ID : '',
-        limit: externalFetchLimit,
+        limit: effectiveCatalogCandidateFetchLimit,
         minFocusedCandidates: externalFocusedRecallTarget,
+        overfetchMultiplier: effectiveCatalogOverfetchMultiplier,
         queryTimeoutCapMs: effectiveCatalogFetchTimeoutMs,
         signal: catalogCandidatesAbortController?.signal || null,
       }),
@@ -5707,6 +5737,8 @@ async function recommend({
         external_fetch_timeout_ms: effectiveExternalFetchTimeoutMs,
         external_fetch_limit: externalFetchLimit,
         external_focused_recall_target: externalFocusedRecallTarget,
+        catalog_fetch_limit: catalogOnly ? effectiveCatalogCandidateFetchLimit : null,
+        catalog_fetch_overfetch_multiplier: catalogOnly ? effectiveCatalogOverfetchMultiplier : null,
         external_recall_debug: externalFetchStats,
         ready_min_count: finalReadyMinCount,
         requested_count: safeK,

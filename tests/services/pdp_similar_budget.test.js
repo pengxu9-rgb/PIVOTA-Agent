@@ -138,4 +138,30 @@ describeIfRuntimeDeps('PDP similar first-paint budget', () => {
       }),
     ).toBe(true);
   });
+
+  test('keeps catalog-only similar recall scoped to the PDP candidate window', () => {
+    jest.resetModules();
+    const app = require('../../src/server');
+
+    const { displayLimit, candidateLimit, fetchArgs } = app._debug.buildPdpSimilarFetchArgs({
+      payload: {
+        similar: { limit: 6 },
+      },
+      canonicalProductRef: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_demo_1',
+      },
+      canonicalProductForPdp: {
+        external_product_id: 'ext_demo_1',
+        currency: 'USD',
+      },
+      requestMode: 'background',
+    });
+
+    expect(displayLimit).toBe(6);
+    expect(candidateLimit).toBe(18);
+    expect(fetchArgs.k).toBe(18);
+    expect(fetchArgs.options.catalog_fetch_limit).toBe(18);
+    expect(fetchArgs.options.catalog_fetch_overfetch_multiplier).toBe(1);
+  });
 });

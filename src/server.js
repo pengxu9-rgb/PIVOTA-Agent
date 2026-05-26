@@ -3895,6 +3895,15 @@ function resolvePdpSimilarCardEnrichmentLimit(displayLimit, candidateLimit) {
   return Math.max(visibleLimit, Math.min(maxCandidateLimit, visibleLimit + 6));
 }
 
+function resolvePdpSimilarCatalogFetchLimit(displayLimit, candidateLimit) {
+  const visibleLimit = Math.max(
+    1,
+    Math.min(PDP_SIMILAR_MAX_DISPLAY_LIMIT, Number(displayLimit) || PDP_SIMILAR_DEFAULT_DISPLAY_LIMIT),
+  );
+  const maxCandidateLimit = Math.max(visibleLimit, Number(candidateLimit) || visibleLimit);
+  return Math.max(visibleLimit, Math.min(PDP_SIMILAR_MAX_CANDIDATE_LIMIT, maxCandidateLimit));
+}
+
 function isTruthyCacheBypassFlag(value) {
   if (value === true) return true;
   if (typeof value === 'string') {
@@ -4028,6 +4037,7 @@ function buildPdpSimilarFetchArgs({
     normalizedRequestMode === 'background' || normalizedRequestMode === 'post_core'
       ? PDP_SIMILAR_BACKGROUND_EXTERNAL_FETCH_BUDGET_MS
       : PDP_SIMILAR_EXTERNAL_FETCH_BUDGET_MS;
+  const catalogFetchLimit = resolvePdpSimilarCatalogFetchLimit(limit, resolvedCandidateLimit);
   return {
     displayLimit: limit,
     candidateLimit: resolvedCandidateLimit,
@@ -4052,6 +4062,8 @@ function buildPdpSimilarFetchArgs({
         cache_bypass: bypassCache,
         bypass_cache: bypassCache,
         external_fetch_timeout_ms: externalFetchBudgetMs,
+        catalog_fetch_limit: catalogFetchLimit,
+        catalog_fetch_overfetch_multiplier: 1,
         hydrate_product_intel_cards: false,
       },
     },
@@ -41167,6 +41179,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               limit,
               Math.min(PDP_SIMILAR_MAX_CANDIDATE_LIMIT, Math.max(limit + 12, limit * 3)),
             );
+            const directCatalogFetchLimit = resolvePdpSimilarCatalogFetchLimit(limit, directCandidateLimit);
             const isExternalSeedDirectBase =
               Boolean(effectiveProductId) &&
               !isPivotaSignatureProductId(effectiveProductId) &&
@@ -41233,6 +41246,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   cache_bypass: bypassCache,
                   bypass_cache: bypassCache,
                   external_fetch_timeout_ms: PDP_SIMILAR_BACKGROUND_EXTERNAL_FETCH_BUDGET_MS,
+                  catalog_fetch_limit: directCatalogFetchLimit,
+                  catalog_fetch_overfetch_multiplier: 1,
                   exclude_items: excludeItems,
                   recent_views: recentViews,
                 },
@@ -45012,6 +45027,7 @@ module.exports._debug = {
   storeDiscountBadges,
   resolvePdpSimilarCacheBypass,
   buildPdpSimilarFetchArgs,
+  resolvePdpSimilarCatalogFetchLimit,
   resolvePdpSimilarRequestMode,
   hasSimilarCardImage,
   resolvePdpSimilarWithBudget,

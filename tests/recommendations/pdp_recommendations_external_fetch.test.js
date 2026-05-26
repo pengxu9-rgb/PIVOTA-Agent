@@ -242,6 +242,77 @@ describe('RecommendationEngine external candidate fetch', () => {
     expect(result.items.map((item) => item.pivota_signature_id)).toEqual(['sig_serum_1', 'sig_serum_2']);
   });
 
+  test('catalog-only recall honors explicit fetch limit without runtime overfetch', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+    delete process.env.PDP_SIMILAR_CATALOG_ONLY;
+
+    const queryMock = jest.fn(async (sql) => {
+      throw new Error(`legacy query should not be used: ${String(sql).slice(0, 120)}`);
+    });
+    const queryWithStatementTimeoutMock = jest.fn(async (sql, params) => {
+      const text = String(sql);
+      if (!text.includes('FROM catalog_products cp')) return { rows: [] };
+      expect(params).toEqual(['beauty/skincare/serum', 8]);
+      return {
+        rows: [
+          makeCatalogRow({
+            product_key: 'cat_serum_1',
+            source_product_id: 'ext_serum_1',
+            pivota_signature_id: 'sig_serum_1',
+            title: 'KraveBeauty Great Barrier Relief',
+          }),
+          makeCatalogRow({
+            product_key: 'cat_serum_2',
+            source_product_id: 'ext_serum_2',
+            pivota_signature_id: 'sig_serum_2',
+            title: 'KraveBeauty Oil La La',
+          }),
+        ],
+      };
+    });
+
+    jest.doMock('../../src/db', () => ({
+      query: queryMock,
+      queryWithStatementTimeout: queryWithStatementTimeoutMock,
+    }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { recommend } = require('../../src/services/RecommendationEngine');
+    const result = await recommend({
+      pdp_product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_base',
+        external_product_id: 'ext_base',
+        title: 'KraveBeauty Barrier Serum',
+        brand: 'KraveBeauty',
+        category: 'Serum',
+        product_type: 'Serum',
+        category_path: 'beauty/skincare/serum',
+        image_url: 'https://kravebeauty.com/base.jpg',
+        price_amount: 28,
+        availability: 'in_stock',
+        source: 'external_seed',
+      },
+      k: 2,
+      options: {
+        hydrate_product_intel_cards: false,
+        no_cache: true,
+        catalog_fetch_limit: 8,
+        catalog_fetch_overfetch_multiplier: 1,
+      },
+    });
+
+    expect(queryMock).not.toHaveBeenCalled();
+    const catalogCalls = queryWithStatementTimeoutMock.mock.calls.filter((call) =>
+      String(call[0]).includes('FROM catalog_products cp'),
+    );
+    expect(catalogCalls).toHaveLength(1);
+    expect(result.debug.fetch_strategy.catalog_fetch_limit).toBe(8);
+    expect(result.debug.fetch_strategy.catalog_fetch_overfetch_multiplier).toBe(1);
+    expect(result.debug.fetch_strategy.catalog_recall_debug.safe_limit).toBe(8);
+    expect(result.debug.fetch_strategy.catalog_recall_debug.overfetch_multiplier).toBe(1);
+  });
+
   test('external recall filters a small same-domain lip pool before slow broad stages', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 
