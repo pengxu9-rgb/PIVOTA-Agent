@@ -1,0 +1,719 @@
+{
+  "generated_at": "2026-05-26T03:31:01.015Z",
+  "source": "external_seed_live_pdp_modules_audit",
+  "query": {
+    "market": "US",
+    "domain": null,
+    "brand": null,
+    "external_product_id": null,
+    "external_product_ids": [
+      "ext_21216a67b62b16d88661367f",
+      "ext_2ef1955968e55d0bfdf5fe78",
+      "ext_446a5f126507ff6adba46258",
+      "ext_5975f96c1d90b02d02329960",
+      "ext_8136f11be69e6c18781a7f02",
+      "ext_b36935c92dc89857bf62f25e",
+      "ext_e08d2e62205f1691dfe30753",
+      "ext_e5f66cf29d6c516775bb0fce",
+      "ext_31b732e4e40c0579c5f4c554",
+      "ext_3405f1b2b381c9a5e0941c20",
+      "ext_770904b0a8a54583347cea85",
+      "ext_9695064b5f7d76303f88beb1",
+      "ext_99b5d36c01c7614a5de71fa1",
+      "ext_b344f028268229b02a16d0cb",
+      "ext_b5dafedce57973dfcca9fb5b",
+      "ext_794deab047eb4a75225329df",
+      "ext_bb9685457f5a919c945ee9ce"
+    ],
+    "include_attached": true,
+    "limit": 50,
+    "offset": 0,
+    "include_similar": true,
+    "use_sig": false
+  },
+  "summary": {
+    "scanned": 17,
+    "ready": 3,
+    "thin": 1,
+    "not_conversion_ready": 13,
+    "by_domain": [
+      {
+        "key": "nalacare.com",
+        "count": 8
+      },
+      {
+        "key": "delicatedaisys.com",
+        "count": 7
+      },
+      {
+        "key": "joocyee.com",
+        "count": 2
+      }
+    ],
+    "blocker_counts": [
+      {
+        "key": "live_pdp_probe_failed",
+        "count": 13
+      },
+      {
+        "key": "missing_how_to",
+        "count": 1
+      }
+    ],
+    "weak_insights_ids": [],
+    "seller_only_insights_ids": [],
+    "force_filled_ids": [],
+    "content_gap_ids": [
+      "ext_8136f11be69e6c18781a7f02"
+    ]
+  },
+  "rows": [
+    {
+      "external_product_id": "ext_bb9685457f5a919c945ee9ce",
+      "pivota_signature_id": "sig_dd7b1e29d9f60d048b5ced2dbdbb9b6b",
+      "probed_product_id": "ext_bb9685457f5a919c945ee9ce",
+      "probed_id_type": "ext",
+      "seed_id": "eps_045c86298b3f262f544f3fc3",
+      "market": "US",
+      "domain": "joocyee.com",
+      "title": "Glazed Lip Gloss",
+      "canonical_url": "https://joocyee.com/products/glazed-lip-gloss",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "eed9e1d77804",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 1,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "joocyee.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 10,
+        "label_count": 20,
+        "labels": [
+          "Color: 20 Cherry Blossom Glow",
+          "Color: 22 Rose Glow",
+          "Color: 26 Lilac Glow",
+          "Color: 28 Strawberry Glow",
+          "Color: 60 Grape Glow",
+          "Color: 66 Oolong Glow",
+          "Color: 68 Black Tea Glow",
+          "Color: 80 Moonlight Glow",
+          "Color: 82 Amber Glow",
+          "Color: 85 Dune Glow",
+          "20 Cherry Blossom Glow",
+          "22 Rose Glow"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Lip product identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 57,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 6,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 22
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_794deab047eb4a75225329df",
+      "pivota_signature_id": "sig_6c0ec349bd054178a2d4de2e237c7b1f",
+      "probed_product_id": "ext_794deab047eb4a75225329df",
+      "probed_id_type": "ext",
+      "seed_id": "eps_ebb12bb4d8f9c3e65b57a8f3",
+      "market": "US",
+      "domain": "joocyee.com",
+      "title": "Color-correcting Primer",
+      "canonical_url": "https://joocyee.com/products/color-correcting-primer",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "eed9e1d77804",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 1,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "joocyee.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 2,
+        "label_count": 4,
+        "labels": [
+          "Color: Soft Light Purple",
+          "Color: Soft Light Green",
+          "Soft Light Purple",
+          "Soft Light Green"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Primer identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 45,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 5,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 22
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_b5dafedce57973dfcca9fb5b",
+      "pivota_signature_id": "sig_d275edcf29109760764a2288",
+      "probed_product_id": "ext_b5dafedce57973dfcca9fb5b",
+      "probed_id_type": "ext",
+      "seed_id": "eps_9bea2beb5e5ef01fd465b526",
+      "market": "US",
+      "domain": "delicatedaisys.com",
+      "title": "Rejuvenating Night Face Cream Bulgarian Rose",
+      "canonical_url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "eed9e1d77804",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "active_ingredients",
+        "product_facts",
+        "supplemental_details"
+      ],
+      "gallery": {
+        "image_count": 8,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "delicatedaisys.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Moisturizer identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 19,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 10,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 4
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "formula_category_path_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_8136f11be69e6c18781a7f02",
+      "pivota_signature_id": "sig_6b92f753966ed06a55217641",
+      "probed_product_id": "ext_8136f11be69e6c18781a7f02",
+      "probed_id_type": "ext",
+      "seed_id": "eps_3f6b17eb288ce4725cbd191a",
+      "market": "US",
+      "domain": "nalacare.com",
+      "title": "Peppermint & Activated Charcoal, Natural Deodorant",
+      "canonical_url": "https://nalacare.com/products/natural-deodorant-peppermint-charcoal",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "eed9e1d77804",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "how_to_use",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 7,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "nalacare.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 60 g",
+          "60 g"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Deodorant identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 23,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": false,
+        "how_to_text_count": 0,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 23
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [
+        "missing_how_to"
+      ],
+      "pdp_quality_bucket": "thin",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_e5f66cf29d6c516775bb0fce",
+      "pivota_signature_id": "sig_dc67c95a05ea55d137601330",
+      "probed_product_id": "ext_e5f66cf29d6c516775bb0fce",
+      "probed_id_type": "ext",
+      "seed_id": "eps_2a694bb944824411ac2da0a2",
+      "market": "US",
+      "domain": "nalacare.com",
+      "title": "Essence of Rosewood, Extra Strength Natural Deodorant",
+      "canonical_url": "https://nalacare.com/products/essence-of-rosewood-extra-strength-deodorant",
+      "probe_error": "timeout of 25000ms exceeded",
+      "blocking_reasons": [
+        "live_pdp_probe_failed"
+      ],
+      "pdp_quality_bucket": "not_conversion_ready",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_446a5f126507ff6adba46258",
+      "pivota_signature_id": "sig_4d5786ae6535963a72172e4a",
+      "probed_product_id": "ext_446a5f126507ff6adba46258",
+      "probed_id_type": "ext",
+      "seed_id": "eps_f71587e76c7f38fd91249f6b",
+      "market": "US",
+      "domain": "nalacare.com",
+      "title": "Eucalyptus & Champa, Extra Strength Natural Deodorant",
+      "canonical_url": "https://nalacare.com/products/eucalyptus-natural-deodorant",
+      "probe_error": "timeout of 25000ms exceeded",
+      "blocking_reasons": [
+        "live_pdp_probe_failed"
+      ],
+      "pdp_quality_bucket": "not_conversion_ready",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_2ef1955968e55d0bfdf5fe78",
+      "pivota_signature_id": "sig_45716e6070ce703c2f4ee3d4",
+      "probed_product_id": "ext_2ef1955968e55d0bfdf5fe78",
+      "probed_id_type": "ext",
+      "seed_id": "eps_ea734087361e2bc8116864de",
+      "market": "US",
+      "domain": "nalacare.com",
+      "title": "Palo Santo & Sage, Sensitive Skin Natural Deodorant",
+      "canonical_url": "https://nalacare.com/products/palo-santo-sage-natural-deodorant",
+      "probe_error": "getaddrinfo ENOTFOUND pivota-agent-production.up.railway.app",
+      "blocking_reasons": [
+        "live_pdp_probe_failed"
+      ],
+      "pdp_quality_bucket": "not_conversion_ready",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_5975f96c1d90b02d02329960",
+      "pivota_signature_id": "sig_176d0cbeaaff82a732c51ef4",
+      "probed_product_id": "ext_5975f96c1d90b02d02329960",
+      "probed_id_type": "ext",
+      "seed_id": "eps_70cc3400fbd348ddea653644",
+      "market": "US",
+      "domain": "nalacare.com",
+      "title": "Unscented, Sensitive Skin Natural Deodorant",
+      "canonical_url": "https://nalacare.com/products/unscented-natural-deodorant",
+      "probe_error": "getaddrinfo ENOTFOUND pivota-agent-production.up.railway.app",
+      "blocking_reasons": [
+        "live_pdp_probe_failed"
+      ],
+      "pdp_quality_bucket": "not_conversion_ready",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_21216a67b62b16d88661367f",
+      "pivota_signature_id": "sig_3593c2c3e729fd45ede0996a",
+      "probed_product_id": "ext_21216a67b62b16d88661367f",
+      "probed_id_type": "ext",
+      "seed_id": "eps_397f9fecae5c0008b37ef970",
+      "market": "US",
+      "domain": "nalacare.com",
+      "title": "Lavender & Vetiver, Sensitive Skin Natural Deodorant",
+      "canonical_url": "https://nalacare.com/products/lavender-and-vetiver-charcoal-natural-deodorant",
+      "probe_error": "getaddrinfo ENOTFOUND pivota-agent-production.up.railway.app",
+      "blocking_reasons": [
+        "live_pdp_probe_failed"
+      ],
+      "pdp_quality_bucket": "not_conversion_ready",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_b36935c92dc89857bf62f25e",
+      "pivota_signature_id": "sig_0c5ce72c1a7bb40617f0b83d",
+      "probed_product_id": "ext_b36935c92dc89857bf62f25e",
+      "probed_id_type": "ext",
+      "seed_id": "eps_4e147a8448a969b3bd3c46a9",
+      "market": "US",
+      "domain": "nalacare.com",
+      "title": "Grapefruit & Neroli, Extra Strength Natural Deodorant",
+      "canonical_url": "https://nalacare.com/products/grapefruit-neroli-natural-deodorant",
+      "probe_error": "getaddrinfo ENOTFOUND pivota-agent-production.up.railway.app",
+      "blocking_reasons": [
+        "live_pdp_probe_failed"
+      ],
+      "pdp_quality_bucket": "not_conversion_ready",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_e08d2e62205f1691dfe30753",
+      "pivota_signature_id": "sig_585510673ac14ed71e01b4a9",
+      "probed_product_id": "ext_e08d2e62205f1691dfe30753",
+      "probed_id_type": "ext",
+      "seed_id": "eps_18d393cf24840b4bbe6b1a52",
+      "market": "US",
+      "domain": "nalacare.com",
+      "title": "Coastal Waters, Extra Strength Natural Deodorant",
+      "canonical_url": "https://nalacare.com/products/coastal-waters-natural-deodorant-extra-strength",
+      "probe_error": "getaddrinfo ENOTFOUND pivota-agent-production.up.railway.app",
+      "blocking_reasons": [
+        "live_pdp_probe_failed"
+      ],
+      "pdp_quality_bucket": "not_conversion_ready",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_99b5d36c01c7614a5de71fa1",
+      "pivota_signature_id": "sig_344eafc02c8931679c020a25",
+      "probed_product_id": "ext_99b5d36c01c7614a5de71fa1",
+      "probed_id_type": "ext",
+      "seed_id": "eps_bfe66983319825686ed76f14",
+      "market": "US",
+      "domain": "delicatedaisys.com",
+      "title": "Cleansing Face Milk Bulgarian Rose",
+      "canonical_url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose",
+      "probe_error": "getaddrinfo ENOTFOUND pivota-agent-production.up.railway.app",
+      "blocking_reasons": [
+        "live_pdp_probe_failed"
+      ],
+      "pdp_quality_bucket": "not_conversion_ready",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_9695064b5f7d76303f88beb1",
+      "pivota_signature_id": "sig_f0c452f8504c681b0c410a4f",
+      "probed_product_id": "ext_9695064b5f7d76303f88beb1",
+      "probed_id_type": "ext",
+      "seed_id": "eps_cbe791e3565d702ac4fc546a",
+      "market": "US",
+      "domain": "delicatedaisys.com",
+      "title": "Firming & Toning Body Cream Pineapple & Retinol",
+      "canonical_url": "https://delicatedaisys.com/products/firming-toning-body-cream-pineapple-retinol",
+      "probe_error": "getaddrinfo ENOTFOUND pivota-agent-production.up.railway.app",
+      "blocking_reasons": [
+        "live_pdp_probe_failed"
+      ],
+      "pdp_quality_bucket": "not_conversion_ready",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_3405f1b2b381c9a5e0941c20",
+      "pivota_signature_id": "sig_46a6391643f5a1383dd066e6",
+      "probed_product_id": "ext_3405f1b2b381c9a5e0941c20",
+      "probed_id_type": "ext",
+      "seed_id": "eps_9c3a54c931f5b4bdf1e65b03",
+      "market": "US",
+      "domain": "delicatedaisys.com",
+      "title": "Glimmer Tanning Body Oil Colloidal Gold",
+      "canonical_url": "https://delicatedaisys.com/products/glimmer-tanning-body-oil-colloidal-gold",
+      "probe_error": "getaddrinfo ENOTFOUND pivota-agent-production.up.railway.app",
+      "blocking_reasons": [
+        "live_pdp_probe_failed"
+      ],
+      "pdp_quality_bucket": "not_conversion_ready",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_770904b0a8a54583347cea85",
+      "pivota_signature_id": "sig_01c2ff5b28e5d7ca45440810",
+      "probed_product_id": "ext_770904b0a8a54583347cea85",
+      "probed_id_type": "ext",
+      "seed_id": "eps_f86a6a2819bbe74d4933778f",
+      "market": "US",
+      "domain": "delicatedaisys.com",
+      "title": "Herbal Hair Mask Probiotics",
+      "canonical_url": "https://delicatedaisys.com/products/herbal-hair-mask-probiotics",
+      "probe_error": "getaddrinfo ENOTFOUND pivota-agent-production.up.railway.app",
+      "blocking_reasons": [
+        "live_pdp_probe_failed"
+      ],
+      "pdp_quality_bucket": "not_conversion_ready",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_b344f028268229b02a16d0cb",
+      "pivota_signature_id": "sig_fe94d67f4b6aa5cd8feb8e32",
+      "probed_product_id": "ext_b344f028268229b02a16d0cb",
+      "probed_id_type": "ext",
+      "seed_id": "eps_8f7a3ed787f0992b52fb0f31",
+      "market": "US",
+      "domain": "delicatedaisys.com",
+      "title": "Cooling After Sun Body Oil Aloe Vera",
+      "canonical_url": "https://delicatedaisys.com/products/cooling-after-sun-body-oil-aloe-vera",
+      "probe_error": "getaddrinfo ENOTFOUND pivota-agent-production.up.railway.app",
+      "blocking_reasons": [
+        "live_pdp_probe_failed"
+      ],
+      "pdp_quality_bucket": "not_conversion_ready",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_31b732e4e40c0579c5f4c554",
+      "pivota_signature_id": "sig_f5a6f90732c4af20fc4612ac",
+      "probed_product_id": "ext_31b732e4e40c0579c5f4c554",
+      "probed_id_type": "ext",
+      "seed_id": "eps_21794d2c1b706f4b3c7887b6",
+      "market": "US",
+      "domain": "delicatedaisys.com",
+      "title": "Nourishing Probiotic Body Wash Pineapple",
+      "canonical_url": "https://delicatedaisys.com/products/nourishing-probiotic-body-wash-pineapple",
+      "probe_error": "getaddrinfo ENOTFOUND pivota-agent-production.up.railway.app",
+      "blocking_reasons": [
+        "live_pdp_probe_failed"
+      ],
+      "pdp_quality_bucket": "not_conversion_ready",
+      "conversion_ready": false
+    }
+  ]
+}
