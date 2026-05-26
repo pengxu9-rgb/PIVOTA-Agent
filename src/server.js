@@ -64,7 +64,9 @@ const {
   enrichProductWithCatalogFashionFields,
 } = require('./services/catalogFashionFields');
 const {
+  buildCatalogPdpContentFieldsFromRow,
   enrichProductWithCatalogPdpContentFields,
+  mergeCatalogPdpContentFieldsIntoProduct,
 } = require('./services/catalogPdpContentFields');
 const {
   enrichProductWithRelatedServices,
@@ -4951,13 +4953,28 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
           cp.platform,
           cp.source_product_id,
           cp.product_key,
+          cp.source_system,
           cp.pivota_signature_id,
           cp.content_key,
+          cp.title AS catalog_title,
+          cp.brand AS catalog_brand,
+          cp.image_url AS catalog_image_url,
+          cp.description AS catalog_description,
+          cp.canonical_url AS catalog_canonical_url,
+          cp.pivota_canonical_url AS catalog_pivota_canonical_url,
+          cp.product_payload AS catalog_product_payload,
+          cp.sync_status AS catalog_sync_status,
+          cp.pdp_lifecycle_stage AS catalog_pdp_lifecycle_stage,
           cp.category,
           cp.product_type,
           cp.category_path,
           cp.category_label_source,
           cp.category_confidence,
+          signature_ips.serving_eligible AS signature_serving_eligible,
+          signature_ips.pipeline_stage AS signature_pipeline_stage,
+          signature_ips.blocker_code AS signature_blocker_code,
+          signature_ips.blocker_detail AS signature_blocker_detail,
+          signature_ips.content_quality_score AS signature_content_quality_score,
           eps.id AS external_seed_id,
           eps.external_product_id AS external_seed_external_product_id,
           eps.status AS external_seed_status,
@@ -4965,6 +4982,8 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
           eps.created_at AS external_seed_created_at
         FROM catalog_products cp
         LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id
+        LEFT JOIN index_pipeline_state signature_ips
+          ON signature_ips.content_key = cp.content_key
         LEFT JOIN LATERAL (
           SELECT id, external_product_id, status, updated_at, created_at
           FROM external_product_seeds eps
@@ -5170,7 +5189,37 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
         product_id: exactSourceProductId,
         ...(exactRow?.platform ? { platform: String(exactRow.platform).trim() } : {}),
         ...(exactRow?.product_key ? { product_key: String(exactRow.product_key).trim() } : {}),
+        ...(exactRow?.source_system ? { source_system: String(exactRow.source_system).trim() } : {}),
         pivota_signature_id: normalizedProductId,
+        title: firstNonEmptyString(exactRow?.catalog_title, exactRow?.title),
+        brand: firstNonEmptyString(exactRow?.catalog_brand, exactRow?.brand),
+        image_url: firstNonEmptyString(exactRow?.catalog_image_url, exactRow?.image_url),
+        description: firstNonEmptyString(exactRow?.catalog_description, exactRow?.description),
+        canonical_url: firstNonEmptyString(exactRow?.catalog_canonical_url, exactRow?.canonical_url),
+        pivota_canonical_url: firstNonEmptyString(
+          exactRow?.catalog_pivota_canonical_url,
+          exactRow?.pivota_canonical_url,
+        ),
+        product_payload:
+          exactRow?.catalog_product_payload !== undefined
+            ? exactRow.catalog_product_payload
+            : exactRow?.product_payload,
+        sync_status: firstNonEmptyString(exactRow?.catalog_sync_status, exactRow?.sync_status),
+        pdp_lifecycle_stage: firstNonEmptyString(
+          exactRow?.catalog_pdp_lifecycle_stage,
+          exactRow?.pdp_lifecycle_stage,
+        ),
+        serving_eligibility_prefetched:
+          Object.prototype.hasOwnProperty.call(exactRow, 'signature_serving_eligible') ||
+          Object.prototype.hasOwnProperty.call(exactRow, 'signature_pipeline_stage') ||
+          Object.prototype.hasOwnProperty.call(exactRow, 'signature_blocker_code'),
+        signature_serving_eligible: exactRow?.signature_serving_eligible,
+        signature_pipeline_stage: firstNonEmptyString(exactRow?.signature_pipeline_stage),
+        signature_blocker_code: firstNonEmptyString(exactRow?.signature_blocker_code),
+        signature_blocker_detail: firstNonEmptyString(exactRow?.signature_blocker_detail),
+        signature_content_quality_score: Number.isFinite(Number(exactRow?.signature_content_quality_score))
+          ? Number(exactRow.signature_content_quality_score)
+          : null,
         category: firstNonEmptyString(exactRow?.category),
         product_type: firstNonEmptyString(exactRow?.product_type),
         category_path: firstNonEmptyString(exactRow?.category_path),
@@ -5276,6 +5325,7 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
     const message = String(err?.message || err || '');
     if (
       err?.code === 'NO_DATABASE' ||
+      err?.code === '42P01' ||
       (message.includes('catalog_products') && message.includes('does not exist'))
     ) {
       return null;
@@ -6142,6 +6192,320 @@ function normalizePdpServingEligibilityRow(row) {
     active_external_seed_source_match: hasActiveExternalSeedSourceMatch,
     eligibility_override_reason: null,
   };
+}
+
+function buildPrefetchedPdpServingEligibilityFromSignatureRef(signatureProductRef) {
+  if (!signatureProductRef || typeof signatureProductRef !== 'object') return null;
+  if (signatureProductRef.serving_eligibility_prefetched !== true) return null;
+  return normalizePdpServingEligibilityRow({
+    content_key: signatureProductRef.content_key,
+    product_key: signatureProductRef.product_key,
+    pivota_signature_id: firstNonEmptyString(
+      signatureProductRef.requested_pivota_signature_id,
+      signatureProductRef.pivota_signature_id,
+      signatureProductRef.catalog_pivota_signature_id,
+    ),
+    sync_status: signatureProductRef.sync_status,
+    pdp_lifecycle_stage: signatureProductRef.pdp_lifecycle_stage,
+    serving_eligible: signatureProductRef.signature_serving_eligible,
+    pipeline_stage: signatureProductRef.signature_pipeline_stage,
+    blocker_code: signatureProductRef.signature_blocker_code,
+    blocker_detail: signatureProductRef.signature_blocker_detail,
+    content_quality_score: signatureProductRef.signature_content_quality_score,
+    active_external_seed_source_match:
+      String(signatureProductRef.external_seed_status || '').trim().toLowerCase() === 'active',
+  });
+}
+
+function signatureRefHasUsableCatalogDetailContent(signatureProductRef) {
+  if (!signatureProductRef || typeof signatureProductRef !== 'object') return false;
+  const payload = parseCanonicalCatalogPayload(signatureProductRef.product_payload);
+  const seedData = isPlainObject(payload.seed_data) ? payload.seed_data : {};
+  const snapshot = isPlainObject(seedData.snapshot) ? seedData.snapshot : {};
+  const externalSeed = isPlainObject(payload.external_seed) ? payload.external_seed : {};
+  const externalSnapshot = isPlainObject(externalSeed.snapshot) ? externalSeed.snapshot : {};
+  const hasTitle = Boolean(firstNonEmptyString(
+    signatureProductRef.title,
+    payload.title,
+    seedData.title,
+    snapshot.title,
+    externalSeed.title,
+    externalSnapshot.title,
+  ));
+  const hasSourceUrl = Boolean(firstNonEmptyString(
+    signatureProductRef.canonical_url,
+    payload.canonical_url,
+    payload.destination_url,
+    seedData.canonical_url,
+    seedData.destination_url,
+    snapshot.canonical_url,
+    snapshot.destination_url,
+    externalSeed.canonical_url,
+    externalSeed.destination_url,
+    externalSnapshot.canonical_url,
+    externalSnapshot.destination_url,
+  ));
+  const hasVisualOrContent = Boolean(
+    firstCatalogPayloadString(
+      signatureProductRef.image_url,
+      payload.image_url,
+      payload.image_urls,
+      payload.images,
+      seedData.image_url,
+      seedData.image_urls,
+      seedData.images,
+      snapshot.image_url,
+      snapshot.image_urls,
+      snapshot.images,
+      externalSeed.image_url,
+      externalSeed.image_urls,
+      externalSeed.images,
+      externalSnapshot.image_url,
+      externalSnapshot.image_urls,
+      externalSnapshot.images,
+    ) ||
+      firstNonEmptyString(
+        signatureProductRef.description,
+        payload.description,
+        payload.pdp_description_raw,
+        seedData.description,
+        seedData.pdp_description_raw,
+        snapshot.description,
+        snapshot.pdp_description_raw,
+        externalSeed.description,
+        externalSeed.pdp_description_raw,
+        externalSnapshot.description,
+        externalSnapshot.pdp_description_raw,
+      ) ||
+      [seedData.variants, snapshot.variants, externalSeed.variants, externalSnapshot.variants]
+        .some((variants) => Array.isArray(variants) && variants.length > 0)
+  );
+  return hasTitle && (hasSourceUrl || hasVisualOrContent);
+}
+
+function buildExternalSeedProductFromSignatureCatalogRef(signatureProductRef) {
+  if (!signatureProductRef || typeof signatureProductRef !== 'object') return null;
+  if (signatureProductRef.source !== 'catalog_products_signature_exact') return null;
+  const merchantId = firstNonEmptyString(signatureProductRef.merchant_id);
+  const externalProductId = firstNonEmptyString(signatureProductRef.product_id);
+  if (merchantId !== EXTERNAL_SEED_MERCHANT_ID || !isExternalSeedProductId(externalProductId)) {
+    return null;
+  }
+  if (!signatureRefHasUsableCatalogDetailContent(signatureProductRef)) return null;
+
+  const payload = parseCanonicalCatalogPayload(signatureProductRef.product_payload);
+  const payloadSeedData = isPlainObject(payload.seed_data) ? payload.seed_data : {};
+  const payloadSnapshot = isPlainObject(payloadSeedData.snapshot) ? payloadSeedData.snapshot : {};
+  const externalSeed = isPlainObject(payload.external_seed) ? payload.external_seed : {};
+  const externalSnapshot = isPlainObject(externalSeed.snapshot) ? externalSeed.snapshot : {};
+  const title = firstNonEmptyString(
+    signatureProductRef.title,
+    payload.title,
+    payloadSeedData.title,
+    payloadSnapshot.title,
+    externalSeed.title,
+    externalSnapshot.title,
+  );
+  const brand = firstNonEmptyString(
+    signatureProductRef.brand,
+    payload.brand,
+    payload.vendor,
+    payloadSeedData.brand,
+    payloadSeedData.vendor,
+    payloadSnapshot.brand,
+    payloadSnapshot.vendor,
+    externalSeed.brand,
+    externalSeed.vendor,
+    externalSnapshot.brand,
+    externalSnapshot.vendor,
+  );
+  const canonicalUrl = firstNonEmptyString(
+    signatureProductRef.canonical_url,
+    payload.canonical_url,
+    payload.destination_url,
+    payloadSeedData.canonical_url,
+    payloadSeedData.destination_url,
+    payloadSnapshot.canonical_url,
+    payloadSnapshot.destination_url,
+    externalSeed.canonical_url,
+    externalSeed.destination_url,
+    externalSnapshot.canonical_url,
+    externalSnapshot.destination_url,
+  );
+  const imageUrl = firstCatalogPayloadString(
+    signatureProductRef.image_url,
+    payload.image_url,
+    payload.image_urls,
+    payload.images,
+    payloadSeedData.image_url,
+    payloadSeedData.image_urls,
+    payloadSeedData.images,
+    payloadSnapshot.image_url,
+    payloadSnapshot.image_urls,
+    payloadSnapshot.images,
+    externalSeed.image_url,
+    externalSeed.image_urls,
+    externalSeed.images,
+    externalSnapshot.image_url,
+    externalSnapshot.image_urls,
+    externalSnapshot.images,
+  );
+  const description = firstNonEmptyString(
+    signatureProductRef.description,
+    payload.description,
+    payload.pdp_description_raw,
+    payloadSeedData.description,
+    payloadSeedData.pdp_description_raw,
+    payloadSnapshot.description,
+    payloadSnapshot.pdp_description_raw,
+    externalSeed.description,
+    externalSeed.pdp_description_raw,
+    externalSnapshot.description,
+    externalSnapshot.pdp_description_raw,
+  );
+  const category = firstNonEmptyString(
+    signatureProductRef.category,
+    signatureProductRef.product_type,
+    payload.category,
+    payload.product_type,
+    payloadSeedData.category,
+    payloadSeedData.product_type,
+    payloadSnapshot.category,
+    payloadSnapshot.product_type,
+    externalSeed.category,
+    externalSeed.product_type,
+    externalSnapshot.category,
+    externalSnapshot.product_type,
+  );
+  const categoryPath = firstCatalogPayloadString(
+    signatureProductRef.category_path,
+    payload.category_path,
+    payload.catalog_category_path,
+    payloadSeedData.category_path,
+    payloadSeedData.catalog_category_path,
+    payloadSnapshot.category_path,
+    payloadSnapshot.catalog_category_path,
+    externalSeed.category_path,
+    externalSeed.catalog_category_path,
+    externalSnapshot.category_path,
+    externalSnapshot.catalog_category_path,
+  );
+  const imageUrls = [
+    imageUrl,
+    ...(Array.isArray(payloadSeedData.image_urls) ? payloadSeedData.image_urls : []),
+    ...(Array.isArray(payloadSnapshot.image_urls) ? payloadSnapshot.image_urls : []),
+    ...(Array.isArray(externalSeed.image_urls) ? externalSeed.image_urls : []),
+    ...(Array.isArray(externalSnapshot.image_urls) ? externalSnapshot.image_urls : []),
+  ].filter(Boolean);
+  const seedData = {
+    ...payload,
+    ...externalSeed,
+    ...payloadSeedData,
+    external_product_id: firstNonEmptyString(payloadSeedData.external_product_id, externalSeed.external_product_id, externalProductId),
+    product_id: firstNonEmptyString(payloadSeedData.product_id, externalSeed.product_id, externalProductId),
+    ...(title ? { title } : {}),
+    ...(brand ? { brand } : {}),
+    ...(description ? { description, pdp_description_raw: payloadSeedData.pdp_description_raw || description } : {}),
+    ...(canonicalUrl ? { canonical_url: canonicalUrl, destination_url: canonicalUrl } : {}),
+    ...(imageUrl ? { image_url: imageUrl } : {}),
+    ...(imageUrls.length ? { image_urls: Array.from(new Set(imageUrls)) } : {}),
+    ...(category ? { category, product_type: category } : {}),
+    ...(categoryPath ? { category_path: categoryPath, catalog_category_path: categoryPath } : {}),
+    ...(signatureProductRef.pivota_signature_id ? { pivota_signature_id: signatureProductRef.pivota_signature_id } : {}),
+    ...(signatureProductRef.pivota_canonical_url ? { pivota_canonical_url: signatureProductRef.pivota_canonical_url } : {}),
+    snapshot: {
+      ...externalSnapshot,
+      ...payloadSnapshot,
+      product_id: externalProductId,
+      external_product_id: externalProductId,
+      ...(title ? { title } : {}),
+      ...(brand ? { brand } : {}),
+      ...(description ? { description, pdp_description_raw: payloadSnapshot.pdp_description_raw || description } : {}),
+      ...(canonicalUrl ? { canonical_url: canonicalUrl, destination_url: canonicalUrl } : {}),
+      ...(imageUrl ? { image_url: imageUrl } : {}),
+      ...(imageUrls.length ? { image_urls: Array.from(new Set(imageUrls)) } : {}),
+      ...(category ? { category, product_type: category } : {}),
+      ...(categoryPath ? { category_path: categoryPath, catalog_category_path: categoryPath } : {}),
+      ...(signatureProductRef.pivota_signature_id ? { pivota_signature_id: signatureProductRef.pivota_signature_id } : {}),
+      ...(signatureProductRef.pivota_canonical_url ? { pivota_canonical_url: signatureProductRef.pivota_canonical_url } : {}),
+    },
+  };
+  delete seedData.seed_data;
+  delete seedData.external_seed;
+
+  const row = {
+    id: firstNonEmptyString(signatureProductRef.external_seed_id),
+    external_product_id: externalProductId,
+    status: firstNonEmptyString(signatureProductRef.external_seed_status, 'active'),
+    canonical_url: canonicalUrl,
+    destination_url: canonicalUrl,
+    title,
+    image_url: imageUrl,
+    price_amount: firstCatalogPayloadMoney(
+      payload.price_amount,
+      payload.price,
+      payloadSeedData.price_amount,
+      payloadSeedData.price,
+      payloadSnapshot.price_amount,
+      payloadSnapshot.price,
+      externalSeed.price_amount,
+      externalSeed.price,
+      externalSnapshot.price_amount,
+      externalSnapshot.price,
+    ),
+    price_currency: firstNonEmptyString(
+      payload.price_currency,
+      payload.currency,
+      payloadSeedData.price_currency,
+      payloadSeedData.currency,
+      payloadSnapshot.price_currency,
+      payloadSnapshot.currency,
+      externalSeed.price_currency,
+      externalSeed.currency,
+      externalSnapshot.price_currency,
+      externalSnapshot.currency,
+    ),
+    availability: firstNonEmptyString(
+      payload.availability,
+      payloadSeedData.availability,
+      payloadSnapshot.availability,
+      externalSeed.availability,
+      externalSnapshot.availability,
+    ),
+    attached_product_key: firstNonEmptyString(signatureProductRef.product_key),
+    seed_data: seedData,
+    updated_at: signatureProductRef.external_seed_updated_at || null,
+    created_at: signatureProductRef.external_seed_created_at || null,
+  };
+
+  const product = buildExternalSeedProduct(row);
+  if (!product) return null;
+  product.product_key = firstNonEmptyString(signatureProductRef.product_key) || product.product_key;
+  product.content_key = firstNonEmptyString(signatureProductRef.content_key) || product.content_key;
+  product.source_product_id = externalProductId;
+  product.external_product_id = externalProductId;
+  product.external_seed_product_id = externalProductId;
+  product.pivota_signature_id = firstNonEmptyString(signatureProductRef.pivota_signature_id) || product.pivota_signature_id;
+  product.signature_id = firstNonEmptyString(signatureProductRef.pivota_signature_id) || product.signature_id;
+  if (categoryPath && !product.catalog_category_path) product.catalog_category_path = categoryPath;
+  const contentFields = buildCatalogPdpContentFieldsFromRow({
+    source_product_id: externalProductId,
+    product_payload: signatureProductRef.product_payload,
+  });
+  if (contentFields) {
+    mergeCatalogPdpContentFieldsIntoProduct(product, contentFields);
+    if (product.catalog_pdp_content_hydration) {
+      product.catalog_pdp_content_hydration = {
+        ...product.catalog_pdp_content_hydration,
+        source: 'catalog_signature_exact.product_payload',
+        prefetched: true,
+      };
+    }
+  }
+  return attachProductDetailSource(
+    normalizeProductDetailPrice(product),
+    'catalog_signature_exact',
+  );
 }
 
 function shouldAllowPublishedPdpMissingQualitySnapshot(servingEligibility) {
@@ -34659,6 +35023,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           let requestedPivotaSignatureId = null;
           let signatureCatalogIdentity = null;
           let signatureExternalSeedRouteStatus = null;
+          let signatureExternalSeedPrecheckProduct = null;
+          let signaturePrefetchedServingEligibility = null;
+          let signaturePrefetchedPdpContentProductId = null;
 			      if (
 			        productId &&
 			        String(productId).trim().toLowerCase().startsWith('sig_') &&
@@ -34727,6 +35094,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     created_at: signatureProductRef.external_seed_created_at || null,
                     source: 'catalog_signature_exact',
                   };
+                }
+                signaturePrefetchedServingEligibility =
+                  buildPrefetchedPdpServingEligibilityFromSignatureRef(signatureProductRef);
+                signatureExternalSeedPrecheckProduct =
+                  buildExternalSeedProductFromSignatureCatalogRef(signatureProductRef);
+                if (signatureExternalSeedPrecheckProduct?.product_id) {
+                  signaturePrefetchedPdpContentProductId = String(
+                    signatureExternalSeedPrecheckProduct.product_id || '',
+                  ).trim();
                 }
               }
 		          canonicalizationApplied = productId !== requestedProductIdForDiagnostics;
@@ -34809,7 +35185,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        isExternalSeedProductId(entryProductId) ||
 	        requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID;
         let productGroupAliasId = null;
-	      let externalSeedDirectPrecheckProduct = null;
+	      let externalSeedDirectPrecheckProduct =
+	        signatureExternalSeedPrecheckProduct &&
+	        String(signatureExternalSeedPrecheckProduct.product_id || '').trim() === String(entryProductId || '').trim()
+	          ? signatureExternalSeedPrecheckProduct
+	          : null;
         if (
           !canonicalProductRef &&
           entryProductId &&
@@ -35354,12 +35734,18 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
           if (servingEligibleOnly) {
             const servingEligibilityStartedAt = Date.now();
-            const servingEligibility = await fetchPdpServingEligibilityFromDb({
-              contentKey: canonicalProductRef?.content_key || null,
-              pivotaSignatureId: requestedPivotaSignatureId || null,
-              merchantId: canonicalProductRef?.merchant_id,
-              productId: canonicalProductRef?.product_id,
-            });
+            const servingEligibility =
+              signaturePrefetchedServingEligibility &&
+              canonicalProductRef?.merchant_id === EXTERNAL_SEED_MERCHANT_ID &&
+              String(canonicalProductRef?.product_id || '').trim() ===
+                String(signatureExternalSeedPrecheckProduct?.product_id || productId || '').trim()
+                ? signaturePrefetchedServingEligibility
+                : await fetchPdpServingEligibilityFromDb({
+                    contentKey: canonicalProductRef?.content_key || null,
+                    pivotaSignatureId: requestedPivotaSignatureId || null,
+                    merchantId: canonicalProductRef?.merchant_id,
+                    productId: canonicalProductRef?.product_id,
+                  });
             markPdpV2Phase('serving_eligibility_gate', servingEligibilityStartedAt);
             const failClosedForMissingEligibility = shouldFailClosedForMissingPdpServingEligibility({
               requestedPivotaSignatureId,
@@ -35833,48 +36219,56 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         canonicalProductRef?.merchant_id === EXTERNAL_SEED_MERCHANT_ID ||
         canonicalProductForPdp?.merchant_id === EXTERNAL_SEED_MERCHANT_ID
       ) {
-        const catalogPdpContentHydrationStartedAt = Date.now();
-        try {
-          const catalogPdpContentSourceProductIds = collectCatalogPdpContentSourceProductIds(
-            canonicalProductForPdp,
-            canonicalProductRef,
-            [
-              entryProductRef,
-              precheckedMerchantProduct,
-              canonicalProduct,
-              signatureExternalSeedRouteStatus,
-              identityGraphLive?.canonical_product_ref,
-              identityGraphLive?.synthetic_product?.canonical_content_ref,
-              identityGraphLive?.synthetic_product?.selected_commerce_ref,
-              identityGraphLive?.synthetic_product?.canonical_product_ref,
-              identityGraphLive?.synthetic_product?.content_base_ref,
-              identityGraphLive?.synthetic_product?.canonical_payload_product_ref,
-              identityGraphLive?.content_base_ref,
-              catalogIdentity,
-              entryProductId,
-              productId,
-            ],
-          );
-          if (catalogPdpContentSourceProductIds.length > 0) {
-            canonicalProductForPdp = await enrichProductWithCatalogPdpContentFields(
+        const canReuseSignatureCatalogPdpContent =
+          signaturePrefetchedPdpContentProductId &&
+          String(canonicalProductRef?.product_id || canonicalProductForPdp?.source_product_id || '').trim() ===
+            signaturePrefetchedPdpContentProductId;
+        if (canReuseSignatureCatalogPdpContent) {
+          pdpV2PhaseTimings.catalog_pdp_content_hydration = 0;
+        } else {
+          const catalogPdpContentHydrationStartedAt = Date.now();
+          try {
+            const catalogPdpContentSourceProductIds = collectCatalogPdpContentSourceProductIds(
               canonicalProductForPdp,
-              {
-                merchantId: EXTERNAL_SEED_MERCHANT_ID,
-                sourceProductIds: catalogPdpContentSourceProductIds,
-                bypassCache,
-              },
+              canonicalProductRef,
+              [
+                entryProductRef,
+                precheckedMerchantProduct,
+                canonicalProduct,
+                signatureExternalSeedRouteStatus,
+                identityGraphLive?.canonical_product_ref,
+                identityGraphLive?.synthetic_product?.canonical_content_ref,
+                identityGraphLive?.synthetic_product?.selected_commerce_ref,
+                identityGraphLive?.synthetic_product?.canonical_product_ref,
+                identityGraphLive?.synthetic_product?.content_base_ref,
+                identityGraphLive?.synthetic_product?.canonical_payload_product_ref,
+                identityGraphLive?.content_base_ref,
+                catalogIdentity,
+                entryProductId,
+                productId,
+              ],
             );
+            if (catalogPdpContentSourceProductIds.length > 0) {
+              canonicalProductForPdp = await enrichProductWithCatalogPdpContentFields(
+                canonicalProductForPdp,
+                {
+                  merchantId: EXTERNAL_SEED_MERCHANT_ID,
+                  sourceProductIds: catalogPdpContentSourceProductIds,
+                  bypassCache,
+                },
+              );
+            }
+          } catch (err) {
+            logger.warn(
+              {
+                err: err?.message || String(err),
+                product_id: canonicalProductRef?.product_id || null,
+              },
+              'enrichProductWithCatalogPdpContentFields failed; PDP renders without catalog payload merge',
+            );
+          } finally {
+            markPdpV2Phase('catalog_pdp_content_hydration', catalogPdpContentHydrationStartedAt);
           }
-        } catch (err) {
-          logger.warn(
-            {
-              err: err?.message || String(err),
-              product_id: canonicalProductRef?.product_id || null,
-            },
-            'enrichProductWithCatalogPdpContentFields failed; PDP renders without catalog payload merge',
-          );
-        } finally {
-          markPdpV2Phase('catalog_pdp_content_hydration', catalogPdpContentHydrationStartedAt);
         }
       }
 

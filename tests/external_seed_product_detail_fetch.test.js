@@ -852,10 +852,44 @@ describe('external seed product detail hydration', () => {
     });
 
     const signatureRow = {
+      content_key: 'ck_ext_seed_db_sig_1',
       merchant_id: 'external_seed',
       platform: 'external_seed',
       source_product_id: 'ext_seed_db_sig_1',
       product_key: 'prod::external_seed::external_seed::ext_seed_db_sig_1',
+      catalog_title: 'Fenty Beauty Gloss Bomb Universal Lip Luminizer',
+      catalog_brand: 'Fenty Beauty',
+      catalog_image_url: 'https://cdn.example.com/fenty-gloss.jpg',
+      catalog_description: 'A high-shine lip luminizer.',
+      catalog_canonical_url: 'https://www.fentybeauty.com/products/gloss-bomb',
+      catalog_pivota_canonical_url: 'https://agent.pivota.cc/products/sig_fentygloss1',
+      catalog_product_payload: {
+        seed_data: {
+          brand: 'Fenty Beauty',
+          description: 'A high-shine lip luminizer.',
+          snapshot: {
+            canonical_url: 'https://www.fentybeauty.com/products/gloss-bomb',
+            product_id: 'ext_seed_db_sig_1',
+            image_urls: ['https://cdn.example.com/fenty-gloss.jpg'],
+            variants: [
+              {
+                variant_id: 'fenty-gloss-default',
+                title: 'Full Size',
+                price: '22.00',
+                currency: 'USD',
+                stock: 'In Stock',
+              },
+            ],
+          },
+        },
+      },
+      catalog_sync_status: 'live',
+      catalog_pdp_lifecycle_stage: 'published',
+      signature_serving_eligible: true,
+      signature_pipeline_stage: 'serving',
+      signature_blocker_code: null,
+      signature_blocker_detail: null,
+      signature_content_quality_score: 95.2,
       external_seed_id: 'eps_seed_db_sig_1',
       external_seed_external_product_id: 'ext_seed_db_sig_1',
       external_seed_status: 'active',
@@ -966,6 +1000,18 @@ describe('external seed product detail hydration', () => {
         String(sql || '').includes('FROM external_product_seeds\n    WHERE') &&
         String(sql || '').includes("CASE WHEN status = 'active'") &&
         !String(sql || '').includes('destination_url'),
+      ),
+    ).toHaveLength(0);
+    expect(
+      db.query.mock.calls.filter(([sql]) =>
+        String(sql || '').includes('FROM external_product_seeds') &&
+        String(sql || '').includes('destination_url'),
+      ),
+    ).toHaveLength(0);
+    expect(
+      db.query.mock.calls.filter(([sql]) =>
+        String(sql || '').includes('FROM catalog_products cp') &&
+        String(sql || '').includes('LEFT JOIN index_pipeline_state ips'),
       ),
     ).toHaveLength(0);
     expect(res.body.subject).toEqual(

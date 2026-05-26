@@ -522,7 +522,9 @@ async function enrichProductWithCatalogPdpContentFields(product, options = {}) {
 }
 
 module.exports = {
+  buildCatalogPdpContentFieldsFromRow,
   enrichProductWithCatalogPdpContentFields,
+  mergeCatalogPdpContentFieldsIntoProduct,
   readCatalogPdpContentFieldsByProductRefs,
   __test: {
     buildCatalogPdpContentFieldsFromRow,
