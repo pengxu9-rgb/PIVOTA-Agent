@@ -9,7 +9,10 @@ const {
   CURATED_NEED_NODES,
   normalizeProductSnapshot,
 } = require('../src/auroraBff/productRelationshipGraphBuilder');
-const { upsertRelationshipEdge } = require('../src/auroraBff/productRelationshipGraph');
+const {
+  upsertRelationshipCandidateLabel,
+  reviewStatusToLabelState,
+} = require('../src/auroraBff/productRelationshipGraph');
 const {
   buildCandidatesByAnchorFromSources,
   loadProductRelationshipGraphSourceInputs,
@@ -338,11 +341,20 @@ async function main() {
     limit,
   });
 
+  // Build-script output is raw generator candidates. By default they enter
+  // the labels table as `generated` (pre-review). When --review-status is
+  // explicitly approved/rejected/pending it maps via reviewStatusToLabelState.
+  const defaultLabelState = reviewStatusToLabelState(reviewStatus) || 'generated';
+
   let applied = 0;
   if (hasFlag('apply')) {
     for (const edge of report.edges) {
       // eslint-disable-next-line no-await-in-loop
-      await upsertRelationshipEdge(edge);
+      await upsertRelationshipCandidateLabel({
+        ...edge,
+        edge_id: edge.id,
+        label_state: defaultLabelState,
+      });
       applied += 1;
     }
   }
