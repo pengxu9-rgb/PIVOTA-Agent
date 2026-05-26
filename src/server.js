@@ -41257,6 +41257,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   catalog_fetch_limit: directCatalogFetchLimit,
                   catalog_fetch_overfetch_multiplier: 1,
                   identity_dedupe_timeout_ms: PDP_SIMILAR_IDENTITY_DEDUPE_BUDGET_MS,
+                  hydrate_product_intel_cards: false,
                   exclude_items: excludeItems,
                   recent_views: recentViews,
                 },

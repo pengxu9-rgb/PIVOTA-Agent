@@ -76,6 +76,7 @@ describe('find_similar_products mainline wrapper', () => {
           catalog_fetch_limit: 16,
           catalog_fetch_overfetch_multiplier: 1,
           identity_dedupe_timeout_ms: expect.any(Number),
+          hydrate_product_intel_cards: false,
         }),
       }),
     );
