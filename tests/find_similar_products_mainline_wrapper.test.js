@@ -108,6 +108,12 @@ describe('find_similar_products mainline wrapper', () => {
           product_key: 'prod::external_seed::external_seed::ext_source_1',
           pivota_signature_id: 'sig_source1',
           content_key: 'tom-ford:test-content-key',
+          catalog_title: 'The Ordinary Alpha Arbutin Serum',
+          catalog_brand: 'The Ordinary',
+          category: 'Serum',
+          product_type: 'Serum',
+          category_path: 'beauty/skincare/serum',
+          catalog_image_url: 'https://cdn.example.test/base.jpg',
         },
       ],
     });
@@ -161,6 +167,12 @@ describe('find_similar_products mainline wrapper', () => {
           external_product_id: 'ext_source_1',
           pivota_signature_id: 'sig_source1',
           requested_product_id: 'sig_source1',
+          title: 'The Ordinary Alpha Arbutin Serum',
+          brand: 'The Ordinary',
+          category: 'Serum',
+          product_type: 'Serum',
+          category_path: 'beauty/skincare/serum',
+          image_url: 'https://cdn.example.test/base.jpg',
           source: 'external_seed',
         }),
       }),
@@ -179,6 +191,15 @@ describe('find_similar_products mainline wrapper', () => {
           resolved_product_id: 'ext_source_1',
           resolved: true,
         }),
+      }),
+    );
+    expect(res.body.debug.route_stage_timing_ms).toEqual(
+      expect.objectContaining({
+        resolve_signature_ref: expect.any(Number),
+        similar_recall: expect.any(Number),
+        card_enrichment: expect.any(Number),
+        visible_sig_hydration: expect.any(Number),
+        total: expect.any(Number),
       }),
     );
   });

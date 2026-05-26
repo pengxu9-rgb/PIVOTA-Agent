@@ -2910,7 +2910,7 @@ const PDP_SIMILAR_IDENTITY_DEDUPE_BUDGET_MS = Math.max(
   50,
   Math.min(
     500,
-    parseTimeoutMs(process.env.PDP_SIMILAR_IDENTITY_DEDUPE_BUDGET_MS, 250),
+    parseTimeoutMs(process.env.PDP_SIMILAR_IDENTITY_DEDUPE_BUDGET_MS, 125),
   ),
 );
 const PDP_SIMILAR_EXTERNAL_FETCH_BUDGET_MS = Math.min(
@@ -4018,6 +4018,32 @@ function buildPdpSimilarBaseProduct({
       sourceProduct.id ||
       canonicalProduct?.product_id ||
       canonicalProduct?.id,
+  };
+}
+
+function buildPdpSimilarBaseProductHintsFromSignatureRef(resolvedSignatureRef = {}) {
+  if (!resolvedSignatureRef || typeof resolvedSignatureRef !== 'object') return {};
+  const title = firstNonEmptyString(resolvedSignatureRef.title, resolvedSignatureRef.catalog_title);
+  const brand = firstNonEmptyString(resolvedSignatureRef.brand, resolvedSignatureRef.catalog_brand);
+  const category = firstNonEmptyString(resolvedSignatureRef.category);
+  const productType = firstNonEmptyString(resolvedSignatureRef.product_type, resolvedSignatureRef.productType);
+  const categoryPath = firstNonEmptyString(
+    resolvedSignatureRef.category_path,
+    resolvedSignatureRef.catalog_category_path,
+  );
+  const imageUrl = firstNonEmptyString(resolvedSignatureRef.image_url, resolvedSignatureRef.catalog_image_url);
+  const canonicalUrl = firstNonEmptyString(
+    resolvedSignatureRef.canonical_url,
+    resolvedSignatureRef.catalog_canonical_url,
+  );
+  return {
+    ...(title ? { title } : {}),
+    ...(brand ? { brand } : {}),
+    ...(category ? { category } : {}),
+    ...(productType ? { product_type: productType } : {}),
+    ...(categoryPath ? { category_path: categoryPath } : {}),
+    ...(imageUrl ? { image_url: imageUrl } : {}),
+    ...(canonicalUrl ? { canonical_url: canonicalUrl } : {}),
   };
 }
 
@@ -41159,6 +41185,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             sim?.options?.debug === true;
 
           if (productId) {
+            const directRouteStartedAt = Date.now();
+            const directRouteTimingMs = {};
             let effectiveProductId = productId;
             let effectiveMerchantId = merchantId;
             let resolvedSignatureRef = null;
@@ -41166,10 +41194,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               isPivotaSignatureProductId(productId) &&
               (!merchantId || merchantId === EXTERNAL_SEED_MERCHANT_ID)
             ) {
+              const resolveSignatureStartedAt = Date.now();
               resolvedSignatureRef = await resolveCatalogProductRefFromPivotaSignature(productId, {
                 hydrateIdentityListing: false,
                 hydrateIdentityGroupMembers: false,
               }).catch(() => null);
+              directRouteTimingMs.resolve_signature_ref = Date.now() - resolveSignatureStartedAt;
               const resolvedExternalSeedProductId =
                 resolvedSignatureRef?.merchant_id === EXTERNAL_SEED_MERCHANT_ID &&
                 resolvedSignatureRef?.product_id &&
@@ -41210,6 +41240,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                         }
                       : {}),
                     ...(resolvedSignatureRef?.product_key ? { product_key: resolvedSignatureRef.product_key } : {}),
+                    ...buildPdpSimilarBaseProductHintsFromSignatureRef(resolvedSignatureRef),
                   }
                 : effectiveMerchantId
                 ? await withStageBudget(
@@ -41238,9 +41269,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                           requested_product_id: productId,
                         }
                       : {}),
+                    ...buildPdpSimilarBaseProductHintsFromSignatureRef(resolvedSignatureRef),
                   }
                 : { merchant_id: effectiveMerchantId || null, product_id: effectiveProductId });
 
+            const similarRecallStartedAt = Date.now();
             const rec = await resolvePdpSimilarWithBudget(
               fetchSimilarProductsDeduped({
                 pdp_product: baseProduct,
@@ -41268,24 +41301,34 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 reasonCode: 'SIMILAR_DEFERRED_POST_CORE',
               },
             );
+            directRouteTimingMs.similar_recall = Date.now() - similarRecallStartedAt;
 
             const rawProducts = Array.isArray(rec?.items) ? rec.items : [];
+            const cardEnrichmentStartedAt = Date.now();
             const enrichedProducts = await enrichSimilarProductsForPdpCards({
               items: rawProducts,
               checkoutToken,
               bypassCache,
               maxItems: resolvePdpSimilarCardEnrichmentLimit(limit, directCandidateLimit),
             });
+            directRouteTimingMs.card_enrichment = Date.now() - cardEnrichmentStartedAt;
             const cardEnrichmentMetadata = getSimilarCardEnrichmentMetadata(enrichedProducts);
+            const visibleFilterStartedAt = Date.now();
             const visibleSimilarCandidates = filterSimilarProductsWithCardHighlights(enrichedProducts, {
               baseProduct,
             });
+            directRouteTimingMs.visible_filter = Date.now() - visibleFilterStartedAt;
+            const visibleSigHydrationStartedAt = Date.now();
             const hydratedSimilarCandidates = await hydrateVisibleSimilarProductSigIdsFromCatalog(
               visibleSimilarCandidates,
               { bypassCache },
             );
+            directRouteTimingMs.visible_sig_hydration = Date.now() - visibleSigHydrationStartedAt;
+            const publicFilterStartedAt = Date.now();
             const publicSimilarCandidates = filterPublicVisibleSimilarProducts(hydratedSimilarCandidates);
             const products = publicSimilarCandidates.slice(0, limit);
+            directRouteTimingMs.public_filter = Date.now() - publicFilterStartedAt;
+            directRouteTimingMs.total = Date.now() - directRouteStartedAt;
             const publicExternalIdFilteredCount = Math.max(
               0,
               hydratedSimilarCandidates.length - publicSimilarCandidates.length,
@@ -41340,7 +41383,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             return debugEnabled
               ? res.json({
                   ...baseResponse,
-                  debug: rec?.debug || null,
+                  debug: {
+                    ...((rec?.debug && typeof rec.debug === 'object') ? rec.debug : {}),
+                    route_stage_timing_ms: directRouteTimingMs,
+                  },
                   cache: rec?.cache || null,
                 })
               : res.json(baseResponse);
