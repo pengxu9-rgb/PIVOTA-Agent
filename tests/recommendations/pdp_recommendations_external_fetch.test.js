@@ -446,6 +446,54 @@ describe('RecommendationEngine external candidate fetch', () => {
     );
   });
 
+  test('catalog-only recall expands sparse eye-care intent inside catalog products', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+    delete process.env.PDP_SIMILAR_CATALOG_ONLY;
+
+    const queryMock = jest.fn(async (sql, params) => {
+      const text = String(sql);
+      if (!text.includes('FROM catalog_products cp')) return { rows: [] };
+      expect(text).toContain("lower(coalesce(cp.category_path, '')) LIKE '%eye%'");
+      expect(params[0]).toBe('beauty/skincare/treat/serum');
+      expect(params[1]).toEqual(expect.arrayContaining(['%eye serum%', '%under eye%']));
+      expect(params[2]).toEqual(expect.arrayContaining(['beauty/skincare/%']));
+      return {
+        rows: [
+          makeCatalogRow({
+            product_key: 'cat_eye_care_1',
+            source_product_id: 'ext_eye_care_1',
+            pivota_signature_id: 'sig_eye_care_1',
+            title: 'Retinol Youth Renewal Eye Serum',
+            brand: 'Murad',
+            category: 'Eye Care',
+            category_path: 'beauty/skincare/eye-care',
+          }),
+        ],
+      };
+    });
+
+    jest.doMock('../../src/db', () => ({
+      query: queryMock,
+      queryWithStatementTimeout: jest.fn(async () => ({ rows: [] })),
+    }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const products = await _internals.fetchCatalogCandidates({
+      brandHint: 'The Ordinary',
+      categoryHint: 'Serum',
+      categoryPathHint: 'beauty/skincare/treat/serum',
+      verticalHint: 'skincare',
+      intentFamilyHint: 'eye_cream',
+      sourceMerchantHint: 'external_seed',
+      limit: 6,
+      overfetchMultiplier: 1,
+    });
+
+    expect(products.map((product) => product.pivota_signature_id)).toEqual(['sig_eye_care_1']);
+    expect(products[0].catalog_category_path).toBe('beauty/skincare/eye-care');
+  });
+
   test('catalog-only recall honors explicit fetch limit without runtime overfetch', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
     delete process.env.PDP_SIMILAR_CATALOG_ONLY;
@@ -2529,6 +2577,12 @@ describe('RecommendationEngine external candidate fetch', () => {
       leafCategory: 'cream',
       parentCategory: 'moisturize',
     })).toBe('moisturizer');
+    expect(_internals.getSimilarIntentFamilyFromFeatures({
+      normalizedTitle: 'natural moisturizing factors ha for scalp',
+      leafCategory: 'general',
+      parentCategory: 'haircare',
+      vertical: 'haircare',
+    })).toBe('');
     expect(_internals.getSimilarIntentFamilyFromFeatures({
       normalizedTitle: 'c-vit undereye brightener',
       leafCategory: 'brightener',

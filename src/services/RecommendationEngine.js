@@ -2568,6 +2568,10 @@ function buildCatalogVerticalPathPatterns(vertical) {
   return [];
 }
 
+function shouldExpandCatalogPathByIntentFamily(intentFamily) {
+  return String(intentFamily || '').trim() === 'eye_cream';
+}
+
 function splitCandidatesByRuntimeClass(candidates = []) {
   const internalCandidates = [];
   const externalCandidates = [];
@@ -2661,6 +2665,28 @@ async function fetchCatalogCandidates({
     const p = addParam(catalogCategoryPath);
     matchClauses.push(`cp.category_path = ${p}`);
     orderClauses.push(`CASE WHEN cp.category_path = ${p} THEN 0 ELSE 1 END`);
+  }
+
+  if (
+    catalogCategoryPath &&
+    shouldExpandCatalogPathByIntentFamily(intentFamily) &&
+    intentFamilyLikePatterns.length &&
+    verticalPathPatterns.length
+  ) {
+    const intentParam = addParam(intentFamilyLikePatterns);
+    const verticalParamForIntentExpansion = addParam(verticalPathPatterns);
+    matchClauses.push(`(
+      lower(coalesce(cp.category_path, '')) LIKE ANY(${verticalParamForIntentExpansion}::text[])
+      AND (
+        lower(coalesce(cp.title, '')) LIKE ANY(${intentParam}::text[])
+        OR lower(coalesce(cp.category_path, '')) LIKE '%eye%'
+      )
+    )`);
+    orderClauses.push(`CASE
+      WHEN lower(coalesce(cp.title, '')) LIKE ANY(${intentParam}::text[])
+        OR lower(coalesce(cp.category_path, '')) LIKE '%eye%'
+      THEN 0 ELSE 1 END`);
+    stats.intent_family_catalog_expansion = intentFamily;
   }
 
   // Keep the live PDP path narrow. When the canonical catalog path is known,
@@ -3314,6 +3340,12 @@ function getSimilarIntentFamilyFromText(text) {
   return '';
 }
 
+function isHaircareMoisturizerIntentNoise(text, vertical) {
+  if (normalizeStoredSemanticVertical(vertical) !== 'haircare') return false;
+  const normalized = normalizeText(text);
+  return /\b(?:moisturi[sz](?:er|ing)|hydrating)\b/.test(normalized) && /\b(?:hair|scalp)\b/.test(normalized);
+}
+
 function isLipRelatedSimilarIntentFamily(intentFamily) {
   return LIP_RELATED_SIMILAR_INTENT_FAMILIES.has(String(intentFamily || '').trim());
 }
@@ -3329,7 +3361,9 @@ function similarIntentFamiliesCompatible(baseFamily, candidateFamily) {
 function getSimilarIntentFamilyFromFeatures(features, { titleOnly = false } = {}) {
   if (!titleOnly && normalizeText(features?.runtimeFamily || '') === 'hair_styling') return 'hair_styling';
   if (titleOnly) return getSimilarIntentFamilyFromText(features?.normalizedTitle || '');
-  const direct = getSimilarIntentFamilyFromText(buildSimilarIntentFamilyTextFromFeatures(features));
+  const text = buildSimilarIntentFamilyTextFromFeatures(features);
+  const direct = getSimilarIntentFamilyFromText(text);
+  if (direct === 'moisturizer' && isHaircareMoisturizerIntentNoise(text, features?.vertical)) return '';
   if (direct) return direct;
   const leaf = normalizeText(features?.leafCategory || '');
   const parent = normalizeText(features?.parentCategory || '');
@@ -3347,17 +3381,18 @@ function getSimilarIntentFamilyFromProduct(product) {
   if (normalizeText(classifiedProduct?.external_seed_runtime_family || '') === 'hair_styling') {
     return 'hair_styling';
   }
-  const direct = getSimilarIntentFamilyFromText(
-    [
-      classifiedProduct?.title,
-      classifiedProduct?.name,
-      classifiedProduct?.category,
-      classifiedProduct?.product_type,
-      classifiedProduct?.productType,
-      getLeafCategory(classifiedProduct),
-      getParentCategory(classifiedProduct),
-    ].filter(Boolean).join(' '),
-  );
+  const text = [
+    classifiedProduct?.title,
+    classifiedProduct?.name,
+    classifiedProduct?.category,
+    classifiedProduct?.product_type,
+    classifiedProduct?.productType,
+    getLeafCategory(classifiedProduct),
+    getParentCategory(classifiedProduct),
+  ].filter(Boolean).join(' ');
+  const direct = getSimilarIntentFamilyFromText(text);
+  const vertical = resolveSemanticVerticalOverride(classifiedProduct) || inferVerticalFromProduct(classifiedProduct)?.vertical;
+  if (direct === 'moisturizer' && isHaircareMoisturizerIntentNoise(text, vertical)) return '';
   if (direct) return direct;
   const leaf = getLeafCategory(product);
   const parent = getParentCategory(product);
@@ -3579,12 +3614,32 @@ function supportsSparseHaircareExpansion(features) {
   return /\b(?:shampoo|conditioner|scalp|hair oil|hair mask|leave in|leave-in|detangling|edge control|styling|curl|bonding|hair treatment|haircare|hair care)\b/.test(text);
 }
 
+function supportsSparseEyeCareExpansion(features) {
+  const text = normalizeText(
+    [
+      features?.normalizedTitle,
+      features?.leafCategory,
+      features?.parentCategory,
+    ].filter(Boolean).join(' '),
+  );
+  if (!text) return false;
+  if (/\b(?:eyeshadow|eye shadow|eyeliner|eye liner|mascara|brow|eyebrow|lash|palette|brush|pencil|primer)\b/.test(text)) {
+    return false;
+  }
+  return /\b(?:eye|undereye|under eye|eye cream|eye serum|eye treatment|eye gel|eye balm|eye patch)\b/.test(text);
+}
+
 function allowsSparseExternalVerticalExpansion(baseFeatures, candidateFeatures) {
   if (!baseFeatures?.isExternal || !candidateFeatures?.isExternal) return false;
   if (baseFeatures.vertical === UNKNOWN_VERTICAL || candidateFeatures.vertical === UNKNOWN_VERTICAL) return false;
   if (baseFeatures.vertical !== candidateFeatures.vertical) return false;
-  if (baseFeatures.vertical !== 'haircare') return false;
-  return supportsSparseHaircareExpansion(baseFeatures) && supportsSparseHaircareExpansion(candidateFeatures);
+  if (baseFeatures.vertical === 'haircare') {
+    return supportsSparseHaircareExpansion(baseFeatures) && supportsSparseHaircareExpansion(candidateFeatures);
+  }
+  if (baseFeatures.vertical === 'skincare') {
+    return supportsSparseEyeCareExpansion(baseFeatures) && supportsSparseEyeCareExpansion(candidateFeatures);
+  }
+  return false;
 }
 
 function isWeakExternalSeedCategory(value) {
@@ -4029,7 +4084,8 @@ function pickLayeredRecommendations({
         base.isExternal &&
         baseIntentFamily &&
         source === 'external' &&
-        !sharedIntentFamily
+        !sharedIntentFamily &&
+        !allowsSparseExternalVerticalExpansion(base, features)
       ) {
         filteredByConfidence += 1;
         return null;
