@@ -1,6 +1,7 @@
 const {
   MIN_CONFIDENCE_FOR_GATING,
   STRUCTURAL_GATE_RELATION_TYPES,
+  PRODUCT_FORM_GROUPS,
   gateProductFormMismatch,
   gateTargetAreaMismatch,
   gateSpfOtcMismatch,
@@ -91,6 +92,60 @@ describe('gateProductFormMismatch', () => {
     }
   });
 
+  test('passes when both forms are in the same PRODUCT_FORM_GROUPS family (lip_color)', () => {
+    const r = gateProductFormMismatch(
+      attrs({ product_form: 'lipstick' }),
+      attrs({ product_form: 'lip_oil' }),
+      'competitive_alternative',
+    );
+    expect(r).toEqual({ passes: true, reason: null });
+  });
+
+  test('passes when both forms are in the same family (face_emollient: cream vs lotion)', () => {
+    const r = gateProductFormMismatch(
+      attrs({ product_form: 'cream' }),
+      attrs({ product_form: 'lotion' }),
+      'competitive_alternative',
+    );
+    expect(r).toEqual({ passes: true, reason: null });
+  });
+
+  test('passes when both forms are in the same family (face_powder: bronzer vs powder)', () => {
+    const r = gateProductFormMismatch(
+      attrs({ product_form: 'bronzer' }),
+      attrs({ product_form: 'powder' }),
+      'competitive_alternative',
+    );
+    expect(r).toEqual({ passes: true, reason: null });
+  });
+
+  test('rejects when one form is mapped and the other is unmapped (no assumed compatibility)', () => {
+    const r = gateProductFormMismatch(
+      attrs({ product_form: 'cream' }),
+      attrs({ product_form: 'gel' }),
+      'competitive_alternative',
+    );
+    expect(r.passes).toBe(false);
+    expect(r.reason).toBe('product_form_mismatch:cream_vs_gel');
+  });
+
+  test('rejects when forms are in different groups (lip_color vs face_emollient)', () => {
+    const r = gateProductFormMismatch(
+      attrs({ product_form: 'lipstick' }),
+      attrs({ product_form: 'cream' }),
+      'competitive_alternative',
+    );
+    expect(r.passes).toBe(false);
+  });
+
+  test('PRODUCT_FORM_GROUPS is exported and is a plain object', () => {
+    expect(typeof PRODUCT_FORM_GROUPS).toBe('object');
+    expect(PRODUCT_FORM_GROUPS.lipstick).toBe('lip_color');
+    expect(PRODUCT_FORM_GROUPS.cream).toBe('face_emollient');
+    expect(PRODUCT_FORM_GROUPS.powder).toBe('face_powder');
+    expect(PRODUCT_FORM_GROUPS.eau_de_parfum).toBe('fragrance');
+  });
+
   test('passes when one side has null attrs entirely', () => {
     expect(gateProductFormMismatch(null, attrs({}), 'dupe').passes).toBe(true);
     expect(gateProductFormMismatch(attrs({}), null, 'dupe').passes).toBe(true);
@@ -135,14 +190,32 @@ describe('gateSpfOtcMismatch', () => {
     expect(gateSpfOtcMismatch(attrs({}), attrs({}), 'dupe').passes).toBe(true);
   });
 
-  test('rejects cosmetic-vs-spf for dupe (compliance gap)', () => {
+  test('passes cosmetic-vs-spf (moisturizer with/without SPF is a valid competitive alternative)', () => {
     const r = gateSpfOtcMismatch(
       attrs({ spf_or_otc_flag: 'cosmetic' }),
       attrs({ spf_or_otc_flag: 'spf' }),
+      'competitive_alternative',
+    );
+    expect(r).toEqual({ passes: true, reason: null });
+  });
+
+  test('passes cosmetic-vs-spf for dupe relation too (SPF additive, not regulatory incompatibility)', () => {
+    const r = gateSpfOtcMismatch(
+      attrs({ spf_or_otc_flag: 'spf' }),
+      attrs({ spf_or_otc_flag: 'cosmetic' }),
+      'dupe',
+    );
+    expect(r).toEqual({ passes: true, reason: null });
+  });
+
+  test('rejects cosmetic-vs-otc_drug for dupe (OTC drug claim is a genuine regulatory gap)', () => {
+    const r = gateSpfOtcMismatch(
+      attrs({ spf_or_otc_flag: 'cosmetic' }),
+      attrs({ spf_or_otc_flag: 'otc_drug' }),
       'dupe',
     );
     expect(r.passes).toBe(false);
-    expect(r.reason).toBe('spf_otc_mismatch:cosmetic_vs_spf');
+    expect(r.reason).toBe('spf_otc_mismatch:cosmetic_vs_otc_drug');
   });
 
   test('rejects cosmetic-vs-otc_drug for competitive_alternative', () => {
@@ -219,14 +292,14 @@ describe('applyAllGates', () => {
   test('multiple failing gates accumulate reasons', () => {
     const r = applyAllGates(
       attrs({ product_form: 'lipstick', target_area: 'lips', spf_or_otc_flag: 'cosmetic' }),
-      attrs({ product_form: 'foundation', target_area: 'face', spf_or_otc_flag: 'spf' }),
+      attrs({ product_form: 'foundation', target_area: 'face', spf_or_otc_flag: 'otc_drug' }),
       'dupe',
     );
     expect(r.passes).toBe(false);
     expect(r.prefilter_reasons).toEqual(expect.arrayContaining([
       'product_form_mismatch:lipstick_vs_foundation',
       'target_area_mismatch:lips_vs_face',
-      'spf_otc_mismatch:cosmetic_vs_spf',
+      'spf_otc_mismatch:cosmetic_vs_otc_drug',
     ]));
     expect(r.prefilter_reasons.length).toBe(3);
   });
