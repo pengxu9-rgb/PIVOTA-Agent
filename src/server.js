@@ -141,6 +141,9 @@ const {
   activeProductsCacheSourceWhere,
 } = require('./services/activeCatalogSourceSql');
 const {
+  buildQuarantineAntiJoinSql,
+} = require('./services/sourceQuarantine');
+const {
   DiscoveryCatalogUnavailableError,
   DiscoveryValidationError,
   getDiscoveryHealthSnapshot,
@@ -1312,12 +1315,24 @@ function normalizeOfferSellerNameCandidate(value, merchantId = '') {
 const OFFER_SELLER_HOST_LABELS = new Map([
   ['sephora.com', 'Sephora'],
   ['ulta.com', 'Ulta Beauty'],
+  ['theordinary.com', 'The Ordinary'],
+  ['theordinary.deciem.com', 'The Ordinary'],
   ['tomfordbeauty.com', 'Tom Ford Beauty'],
   ['beautyofjoseon.com', 'Beauty of Joseon'],
   ['ohlolly.com', 'Ohlolly'],
   ['fentybeauty.com', 'Fenty Beauty'],
   ['kyliecosmetics.com', 'Kylie Cosmetics'],
 ]);
+
+function buildCatalogSourceQuarantineAntiJoinSql(alias = 'cp_offer') {
+  return buildQuarantineAntiJoinSql({
+    domainExpr: `${alias}.source_domain`,
+    merchantExpr: `${alias}.merchant_id`,
+    platformExpr: `${alias}.platform`,
+    sourceSystemExpr: `${alias}.source_system`,
+    sourceRefExpr: `${alias}.source_ref`,
+  });
+}
 
 function normalizeOfferSellerComparable(value) {
   return String(firstNonEmptyString(value) || '')
@@ -1470,8 +1485,17 @@ async function fetchMerchantDisplayNamesByIds(merchantIds) {
         FROM (
           SELECT
             merchant_id,
-            name AS merchant_name,
+            merchant_name,
             0 AS priority,
+            NULL::timestamptz AS connected_at
+          FROM catalog_merchants
+          WHERE merchant_id = ANY($1::text[])
+            AND COALESCE(NULLIF(trim(merchant_name), ''), '') <> ''
+          UNION ALL
+          SELECT
+            merchant_id,
+            name AS merchant_name,
+            1 AS priority,
             connected_at
           FROM merchant_stores
           WHERE merchant_id = ANY($1::text[])
@@ -1482,7 +1506,7 @@ async function fetchMerchantDisplayNamesByIds(merchantIds) {
           SELECT
             merchant_id,
             business_name AS merchant_name,
-            1 AS priority,
+            2 AS priority,
             NULL::timestamptz AS connected_at
           FROM merchant_onboarding
           WHERE merchant_id = ANY($1::text[])
@@ -1508,6 +1532,12 @@ async function fetchMerchantDisplayNamesByIds(merchantIds) {
     );
     return new Map();
   }
+}
+
+async function fetchMerchantDisplayNameById(merchantId) {
+  const mid = String(merchantId || '').trim();
+  if (!mid || mid === EXTERNAL_SEED_MERCHANT_ID) return undefined;
+  return (await fetchMerchantDisplayNamesByIds([mid])).get(mid) || undefined;
 }
 
 function pruneEmptyFields(input = {}) {
@@ -4785,6 +4815,10 @@ async function fetchApprovedLiveIdentityGroupMembersForOffers({
         pil.source_payload,
         pil.variant_axes,
         cp_offer.platform,
+        CASE
+          WHEN pil.merchant_id <> '${EXTERNAL_SEED_MERCHANT_ID}' THEN cm_offer.merchant_name
+          ELSE NULL
+        END AS merchant_name,
         cp_offer.title AS catalog_title,
         cp_offer.brand AS catalog_brand,
         cp_offer.canonical_url AS catalog_canonical_url,
@@ -4803,6 +4837,9 @@ async function fetchApprovedLiveIdentityGroupMembersForOffers({
       LEFT JOIN catalog_products cp_offer
         ON cp_offer.merchant_id = pil.merchant_id
        AND cp_offer.source_product_id = pil.product_id
+      LEFT JOIN catalog_merchants cm_offer
+        ON cm_offer.merchant_id = pil.merchant_id
+       AND pil.merchant_id <> '${EXTERNAL_SEED_MERCHANT_ID}'
       LEFT JOIN LATERAL (
         SELECT
           o.offer_id,
@@ -4845,6 +4882,7 @@ async function fetchApprovedLiveIdentityGroupMembersForOffers({
               AND eps.status = 'active'
           )
         )
+        ${buildCatalogSourceQuarantineAntiJoinSql('cp_offer')}
       ORDER BY
         CASE WHEN pil.source_tier = 'brand' THEN 0 ELSE 1 END,
         pil.identity_confidence DESC NULLS LAST,
@@ -8592,6 +8630,101 @@ function dedupeEquivalentOffers(offers) {
   return { offers: result, removed };
 }
 
+function parseQuarantineSurvivorMembers(value) {
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string' && value.trim()) {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (_err) {
+      return [];
+    }
+  }
+  return [];
+}
+
+async function filterGroupMembersByCatalogSourceQuarantine(members, { queryFn = query } = {}) {
+  const list = Array.isArray(members) ? members : [];
+  if (!list.length || !process.env.DATABASE_URL || typeof queryFn !== 'function') {
+    return { members: list, filteredCount: 0 };
+  }
+
+  const requestedMembers = list.map((member, index) => ({
+    merchant_id: String(member?.merchant_id || '').trim(),
+    product_id: String(member?.product_id || '').trim(),
+    ord: index,
+  })).filter((member) => member.merchant_id && member.product_id);
+  if (!requestedMembers.length) return { members: list, filteredCount: 0 };
+
+  try {
+    const result = await queryFn(
+      `
+        WITH requested_members AS (
+          SELECT
+            rm.merchant_id,
+            rm.product_id,
+            MIN(rm.ord)::int AS ord
+          FROM jsonb_to_recordset($1::jsonb) AS rm(merchant_id text, product_id text, ord int)
+          WHERE COALESCE(NULLIF(trim(rm.merchant_id), ''), '') <> ''
+            AND COALESCE(NULLIF(trim(rm.product_id), ''), '') <> ''
+          GROUP BY rm.merchant_id, rm.product_id
+        ),
+        surviving_members AS (
+          SELECT DISTINCT ON (rm.merchant_id, rm.product_id)
+            rm.merchant_id,
+            rm.product_id,
+            rm.ord
+          FROM requested_members rm
+          LEFT JOIN catalog_products cp_offer
+            ON cp_offer.merchant_id = rm.merchant_id
+           AND cp_offer.source_product_id = rm.product_id
+          WHERE 1 = 1
+            ${buildCatalogSourceQuarantineAntiJoinSql('cp_offer')}
+          ORDER BY rm.merchant_id, rm.product_id, rm.ord
+        )
+        SELECT
+          COALESCE(
+            jsonb_agg(
+              jsonb_build_object(
+                'merchant_id', merchant_id,
+                'product_id', product_id
+              )
+              ORDER BY ord
+            ),
+            '[]'::jsonb
+          ) AS members
+        FROM surviving_members
+      `,
+      [JSON.stringify(requestedMembers)],
+    );
+    if (!Array.isArray(result?.rows) || result.rows.length !== 1) {
+      return { members: list, filteredCount: 0 };
+    }
+    const survivors = parseQuarantineSurvivorMembers(result.rows[0]?.members);
+    const survivingKeys = new Set(
+      survivors
+        .map((member) => `${String(member?.merchant_id || '').trim()}:${String(member?.product_id || '').trim()}`)
+        .filter((key) => key !== ':'),
+    );
+    const filtered = list.filter((member) =>
+      survivingKeys.has(`${String(member?.merchant_id || '').trim()}:${String(member?.product_id || '').trim()}`),
+    );
+    return {
+      members: filtered,
+      filteredCount: Math.max(0, list.length - filtered.length),
+    };
+  } catch (err) {
+    logger.warn(
+      {
+        err: err?.message || String(err),
+        member_count: list.length,
+      },
+      'Failed to apply catalog source quarantine to PDP group members',
+    );
+    return { members: list, filteredCount: 0 };
+  }
+}
+
 async function buildOffersFromGroupMembers(args) {
   const totalStartedAt = Date.now();
   const timings = {};
@@ -8608,7 +8741,7 @@ async function buildOffersFromGroupMembers(args) {
   if (!groupMembers.length) return null;
   timings.setup = Date.now() - totalStartedAt;
 
-  const members = groupMembers
+  const normalizedMembers = groupMembers
     .map((m) => {
       const merchantId = String(m?.merchant_id || m?.merchantId || '').trim();
       const sourceKind = firstNonEmptyString(
@@ -8637,6 +8770,16 @@ async function buildOffersFromGroupMembers(args) {
     .filter((m) => Boolean(m.merchant_id) && Boolean(m.product_id))
     .slice(0, limit);
 
+  const quarantineFilterResult = normalizedMembers.length > 1
+    ? await filterGroupMembersByCatalogSourceQuarantine(
+        normalizedMembers,
+        { queryFn: args?.queryFn || query },
+      )
+    : { members: normalizedMembers, filteredCount: 0 };
+  const members = quarantineFilterResult.members;
+  const sourceQuarantineFilteredCount = quarantineFilterResult.filteredCount;
+  if (!members.length) return null;
+
   const canonicalMember = members.find((m) => m.is_primary) || members[0] || null;
   const canonicalProductRef = canonicalMember
     ? {
@@ -8652,7 +8795,7 @@ async function buildOffersFromGroupMembers(args) {
       .filter(([mid, name]) => Boolean(mid) && Boolean(name)),
   );
   const merchantProfileNameLookupEnabled =
-    String(process.env.PDP_OFFER_MERCHANT_NAME_LOOKUP_ENABLED || 'false').toLowerCase() === 'true';
+    String(process.env.PDP_OFFER_MERCHANT_NAME_LOOKUP_ENABLED || 'true').toLowerCase() !== 'false';
   const merchantProfileNameById = merchantProfileNameLookupEnabled
     ? await fetchMerchantDisplayNamesByIds(
         members
@@ -9013,6 +9156,7 @@ async function buildOffersFromGroupMembers(args) {
             store_discount_evidence: storeDiscountDiagnostics,
             deduped_offer_count: dedupedOfferCount,
             transaction_held_offer_count: transactionHeldOfferCount,
+            source_quarantine_filtered_count: sourceQuarantineFilteredCount,
           },
         }
       : {}),
@@ -30962,6 +31106,10 @@ async function buildProductIntelOffersDataForContext({
       : null;
 
   if (!offersData && PDP_SELF_OFFER_FALLBACK_ENABLED) {
+    const fallbackMerchantName =
+      context.product.merchant_name ||
+      context.product.store_name ||
+      (await fetchMerchantDisplayNameById(context.canonicalProductRef.merchant_id));
     const fallbackOfferId =
       buildOfferId({
         merchant_id: context.canonicalProductRef.merchant_id,
@@ -30987,7 +31135,7 @@ async function buildProductIntelOffersDataForContext({
           product_group_id: productGroupId,
           product_id: context.canonicalProductRef.product_id,
           merchant_id: context.canonicalProductRef.merchant_id,
-          merchant_name: context.product.merchant_name || context.product.store_name || undefined,
+          merchant_name: fallbackMerchantName || undefined,
           ...(fallbackOfferPrice ? { price: fallbackOfferPrice } : {}),
           shipping: context.product.shipping || undefined,
           returns: context.product.returns || undefined,
@@ -36297,6 +36445,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               const siblingOffers = Array.isArray(siblingOffersData?.offers)
                 ? siblingOffersData.offers
                 : [];
+              const fallbackOfferMerchantId = String(canonicalProductRef.merchant_id || '').trim();
+              const fallbackOfferMerchantName =
+                resolveOfferSellerDisplayName({
+                  product: canonicalProductForPdp,
+                  merchantId: fallbackOfferMerchantId,
+                }) ||
+                (await fetchMerchantDisplayNameById(fallbackOfferMerchantId));
               const fallbackOfferVariants = buildOfferVariantsForPayload(
                 canonicalProductForPdp,
                 canonicalProductForPdp.currency || 'USD',
@@ -36323,11 +36478,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     product_group_id: fallbackProductGroupId,
                     product_id: canonicalProductRef.product_id,
                     merchant_id: canonicalProductRef.merchant_id,
-                    merchant_name:
-                      resolveOfferSellerDisplayName({
-                        product: canonicalProductForPdp,
-                        merchantId: canonicalProductRef.merchant_id,
-                      }) || undefined,
+                    merchant_name: fallbackOfferMerchantName || undefined,
                     ...(() => {
                       const fallbackOfferPrice = normalizeOfferMoneyForProduct(
                         canonicalProductForPdp.price,
