@@ -1819,6 +1819,11 @@ function identityRowsCoverAllSourceRefs(rows = [], products = []) {
   return sourceRefs.length > 0 && sourceRefs.every((ref) => coveredRefs.has(ref));
 }
 
+function recommendationsUseCatalogRowTrust() {
+  const flag = String(process.env.RECOMMENDATIONS_USES_CATALOG_ROW_TRUST || '').trim().toLowerCase();
+  return flag === '1' || flag === 'true' || flag === 'yes' || flag === 'on';
+}
+
 async function loadLiveIdentityRowsForRecommendationProducts(products, options = {}) {
   const timeoutMs = normalizeRecsDbTimeoutMs(
     options.timeoutMs,
@@ -1833,9 +1838,26 @@ async function loadLiveIdentityRowsForRecommendationProducts(products, options =
   ).slice(0, 600);
   if (!refs.length || !process.env.DATABASE_URL || typeof queryFn !== 'function') return [];
 
-  try {
-    const result = await queryFn(
+  const useTrustContract = recommendationsUseCatalogRowTrust();
+  const sql = useTrustContract
+    ? `
+        SELECT
+          pil.source_listing_ref,
+          pil.sellable_item_group_id,
+          pil.product_line_id,
+          pil.review_family_id,
+          pil.identity_confidence
+        FROM pdp_identity_listing pil
+        WHERE pil.source_listing_ref = ANY($1::text[])
+          AND EXISTS (
+            SELECT 1
+            FROM catalog_row_trust crt
+            WHERE crt.subject_type = 'product'
+              AND crt.source_listing_ref = pil.source_listing_ref
+              AND crt.serving_decision = 'public'
+          )
       `
+    : `
         SELECT
           source_listing_ref,
           sellable_item_group_id,
@@ -1846,7 +1868,11 @@ async function loadLiveIdentityRowsForRecommendationProducts(products, options =
         WHERE source_listing_ref = ANY($1::text[])
           AND identity_status = 'approved'
           AND live_read_enabled = true
-      `,
+      `;
+
+  try {
+    const result = await queryFn(
+      sql,
       [refs],
       buildRecsDbTimeoutOptions(dbTimeoutMs),
     );
@@ -1854,6 +1880,7 @@ async function loadLiveIdentityRowsForRecommendationProducts(products, options =
   } catch (err) {
     const msg = String(err?.message || err || '');
     if (msg.includes('pdp_identity_listing') && msg.includes('does not exist')) return [];
+    if (msg.includes('catalog_row_trust') && msg.includes('does not exist')) return [];
     if (isDbTimeoutError(err)) {
       recordRecsTimeout('identity_dedupe');
     }
