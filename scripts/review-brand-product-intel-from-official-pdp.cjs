@@ -30,12 +30,28 @@ const SUPPORTED_BRANDS = new Set([
   'joocyee',
   'judydoll',
   'kylie cosmetics',
+  'beekman 1802',
+  'rare',
   'rare beauty',
   'rms',
   'rms beauty',
   'rmsbeauty',
+  'innbeauty',
+  'innbeauty project',
+  'inn beauty',
+  'inn beauty project',
+  'lizush',
+  'murad',
+  'naturium',
+  'nuxe',
+  'olehenriksen',
+  'ole henriksen',
+  'pixi',
+  'pixi beauty',
   'tom ford',
   'tom ford beauty',
+  'upcircle',
+  'upcircle beauty',
 ]);
 
 function argValue(name, fallback = '') {
@@ -271,9 +287,18 @@ function displayBrand(raw) {
   if (/^tom\s*ford/i.test(brand)) return 'Tom Ford Beauty';
   if (/^guerlain/i.test(brand)) return 'Guerlain';
   if (/^kylie/i.test(brand)) return 'Kylie Cosmetics';
+  if (/^beekman\s*1802/i.test(brand)) return 'Beekman 1802';
   if (/^catkin/i.test(brand)) return 'Catkin';
   if (/^flower\s+knows/i.test(brand)) return 'Flower Knows';
+  if (/^inn\s*beauty|^innbeauty/i.test(brand)) return 'INNBeauty Project';
+  if (/^lizush/i.test(brand)) return 'Lizush';
+  if (/^murad/i.test(brand)) return 'Murad';
+  if (/^naturium/i.test(brand)) return 'Naturium';
+  if (/^nuxe/i.test(brand)) return 'Nuxe';
+  if (/^ole\s*henriksen|^olehenriksen/i.test(brand)) return 'Ole Henriksen';
+  if (/^pixi/i.test(brand)) return 'Pixi';
   if (/^rms\b/i.test(brand)) return 'RMS Beauty';
+  if (/^up\s*circle|^upcircle/i.test(brand)) return 'UpCircle Beauty';
   return brand || 'the brand';
 }
 
@@ -412,6 +437,9 @@ function inferRole(facts) {
   if (/\b(?:body\s+spray|body\s*&\s*hair\s+fragrance|body\s+and\s+hair\s+fragrance|fragrance\s+mist|hair\s+fragrance\s+mist)\b/.test(titleText)) {
     return { label: 'Body fragrance spray', step: 'body fragrance', amPm: ['as_needed'] };
   }
+  if (/\bdeodorant\b/.test(titleText)) {
+    return { label: 'Deodorant', step: 'body care', amPm: ['am', 'as_needed'] };
+  }
   if (/\b(?:parfum|eau de parfum|eau de toilette|fragrance|perfume|cologne|layering balm)\b/.test(titleText)) {
     return { label: 'Fine fragrance', step: 'fragrance', amPm: ['as_needed'] };
   }
@@ -419,6 +447,9 @@ function inferRole(facts) {
     /\b(?:liner|lip\s+liner|gloss|lip\s+gloss|lipstick|lip\s+color|lip\s+luminizer)\b.{0,80}(?:&|\+).{0,80}\b(?:liner|lip\s+liner|gloss|lip\s+gloss|lipstick|lip\s+color|lip\s+luminizer)\b/.test(titleOnly);
   if (/\blip\b/.test(titleOnly) && (/\b(?:combo|kit|set|duo|bundle)\b/.test(titleOnly) || explicitLipPair)) {
     return { label: 'Lip combo', step: 'lip color', amPm: ['as_needed'] };
+  }
+  if (/\b(?:bundle|duo|trio|set|kit|collection)\b/.test(titleText) && /\b(?:serum|moisturizer|cream|cleanser|toner|scrub|mist|skincare|balance|barrier|bright|glow|hydration|pore|truth|peach|lemonade)\b/.test(titleText)) {
+    return { label: 'Skincare set', step: 'skincare', amPm: ['am', 'pm'] };
   }
   if (/\bcolor\s+capsule\b|\bartist\s+toolkit\b/.test(titleOnly)) {
     return { label: 'Makeup set', step: 'beauty routine', amPm: ['as_needed'] };
@@ -430,6 +461,12 @@ function inferRole(facts) {
   if (/\bmascara|eyeshadow|eye shadow|eye color|eye colour|eyeliner|eyes\s+quartet|eye\s+palette|makeup\s+palette|five[-\s]?color\s+makeup\s+palette\b/.test(titleOnly)) return { label: 'Eye makeup', step: 'eye makeup', amPm: ['as_needed'] };
   if (/\b(?:cleanser\s*\+\s*toner|toner serum duo)\b/.test(titleText)) {
     return { label: 'Skincare set', step: 'skincare', amPm: ['am', 'pm'] };
+  }
+  if (/\b(?:glow mist|face mist|facial mist)\b/.test(titleText)) {
+    return { label: 'Face mist', step: 'skincare', amPm: ['am', 'pm'] };
+  }
+  if (/\b(?:facial\s+sauna\s+scrub|smoothing\s+scrub|face\s+scrub|scrub)\b/.test(titleText)) {
+    return { label: 'Face scrub', step: 'skincare', amPm: ['am', 'pm'] };
   }
   if (/\btoner\b/.test(titleText)) {
     const exfoliating = /\b(?:bha|aha|pha|salicylic|glycolic|lactic|exfoliat|pore\s+purify)\b/.test(titleText);
@@ -451,6 +488,9 @@ function inferRole(facts) {
   if (/\bmascara|eyeshadow|eye shadow|eye color|eye colour|eyeliner|eyes\s+quartet|eye\s+palette|makeup\s+palette|five[-\s]?color\s+makeup\s+palette\b/.test(titleText)) return { label: 'Eye makeup', step: 'eye makeup', amPm: ['as_needed'] };
   if (/\b(?:spf|sunscreen|broad\s+spectrum)\b/.test(titleText) && !/\bfoundation|concealer\b/.test(titleText)) {
     return { label: 'Daily sunscreen', step: 'sunscreen', amPm: ['am'] };
+  }
+  if (/\b(?:retinol|retinal|tranexamic|azelaic|peptide)\b/.test(titleText)) {
+    return { label: 'Treatment serum', step: 'serum', amPm: ['pm'] };
   }
   if (/\bfoundation|concealer|skin tint|complexion|tinted moisturizer\b/.test(titleText)) return { label: 'Complexion makeup', step: 'complexion', amPm: ['as_needed'] };
   if (/\b(?:setting spray|4-in-1 mist|4 in 1 mist|face mist)\b/.test(titleText)) return { label: 'Setting mist', step: 'complexion', amPm: ['as_needed'] };
@@ -647,8 +687,16 @@ function inferAnchors(facts, role) {
     ]);
   } else if (role.step === 'skincare' || role.step === 'body care' || role.step === 'serum') {
     productAnchors = findTokens(text, [
+      ['vitamin C', /\bvitamin\s*c|ascorbic|truth serum|essential-c|pro c\b/],
+      ['retinol', /\bretinol|retinal\b/],
+      ['azelaic acid', /\bazelaic\b/],
+      ['tranexamic acid', /\btranexamic\b/],
+      ['peptides', /\bpeptides?\b/],
+      ['centella', /\bcentella|cica\b/],
       ['BHA/salicylic acid', /\bbha\b|\bsalicylic\b/],
       ['AHA exfoliation', /\baha\b|\bglycolic\b|\blactic\b/],
+      ['exfoliating scrub', /\bscrub|exfoliat\b/],
+      ['face mist', /\bglow mist|face mist|facial mist\b/],
       ['aloe juice', /\baloe\b/],
       ['toning step', /\btoner|toning\b/],
       ['hydration', /\bhydrat|hyaluronic|moistur\b/],
@@ -770,6 +818,7 @@ function cleanInstruction(value, limit = 170) {
     .replace(/\s+/g, ' ')
     .trim();
   if (!text) return '';
+  if (/^(?:how\s+to|how\s+to\s+use|directions?|usage|application)$/i.test(text)) return '';
   text = text
     .replace(/\bshop\s+now\b[\s\S]*$/i, '')
     .replace(/\badd\s+to\s+bag\b[\s\S]*$/i, '')
@@ -828,6 +877,18 @@ function buildSampleHighlight(facts, anchors, fallback) {
       .filter((label) => label && !/^single item$/i.test(label)),
   ];
   return buildCompleteHighlight(sampleValues, fallback);
+}
+
+function buildRoleAwareHighlight(facts, role, anchors, bestFor) {
+  const title = facts.title.toLowerCase();
+  if (role.label === 'Skincare set') {
+    if (/\btruth serum\b/.test(title)) return 'Vitamin C serum duo';
+    if (/\bbalance\+?\b/.test(title)) return 'Balance skincare set';
+    if (/\bbarrier\b/.test(title)) return 'Barrier skincare set';
+    if (/\bbright|glow|vitamin\s*c\b/.test(title)) return 'Brightening skincare set';
+    return 'Skincare routine set';
+  }
+  return buildCompleteHighlight(anchors.length ? anchors : bestFor.map((item) => item.label), role.label);
 }
 
 function firstUsefulDetail(details) {
@@ -967,6 +1028,28 @@ function joinClaims(claims) {
   if (!items.length) return '';
   if (items.length === 1) return items[0];
   return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+}
+
+function publicSafeIngredientName(value) {
+  let current = asString(value)
+    .replace(/^[-•\s]+/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!current) return '';
+  current = current.split(/\s[:–—]\s|:\s/)[0].trim();
+  current = current
+    .replace(/\b(?:helps?|works?|shown|designed|targets?|supports?|soothes?|moisturi[sz]es?|exfoliates?|reduces?|brightens?|smooths?|defends?|plumps?)\b.*$/i, '')
+    .replace(/\b(?:dry|chapped|wrinkles?|pores?|redness|blotchiness|melasma|sun damaged|age spots|post-acne marks)\b.*$/i, '')
+    .trim();
+  if (/\b(?:plump(?:ing)?|wrinkles?|pores?|redness|blotchiness|melasma|sun damaged|age spots|post-acne marks|chapped)\b/i.test(current)) {
+    return '';
+  }
+  if (current.length > 70) return '';
+  return current;
+}
+
+function publicSafeActiveIngredientNames(facts) {
+  return uniq(asArray(facts.activeIngredients).map(publicSafeIngredientName).filter(Boolean));
 }
 
 function buildEvidenceAnchoredWhatItIs(facts, role) {
@@ -1114,6 +1197,19 @@ function buildEvidenceAnchoredWhatItIs(facts, role) {
       /\bpores?|dirt|oil|impurities\b/i.test(text) ? 'dirt, oil, and impurity removal' : '',
     ]);
     return sentence(`${facts.title} is a ${role.label.toLowerCase()} from ${facts.brand}${size ? ` in ${size}` : ''}${claims ? `, with source-backed cues around ${claims}` : ''}`);
+  }
+
+  if (role.step === 'serum') {
+    const claims = joinClaims([
+      /\bretinol|retinal\b/i.test(text) ? 'retinol' : '',
+      /\bvitamin\s*c|ascorbic|truth serum|essential-c|pro c\b/i.test(text) ? 'vitamin C' : '',
+      /\bazelaic\b/i.test(text) ? 'azelaic acid' : '',
+      /\btranexamic\b/i.test(text) ? 'tranexamic acid' : '',
+      /\bpeptides?\b/i.test(text) ? 'peptides' : '',
+      /\bcentella|cica\b/i.test(text) ? 'centella' : '',
+      /\bbarrier|ceramide|squalane\b/i.test(text) ? 'barrier support' : '',
+    ]);
+    return sentence(`${facts.title} is a ${role.label.toLowerCase()} from ${facts.brand}${size ? ` in ${size}` : ''}${claims ? `, with source-backed ingredient cues around ${claims}` : ''}`);
   }
 
   if (role.step === 'skincare' || role.step === 'body care') {
@@ -1284,13 +1380,22 @@ function buildWhyItStandsOut(facts, role, anchors) {
       evidence_strength: 'official_pdp_reviewed',
     });
   } else if (facts.activeIngredients.length) {
-    const activeList = facts.activeIngredients.slice(0, 3).join(', ');
-    const activeVerb = facts.activeIngredients.length === 1 ? 'is' : 'are';
-    why.push({
-      headline: 'Key ingredients are identified',
-      body: sentence(`${activeList} ${activeVerb} identified, enough for a cautious high-level formula read without inventing unsupported actives`),
-      evidence_strength: 'official_pdp_reviewed',
-    });
+    const activeNames = publicSafeActiveIngredientNames(facts);
+    const activeList = activeNames.slice(0, 3).join(', ');
+    const activeVerb = activeNames.length === 1 ? 'is' : 'are';
+    if (!activeList) {
+      why.push({
+        headline: 'Key ingredient section is present',
+        body: sentence('Reviewed key-ingredient fields are present, but public copy is kept to ingredient-level context rather than unsupported benefit claims'),
+        evidence_strength: 'official_pdp_reviewed',
+      });
+    } else {
+      why.push({
+        headline: 'Key ingredients are identified',
+        body: sentence(`${activeList} ${activeVerb} identified, enough for a cautious high-level formula read without inventing unsupported actives`),
+        evidence_strength: 'official_pdp_reviewed',
+      });
+    }
   }
   const meaningfulVariantLabels = facts.variants.labels.filter((label) => isMeaningfulVariantLabelForInsight(label, role));
   const shouldExplainVariants =
@@ -1397,7 +1502,7 @@ function buildInsightBundle(row) {
   const evidenceProfile = evidenceProfileFor(facts);
   const lipComboHighlight = isLipComboRole(facts, role) ? buildLipComboHighlight(facts) : '';
   const sampleHighlight = buildSampleHighlight(facts, anchors, role.label);
-  const highlight = lipComboHighlight || sampleHighlight || buildCompleteHighlight(anchors.length ? anchors : bestFor.map((item) => item.label), role.label);
+  const highlight = lipComboHighlight || sampleHighlight || buildRoleAwareHighlight(facts, role, anchors, bestFor);
   const generatedAt = new Date().toISOString();
   return {
     contract_version: PRODUCT_INTEL_CONTRACT_VERSION,
@@ -1868,6 +1973,9 @@ function readProductIdsFromReport(reportPath) {
   return uniq([
     ...asArray(parsed.summary?.weak_insights_ids),
     ...asArray(parsed.weak_insights_ids),
+    ...asArray(parsed.plans)
+      .filter((plan) => plan && plan.changed === true)
+      .map((plan) => plan.external_product_id),
   ]);
 }
 
@@ -1960,6 +2068,7 @@ function parseArgs() {
     brand,
     productIds,
     limit: Math.max(0, Number(argValue('limit', '0')) || 0),
+    applyChunkSize: Math.max(0, Number(argValue('apply-chunk-size', '0')) || 0),
     outDir: argValue('out-dir', 'reports/pdp_db_quality_inventory/official_pdp_insights_review'),
   };
 }
@@ -1974,16 +2083,31 @@ function writeReport(args, report) {
   return filePath;
 }
 
-async function applyPlans(plans) {
+function collectApplyWrites(plans) {
+  const writes = [];
+  for (const plan of plans) {
+    for (const write of plan.writes) {
+      if (write.action !== 'insert' && write.action !== 'update') continue;
+      writes.push({
+        product_id: plan.external_product_id,
+        kb_key: write.kb_key,
+        analysis: write.analysis,
+        source: write.source,
+        source_meta: write.source_meta,
+      });
+    }
+  }
+  return writes;
+}
+
+async function applyWriteBatch(writes) {
   let upserts = 0;
   await withClient(async (client) => {
     await client.query('BEGIN');
     try {
-      for (const plan of plans) {
-        for (const write of plan.writes) {
-          if (write.action !== 'insert' && write.action !== 'update') continue;
-          await client.query(
-            `
+      for (const write of writes) {
+        await client.query(
+          `
               INSERT INTO aurora_product_intel_kb (
                 kb_key,
                 analysis,
@@ -2002,9 +2126,8 @@ async function applyPlans(plans) {
                   updated_at = NOW()
             `,
             [write.kb_key, JSON.stringify(write.analysis), write.source, JSON.stringify(write.source_meta)],
-          );
-          upserts += 1;
-        }
+        );
+        upserts += 1;
       }
       await client.query('COMMIT');
     } catch (error) {
@@ -2012,7 +2135,27 @@ async function applyPlans(plans) {
       throw error;
     }
   });
-  return { upserts };
+  return upserts;
+}
+
+async function applyPlans(plans, options = {}) {
+  const allWrites = collectApplyWrites(plans);
+  const chunkSize = Math.max(0, Number(options.chunkSize || 0) || 0);
+  if (!chunkSize || allWrites.length <= chunkSize) {
+    return { upserts: await applyWriteBatch(allWrites), chunks: allWrites.length ? 1 : 0 };
+  }
+
+  let upserts = 0;
+  let chunks = 0;
+  for (let start = 0; start < allWrites.length; start += chunkSize) {
+    const batch = allWrites.slice(start, start + chunkSize);
+    chunks += 1;
+    upserts += await applyWriteBatch(batch);
+    process.stderr.write(
+      `[official-pdp-insights] applied chunk ${chunks} writes=${batch.length} total_upserts=${upserts}/${allWrites.length}\n`,
+    );
+  }
+  return { upserts, chunks };
 }
 
 function summarize(plans) {
@@ -2058,6 +2201,7 @@ async function main() {
       limit: args.limit || null,
       include_strong: args.includeStrong,
       include_url_key: args.includeUrlKey,
+      apply_chunk_size: args.applyChunkSize || null,
     },
     summary: summarize(plans),
     plans: plans.map((plan) => ({
@@ -2078,7 +2222,7 @@ async function main() {
     })),
   };
   if (args.apply) {
-    report.apply_result = await applyPlans(plans);
+    report.apply_result = await applyPlans(plans, { chunkSize: args.applyChunkSize });
   }
   const reportPath = writeReport(args, report);
   process.stdout.write(`${JSON.stringify({ status: 'ok', report: reportPath, summary: report.summary, apply_result: report.apply_result || null }, null, 2)}\n`);
@@ -2095,7 +2239,10 @@ if (require.main === module) {
 
 module.exports = {
   buildInsightBundle,
+  applyPlans,
   buildPlan,
+  collectApplyWrites,
+  fetchRows,
   inferRole,
   inferAnchors,
   isWeakExistingInsight,

@@ -133,6 +133,30 @@ describe('official PDP manual insight review', () => {
     ).toBe('Exfoliating toner');
     expect(
       inferRole(facts({
+        title: 'Peach Glaze Glow Mist',
+        productType: 'Face Mist',
+        categoryPath: 'beauty/skincare/mist',
+        description: 'A glow mist for a skincare routine.',
+      })).label,
+    ).toBe('Face mist');
+    expect(
+      inferRole(facts({
+        title: 'Lemonade Smoothing Scrub',
+        productType: 'Scrub',
+        categoryPath: 'beauty/skincare/exfoliator',
+        description: 'A face scrub with AHAs.',
+      })).label,
+    ).toBe('Face scrub');
+    expect(
+      inferRole(facts({
+        title: 'Truth Serum Duo',
+        productType: 'Serum Duo',
+        categoryPath: 'beauty/skincare/serum',
+        description: 'A duo of vitamin C serum.',
+      })).label,
+    ).toBe('Skincare set');
+    expect(
+      inferRole(facts({
         title: 'Positive Light Luminizing Lip Gloss',
         productType: 'Lip Gloss',
         categoryPath: 'beauty/makeup/lip/lip_gloss',
@@ -179,6 +203,14 @@ describe('official PDP manual insight review', () => {
         description: 'A click-up aromatherapy format for comfort.',
       })).label,
     ).toBe('Aromatherapy treatment');
+    expect(
+      inferRole(facts({
+        title: '24h Protection Deodorant',
+        productType: 'Deodorant',
+        categoryPath: 'beauty/body/deodorant',
+        description: 'A deodorant format for body care.',
+      })).label,
+    ).toBe('Deodorant');
     expect(
       inferRole(facts({
         title: 'Rare Beauty T-Shirt',
@@ -553,6 +585,97 @@ describe('official PDP manual insight review', () => {
     ]));
     expect(plan.preview.why_it_stands_out.map((item) => item.headline)).not.toContain('Scent profile cues');
     expect(plan.preview.shopping_highlight).toContain('shine finish');
+  });
+
+  test('keeps Ole and INNBeauty skincare repairs out of category and sensitive-claim blockers', () => {
+    const oleMistPlan = buildPlan(
+      row({
+        external_product_id: 'ext_ole_glow_mist',
+        title: 'Peach Glaze Glow Mist',
+        brand: 'Ole Henriksen',
+        canonical_url: 'https://olehenriksen.com/products/peach-glaze-glow-mist',
+        seed_data: {
+          brand: 'Ole Henriksen',
+          pdp_description_raw:
+            'A face mist for glow, hydration, and a refreshed skincare step.',
+          pdp_key_ingredients_raw: 'Vitamin C; Peach extract',
+          pdp_how_to_use_raw: 'Mist onto clean skin or over skincare as directed.',
+          variants: [{ title: '2.7 oz', options: [{ name: 'Size', value: '2.7 oz' }] }],
+        },
+      }),
+      { brand: 'Ole Henriksen', includeStrong: false },
+    );
+    const innLipPlan = buildPlan(
+      row({
+        external_product_id: 'ext_inn_glaze_lip_oil',
+        title: 'Glaze Lip Oil',
+        brand: 'INNBeauty Project',
+        canonical_url: 'https://www.innbeautyproject.com/products/glaze-lip-oil',
+        seed_data: {
+          brand: 'INNBeauty Project',
+          pdp_description_raw:
+            'A glossy lip oil with shade clarity and shine finish.',
+          pdp_key_ingredients_raw:
+            '- Red Root & Jojoba Oil: Soothes and moisturizes dry, chapped lips\n- Fermented Pomegranate: Gently exfoliate\n- Plant-based Plumping Complex: subtly plump lips',
+          pdp_how_to_use_raw: 'Apply directly to lips.',
+          variants: [{ title: 'Cookie', options: [{ name: 'Shade', value: 'Cookie' }] }],
+        },
+      }),
+      { brand: 'INNBeauty Project', includeStrong: false },
+    );
+    const innRetinolPlan = buildPlan(
+      row({
+        external_product_id: 'ext_inn_retinol_remix',
+        title: 'Retinol Remix 1% Retinol',
+        brand: 'INNBeauty Project',
+        canonical_url: 'https://www.innbeautyproject.com/products/retinol-remix',
+        seed_data: {
+          brand: 'INNBeauty Project',
+          pdp_description_raw:
+            '1% Vegan Retinol, Peptide, & Tranexamic Acid work to visibly reduce wrinkles & enlarged pores while brightening & smoothing.',
+          pdp_ingredients_raw: 'Water, Glycerin, Retinol, Tranexamic Acid, Palmitoyl Tripeptide-5.',
+          pdp_how_to_use_raw: 'Apply a pea-sized amount to clean, dry skin.',
+        },
+      }),
+      { brand: 'INNBeauty Project', includeStrong: false },
+    );
+    const oleScrubPlan = buildPlan(
+      row({
+        external_product_id: 'ext_ole_lemonade_scrub',
+        title: 'Lemonade Smoothing Scrub',
+        brand: 'Ole Henriksen',
+        canonical_url: 'https://olehenriksen.com/products/lemonade-smoothing-scrub',
+        seed_data: {
+          brand: 'Ole Henriksen',
+          pdp_description_raw:
+            'A face scrub with AHA exfoliation for a smoothing routine.',
+          pdp_key_ingredients_raw: 'Glycerin; Glycolic acid; Lactic acid',
+          pdp_how_to_use_raw: 'HOW TO',
+          variants: [{ title: 'Lemonade / 3 oz', options: [{ name: 'Size', value: '3 oz' }] }],
+        },
+      }),
+      { brand: 'Ole Henriksen', includeStrong: false },
+    );
+
+    expect(oleMistPlan.blocked).toBe(false);
+    expect(oleMistPlan.changed).toBe(true);
+    expect(oleMistPlan.preview.headline).toBe('Face mist');
+    expect(JSON.stringify(oleMistPlan.preview)).not.toContain('public_category_mismatch');
+
+    expect(innLipPlan.blocked).toBe(false);
+    expect(innLipPlan.changed).toBe(true);
+    expect(innLipPlan.preview.headline).toBe('Lip treatment');
+    expect(JSON.stringify(innLipPlan.preview).toLowerCase()).not.toMatch(/plump|chapped/);
+
+    expect(innRetinolPlan.blocked).toBe(false);
+    expect(innRetinolPlan.changed).toBe(true);
+    expect(innRetinolPlan.preview.headline).toBe('Treatment serum');
+    expect(JSON.stringify(innRetinolPlan.preview).toLowerCase()).not.toMatch(/wrinkles?|pores?/);
+
+    expect(oleScrubPlan.blocked).toBe(false);
+    expect(oleScrubPlan.changed).toBe(true);
+    expect(oleScrubPlan.preview.headline).toBe('Face scrub');
+    expect(JSON.stringify(oleScrubPlan.preview)).not.toContain('HOW TO');
   });
 
   test('uses sample-specific insight copy instead of generic cue copy', () => {

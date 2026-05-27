@@ -117,6 +117,68 @@ describe('external seed PDP readiness audit helpers', () => {
     expect(result.issues).not.toContain('not_reviewed');
   });
 
+  test('does not treat non-lip glaze mist titles as lip category mismatches', () => {
+    const result = classifyProductIntelKbRow(
+      kbRow(
+        'ext_glaze_mist',
+        reviewedBundle({
+          product_intel_core: {
+            ...reviewedBundle().product_intel_core,
+            what_it_is: {
+              headline: 'Face mist',
+              body: 'A face mist with source-backed cues around glow and hydration.',
+            },
+            routine_fit: { step: 'skincare', pairing_notes: ['Mist over skin as directed.'] },
+          },
+          shopping_card: {
+            title: 'Peach Glaze Glow Mist',
+            subtitle: 'Face mist',
+            highlight: 'Vitamin C face mist',
+          },
+          search_card: {
+            title_candidate: 'Peach Glaze Glow Mist',
+            compact_candidate: 'Face mist',
+            highlight_candidate: 'Vitamin C face mist',
+          },
+        }),
+      ),
+      { productId: 'ext_glaze_mist' },
+    );
+
+    expect(result.blocking_issues).not.toContain('public_category_mismatch');
+  });
+
+  test('still blocks lip glaze content mislabeled as generic skincare', () => {
+    const result = classifyProductIntelKbRow(
+      kbRow(
+        'ext_lip_glaze',
+        reviewedBundle({
+          product_intel_core: {
+            ...reviewedBundle().product_intel_core,
+            what_it_is: {
+              headline: 'Skincare',
+              body: 'A skincare product with source-backed cues.',
+            },
+            routine_fit: { step: 'skincare', pairing_notes: ['Use as directed.'] },
+          },
+          shopping_card: {
+            title: 'Glaze Lip Oil',
+            subtitle: 'Skincare',
+            highlight: 'Hydrating skincare',
+          },
+          search_card: {
+            title_candidate: 'Glaze Lip Oil',
+            compact_candidate: 'Skincare',
+            highlight_candidate: 'Hydrating skincare',
+          },
+        }),
+      ),
+      { productId: 'ext_lip_glaze' },
+    );
+
+    expect(result.blocking_issues).toContain('public_category_mismatch');
+  });
+
   test('does not treat an unreviewed limited KB row as displayable coverage', () => {
     const result = classifyProductIntelKbRow(
       kbRow(

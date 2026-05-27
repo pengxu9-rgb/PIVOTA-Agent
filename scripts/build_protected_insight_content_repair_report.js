@@ -134,6 +134,13 @@ function cleanSourceText(value) {
     .replace(/\b(?:not tested on animals|paraben-free|cruelty-free|safe for all skin types)\b\.?/gi, ' ')
     .replace(/\b(?:suitable|suited)\s+for\s+all\s+skin\s+types\b\.?/gi, ' ')
     .replace(/\ball\s+skin\s+types\b/gi, 'broad routine positioning')
+    .replace(/\bbigger\s*=\s*definitely\s+better\.?/gi, ' ')
+    .replace(
+      /\bcult[-\s]?favorite,\s*clinically[-\s]?proven\s+retinol serum is now available in a larger size(?:\s*\([^)]*\))?\.?/gi,
+      'retinol serum is listed in a larger-size format',
+    )
+    .replace(/\bcult[-\s]?favorite\b/gi, 'source-listed')
+    .replace(/\bclinically[-\s]?proven\b/gi, 'source-described')
     .replace(/\bcalms?\s*&\s*minimi[sz]es redness\b/gi, 'supports the look of calmer skin')
     .replace(/\bminimi[sz]e redness\s+and\s+calm skin\b/gi, 'support a calmer-looking routine')
     .replace(
@@ -190,8 +197,14 @@ function displayBrandName(value) {
   const raw = text(value);
   if (!raw) return '';
   const known = {
+    innbeauty: 'INNBeauty Project',
+    'innbeauty project': 'INNBeauty Project',
     'fenty beauty': 'Fenty Beauty',
     'fenty skin': 'Fenty Skin',
+    murad: 'Murad',
+    naturium: 'Naturium',
+    'ole henriksen': 'Ole Henriksen',
+    olehenriksen: 'Ole Henriksen',
     pixi: 'Pixi',
     'pixi beauty': 'Pixi',
     pixibeauty: 'Pixi',
@@ -214,6 +227,14 @@ function brandName(seedRow) {
       snapshot.brand ||
       snapshot.brand_name,
   );
+}
+
+function candidateTitle({ brand, title }) {
+  const cleanTitle = text(title);
+  const cleanBrand = text(brand);
+  if (!cleanBrand) return cleanTitle;
+  if (cleanTitle.toLowerCase().startsWith(cleanBrand.toLowerCase())) return cleanTitle;
+  return `${cleanBrand} ${cleanTitle}`.trim();
 }
 
 function readOfficialDescription(seedRow) {
@@ -281,6 +302,149 @@ function isMultiItemText(value) {
 
 function classifyTitle(title) {
   const lower = text(title).toLowerCase();
+  if (/\b(?:set|kit|trio|duo|routine|bundle)\b/.test(lower)) {
+    return {
+      label: 'skincare set',
+      headline: 'Skincare set',
+      highlight: /\bmorning\b/.test(lower) ? 'Morning skincare set' : 'Skincare routine set',
+      step: 'routine_set',
+      bestFor: [
+        { tag: 'routine_set', label: 'Routine set shoppers', confidence: 'moderate' },
+        { tag: 'multi_step_skincare', label: 'Multi-step skincare routines', confidence: 'moderate' },
+      ],
+    };
+  }
+  if (/\b(?:sunscreen|spf)\b/.test(lower)) {
+    const spfMatch = lower.match(/\bspf\s*\d{2,3}\b/);
+    return {
+      label: 'daily sunscreen',
+      headline: 'Daily sunscreen',
+      highlight: spfMatch ? `Daily ${spfMatch[0].toUpperCase().replace(/\s+/, ' ')}` : 'Daily SPF',
+      step: 'sunscreen',
+      bestFor: [
+        { tag: 'daily_spf', label: 'Daily SPF routines', confidence: 'moderate' },
+        { tag: 'morning_skincare', label: 'Morning skincare shoppers', confidence: 'moderate' },
+      ],
+    };
+  }
+  if (/\b(?:cleanser|cleansing)\b/.test(lower)) {
+    let highlight = 'Face cleanser';
+    if (/\bclarifying\b/.test(lower)) highlight = 'Clarifying cleanser';
+    else if (/\b(?:aha|bha|exfoliating|glycolic)\b/.test(lower)) highlight = 'Exfoliating cleanser';
+    else if (/\b(?:cream|creamy|renewing)\b/.test(lower)) highlight = 'Cream cleanser';
+    else if (/\b(?:essential-c|vita-c|vitamin c)\b/.test(lower)) highlight = 'Vitamin C cleanser';
+    return {
+      label: 'face cleanser',
+      headline: 'Face cleanser',
+      highlight,
+      step: 'cleanser',
+      bestFor: [
+        { tag: 'cleanser_routine', label: 'Cleanser routines', confidence: 'moderate' },
+        { tag: 'skincare_prep', label: 'Skincare prep shoppers', confidence: 'moderate' },
+      ],
+    };
+  }
+  if (/\b(?:serum|pro c|green machine|dark spot)\b/.test(lower)) {
+    let highlight = 'Treatment serum';
+    if (/\b(?:retinol|retinal)\b/.test(lower)) highlight = 'Retinoid serum';
+    else if (/\b(?:vitamin c|vita-c|essential-c|pro c)\b/.test(lower)) highlight = 'Vitamin C serum';
+    else if (/\bgreen machine\b/.test(lower)) highlight = 'Oil-jelly serum';
+    else if (/\bdark spot\b/.test(lower)) highlight = 'Dark spot serum';
+    else if (/\bbarrier\b/.test(lower)) highlight = 'Barrier repair serum';
+    else if (/\b(?:recovery|revitalixir)\b/.test(lower)) highlight = 'Recovery serum';
+    return {
+      label: 'treatment serum',
+      headline: 'Treatment serum',
+      highlight,
+      step: 'treatment',
+      bestFor: [
+        { tag: 'serum_step', label: 'Serum-step routines', confidence: 'moderate' },
+        { tag: 'targeted_skincare', label: 'Targeted skincare shoppers', confidence: 'moderate' },
+      ],
+    };
+  }
+  if (/\b(?:eye|eyes|dark circle|depuffer)\b/.test(lower)) {
+    const isMask = /\bmask\b/.test(lower);
+    return {
+      label: isMask ? 'eye mask' : 'eye treatment',
+      headline: isMask ? 'Eye mask' : 'Eye treatment',
+      highlight: isMask ? 'Targeted eye mask' : 'Targeted eye treatment',
+      step: 'eye_care',
+      bestFor: [
+        { tag: 'eye_care', label: 'Eye-care routines', confidence: 'moderate' },
+        { tag: 'targeted_eye_step', label: 'Targeted eye-step shoppers', confidence: 'moderate' },
+      ],
+    };
+  }
+  if (/\b(?:acne|blemish)\b/.test(lower) && /\btreatment\b/.test(lower)) {
+    return {
+      label: 'acne treatment',
+      headline: 'Acne treatment',
+      highlight: 'Targeted acne treatment',
+      step: 'treatment',
+      bestFor: [
+        { tag: 'acne_treatment', label: 'Acne-treatment routines', confidence: 'moderate' },
+        { tag: 'targeted_skincare', label: 'Targeted skincare shoppers', confidence: 'moderate' },
+      ],
+    };
+  }
+  if (/\b(?:wrinkle|resculpt|resurfacing|overnight treatment)\b/.test(lower)) {
+    const isRetinoid = /\b(?:retinol|retinal|resculpt)\b/.test(lower);
+    const isWrinkle = /\bwrinkle\b/.test(lower);
+    return {
+      label: isRetinoid ? 'retinoid treatment' : isWrinkle ? 'wrinkle treatment' : 'resurfacing treatment',
+      headline: isRetinoid ? 'Retinoid treatment' : isWrinkle ? 'Wrinkle treatment' : 'Resurfacing treatment',
+      highlight: isRetinoid ? 'Retinoid night treatment' : isWrinkle ? 'Targeted wrinkle treatment' : 'Resurfacing treatment',
+      step: 'treatment',
+      bestFor: [
+        { tag: 'targeted_treatment', label: 'Targeted treatment routines', confidence: 'moderate' },
+        { tag: 'night_skincare', label: 'Night skincare shoppers', confidence: 'moderate' },
+      ],
+    };
+  }
+  if (/\bmask\b/.test(lower)) {
+    let highlight = 'Treatment mask';
+    if (/\b(?:clay|pore|detox)\b/.test(lower)) highlight = 'Clay pore mask';
+    else if (/\b(?:sleep|overnight|barrier)\b/.test(lower)) highlight = 'Overnight repair mask';
+    return {
+      label: /\b(?:clay|pore|detox)\b/.test(lower) ? 'clay face mask' : 'treatment mask',
+      headline: /\b(?:clay|pore|detox)\b/.test(lower) ? 'Clay face mask' : 'Treatment mask',
+      highlight,
+      step: 'mask',
+      bestFor: [
+        { tag: 'mask_step', label: 'Mask-step routines', confidence: 'moderate' },
+        { tag: 'targeted_skincare', label: 'Targeted skincare shoppers', confidence: 'moderate' },
+      ],
+    };
+  }
+  if (/\b(?:body cream|butta drop|whipped oil body cream)\b/.test(lower)) {
+    return {
+      label: 'body cream',
+      headline: 'Body cream',
+      highlight: 'Whipped body cream',
+      step: 'body_care',
+      bestFor: [
+        { tag: 'body_moisturizer', label: 'Body moisturizer routines', confidence: 'moderate' },
+        { tag: 'body_glow', label: 'Body glow shoppers', confidence: 'moderate' },
+      ],
+    };
+  }
+  if (/\b(?:moisturizer|moisturiser|cream|creme|cr[eè]me)\b/.test(lower)) {
+    let highlight = 'Face moisturizer';
+    if (/\b(?:barrier|ceramide)\b/.test(lower)) highlight = 'Barrier moisturizer';
+    else if (/\b(?:rich|rescue|extreme)\b/.test(lower)) highlight = 'Rich face cream';
+    else if (/\bnight\b/.test(lower)) highlight = 'Night cream';
+    return {
+      label: 'face moisturizer',
+      headline: 'Face moisturizer',
+      highlight,
+      step: 'moisturizer',
+      bestFor: [
+        { tag: 'moisturizer_step', label: 'Moisturizer-step routines', confidence: 'moderate' },
+        { tag: 'skin_barrier_support', label: 'Barrier-support shoppers', confidence: 'moderate' },
+      ],
+    };
+  }
   if (/\b(?:leave[-\s]?in|detangling)\b/.test(lower) && /\b(?:conditioner|spray)\b/.test(lower)) {
     return {
       label: 'leave-in conditioner spray',
@@ -429,7 +593,7 @@ function classifyTitle(title) {
     return {
       label: 'toner',
       headline: 'Toner step',
-      highlight: 'Toner step',
+      highlight: /\bhydrat/.test(lower) ? 'Hydrating toner' : 'Toner step',
       step: 'toner',
       bestFor: [{ tag: 'toner_routine', label: 'Toner routines', confidence: 'moderate' }],
     };
@@ -449,6 +613,7 @@ function classifyTitle(title) {
     highlight: 'Official product detail',
     step: 'beauty',
     bestFor: [{ tag: 'official_source_comparison', label: 'Official-source comparison', confidence: 'moderate' }],
+    genericFallback: true,
   };
 }
 
@@ -538,6 +703,7 @@ function buildCandidateBundle({ seedRow, kbRow, reviewedAt, reviewer }) {
   if (!existing) return null;
   const title = text(seedRow.title || existing.shopping_card?.title);
   const kind = classifyTitle(title);
+  if (kind.genericFallback) return null;
   const description = readOfficialDescription(seedRow);
   const detailsText = detailsBodyByHeading(seedRow, /details?/i);
   const useDetails = detailsText && !isMultiItemText(detailsText);
@@ -549,11 +715,12 @@ function buildCandidateBundle({ seedRow, kbRow, reviewedAt, reviewer }) {
   const coverage = sourceCoverage(seedRow, existing);
   const sourceUrl = text(seedRow.canonical_url || seedRow.destination_url);
   const brand = brandName(seedRow);
+  const cardTitle = text(candidateTitle({ brand, title }));
   const productLabel = text(`${brand} ${kind.label}`) || kind.label;
   const whatItIsBody = `${articleFor(productLabel)} ${productLabel} listed on the official source page as ${title}. The official description says: ${descriptionSentence}`;
   const why = [
     {
-      headline: 'Official product detail',
+      headline: `${kind.headline} positioning`,
       body: `The official source positions this as ${kind.label}. Official description: ${descriptionSentence}`,
       evidence_strength: 'official_source',
     },
@@ -634,7 +801,7 @@ function buildCandidateBundle({ seedRow, kbRow, reviewedAt, reviewer }) {
   candidate.shopping_card = {
     ...asObject(candidate.shopping_card),
     contract_version: 'pivota.shopping_card.v1',
-    title: candidate.shopping_card?.title || `PIXI BEAUTY ${title}`,
+    title: candidate.shopping_card?.title || cardTitle,
     subtitle: kind.headline,
     highlight: kind.highlight,
     intro: whatItIsBody,
@@ -642,7 +809,7 @@ function buildCandidateBundle({ seedRow, kbRow, reviewedAt, reviewer }) {
   };
   candidate.search_card = {
     ...asObject(candidate.search_card),
-    title_candidate: candidate.search_card?.title_candidate || `PIXI BEAUTY ${title}`,
+    title_candidate: candidate.search_card?.title_candidate || cardTitle,
     compact_candidate: kind.headline,
     highlight_candidate: kind.highlight,
     intro_candidate: whatItIsBody,
