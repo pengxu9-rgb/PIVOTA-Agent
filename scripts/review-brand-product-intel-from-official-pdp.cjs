@@ -118,6 +118,25 @@ function sentence(value) {
   return /[.!?]$/.test(text) ? text : `${text}.`;
 }
 
+function publicCopyProductName(value) {
+  let text = stripHtml(value);
+  if (!text) return '';
+  text = text
+    .replace(/\([^)]*\b(?:100%\s*off|free|promo|promotion|discount|gift)\b[^)]*\)/gi, '')
+    .replace(/\b(?:ultimate|flawless)\s+(?=[A-Z0-9+&-])/gi, '')
+    .replace(/\b(?:best[-\s]?selling|bestselling|cult[-\s]?(?:favorite|favourite))\b/gi, '')
+    .replace(/\bperfect\s+for\b[\s\S]*$/i, '')
+    .replace(/\b(?:stocking stuffer|gift for|holiday gift|mother'?s day gift)\b[\s\S]*$/i, '')
+    .replace(/\s*[-–—]\s*$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return text || stripHtml(value);
+}
+
+function productNameForCopy(facts) {
+  return publicCopyProductName(facts?.title);
+}
+
 function compactText(value, limit = 360) {
   const text = stripHtml(value);
   if (!text) return '';
@@ -135,6 +154,7 @@ function isLowSignalMarketingSentence(value) {
     /\bwould change your impression\b/i.test(current) ||
     /\bfinally\b[^.!?]{0,80}\byour ultimate\b/i.test(current) ||
     /\btake it to bed\s*[-–—]?\s*wake up transformed\b/i.test(current) ||
+    /\b(?:best[-\s]?selling|bestselling|cult[-\s]?(?:favorite|favourite)|go[-\s]?to|flawless|seamless|perfectly|like a dream)\b/i.test(current) ||
     /\b(?:our\s+)?bestselling,\s*award-winning\b/i.test(current) ||
     /\bcatch you in a poppin'? lip look\b/i.test(current) ||
     /\bthe ultimate hydration\s*\+\s*heat protection duo\b/i.test(current) ||
@@ -421,6 +441,24 @@ function inferRole(facts) {
   if (/\b(?:body essentials|body care set|mini body essentials)\b/.test(titleText)) {
     return { label: 'Body care set', step: 'body care set', amPm: ['am', 'pm'] };
   }
+  if (/\b(?:shower\s+steamers?|shower\s+fizz(?:y|ies)|bath\s+bombs?|bath\s+salts?|salt\s+soak)\b/.test(titleText)) {
+    return { label: 'Bath and shower soak', step: 'body care', amPm: ['as_needed'] };
+  }
+  if (/\b(?:soap\s+bar|body\s+soap|handmade\s+soap)\b/.test(titleText)) {
+    return { label: 'Body cleanser', step: 'cleanser', amPm: ['am', 'pm'] };
+  }
+  if (/\bbeard\s+oil\b/.test(titleText)) {
+    return { label: 'Beard oil', step: 'body care', amPm: ['as_needed'] };
+  }
+  if (/\b(?:body\s+oil|massage\s+oil|baby\s+oil)\b/.test(titleText)) {
+    return { label: 'Body oil', step: 'body care', amPm: ['as_needed'] };
+  }
+  if (/\b(?:magic\s+balm|rescue\s+balm|body\s+balm|muscle\s+balm)\b/.test(titleText)) {
+    return { label: 'Body balm', step: 'body care', amPm: ['as_needed'] };
+  }
+  if (/\b(?:essential\s+oils?\s+roll[-\s]?on|roll[-\s]?on\s+with\s+crystals?)\b/.test(titleText)) {
+    return { label: 'Aromatherapy roll-on', step: 'body care', amPm: ['as_needed'] };
+  }
   if (/\baromatherapy\s+pen|stop\s*&\s*soothe|stop\s+and\s+soothe\b/.test(titleText)) {
     return { label: 'Aromatherapy treatment', step: 'body care', amPm: ['as_needed'] };
   }
@@ -462,7 +500,7 @@ function inferRole(facts) {
   if (/\b(?:cleanser\s*\+\s*toner|toner serum duo)\b/.test(titleText)) {
     return { label: 'Skincare set', step: 'skincare', amPm: ['am', 'pm'] };
   }
-  if (/\b(?:glow mist|face mist|facial mist)\b/.test(titleText)) {
+  if (/\b(?:glow mist|face mist|facial mist|milky mist)\b/.test(titleText)) {
     return { label: 'Face mist', step: 'skincare', amPm: ['am', 'pm'] };
   }
   if (/\b(?:facial\s+sauna\s+scrub|smoothing\s+scrub|face\s+scrub|scrub)\b/.test(titleText)) {
@@ -1038,8 +1076,11 @@ function publicSafeIngredientName(value) {
   if (!current) return '';
   current = current.split(/\s[:–—]\s|:\s/)[0].trim();
   current = current
+    .replace(/\b(?:vegan|cruelty[-\s]?free|paraben[-\s]?free|dermatologist[-\s]?tested|ophthalmologist[-\s]?tested)\b/gi, '')
+    .replace(/\bfull\s+ingredient\s+list\b.*$/i, '')
     .replace(/\b(?:helps?|works?|shown|designed|targets?|supports?|soothes?|moisturi[sz]es?|exfoliates?|reduces?|brightens?|smooths?|defends?|plumps?)\b.*$/i, '')
     .replace(/\b(?:dry|chapped|wrinkles?|pores?|redness|blotchiness|melasma|sun damaged|age spots|post-acne marks)\b.*$/i, '')
+    .replace(/\s+/g, ' ')
     .trim();
   if (/\b(?:plump(?:ing)?|wrinkles?|pores?|redness|blotchiness|melasma|sun damaged|age spots|post-acne marks|chapped)\b/i.test(current)) {
     return '';
@@ -1055,6 +1096,7 @@ function publicSafeActiveIngredientNames(facts) {
 function buildEvidenceAnchoredWhatItIs(facts, role) {
   const text = combinedText(facts);
   const lowerTitle = facts.title.toLowerCase();
+  const copyTitle = productNameForCopy(facts);
   const shade = firstVariantValue(facts, /^(?:shade|color|colour):/i);
   const size = firstVariantValue(facts, /^(?:size|format|set):/i);
 
@@ -1066,7 +1108,7 @@ function buildEvidenceAnchoredWhatItIs(facts, role) {
       /\bpore|smooths?\s+pores?\b/i.test(text) ? 'pore-smoothing cues' : '',
     ]);
     const sizeClause = size && !isWeakStandaloneVariantValue(size) ? ` in ${size}` : '';
-    return sentence(`${facts.title} is a makeup primer from ${facts.brand}${sizeClause}${claims ? `, with source-backed cues around ${claims}` : ''}`);
+    return sentence(`${copyTitle} is a makeup primer from ${facts.brand}${sizeClause}${claims ? `, with source-backed cues around ${claims}` : ''}`);
   }
 
   if (role.step === 'complexion') {
@@ -1083,7 +1125,7 @@ function buildEvidenceAnchoredWhatItIs(facts, role) {
       /\bmedium to full|light to full|buildable|coverage\b/i.test(text) ? 'coverage control' : '',
     ]);
     const sku = shade || size;
-    return sentence(`${facts.title} is a ${format} from ${facts.brand}${sku ? ` in ${sku}` : ''}${claims ? `, with source-backed cues around ${claims}` : ''}`);
+    return sentence(`${copyTitle} is a ${format} from ${facts.brand}${sku ? ` in ${sku}` : ''}${claims ? `, with source-backed cues around ${claims}` : ''}`);
   }
 
   if (role.step === 'face color') {
@@ -1101,7 +1143,7 @@ function buildEvidenceAnchoredWhatItIs(facts, role) {
       (bronzerLike ? /\bbronze|bronzer|contour|define|warm\b/i : /\bbronze|bronzer|contour|define\b/i).test(text) ? 'bronzing or contour definition' : '',
       !bronzerLike && /\bglow|dayglow|highlight|luminous\b/i.test(text) ? 'glow payoff' : '',
     ]);
-    return sentence(`${facts.title} is a ${format} from ${facts.brand}${shade ? ` in shade ${shade}` : ''}${claims ? `, with source-backed cues around ${claims}` : ''}`);
+    return sentence(`${copyTitle} is a ${format} from ${facts.brand}${shade ? ` in shade ${shade}` : ''}${claims ? `, with source-backed cues around ${claims}` : ''}`);
   }
 
   if (role.step === 'lip color' || role.step === 'lip treatment') {
@@ -1115,7 +1157,7 @@ function buildEvidenceAnchoredWhatItIs(facts, role) {
       /\bshade|color|colour|tint\b/i.test(text) ? 'shade clarity' : '',
       /\bhydrat|moistur|balm|comfort\b/i.test(text) ? 'comfort-oriented lip care' : '',
     ]);
-    return sentence(`${facts.title} is a ${format} from ${facts.brand}${shade ? ` in ${shade}` : ''}${claims ? `, with source-backed cues around ${claims}` : ''}`);
+    return sentence(`${copyTitle} is a ${format} from ${facts.brand}${shade ? ` in ${shade}` : ''}${claims ? `, with source-backed cues around ${claims}` : ''}`);
   }
 
   if (role.step === 'eye makeup') {
@@ -1128,7 +1170,7 @@ function buildEvidenceAnchoredWhatItIs(facts, role) {
       /\bcreamy|cream\b/i.test(text) ? 'a creamy stick format' : '',
       /\bhigh[-\s]?impact|single swipe|color intensity\b/i.test(text) ? 'high-impact payoff' : '',
     ]);
-    return sentence(`${facts.title} is an ${format} from ${facts.brand}${shade ? ` in ${shade}` : ''}${claims ? `, with source-backed cues around ${claims}` : ''}`);
+    return sentence(`${copyTitle} is an ${format} from ${facts.brand}${shade ? ` in ${shade}` : ''}${claims ? `, with source-backed cues around ${claims}` : ''}`);
   }
 
   if (role.step === 'hair care') {
@@ -1148,7 +1190,16 @@ function buildEvidenceAnchoredWhatItIs(facts, role) {
       /\bleave[-\s]?in|conditioner\b/i.test(text) ? 'leave-in care' : '',
       /\bfrizz\b/i.test(text) ? 'frizz control' : '',
     ]);
-    return sentence(`${facts.title} is a ${format} from ${facts.brand}${size ? ` in ${size}` : ''}${claims ? `, with source-backed cues around ${claims}` : ''}`);
+    return sentence(`${copyTitle} is a ${format} from ${facts.brand}${size ? ` in ${size}` : ''}${claims ? `, with source-backed cues around ${claims}` : ''}`);
+  }
+
+  if (role.step === 'application tool') {
+    const claims = joinClaims([
+      /\bsynthetic\s+bristles?\b/i.test(text) ? 'synthetic bristles' : '',
+      /\bblend|buff|foundation|base|blush|shadow|eyeshadow\b/i.test(text) ? 'controlled product placement' : '',
+      /\bcheek|face|lid|eye\b/i.test(text) ? 'targeted application area' : '',
+    ]);
+    return sentence(`${copyTitle} is a makeup brush from ${facts.brand}${claims ? `, with source-backed cues around ${claims}` : ''}`);
   }
 
   if (role.step === 'body fragrance' || role.step === 'fragrance' || role.step === 'home fragrance') {
@@ -1167,7 +1218,7 @@ function buildEvidenceAnchoredWhatItIs(facts, role) {
       : role.step === 'home fragrance'
         ? 'home fragrance item'
         : 'fine fragrance';
-    return sentence(`${facts.title} is a ${format} from ${facts.brand}${size ? ` in ${size}` : ''}${scentCues.length ? `, with source-backed scent cues including ${joinClaims(scentCues.slice(0, 4))}` : ''}`);
+    return sentence(`${copyTitle} is a ${format} from ${facts.brand}${size ? ` in ${size}` : ''}${scentCues.length ? `, with source-backed scent cues including ${joinClaims(scentCues.slice(0, 4))}` : ''}`);
   }
 
   if (role.step === 'sunscreen') {
@@ -1186,7 +1237,7 @@ function buildEvidenceAnchoredWhatItIs(facts, role) {
       /\brefill\b/i.test(text) ? 'a refill format' : '',
     ]);
     const formatArticle = /^SPF\b/i.test(format) ? 'an' : articleFor(format);
-    return sentence(`${facts.title} is ${formatArticle} ${format} from ${facts.brand}${shade ? ` in shade ${shade}` : ''}${claims ? `, with source-backed cues around ${claims}` : ''}`);
+    return sentence(`${copyTitle} is ${formatArticle} ${format} from ${facts.brand}${shade ? ` in shade ${shade}` : ''}${claims ? `, with source-backed cues around ${claims}` : ''}`);
   }
 
   if (role.step === 'cleanser') {
@@ -1196,7 +1247,7 @@ function buildEvidenceAnchoredWhatItIs(facts, role) {
       /\bwithout leaving skin feeling tight|non[-\s]?stripping|stripping|drying\b/i.test(text) ? 'a non-stripping feel' : '',
       /\bpores?|dirt|oil|impurities\b/i.test(text) ? 'dirt, oil, and impurity removal' : '',
     ]);
-    return sentence(`${facts.title} is a ${role.label.toLowerCase()} from ${facts.brand}${size ? ` in ${size}` : ''}${claims ? `, with source-backed cues around ${claims}` : ''}`);
+    return sentence(`${copyTitle} is a ${role.label.toLowerCase()} from ${facts.brand}${size ? ` in ${size}` : ''}${claims ? `, with source-backed cues around ${claims}` : ''}`);
   }
 
   if (role.step === 'serum') {
@@ -1209,27 +1260,29 @@ function buildEvidenceAnchoredWhatItIs(facts, role) {
       /\bcentella|cica\b/i.test(text) ? 'centella' : '',
       /\bbarrier|ceramide|squalane\b/i.test(text) ? 'barrier support' : '',
     ]);
-    return sentence(`${facts.title} is a ${role.label.toLowerCase()} from ${facts.brand}${size ? ` in ${size}` : ''}${claims ? `, with source-backed ingredient cues around ${claims}` : ''}`);
+    return sentence(`${copyTitle} is a ${role.label.toLowerCase()} from ${facts.brand}${size ? ` in ${size}` : ''}${claims ? `, with source-backed ingredient cues around ${claims}` : ''}`);
   }
 
-  if (role.step === 'skincare' || role.step === 'body care') {
+  if (role.step === 'skincare' || role.step === 'body care' || role.step === 'mask' || role.step === 'brow definition') {
     const claims = joinClaims([
       /\bcleanse|cleanser|cleansing\b/i.test(text) ? 'cleansing' : '',
       /\btoner|toning\b/i.test(text) ? 'toning' : '',
       /\bhydrat|moistur|shea|hyaluronic\b/i.test(text) ? 'hydration' : '',
       /\bbright|dark spots|niacinamide\b/i.test(text) ? 'brightening support' : '',
+      /\bbrow|mascara|lash|eye\b/i.test(text) && role.step === 'brow definition' ? 'eye makeup grooming' : '',
     ]);
-    return sentence(`${facts.title} is ${articleFor(role.label)} ${role.label.toLowerCase()} from ${facts.brand}${size ? ` in ${size}` : ''}${claims ? `, with source-backed cues around ${claims}` : ''}`);
+    return sentence(`${copyTitle} is ${articleFor(role.label)} ${role.label.toLowerCase()} from ${facts.brand}${size ? ` in ${size}` : ''}${claims ? `, with source-backed cues around ${claims}` : ''}`);
   }
 
   return '';
 }
 
 function buildWhatItIs(facts, role) {
+  const copyTitle = productNameForCopy(facts);
   const description = firstUsefulSentence(facts.description, 240);
   const detail = firstUsefulDetail(facts.details);
   if (isSampleProduct(facts)) {
-    const sampleRoleAwareWhatItIs = ['fragrance', 'body fragrance', 'home fragrance', 'hair care', 'cleanser'].includes(role.step)
+    const sampleRoleAwareWhatItIs = ['fragrance', 'body fragrance', 'home fragrance', 'hair care', 'cleanser', 'skincare', 'serum', 'sunscreen', 'body care', 'mask'].includes(role.step)
       ? buildEvidenceAnchoredWhatItIs(facts, role)
       : '';
     if (sampleRoleAwareWhatItIs) return sampleRoleAwareWhatItIs;
@@ -1238,7 +1291,7 @@ function buildWhatItIs(facts, role) {
   }
   if (isLipComboRole(facts, role)) {
     const combo = buildLipComboHighlight(facts);
-    return sentence(`${facts.title} is a lip set from ${facts.brand}${combo ? ` built around ${combo}` : ''}`);
+    return sentence(`${copyTitle} is a lip set from ${facts.brand}${combo ? ` built around ${combo}` : ''}`);
   }
   if (role.step === 'lip definition') {
     const claims = [];
@@ -1251,13 +1304,13 @@ function buildWhatItIs(facts, role) {
       : '';
     const claimClause = claims.length ? ` It is positioned around ${claims.slice(0, 2).join(' and ')}.` : '';
     const shadeClause = shade ? ` This SKU is ${shade}.` : '';
-    return sentence(`${facts.title} is a lip liner from ${facts.brand} for defining the lip edge and supporting cleaner lipstick or gloss wear`) +
+    return sentence(`${copyTitle} is a lip liner from ${facts.brand} for defining the lip edge and supporting cleaner lipstick or gloss wear`) +
       claimClause +
       shadeClause;
   }
   const evidenceAnchored = buildEvidenceAnchoredWhatItIs(facts, role);
   if (evidenceAnchored) return evidenceAnchored;
-  const intro = `${facts.title} is ${articleFor(role.label)} ${role.label.toLowerCase()} from ${facts.brand}`;
+  const intro = `${copyTitle} is ${articleFor(role.label)} ${role.label.toLowerCase()} from ${facts.brand}`;
   const pieces = [intro];
   if (description) pieces.push(description.replace(/\.$/, ''));
   if (!description && detail) pieces.push(compactText(detail, 160).replace(/\.$/, ''));

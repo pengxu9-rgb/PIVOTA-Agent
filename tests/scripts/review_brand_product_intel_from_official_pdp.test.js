@@ -141,6 +141,30 @@ describe('official PDP manual insight review', () => {
     ).toBe('Face mist');
     expect(
       inferRole(facts({
+        title: 'Pixi + Hello Kitty Hydrating Milky Mist',
+        productType: 'Face Mist',
+        categoryPath: 'beauty/skincare/mist',
+        description: 'A hydrating milky mist for a skincare routine.',
+      })).label,
+    ).toBe('Face mist');
+    expect(
+      inferRole(facts({
+        title: 'CBD - 8 Bath bombs set - perfect for a relaxing bath',
+        productType: 'Bath Bombs',
+        categoryPath: 'beauty/body/bath',
+        description: 'A bath bomb set for bath and shower routines.',
+      })).label,
+    ).toBe('Bath and shower soak');
+    expect(
+      inferRole(facts({
+        title: 'Natural Handmade Beard Oil, Beard Softener, Beard Moisture',
+        productType: 'Beard Oil',
+        categoryPath: 'beauty/body/beard',
+        description: 'A beard oil for softening facial hair.',
+      })).label,
+    ).toBe('Beard oil');
+    expect(
+      inferRole(facts({
         title: 'Lemonade Smoothing Scrub',
         productType: 'Scrub',
         categoryPath: 'beauty/skincare/exfoliator',
@@ -676,6 +700,34 @@ describe('official PDP manual insight review', () => {
     expect(oleScrubPlan.changed).toBe(true);
     expect(oleScrubPlan.preview.headline).toBe('Face scrub');
     expect(JSON.stringify(oleScrubPlan.preview)).not.toContain('HOW TO');
+  });
+
+  test('removes public-sensitive ingredient qualifiers from Pixi lip copy', () => {
+    const plan = buildPlan(
+      row({
+        external_product_id: 'ext_pixi_lip',
+        title: 'Pixi + Maryam MatteLast Liquid Lip - Siesta Peach | MaryamNYC Limited Edition',
+        brand: 'Pixi Beauty',
+        canonical_url: 'https://pixibeauty.com/products/mattelast-liquid-lip',
+        seed_data: {
+          brand: 'Pixi Beauty',
+          pdp_description_raw: 'A matte liquid lip color with a named shade.',
+          pdp_active_ingredients_raw: 'Rosehip Oil; Vitamin E; Vegan Beeswax nourishes and conditions.',
+          pdp_how_to_use_raw: 'Apply to lips.',
+          variants: [
+            {
+              title: 'Siesta Peach | MaryamNYC Limited Edition',
+              options: [{ name: 'Shade', value: 'Siesta Peach | MaryamNYC Limited Edition' }],
+            },
+          ],
+        },
+      }),
+      { productIds: ['ext_pixi_lip'], includeStrong: true },
+    );
+
+    expect(plan.blocked).toBe(false);
+    expect(plan.changed).toBe(true);
+    expect(JSON.stringify(plan.preview)).not.toMatch(/\bvegan\b/i);
   });
 
   test('uses sample-specific insight copy instead of generic cue copy', () => {
