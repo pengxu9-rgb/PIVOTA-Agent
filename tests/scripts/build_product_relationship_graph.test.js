@@ -1,6 +1,7 @@
 const {
   numberArg,
   classifyEdgeForPrefilter,
+  resolveDefaultLabelState,
 } = require('../../scripts/build-product-relationship-graph');
 
 describe('build product relationship graph CLI helpers', () => {
@@ -137,5 +138,34 @@ describe('classifyEdgeForPrefilter — Phase B gate routing', () => {
     });
     expect(r.bucket).toBe('passed');
     expect(r.label_state).toBe('generated');
+  });
+});
+
+describe('resolveDefaultLabelState — Phase B v2 gate trigger condition', () => {
+  test('no --review-status flag → generated (gate runs)', () => {
+    expect(resolveDefaultLabelState(null)).toBe('generated');
+    expect(resolveDefaultLabelState(undefined)).toBe('generated');
+    expect(resolveDefaultLabelState('')).toBe('generated');
+  });
+
+  test('--review-status approved → human_approved (gate skipped)', () => {
+    expect(resolveDefaultLabelState('approved')).toBe('human_approved');
+  });
+
+  test('--review-status rejected → human_rejected (gate skipped)', () => {
+    expect(resolveDefaultLabelState('rejected')).toBe('human_rejected');
+  });
+
+  test('--review-status pending → needs_evidence (gate skipped — explicit reviewer state)', () => {
+    expect(resolveDefaultLabelState('pending')).toBe('needs_evidence');
+  });
+
+  test('unknown --review-status value falls back to generated', () => {
+    expect(resolveDefaultLabelState('garbage')).toBe('generated');
+  });
+
+  test('case-insensitive on --review-status value', () => {
+    expect(resolveDefaultLabelState('APPROVED')).toBe('human_approved');
+    expect(resolveDefaultLabelState('Rejected')).toBe('human_rejected');
   });
 });
