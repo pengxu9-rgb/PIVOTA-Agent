@@ -1,0 +1,1477 @@
+{
+  "generated_at": "2026-05-27T07:10:08.280Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 25,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_745fb0840bc78619eb4bca2b",
+      "sellable_item_group_id": "sig_745fb0840bc78619eb4bca2b",
+      "product_line_id": "pl_5e143094126625e7b6a05a24",
+      "review_family_id": "rf_5e143094126625e7b6a05a24",
+      "brand_name": "Apiceuticals",
+      "category_paths": [
+        "Conditioner"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "PROPOWAX™ Antioxidant Conditioner 300ml",
+      "subtitle": "PROPOWAX™ SERIES\nANTIOXIDANT • ANTIPOLLUTION\n\n100% Clean, Sustainable, Cruelty-free Beauty\n10.1 fl. oz. / 300 ml\n\nThe PROPOWAX™ Antioxidant Conditioner nourishes, detangles, and restores hair while soothing and balancing the scalp. Powered by the patented Living Honeycomb, proven to deliver the highest antioxidant activity worldwide, this formula protects against oxidative stress while moisturizing and smoothing split ends. Leaves hair silky, frizz-free, and enveloped in Apiceuticals’ signature ultra-luxury fragrance.",
+      "variant_axes": {
+        "volume": "300ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://www.apiceuticals.com/wp-content/uploads/2021/11/Conditioner_2-1.webp",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://www.apiceuticals.com/wp-content/uploads/2021/11/Conditioner_2-1.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/11/Conditioner_4.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/11/Conditioner_3-1.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/11/Conditioner_7.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/11/Conditioner_8.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/11/Conditioner_6.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/11/Conditioner_9.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/11/Conditioner_2-1-600x800.webp"
+      ],
+      "price_min": 35,
+      "price_max": 35,
+      "default_offer_id": "external_seed:ext_4e95b920b4c6a5295d55aa46",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "An Apiceuticals hair conditioner listed on the official source page as PROPOWAX™ Antioxidant Conditioner 300ml. The official description identifies: The PROPOWAX™ Antioxidant Conditioner nourishes, detangles, and restores hair while soothing and balancing the scalp.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Apiceuticals",
+        "Conditioner"
+      ],
+      "sort_keys": {
+        "price_min": 35,
+        "price_max": 35,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_4e95b920b4c6a5295d55aa46"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_9d47a2dd2caf5d7bbe4e9bbd",
+      "sellable_item_group_id": "sig_9d47a2dd2caf5d7bbe4e9bbd",
+      "product_line_id": "pl_317ddc081dfcb3f09bacd511",
+      "review_family_id": "rf_317ddc081dfcb3f09bacd511",
+      "brand_name": "Apiceuticals",
+      "category_paths": [
+        "Body Wash"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "PROPOWAX™ Antioxidant Shower Gel 300ml",
+      "subtitle": "PROPOWAX™ SERIES\nANTIOXIDANT • ANTIPOLLUTION\n\n100% Clean, Sustainable, Cruelty-free Beauty\n10.1 fl. oz. / 300 ml\n\nThe PROPOWAX™ Antioxidant Shower Gel transforms daily cleansing into a protective ritual. With its unique honey-like texture, it cocoons the skin in silky softness while cleansing gently. Powered by the patented Living Honeycomb, proven to deliver the highest antioxidant activity worldwide, it shields against pollution, slows skin aging, and maintains long-lasting hydration. Leaves skin soft, radiant, and enveloped in Apiceuticals’ ultra-luxury fragrance.",
+      "variant_axes": {
+        "volume": "300ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://www.apiceuticals.com/wp-content/uploads/2021/11/Shower-Gel_2.webp",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://www.apiceuticals.com/wp-content/uploads/2021/11/Shower-Gel_2.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/11/Shower-Gel_3-1.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/11/Shower-Gel_4.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2018/07/Shower-Gel_7.jpg",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/11/Shower-Gel_8.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/11/Shower-Gel_6.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/11/Shower-Gel_9.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/11/Shower-Gel_2-600x800.webp"
+      ],
+      "price_min": 29,
+      "price_max": 29,
+      "default_offer_id": "external_seed:ext_d17dfc05f98d0400d5129f1c",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "An Apiceuticals body wash listed on the official source page as PROPOWAX™ Antioxidant Shower Gel 300ml. The official description identifies: The PROPOWAX™ Antioxidant Shower Gel transforms daily cleansing into a protective ritual.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Apiceuticals",
+        "Body Wash"
+      ],
+      "sort_keys": {
+        "price_min": 29,
+        "price_max": 29,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_d17dfc05f98d0400d5129f1c"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_c5c41c0851763b2481798bcf",
+      "sellable_item_group_id": "sig_c5c41c0851763b2481798bcf",
+      "product_line_id": "pl_34d1d21f92dcb93bd0c24821",
+      "review_family_id": "rf_34d1d21f92dcb93bd0c24821",
+      "brand_name": "Apiceuticals",
+      "category_paths": [
+        "Body Oil"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "PROPOWAX™ Antioxidant Dry Oil 100ml",
+      "subtitle": "PROPOWAX™ SERIES\nANTIOXIDANT • ANTIPOLLUTION\n\n100% Clean, Sustainable, Cruelty-free Beauty\n3.8 fl. oz. / 100 ml\n\nThe PROPOWAX™ Antioxidant Dry Oil is a multi-purpose elixir for face, body, and hair. A luxurious blend of 7 precious oils, it delivers powerful antioxidant protection while restoring softness and radiance. Truly “dry”, it absorbs in seconds, nourishing deeply without leaving any oily residue. Your skin feels velvety soft, supple, and wrapped in Apiceuticals’ signature ultra-luxury fragrance “Woods of Arcadia”.",
+      "variant_axes": {
+        "volume": "100ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://www.apiceuticals.com/wp-content/uploads/2021/12/Dry-Oil_2-1.webp",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://www.apiceuticals.com/wp-content/uploads/2021/12/Dry-Oil_2-1.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/12/Dry-Oil_4.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/12/Dry-Oil_7.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2018/07/Dry-Oil_8.jpg",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/12/Dry-Oil_3.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/12/Dry-Oil_6.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/12/Dry-Oil_9.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/12/Dry-Oil_2-1-600x800.webp"
+      ],
+      "price_min": 89,
+      "price_max": 89,
+      "default_offer_id": "external_seed:ext_d3d708f481903ba2a6f9b732",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "An Apiceuticals body oil listed on the official source page as PROPOWAX™ Antioxidant Dry Oil 100ml. The official description identifies: The PROPOWAX™ Antioxidant Dry Oil is a multi-purpose elixir for face, body, and hair.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Apiceuticals",
+        "Body Oil"
+      ],
+      "sort_keys": {
+        "price_min": 89,
+        "price_max": 89,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_d3d708f481903ba2a6f9b732"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_3986f474bf585056885f6125",
+      "sellable_item_group_id": "sig_3986f474bf585056885f6125",
+      "product_line_id": "pl_c0bad4679095d97a8e48c5b6",
+      "review_family_id": "rf_c0bad4679095d97a8e48c5b6",
+      "brand_name": "Apiceuticals",
+      "category_paths": [
+        "Shampoo"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "PROPOWAX™ Antioxidant Shampoo 300ml",
+      "subtitle": "PROPOWAX™ SERIES\nANTIOXIDANT • ANTIPOLLUTION\n\n100% Clean, Sustainable, Cruelty-free Beauty\n10.1 fl. oz. / 300 ml\n\nThe PROPOWAX™ Antioxidant Shampoo is the world’s first honeycomb shampoo powered by the patented Living Honeycomb — clinically proven to deliver the highest antioxidant activity worldwide. Detoxifies and restores scalp & hair from pollution, UV, styling tools, and harsh products. Rebalances, soothes, and strengthens hair from the roots. Leaves hair radiant, nourished, and infused with a luxurious fine fragrance.",
+      "variant_axes": {
+        "volume": "300ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://www.apiceuticals.com/wp-content/uploads/2018/07/Shampoo_2-1.webp",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://www.apiceuticals.com/wp-content/uploads/2018/07/Shampoo_2-1.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2018/07/Shampoo_4.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2018/07/Shampoo_7.jpg",
+        "https://www.apiceuticals.com/wp-content/uploads/2018/07/Shampoo_8.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2018/07/Shampoo_3-1.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2018/07/Shampoo_6.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2018/07/Shampoo_9.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2018/07/Shampoo_2-1-600x800.webp"
+      ],
+      "price_min": 33,
+      "price_max": 33,
+      "default_offer_id": "external_seed:ext_1e27467ab07ddb83ad74c213",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "An Apiceuticals shampoo listed on the official source page as PROPOWAX™ Antioxidant Shampoo 300ml. The official description identifies: The PROPOWAX Antioxidant Shampoo is positioned as a honeycomb shampoo with Living Honeycomb referenced on the official page.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Apiceuticals",
+        "Shampoo"
+      ],
+      "sort_keys": {
+        "price_min": 33,
+        "price_max": 33,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_1e27467ab07ddb83ad74c213"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_1587d8b1843fa059eb641ef4",
+      "sellable_item_group_id": "sig_1587d8b1843fa059eb641ef4",
+      "product_line_id": "pl_1bf0bf9e89d29a0aa5a7c424",
+      "review_family_id": "rf_1bf0bf9e89d29a0aa5a7c424",
+      "brand_name": "Apiceuticals",
+      "category_paths": [
+        "Body Lotion"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "PROPOWAX™ Antioxidant Body Lotion 300ml",
+      "subtitle": "PROPOWAX™ SERIES\nANTIOXIDANT • ANTIPOLLUTION\n\n100% Clean, Sustainable, Cruelty-free Beauty\n10.1 fl. oz. / 300 ml\n\nThe PROPOWAX™ Antioxidant Body Lotion envelops the skin in silky hydration while fortifying it with advanced antioxidant protection. Powered by the patented Living Honeycomb, clinically proven to deliver the highest antioxidant activity worldwide, it locks in moisture, restores the skin barrier, and protects against pollution and oxidative stress. With its lightweight, non-greasy texture, it leaves skin velvety soft, supple, and wrapped in Apiceuticals’ signature ultra-luxury fragrance.",
+      "variant_axes": {
+        "volume": "300ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://www.apiceuticals.com/wp-content/uploads/2021/12/Body-Lotion_2.webp",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://www.apiceuticals.com/wp-content/uploads/2021/12/Body-Lotion_2.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/12/Body-Lotion_3-1.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/12/Body-Lotion_4.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/12/Body-Lotion_7.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/12/Body-Lotion_8.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/12/Body-Lotion_6.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/12/Body-Lotion_9.webp",
+        "https://www.apiceuticals.com/wp-content/uploads/2021/12/Body-Lotion_2-600x800.webp"
+      ],
+      "price_min": 32,
+      "price_max": 32,
+      "default_offer_id": "external_seed:ext_c0e5209513c083e2c649c1a1",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "An Apiceuticals moisturizer listed on the official source page as PROPOWAX™ Antioxidant Body Lotion 300ml. The official description identifies: The PROPOWAX™ Antioxidant Body Lotion envelops the skin in silky hydration while fortifying it with advanced antioxidant protection.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Apiceuticals",
+        "Body Lotion"
+      ],
+      "sort_keys": {
+        "price_min": 32,
+        "price_max": 32,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_c0e5209513c083e2c649c1a1"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_2afbc56f52ac6b1c99659ab3",
+      "sellable_item_group_id": "sig_2afbc56f52ac6b1c99659ab3",
+      "product_line_id": "pl_86e4199162b05ac9148f9cbe",
+      "review_family_id": "rf_86e4199162b05ac9148f9cbe",
+      "brand_name": "KHUS KHUS",
+      "category_paths": [
+        "Bodycare",
+        "Body Oil"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "SURYA body elixir",
+      "subtitle": "KHUS KHUS SURYA body elixir is a source-backed body oil from the brand-owned product page. The source page lists formula fields including squalane(olive derived), caprylic/capric triglyceride (mct oil), cocos nucifera (coconut oil), calendula officinalis (calendula flowers), jasminum officinale (jasmine flowers). Use instructions, size/detail fields, price, availability, and images were captured from the same source.",
+      "variant_axes": {
+        "volume": "100ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://khus-khus.com/wp-content/uploads/2024/03/SURYA.jpg",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://khus-khus.com/wp-content/uploads/2024/03/SURYA.jpg",
+        "https://khus-khus.com/wp-content/uploads/2023/07/i-k5shhhG-X2.jpg",
+        "https://khus-khus.com/wp-content/uploads/2024/03/unnamed.jpg",
+        "https://khus-khus.com/wp-content/uploads/2024/03/KHUS-surya-box-1.png"
+      ],
+      "price_min": 72,
+      "price_max": 72,
+      "default_offer_id": "external_seed:ext_6ae70ce8a0cf2d0f8615d4dc",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A KHUS KHUS body oil listed on the brand source page as SURYA body elixir.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "KHUS KHUS",
+        "Bodycare",
+        "Body Oil"
+      ],
+      "sort_keys": {
+        "price_min": 72,
+        "price_max": 72,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_6ae70ce8a0cf2d0f8615d4dc"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_8645b51f78b6e7c77e64d6c3",
+      "sellable_item_group_id": "sig_8645b51f78b6e7c77e64d6c3",
+      "product_line_id": "pl_108f96ef0a9d6b6bed9c3b60",
+      "review_family_id": "rf_108f96ef0a9d6b6bed9c3b60",
+      "brand_name": "KHUS KHUS",
+      "category_paths": [
+        "Skincare",
+        "Toner"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "D DROP humectant factor",
+      "subtitle": "KHUS KHUS D DROP humectant factor is a source-backed toner from the brand-owned product page. The source page lists formula fields including mentha piperita (peppermint hydrosol), guar hydroxypropyltrimonium chloride (guar gum), water & phospholipids & cannabis sativa flower/leaf/stem extract, lactobacillus/watermelon fruit ferment extract, silver dihydrogen citrate (silver ion). Use instructions, size/detail fields, price, availability, and images were captured from the same source.",
+      "variant_axes": {
+        "volume": "30ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://khus-khus.com/wp-content/uploads/2021/10/i-KGG8dq4-X2.jpg",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://khus-khus.com/wp-content/uploads/2021/10/i-KGG8dq4-X2.jpg",
+        "https://khus-khus.com/wp-content/uploads/2021/10/khus-d-drop.png",
+        "https://khus-khus.com/wp-content/uploads/2021/10/DSCF7908-copy2222-scaled.jpg",
+        "https://khus-khus.com/wp-content/uploads/2023/07/SKINHEALTH-routine-5.png"
+      ],
+      "price_min": 38,
+      "price_max": 38,
+      "default_offer_id": "external_seed:ext_290f05b3b8bfbfdb4e079d09",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A KHUS KHUS toner listed on the brand source page as D DROP humectant factor.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "KHUS KHUS",
+        "Skincare",
+        "Toner"
+      ],
+      "sort_keys": {
+        "price_min": 38,
+        "price_max": 38,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_290f05b3b8bfbfdb4e079d09"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_cd2abc5dfc8c8ccbebdc0719",
+      "sellable_item_group_id": "sig_cd2abc5dfc8c8ccbebdc0719",
+      "product_line_id": "pl_86028d2cc19d545d4d31f368",
+      "review_family_id": "rf_86028d2cc19d545d4d31f368",
+      "brand_name": "KHUS KHUS",
+      "category_paths": [
+        "Skincare",
+        "Face Balm"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "KAI repair balm",
+      "subtitle": "KHUS KHUS KAI repair balm is a source-backed face balm from the brand-owned product page. The source page lists formula fields including squalane(olive derived), caulerpa lentillifera (green caviar), helianthus annuus (sunflower) seed oil & saccharomyces/podophyllum peltatum ferment filtrate, brassica oleracea (broccoli seed), stearic acid. Use instructions, size/detail fields, price, availability, and images were captured from the same source.",
+      "variant_axes": {
+        "volume": "30ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://khus-khus.com/wp-content/uploads/2021/10/kai.jpg",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://khus-khus.com/wp-content/uploads/2021/10/kai.jpg",
+        "https://khus-khus.com/wp-content/uploads/2021/10/KAI-REPAIR-ABLM-scaled.jpg",
+        "https://khus-khus.com/wp-content/uploads/2021/10/i-nbkJq24-X2.jpg",
+        "https://khus-khus.com/wp-content/uploads/2023/07/SKINHEALTH-routine-4.png"
+      ],
+      "price_min": 52,
+      "price_max": 52,
+      "default_offer_id": "external_seed:ext_f27f918bac908cf6ba236b83",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A KHUS KHUS face balm listed on the brand source page as KAI repair balm.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "KHUS KHUS",
+        "Skincare",
+        "Face Balm"
+      ],
+      "sort_keys": {
+        "price_min": 52,
+        "price_max": 52,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_f27f918bac908cf6ba236b83"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_6e14d673e184819055e0122a",
+      "sellable_item_group_id": "sig_6e14d673e184819055e0122a",
+      "product_line_id": "pl_2955c2c61f5a12485093f2c5",
+      "review_family_id": "rf_2955c2c61f5a12485093f2c5",
+      "brand_name": "KHUS KHUS",
+      "category_paths": [
+        "Skincare",
+        "Face Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "SANS AGE face serum",
+      "subtitle": "KHUS KHUS SANS AGE face serum is a source-backed face serum from the brand-owned product page. The source page lists formula fields including simmondsia chinensis (jojoba seed oil), sclerocarya birrea(marula oil), adansonia digitata(baobab seed oil), argania spinosa(argan oil), squalane(olive derived). Use instructions, size/detail fields, price, availability, and images were captured from the same source.",
+      "variant_axes": {
+        "volume": "50ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://khus-khus.com/wp-content/uploads/2016/07/SANS-AGE-face-serum-1-scaled-e1608237456272.jpg",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://khus-khus.com/wp-content/uploads/2016/07/SANS-AGE-face-serum-1-scaled-e1608237456272.jpg",
+        "https://khus-khus.com/wp-content/uploads/2016/07/khus-sans-droper.png",
+        "https://khus-khus.com/wp-content/uploads/2016/07/Screenshot-2025-09-29-144059.png",
+        "https://khus-khus.com/wp-content/uploads/2023/07/SKINHEALTH-routine-3.png"
+      ],
+      "price_min": 80,
+      "price_max": 80,
+      "default_offer_id": "external_seed:ext_f86a3606bf6dc20fc810f99d",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A KHUS KHUS serum listed on the brand source page as SANS AGE face serum.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "KHUS KHUS",
+        "Skincare",
+        "Face Serum"
+      ],
+      "sort_keys": {
+        "price_min": 80,
+        "price_max": 80,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_f86a3606bf6dc20fc810f99d"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_5c7196c7dcb74ada1236c84f",
+      "sellable_item_group_id": "sig_5c7196c7dcb74ada1236c84f",
+      "product_line_id": "pl_f76a1f4c69ea82b0fc8d5b00",
+      "review_family_id": "rf_f76a1f4c69ea82b0fc8d5b00",
+      "brand_name": "KHUS KHUS",
+      "category_paths": [
+        "Bodycare",
+        "Body Oil"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "BLEU body serum",
+      "subtitle": "KHUS KHUS BLEU body serum is a source-backed body oil from the brand-owned product page. The source page lists formula fields including squalane(olive derived), caprylic/capric triglyceride (mct oil), sclerocarya birrea (marula oil), argania spinosa(argan oil), helichrysum italicum(helichrysum) tanacetum annuum(blue tansy). Use instructions, size/detail fields, price, availability, and images were captured from the same source.",
+      "variant_axes": {
+        "volume": "200ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://khus-khus.com/wp-content/uploads/2016/07/bleu-body-serum.jpg",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://khus-khus.com/wp-content/uploads/2016/07/bleu-body-serum.jpg",
+        "https://khus-khus.com/wp-content/uploads/2016/07/i-3hXcK8D-X2.jpg",
+        "https://khus-khus.com/wp-content/uploads/2016/07/DSCF7806-copy-scaled.jpg"
+      ],
+      "price_min": 85,
+      "price_max": 85,
+      "default_offer_id": "external_seed:ext_4dace0e8a2fe70b378b91c2c",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A KHUS KHUS body oil listed on the brand source page as BLEU body serum.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "KHUS KHUS",
+        "Bodycare",
+        "Body Oil"
+      ],
+      "sort_keys": {
+        "price_min": 85,
+        "price_max": 85,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_4dace0e8a2fe70b378b91c2c"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_59ab25c132c5bae86ddf7f5a42d62975",
+      "sellable_item_group_id": "sig_59ab25c132c5bae86ddf7f5a42d62975",
+      "product_line_id": "pl_2ac85f3d17bd6d1559d0a32b",
+      "review_family_id": "rf_2ac85f3d17bd6d1559d0a32b",
+      "brand_name": "7Journeys",
+      "category_paths": [
+        "Skincare",
+        "Eye Cream"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "7 Journeys Miracle Timeless Eye Cream 30g (Hydrating & Glowing)",
+      "subtitle": "7Journeys 7 Journeys Miracle Timeless Eye Cream 30g (Hydrating & Glowing) is a source-backed eye cream from the brand-owned US-localized product page. The source ingredient list includes Water, Cetyl Ethylhexanoate, Dipropylene Glycol, Glycerin, Isopropyl Myristate. Price, availability, images, use instructions, details, and formula fields were captured from the same source page.",
+      "variant_axes": {
+        "volume": "30g",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-timeless-eye-cream-30g-hydrating-glowing-7j004-usukeu-8809789634893-1909832.png?v=1759493174",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-timeless-eye-cream-30g-hydrating-glowing-7j004-usukeu-8809789634893-1909832.png?v=1759493174",
+        "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-timeless-eye-cream-30g-hydrating-glowing-7j004-usukeu-8809789634893-2669928.png?v=1764736567",
+        "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-timeless-eye-cream-30g-hydrating-glowing-7j004-usukeu-8809789634893-9547051.jpg?v=1764736566",
+        "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-timeless-eye-cream-30g-hydrating-glowing-7j004-usukeu-8809789634893-5547929.png?v=1764736567",
+        "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-timeless-eye-cream-30g-hydrating-glowing-7j004-usukeu-8809789634893-4719614.jpg?v=1764661020",
+        "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-timeless-eye-cream-30g-hydrating-glowing-7j004-usukeu-8809789634893-1790653.jpg?v=1764661020",
+        "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-timeless-eye-cream-30g-hydrating-glowing-7j004-usukeu-8809789634893-4759348.jpg?v=1764661020",
+        "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-timeless-eye-cream-30g-hydrating-glowing-7j004-usukeu-8809789634893-8940625.jpg?v=1764661020"
+      ],
+      "price_min": 55,
+      "price_max": 55,
+      "default_offer_id": "external_seed:ext_1e7b8274600d0395757a3b60",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A 7Journeys eye treatment listed on the official source page as 7 Journeys Miracle Timeless Eye Cream 30g (Hydrating & Glowing). The official description identifies: 7Journeys 7 Journeys Miracle Timeless Eye Cream 30g (Hydrating & Glowing) is a source-backed eye cream from the brand-owned US-localized product page.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "7Journeys",
+        "Skincare",
+        "Eye Cream"
+      ],
+      "sort_keys": {
+        "price_min": 55,
+        "price_max": 55,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_1e7b8274600d0395757a3b60"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_a7ccb1334eb133e537242dde2157f01e",
+      "sellable_item_group_id": "sig_a7ccb1334eb133e537242dde2157f01e",
+      "product_line_id": "pl_4b3d2ed47d6748edfbe7dcc3",
+      "review_family_id": "rf_4b3d2ed47d6748edfbe7dcc3",
+      "brand_name": "7Journeys",
+      "category_paths": [
+        "Skincare",
+        "Sheet Mask"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "7 Journeys Miracle Glow Serum Mask 25ml (10 Sheets)",
+      "subtitle": "7Journeys 7 Journeys Miracle Glow Serum Mask 25ml (10 Sheets) is a source-backed sheet mask from the brand-owned US-localized product page. The source ingredient list includes Water, Dipropylene Glycol, Butylene Glycol, Glycerin, Macadamia Ternifolia Seed Oil. Price, availability, images, use instructions, details, and formula fields were captured from the same source page.",
+      "variant_axes": {
+        "volume": "25ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-9111380.png?v=1759493178",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-9111380.png?v=1759493178",
+        "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-4881882.png?v=1764736567",
+        "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-7026113.jpg?v=1764736567",
+        "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-5276279.png?v=1764736567",
+        "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-1010333.jpg?v=1764659561",
+        "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-8057207.jpg?v=1764659561",
+        "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-4009473.jpg?v=1764659561",
+        "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-9399536.jpg?v=1764659561"
+      ],
+      "price_min": 55,
+      "price_max": 55,
+      "default_offer_id": "external_seed:ext_2da51d2f8d19211c89fb2a30",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A 7Journeys skincare product listed on the official source page as 7 Journeys Miracle Glow Serum Mask 25ml (10 Sheets). The official description identifies: 7Journeys 7 Journeys Miracle Glow Serum Mask (10 Sheets) is a source-backed sheet mask from the brand-owned US-localized product page.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "7Journeys",
+        "Skincare",
+        "Sheet Mask"
+      ],
+      "sort_keys": {
+        "price_min": 55,
+        "price_max": 55,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_2da51d2f8d19211c89fb2a30"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_f4691b7294254687ef551a1498dc224f",
+      "sellable_item_group_id": "sig_f4691b7294254687ef551a1498dc224f",
+      "product_line_id": "pl_6e50c148ba0d31dc0dc9a56b",
+      "review_family_id": "rf_6e50c148ba0d31dc0dc9a56b",
+      "brand_name": "7Journeys",
+      "category_paths": [
+        "Skincare",
+        "Face Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "7 Journeys Glow Renewal Serum 45ml (Hydrated & Glowing Skin)",
+      "subtitle": "7Journeys 7 Journeys Glow Renewal Serum 45ml (Hydrated & Glowing Skin) is a source-backed face serum from the brand-owned US-localized product page. The source ingredient list includes Water, Butylene Glycol, Niacinamide, Isopropyl Myristate, Cetyl Ethylhexanoate. Price, availability, images, use instructions, details, and formula fields were captured from the same source page.",
+      "variant_axes": {
+        "volume": "45ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-glow-renewal-serum-45ml-hydrated-glowing-skin-7j002-usukeu-8809789634879-1610652.png?v=1759493173",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-glow-renewal-serum-45ml-hydrated-glowing-skin-7j002-usukeu-8809789634879-1610652.png?v=1759493173",
+        "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-glow-renewal-serum-45ml-hydrated-glowing-skin-7j002-usukeu-8809789634879-5266463.png?v=1764405125",
+        "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-glow-renewal-serum-45ml-hydrated-glowing-skin-7j002-usukeu-8809789634879-9591440.jpg?v=1764736565",
+        "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-glow-renewal-serum-45ml-hydrated-glowing-skin-7j002-usukeu-8809789634879-2998411.jpg?v=1764660226",
+        "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-glow-renewal-serum-45ml-hydrated-glowing-skin-7j002-usukeu-8809789634879-6085350.jpg?v=1764660226",
+        "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-glow-renewal-serum-45ml-hydrated-glowing-skin-7j002-usukeu-8809789634879-7550091.jpg?v=1764660226",
+        "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-glow-renewal-serum-45ml-hydrated-glowing-skin-7j002-usukeu-8809789634879-1492138.jpg?v=1764660226",
+        "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-glow-renewal-serum-45ml-hydrated-glowing-skin-7j002-usukeu-8809789634879-7881580.jpg?v=1764660226"
+      ],
+      "price_min": 50,
+      "price_max": 50,
+      "default_offer_id": "external_seed:ext_718736656c3aa82e74546c28",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A 7Journeys skincare treatment listed on the official source page as 7 Journeys Glow Renewal Serum 45ml (Hydrated & Glowing Skin). The official description identifies: 7Journeys 7 Journeys Glow Renewal Serum (Hydrated & Glowing Skin) is a source-backed face serum from the brand-owned US-localized product page.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "7Journeys",
+        "Skincare",
+        "Face Serum"
+      ],
+      "sort_keys": {
+        "price_min": 50,
+        "price_max": 50,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_718736656c3aa82e74546c28"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_38d4b7f594967e94089acfd726cce621",
+      "sellable_item_group_id": "sig_38d4b7f594967e94089acfd726cce621",
+      "product_line_id": "pl_65661de0655c509f7f9b955a",
+      "review_family_id": "rf_65661de0655c509f7f9b955a",
+      "brand_name": "7Journeys",
+      "category_paths": [
+        "Skincare",
+        "Moisturizer"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "7 Journeys Extra Soft Glow Renewal Moisturizer 50g - Hydrating & Firming",
+      "subtitle": "7Journeys 7 Journeys Extra Soft Glow Renewal Moisturizer 50g - Hydrating & Firming is a source-backed moisturizer from the brand-owned US-localized product page. The source ingredient list includes Water, Butylene Glycol, Glycerin, Isopropyl Myristate, Caprylic/Capric Triglyceride. Price, availability, images, use instructions, details, and formula fields were captured from the same source page.",
+      "variant_axes": {
+        "volume": "50g",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-extra-soft-glow-renewal-moisturizer-50g-hydrating-firming-7j005-usukeu-8809789634909-5170199.png?v=1759493174",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-extra-soft-glow-renewal-moisturizer-50g-hydrating-firming-7j005-usukeu-8809789634909-5170199.png?v=1759493174",
+        "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-extra-soft-glow-renewal-moisturizer-50g-hydrating-firming-7j005-usukeu-8809789634909-1613799.png?v=1764736566",
+        "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-extra-soft-glow-renewal-moisturizer-50g-hydrating-firming-7j005-usukeu-8809789634909-5146962.jpg?v=1764736566",
+        "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-extra-soft-glow-renewal-moisturizer-50g-hydrating-firming-7j005-usukeu-8809789634909-7190189.jpg?v=1764661136",
+        "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-extra-soft-glow-renewal-moisturizer-50g-hydrating-firming-7j005-usukeu-8809789634909-3467439.jpg?v=1764661136",
+        "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-extra-soft-glow-renewal-moisturizer-50g-hydrating-firming-7j005-usukeu-8809789634909-9894374.jpg?v=1764661136",
+        "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-extra-soft-glow-renewal-moisturizer-50g-hydrating-firming-7j005-usukeu-8809789634909-9759799.jpg?v=1764661136",
+        "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-extra-soft-glow-renewal-moisturizer-50g-hydrating-firming-7j005-usukeu-8809789634909-3600765.jpg?v=1764661136"
+      ],
+      "price_min": 45,
+      "price_max": 45,
+      "default_offer_id": "external_seed:ext_299e2dc017565ab3081f8c26",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A 7Journeys moisturizer listed on the official source page as 7 Journeys Extra Soft Glow Renewal Moisturizer 50g - Hydrating & Firming.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "7Journeys",
+        "Skincare",
+        "Moisturizer"
+      ],
+      "sort_keys": {
+        "price_min": 45,
+        "price_max": 45,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_299e2dc017565ab3081f8c26"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_6f258acef923637ae7567600408ce2cf",
+      "sellable_item_group_id": "sig_6f258acef923637ae7567600408ce2cf",
+      "product_line_id": "pl_e7fcf7b9753484ab96df6bd5",
+      "review_family_id": "rf_e7fcf7b9753484ab96df6bd5",
+      "brand_name": "7Journeys",
+      "category_paths": [
+        "Skincare",
+        "Face Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "7 Journeys Antarctic Timeless Serum 45ml (Hydration & Anti-aging)",
+      "subtitle": "7Journeys 7 Journeys Antarctic Timeless Serum 45ml (Hydration & Anti-aging) is a source-backed face serum from the brand-owned US-localized product page. The source ingredient list includes Water, 1,2-Hexanediol, Pseudoalteromonas Ferment Extract, Euterpe Oleracea Fruit Extract, Sodium Hyaluronate. Price, availability, images, use instructions, details, and formula fields were captured from the same source page.",
+      "variant_axes": {
+        "volume": "45ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-7j003-usukeu-8809789634886-6307320.png?v=1759493174",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-7j003-usukeu-8809789634886-6307320.png?v=1759493174",
+        "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-hydration-anti-aging-7j003-usukeu-8809789634886-7442768.png?v=1764736566",
+        "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-hydration-anti-aging-7j003-usukeu-8809789634886-8702048.jpg?v=1764736566",
+        "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-7j003-usukeu-8809789634886-9650353.jpg?v=1764659994",
+        "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-7j003-usukeu-8809789634886-5844673.jpg?v=1764659994",
+        "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-7j003-usukeu-8809789634886-6428490.jpg?v=1764659994",
+        "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-7j003-usukeu-8809789634886-4890502.jpg?v=1764659994",
+        "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-7j003-usukeu-8809789634886-7847272.jpg?v=1764659994"
+      ],
+      "price_min": 50,
+      "price_max": 50,
+      "default_offer_id": "external_seed:ext_d55c93a9feb384ac9e0bde40",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A 7Journeys skincare treatment listed on the official source page as 7 Journeys Antarctic Timeless Serum 45ml (Hydration & Anti-aging).",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "7Journeys",
+        "Skincare",
+        "Face Serum"
+      ],
+      "sort_keys": {
+        "price_min": 50,
+        "price_max": 50,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_d55c93a9feb384ac9e0bde40"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_053b8f326d53ab0675ed93ec",
+      "sellable_item_group_id": "sig_053b8f326d53ab0675ed93ec",
+      "product_line_id": "pl_a4006a0cb9c782304a3c6e8a",
+      "review_family_id": "rf_a4006a0cb9c782304a3c6e8a",
+      "brand_name": "Lhamour",
+      "category_paths": [
+        "Body Care",
+        "Hand Butter"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Sea buckthorn Hand Cream for Dry Hands | Natural Hand Butter | Lhamour",
+      "subtitle": "Sea buckthorn Hand Cream for Dry Hands | Natural Hand Butter | Lhamour is a Lhamour hand butter with product-page formula and use fields captured for PDP display. The ingredient list includes Sea Buckthorn Fruit Oil, Sunflower Oil, Beeswax, Soybean Oil, Coconut Oil. Price, availability, imagery, ingredient text, and use instructions are maintained with the same reviewed product-page record.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/seabuckhtornhandbutterbody.png?v=1706464250",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/seabuckhtornhandbutterbody.png?v=1706464250",
+        "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/gps_generated_f3786cd0-4858-4c22-a1cb-e001ba63ebd6.png?v=1721112528",
+        "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/gps_generated_3d478035-ac80-4905-b05d-704a99430fcf.png?v=1721112523",
+        "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/gps_generated_ba9292e1-1428-4e1c-a784-e5b5b09466bb.png?v=1721112488",
+        "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/gps_generated_bc0752e5-e2ac-4e9a-8620-262c6f6d4318.png?v=1721112483",
+        "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/seabuckthornhand.png?v=1707803684"
+      ],
+      "price_min": 12,
+      "price_max": 12,
+      "default_offer_id": "external_seed:ext_dc5435087d1453b6958f9ec9",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Lhamour hand cream listed on the brand source page as Lhamour.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Lhamour",
+        "Body Care",
+        "Hand Butter"
+      ],
+      "sort_keys": {
+        "price_min": 12,
+        "price_max": 12,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_dc5435087d1453b6958f9ec9"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_e982409798ce6faab135f36d",
+      "sellable_item_group_id": "sig_e982409798ce6faab135f36d",
+      "product_line_id": "pl_b9c52d5fc8be9baa6d446a4b",
+      "review_family_id": "rf_b9c52d5fc8be9baa6d446a4b",
+      "brand_name": "Lhamour",
+      "category_paths": [
+        "Body Care",
+        "Body Butter"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Sea Buckthorn Body Butter for Dry Skin | Natural Moisturizer | Lhamour",
+      "subtitle": "Sea Buckthorn Body Butter for Dry Skin | Natural Moisturizer | Lhamour is a Lhamour body butter with product-page formula and use fields captured for PDP display. The ingredient list includes Beef Tallow, Soybean Oil, Coconut Oil, Sunflower Oil, Rosehip Oil. Price, availability, imagery, ingredient text, and use instructions are maintained with the same reviewed product-page record.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/sebuckbodybutterbdoy.png?v=1706454892",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/sebuckbodybutterbdoy.png?v=1706454892",
+        "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/B07K2F68F8_3.jpg?v=1724902811",
+        "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/B07K2F68F8_2.jpg?v=1724902815",
+        "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/B07K2F68F8_4.jpg?v=1724902817",
+        "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/seabuckbuttertexture.png?v=1724902856",
+        "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/aa8103f5-19ec-460a-b669-f6d196f97fb4.png?v=1722523355",
+        "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/seabuckthornbodybuttertexture.jpg?v=1724902856",
+        "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/091683b6-c784-49ea-9ffa-0baf8e817327.png?v=1722522645"
+      ],
+      "price_min": 38,
+      "price_max": 38,
+      "default_offer_id": "external_seed:ext_5a82b869bc04dc2a7dac84af",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Lhamour moisturizer listed on the brand source page as Lhamour.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Lhamour",
+        "Body Care",
+        "Body Butter"
+      ],
+      "sort_keys": {
+        "price_min": 38,
+        "price_max": 38,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_5a82b869bc04dc2a7dac84af"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_16daa81783efc0642b746c31",
+      "sellable_item_group_id": "sig_16daa81783efc0642b746c31",
+      "product_line_id": "pl_e707de1af504427f94dac228",
+      "review_family_id": "rf_e707de1af504427f94dac228",
+      "brand_name": "Lhamour",
+      "category_paths": [
+        "Body Care",
+        "Foot Salve"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Sea buckthorn Foot Cream for Cracked Heels | Natural Foot Salve | Lhamour",
+      "subtitle": "Sea buckthorn Foot Cream for Cracked Heels | Natural Foot Salve | Lhamour is a Lhamour foot salve with product-page formula and use fields captured for PDP display. The ingredient list includes Soybean Oil, Thyme Oil, Beef Tallow, Beeswax, Sea Buckthorn Fruit Oil. Price, availability, imagery, ingredient text, and use instructions are maintained with the same reviewed product-page record.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/footsalvebody.png?v=1706457977",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/footsalvebody.png?v=1706457977",
+        "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/footsalvetexture.png?v=1713081339",
+        "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/footsalvedetail.png?v=1713081339"
+      ],
+      "price_min": 16,
+      "price_max": 16,
+      "default_offer_id": "external_seed:ext_44acbd72aedbea7735234e44",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Lhamour skincare product listed on the brand source page as Lhamour.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Lhamour",
+        "Body Care",
+        "Foot Salve"
+      ],
+      "sort_keys": {
+        "price_min": 16,
+        "price_max": 16,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_44acbd72aedbea7735234e44"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_80fbcfb336e9e7dc5fdfd47e",
+      "sellable_item_group_id": "sig_80fbcfb336e9e7dc5fdfd47e",
+      "product_line_id": "pl_f91817557bcda3eadad1f92e",
+      "review_family_id": "rf_f91817557bcda3eadad1f92e",
+      "brand_name": "Lhamour",
+      "category_paths": [
+        "Body Care",
+        "Body Oil"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Natural Revitalizing Body Oil for Dry Skin | Moisturizing Body Oil | Lhamour",
+      "subtitle": "Natural Revitalizing Body Oil for Dry Skin | Moisturizing Body Oil | Lhamour is a Lhamour body oil with product-page formula and use fields captured for PDP display. The ingredient list includes Soyabean Oil, Carrot Oil, Sweet Orange Oil, Lemongrass Oil, Lavender Oil. Price, availability, imagery, ingredient text, and use instructions are maintained with the same reviewed product-page record.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/revitalizingbdoy.png?v=1706452341",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/revitalizingbdoy.png?v=1706452341",
+        "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/revitalizingbodyoildetail.png?v=1706452341"
+      ],
+      "price_min": 45,
+      "price_max": 45,
+      "default_offer_id": "external_seed:ext_3f98c2d64d8e5f0c183261a1",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Lhamour body oil listed on the brand source page as Lhamour.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Lhamour",
+        "Body Care",
+        "Body Oil"
+      ],
+      "sort_keys": {
+        "price_min": 45,
+        "price_max": 45,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_3f98c2d64d8e5f0c183261a1"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_b6934c5f11f1738a2408587d",
+      "sellable_item_group_id": "sig_b6934c5f11f1738a2408587d",
+      "product_line_id": "pl_6eba2c8800a54e470a8a5fdb",
+      "review_family_id": "rf_6eba2c8800a54e470a8a5fdb",
+      "brand_name": "Lhamour",
+      "category_paths": [
+        "Skincare",
+        "Face Cream"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Natural Face Moisturizer for Dry Skin | Organic Face Cream | Lhamour",
+      "subtitle": "Natural Face Moisturizer for Dry Skin | Organic Face Cream | Lhamour is a Lhamour face cream with product-page formula and use fields captured for PDP display. The ingredient list includes Water, Flaxseed Seed Oil, Coconut Oil, Nettle Oil, Rosehip Oil. Price, availability, imagery, ingredient text, and use instructions are maintained with the same reviewed product-page record.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/facialcreambody.png?v=1713114790",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/facialcreambody.png?v=1713114790",
+        "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/creamtexture1.png?v=1723736059",
+        "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/creamdetail.png?v=1723736059",
+        "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/creammodel1.png?v=1723736059"
+      ],
+      "price_min": 48,
+      "price_max": 48,
+      "default_offer_id": "external_seed:ext_d15df7e8e28d8f5a9aa9a170",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Lhamour moisturizer listed on the brand source page as Lhamour.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Lhamour",
+        "Skincare",
+        "Face Cream"
+      ],
+      "sort_keys": {
+        "price_min": 48,
+        "price_max": 48,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_d15df7e8e28d8f5a9aa9a170"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_e97a58be6023ed10e4830305",
+      "sellable_item_group_id": "sig_e97a58be6023ed10e4830305",
+      "product_line_id": "pl_d7d93421194924f28cb1a248",
+      "review_family_id": "rf_d7d93421194924f28cb1a248",
+      "brand_name": "Abyssian",
+      "category_paths": [
+        "Hair Care",
+        "Conditioner"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Daily Shield Superfood Conditioner",
+      "subtitle": "Daily Shield Superfood Conditioner is an Abyssian conditioner for hair care routines, with a complete ingredient list and clear use directions. Key listed ingredients include Aqua, Aloe Barbadensis Leaf Juice**, Cetearyl Alcohol**, Hydroxypropyl Starch Phosphate**, Propanediol**.",
+      "variant_axes": {
+        "size": "8 45 fl oz 250 ml",
+        "volume": "45floz",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://www.abyssianhaircare.com/cdn/shop/products/conditioner500.jpg?v=1750211161",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://www.abyssianhaircare.com/cdn/shop/products/conditioner500.jpg?v=1750211161",
+        "https://www.abyssianhaircare.com/cdn/shop/files/withoutbg_250ml_Daily-Shield.jpg?v=1764227123",
+        "https://www.abyssianhaircare.com/cdn/shop/files/SUPERFOOD_CONDITIONER_REFILL.png?v=1764227707",
+        "https://www.abyssianhaircare.com/cdn/shop/files/SF_Conditioner_11.jpg?v=1750211161",
+        "https://www.abyssianhaircare.com/cdn/shop/products/Artboard10_2x-100.jpg?v=1750211161",
+        "https://www.abyssianhaircare.com/cdn/shop/products/Artboard16_2x-100.jpg?v=1750211161",
+        "https://www.abyssianhaircare.com/cdn/shop/products/Artboard24_2x-100.jpg?v=1750211161"
+      ],
+      "price_min": 26,
+      "price_max": 26,
+      "default_offer_id": "external_seed:ext_3916e5e378df1e75041a1b68",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "An Abyssian hair conditioner listed on the brand source page as Daily Shield Superfood Conditioner. The source description identifies: Daily Shield Superfood Conditioner is an Abyssian conditioner for hair care routines, with a complete ingredient list and clear use directions.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Abyssian",
+        "Hair Care",
+        "Conditioner"
+      ],
+      "sort_keys": {
+        "price_min": 26,
+        "price_max": 26,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_3916e5e378df1e75041a1b68"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_f5bb30e7e80cad4f0ce4f295",
+      "sellable_item_group_id": "sig_f5bb30e7e80cad4f0ce4f295",
+      "product_line_id": "pl_2b30f71af4a25be44693a7ea",
+      "review_family_id": "rf_2b30f71af4a25be44693a7ea",
+      "brand_name": "Abyssian",
+      "category_paths": [
+        "Hair Care",
+        "Shampoo"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Nano Repair Shampoo",
+      "subtitle": "Nano Repair Shampoo is an Abyssian shampoo for hair care routines, with a complete ingredient list and clear use directions. Key listed ingredients include Aqua (Water)*, Cocamidopropyl Hydroxysultaine**, Sodium C14-16 Olefin Sulfonate**, Sodium Cocoamphoacetate**, Decyl Glucoside**.",
+      "variant_axes": {
+        "size": "11 50 fl oz 340 ml",
+        "volume": "50floz",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://www.abyssianhaircare.com/cdn/shop/files/NanoRepairShampoo_Infographics_5FEB2025_NanoRepairConditioner340mlshopify.jpg?v=1759966461",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://www.abyssianhaircare.com/cdn/shop/files/NanoRepairShampoo_Infographics_5FEB2025_NanoRepairConditioner340mlshopify.jpg?v=1759966461",
+        "https://www.abyssianhaircare.com/cdn/shop/files/Nano_Repair_Shampoo_Infographics_5FEB2025_Nano_Repair_Conditioner_1000ml_shopify_04712cb0-5d28-49bc-9b64-10e97cd45bc7.png?v=1759970641",
+        "https://www.abyssianhaircare.com/cdn/shop/files/Nano_Repair_Shampoo_05SEP2025_Benefits.jpg?v=1759970624",
+        "https://www.abyssianhaircare.com/cdn/shop/files/Nano_Repair_Shampoo_Infographics_05SEP2025_Ingredients_infographic.jpg?v=1759970624",
+        "https://www.abyssianhaircare.com/cdn/shop/files/Nano_Repair_Shampoo_28AUG2025_Fregrance.jpg?v=1759970624",
+        "https://www.abyssianhaircare.com/cdn/shop/files/Nano_Repair_Shampoo__10SEPT2025_Texture_Infographics.png?v=1759970641"
+      ],
+      "price_min": 38,
+      "price_max": 38,
+      "default_offer_id": "external_seed:ext_6cb55d2964fca74dbcade8e7",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "An Abyssian shampoo listed on the brand source page as Nano Repair Shampoo.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Abyssian",
+        "Hair Care",
+        "Shampoo"
+      ],
+      "sort_keys": {
+        "price_min": 38,
+        "price_max": 38,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_6cb55d2964fca74dbcade8e7"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_107c46d79853152fe6da7505",
+      "sellable_item_group_id": "sig_107c46d79853152fe6da7505",
+      "product_line_id": "pl_317fda34dfb1d46a54b66fc7",
+      "review_family_id": "rf_317fda34dfb1d46a54b66fc7",
+      "brand_name": "Abyssian",
+      "category_paths": [
+        "Hair Care",
+        "Hair Mask"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Protein Shake Hair Mask",
+      "subtitle": "Protein Shake Hair Mask is an Abyssian hair mask for hair care routines, with a complete ingredient list and clear use directions. Key listed ingredients include Aqua (Water)*, Glycerin**, Cetyl Alcohol**, Stearyl Alcohol**, Ricinus Communis(Castor) Seed Oil**.",
+      "variant_axes": {
+        "size": "8 45 fl oz 250 ml",
+        "volume": "45floz",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://www.abyssianhaircare.com/cdn/shop/products/withoutbg_250ml_protienshakehairmask_Packshot_2000px.jpg?v=1684902483",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://www.abyssianhaircare.com/cdn/shop/products/withoutbg_250ml_protienshakehairmask_Packshot_2000px.jpg?v=1684902483",
+        "https://www.abyssianhaircare.com/cdn/shop/files/withoutbg_50ml_revitalizing-rinsing-mist-packshot_website.jpg?v=1764227041",
+        "https://www.abyssianhaircare.com/cdn/shop/files/3770017896077_5_1050x1050_22JAN2025-edit.jpg?v=1737625093",
+        "https://www.abyssianhaircare.com/cdn/shop/products/Artboard10-100_d427ea55-1977-4a6f-bb52-baffed332a6c.jpg?v=1737625542",
+        "https://www.abyssianhaircare.com/cdn/shop/products/Artboard16-100_b1c14ac0-b9c8-4aac-b718-8164fd4f5306.jpg?v=1737625542"
+      ],
+      "price_min": 20,
+      "price_max": 20,
+      "default_offer_id": "external_seed:ext_d8737399fc72ef06c147bd0c",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "An Abyssian hair mask listed on the brand source page as Protein Shake Hair Mask.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Abyssian",
+        "Hair Care",
+        "Hair Mask"
+      ],
+      "sort_keys": {
+        "price_min": 20,
+        "price_max": 20,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_d8737399fc72ef06c147bd0c"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_16f99136045edae6b1d333be",
+      "sellable_item_group_id": "sig_16f99136045edae6b1d333be",
+      "product_line_id": "pl_fcb58d055c977a405931cd52",
+      "review_family_id": "rf_fcb58d055c977a405931cd52",
+      "brand_name": "Abyssian",
+      "category_paths": [
+        "Hair Care",
+        "Dry Shampoo"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Solar Glow Dry Shampoo",
+      "subtitle": "Solar Glow Dry Shampoo is an Abyssian dry shampoo for hair care routines, with a complete ingredient list and clear use directions. Key listed ingredients include Oryza Sativa Starch**, Tapioca Starch**, Zinc Oxide*, Silica*, Kaolin*.",
+      "variant_axes": {
+        "volume": "28g",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://www.abyssianhaircare.com/cdn/shop/files/solar_glow_dry_shampoo_28g_packshot_with_box.jpg?v=1724063710",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://www.abyssianhaircare.com/cdn/shop/files/solar_glow_dry_shampoo_28g_packshot_with_box.jpg?v=1724063710",
+        "https://www.abyssianhaircare.com/cdn/shop/files/solar_glow_dry_shampoo_odor_control_UV_blocker.jpg?v=1720411830",
+        "https://www.abyssianhaircare.com/cdn/shop/files/solar_glow_dry_shampoo_ingredient_story.jpg?v=1720411830",
+        "https://www.abyssianhaircare.com/cdn/shop/files/solarglowdryshampoo_texture.png?v=1724063773",
+        "https://www.abyssianhaircare.com/cdn/shop/files/solar_glow_dry_shampoo_28g_ingredients.jpg?v=1724063710",
+        "https://www.abyssianhaircare.com/cdn/shop/files/solar_glow_dry_shampoo_benefits.jpg?v=1720411829",
+        "https://www.abyssianhaircare.com/cdn/shop/files/solar_glow_dry_shampoo_28g_packshot_bottlle_only.jpg?v=1724063711"
+      ],
+      "price_min": 26,
+      "price_max": 26,
+      "default_offer_id": "external_seed:ext_443039d2322b0af440c1ce9a",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "An Abyssian dry shampoo listed on the brand source page as Solar Glow Dry Shampoo.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Abyssian",
+        "Hair Care",
+        "Dry Shampoo"
+      ],
+      "sort_keys": {
+        "price_min": 26,
+        "price_max": 26,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_443039d2322b0af440c1ce9a"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_a998605f90ecd49a8f45928e",
+      "sellable_item_group_id": "sig_a998605f90ecd49a8f45928e",
+      "product_line_id": "pl_b7ccd661af866c414cbf8f96",
+      "review_family_id": "rf_b7ccd661af866c414cbf8f96",
+      "brand_name": "Abyssian",
+      "category_paths": [
+        "Hair Care",
+        "Hair Mist"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Youth Bloom Hair Mist",
+      "subtitle": "Youth Bloom Hair Mist is an Abyssian hair mist for hair care routines, with a complete ingredient list and clear use directions. Key listed ingredients include Aqua (Water)*, Magnesium Sulfate**, Glycerin**, Hydrolyzed Rice Protein**, Oryza Sativa (Rice) Extract**.",
+      "variant_axes": {
+        "size": "7 61 fl oz 225 ml",
+        "volume": "61floz",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://www.abyssianhaircare.com/cdn/shop/files/Youth_Bloom_Hair_Mist_Infographics_10FEB2025_Page_6.jpg?v=1759903625",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://www.abyssianhaircare.com/cdn/shop/files/Youth_Bloom_Hair_Mist_Infographics_10FEB2025_Page_6.jpg?v=1759903625",
+        "https://www.abyssianhaircare.com/cdn/shop/products/50ml_revitalizing-rinsing-mist.jpg?v=1759903625",
+        "https://www.abyssianhaircare.com/cdn/shop/files/3-Youth_Bloom_Hair_Mist_225ml_-_19AUG2025_-_Benefits.jpg?v=1759903625",
+        "https://www.abyssianhaircare.com/cdn/shop/files/4-Youth_Bloom_Hair_Mist_225ml_-_08AUG2025_-_Key_benefit_1.jpg?v=1759903625",
+        "https://www.abyssianhaircare.com/cdn/shop/files/Youth_Bloom_Hair_Mist_225ml_-_29JUL2025_-_Key_Benefit_2.jpg?v=1759903625",
+        "https://www.abyssianhaircare.com/cdn/shop/files/Youth_Bloom_Hair_Mist_Ingredients_Infographics_10FEB2025.png?v=1759903625",
+        "https://www.abyssianhaircare.com/cdn/shop/files/Youth_Bloom_Hair_Mist_Infographics_10FEB2025_texture.jpg?v=1759903625"
+      ],
+      "price_min": 10,
+      "price_max": 10,
+      "default_offer_id": "external_seed:ext_ac6c6e795d7f3efe5cc22f7c",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "An Abyssian skincare product listed on the brand source page as Youth Bloom Hair Mist.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Abyssian",
+        "Hair Care",
+        "Hair Mist"
+      ],
+      "sort_keys": {
+        "price_min": 10,
+        "price_max": 10,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_ac6c6e795d7f3efe5cc22f7c"
+      ]
+    }
+  ]
+}

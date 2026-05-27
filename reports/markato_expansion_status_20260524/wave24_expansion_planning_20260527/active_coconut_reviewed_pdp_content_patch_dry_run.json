@@ -1,0 +1,454 @@
+{
+  "generated_at": "2026-05-27T07:04:41.615Z",
+  "dry_run": true,
+  "manifest": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave24-20260527/reports/markato_expansion_status_20260524/markato_active_coconut_source_recheck_20260526/reviewed_pdp_content_patch_manifest.json",
+  "summary": {
+    "scanned_rows": 14,
+    "missing_rows": 0,
+    "blocked_rows": 1,
+    "change_candidates": 0,
+    "updated_rows": 0,
+    "catalog_product_updates": 0,
+    "identity_updates": 0
+  },
+  "apply_results": [],
+  "plans": [
+    {
+      "external_product_id": "ext_94e9169cdf21031b65f760c9",
+      "seed_id": "eps_f0ee015ae7eba47da94e4e74",
+      "title": "HA + PEPTIDES EYE CARE",
+      "canonical_url": "https://activedrip.com/products/hyaluronic-acid-peptides-eye-contour",
+      "status": "ready",
+      "changed": false,
+      "blockers": [],
+      "skipped_fields": [
+        "no_change_same_value",
+        "no_change_same_value"
+      ],
+      "patched_fields": [],
+      "before": {
+        "description": "Moisturises, nourishes and reduces puffiness appearance. Firms eye area Reduces puffiness Improves hydration Awakes and rejuvenates",
+        "pdp_description_raw": "",
+        "pdp_ingredients_raw": "Aqua (Water), Caprylic/Capric Triglyceride, Propanediol, Glycerin, Persea Gratissima (Avocado) Oil, Betaine, Cetyl Alcohol, Glyceryl Stearate, Butyrospermum Parkii (Shea) Butter, Rosa Canina Fruit Oil, Argania Spinosa Kernel Oil, Caffeine, Palmitoyl Tripeptide-1, Palmitoyl Tetrapeptide-7, Hydrolyzed Hyaluronic Acid, Jasminum Sambac (Jasmine) Flower Extract, Crataegus Monogyna Flower Extract, Ethylhexylglycerin, Tocopherol, Xanthan Gum, Ceteth-20, Steareth-20, Carbomer, Sodium Stearoyl Lactylate, Sodium Lactate, PEG-75 Stearate, Caprylyl Glycol, Polysorbate 20, Butylene Glycol, Phenoxyethanol, Triethanolamine, Citric Acid.",
+        "pdp_how_to_use_raw": "Apply a few drops to the eye area twice daily. Massage gently with the fingertips until it is completely absorbed. Use in AM.",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "Moisturises, nourishes and reduces puffiness appearance. \n\nFirms eye area \n\nReduces puffiness \n\nImproves hydration \n\nAwakes and rejuvenates",
+        "pdp_description_raw": "",
+        "pdp_how_to_use_raw": "Apply a few drops to the eye area twice daily. Massage gently with the fingertips until it is completely absorbed. Use in AM.",
+        "pdp_ingredients_raw": "Aqua (Water), Caprylic/Capric Triglyceride, Propanediol, Glycerin, Persea Gratissima (Avocado) Oil, Betaine, Cetyl Alcohol, Glyceryl Stearate, Butyrospermum Parkii (Shea) Butter, Rosa Canina Fruit Oil, Argania Spinosa Kernel Oil, Caffeine, Palmitoyl Tripeptide-1, Palmitoyl Tetrapeptide-7, Hydrolyzed Hyaluronic Acid, Jasminum Sambac (Jasmine) Flower Extract, Crataegus Monogyna Flower Extract, Ethylhexylglycerin, Tocopherol, Xanthan Gum, Ceteth-20, Steareth-20, Carbomer, Sodium Stearoyl Lactylate, Sodium Lactate, PEG-75 Stearate, Caprylyl Glycol, Polysorbate 20, Butylene Glycol, Phenoxyethanol, Triethanolamine, Citric Acid.",
+        "ingredients_polluted": false,
+        "detail_section_count": 0,
+        "polluted_detail_section_count": 0
+      }
+    },
+    {
+      "external_product_id": "ext_833660ffbf5c744869351463",
+      "seed_id": "eps_5d751ca5bd7874a40bc43f1d",
+      "title": "R-Q10 EYE CARE",
+      "canonical_url": "https://activedrip.com/products/retinol-q10-anti-age-eye-contour",
+      "status": "ready",
+      "changed": false,
+      "blockers": [],
+      "skipped_fields": [
+        "no_change_same_value",
+        "no_change_same_value"
+      ],
+      "patched_fields": [],
+      "before": {
+        "description": "Helps reduce wrinkles, firms, and brightens tired eyes. Address signs of ageing Improves skin texture Boosts collagen Youthful and revitalised look",
+        "pdp_description_raw": "",
+        "pdp_ingredients_raw": "Aqua (Water), Caprylic/Capric Triglyceride, Glycerin, Propanediol, Persea Gratissima (Avocado) Oil, Betaine, Cetyl Alcohol, Glyceryl Stearate, Butyrospermum Parkii (Shea) Butter, Retinol, Oligopeptide-2, Ubiquinone, Ethylhexylglycerin, Tocopherol, Xanthan Gum, Ceteth-20, Steareth-20, Sodium Stearoyl Lactylate, Cellulose Acetate Butyrate, Pentaerythrityl Tetra-Di-T-Butyl Hydroxyhydrocinnamate, Tricaprylin, Caprylyl Glycol, PEG-75 Stearate, Butylene Glycol, Triethanolamine, Phenoxyethanol.",
+        "pdp_how_to_use_raw": "Apply a few drops to the eye area twice daily. Massage gently with the fingertips until it is completely absorbed. Use in PM.",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "Helps reduce wrinkles, firms, and brightens tired eyes. \n\nAddress signs of ageing \n\nImproves skin texture \n\nBoosts collagen \n\nYouthful and revitalised look",
+        "pdp_description_raw": "",
+        "pdp_how_to_use_raw": "Apply a few drops to the eye area twice daily. Massage gently with the fingertips until it is completely absorbed. Use in PM.",
+        "pdp_ingredients_raw": "Aqua (Water), Caprylic/Capric Triglyceride, Glycerin, Propanediol, Persea Gratissima (Avocado) Oil, Betaine, Cetyl Alcohol, Glyceryl Stearate, Butyrospermum Parkii (Shea) Butter, Retinol, Oligopeptide-2, Ubiquinone, Ethylhexylglycerin, Tocopherol, Xanthan Gum, Ceteth-20, Steareth-20, Sodium Stearoyl Lactylate, Cellulose Acetate Butyrate, Pentaerythrityl Tetra-Di-T-Butyl Hydroxyhydrocinnamate, Tricaprylin, Caprylyl Glycol, PEG-75 Stearate, Butylene Glycol, Triethanolamine, Phenoxyethanol.",
+        "ingredients_polluted": false,
+        "detail_section_count": 0,
+        "polluted_detail_section_count": 0
+      }
+    },
+    {
+      "external_product_id": "ext_daba06ea03080351d96dd6f9",
+      "seed_id": "eps_26bfa88c0df072e2479a6438",
+      "title": "CICA MILK DRIP",
+      "canonical_url": "https://activedrip.com/products/cica-b5-recovery-serum",
+      "status": "ready",
+      "changed": false,
+      "blockers": [],
+      "skipped_fields": [
+        "no_change_same_value",
+        "no_change_same_value"
+      ],
+      "patched_fields": [],
+      "before": {
+        "description": "Intensively repairing formula: soothes and protects sensitive, redness-prone skin Calms irritation Retains and replenishes hydration Restores skin balance Promotes healing process",
+        "pdp_description_raw": "",
+        "pdp_ingredients_raw": "Aqua (Water), Glycerin, Propanediol, Caprylic/Capric Triglyceride, Polysorbate 80, Prunus Amygdalus Dulcis (Sweet Almond) Oil, Panthenol, Sorbitan Oleate, Avena Sativa (Oat) Kernel Flour, Madecassic Acid, Madecassoside, Asiaticoside, Asiatic Acid, Tocopherol, Ethylhexylglycerin, Haematococcus Pluvialis Extract, Helianthus Annuus (Sunflower) Seed Oil, Squalane, Carbomer, Cetearyl Alcohol, Polysorbate 20, Alcohol, Pentylene Glycol, Triethanolamine, Phenoxyethanol.",
+        "pdp_how_to_use_raw": "Apply two to four drops to the entire face, neck and chest twice daily. Avoid the eye area. Massage gently with the fingertips until it is completely absorbed. Use in AM & PM.",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "Intensively repairing formula: soothes and protects sensitive, redness-prone skin \n\nCalms irritation \n\nRetains and replenishes hydration \n\nRestores skin balance \n\nPromotes healing process",
+        "pdp_description_raw": "",
+        "pdp_how_to_use_raw": "Apply two to four drops to the entire face, neck and chest twice daily. Avoid the eye area. Massage gently with the fingertips until it is completely absorbed. Use in AM & PM.",
+        "pdp_ingredients_raw": "Aqua (Water), Glycerin, Propanediol, Caprylic/Capric Triglyceride, Polysorbate 80, Prunus Amygdalus Dulcis (Sweet Almond) Oil, Panthenol, Sorbitan Oleate, Avena Sativa (Oat) Kernel Flour, Madecassic Acid, Madecassoside, Asiaticoside, Asiatic Acid, Tocopherol, Ethylhexylglycerin, Haematococcus Pluvialis Extract, Helianthus Annuus (Sunflower) Seed Oil, Squalane, Carbomer, Cetearyl Alcohol, Polysorbate 20, Alcohol, Pentylene Glycol, Triethanolamine, Phenoxyethanol.",
+        "ingredients_polluted": false,
+        "detail_section_count": 0,
+        "polluted_detail_section_count": 0
+      }
+    },
+    {
+      "external_product_id": "ext_eea9ddc94177c421b32a1ed5",
+      "seed_id": "eps_e1559acb34ff118e7583a696",
+      "title": "C + E DRIP",
+      "canonical_url": "https://activedrip.com/products/vitamin-c-e-serum",
+      "status": "ready",
+      "changed": false,
+      "blockers": [],
+      "skipped_fields": [
+        "no_change_same_value",
+        "no_change_same_value"
+      ],
+      "patched_fields": [],
+      "before": {
+        "description": "Revitalises, brightens and boosts skin radiance. Tightens skin Improves luminosity Ideal revitaliser Protects skin",
+        "pdp_description_raw": "",
+        "pdp_ingredients_raw": "Aqua (Water), Glycerin, Propanediol, Glycereth-26, Methylpropanediol, Ascorbyl Methylsilanol Pectinate, Tocopheryl Acetate, Ferulic Acid, Ethylhexylglycerin, Tocopherol, Haematococcus Pluvialis Extract, Helianthus Annuus (Sunflower) Seed Oil, Sodium Phytate, Hydrogenated Polydecene, Sodium Polyacrylate, Phenoxyethanol, Trideceth-6.",
+        "pdp_how_to_use_raw": "Apply two to four drops to the entire face, neck and chest twice daily. Avoid the eye area. Massage gently with the fingertips until it is completely absorbed. Use in AM & PM.",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "Revitalises, brightens and boosts skin radiance. \n\nTightens skin \n\nImproves luminosity \n\nIdeal revitaliser \n\nProtects skin",
+        "pdp_description_raw": "",
+        "pdp_how_to_use_raw": "Apply two to four drops to the entire face, neck and chest twice daily. Avoid the eye area. Massage gently with the fingertips until it is completely absorbed. Use in AM & PM.",
+        "pdp_ingredients_raw": "Aqua (Water), Glycerin, Propanediol, Glycereth-26, Methylpropanediol, Ascorbyl Methylsilanol Pectinate, Tocopheryl Acetate, Ferulic Acid, Ethylhexylglycerin, Tocopherol, Haematococcus Pluvialis Extract, Helianthus Annuus (Sunflower) Seed Oil, Sodium Phytate, Hydrogenated Polydecene, Sodium Polyacrylate, Phenoxyethanol, Trideceth-6.",
+        "ingredients_polluted": false,
+        "detail_section_count": 0,
+        "polluted_detail_section_count": 0
+      }
+    },
+    {
+      "external_product_id": "ext_edef015844086dd8eaa792b2",
+      "seed_id": "eps_a6510b980d592be3a98d30e6",
+      "title": "RETINOL DRIP",
+      "canonical_url": "https://activedrip.com/products/retinol-anti-wrinkle-serum",
+      "status": "ready",
+      "changed": false,
+      "blockers": [],
+      "skipped_fields": [
+        "no_change_same_value",
+        "no_change_same_value"
+      ],
+      "patched_fields": [],
+      "before": {
+        "description": "It fights wrinkles appearance, rejuvenates and nourishes the skin. Gentle on sensitive skin. Replenishes skin. Diminishes wrinkles. Shields and brightens.",
+        "pdp_description_raw": "",
+        "pdp_ingredients_raw": "Aqua (Water), Glycerin, Propanediol, Betaine, Retinol, Lactococcus Ferment Lysate, Lactic Acid, Ethylhexylglycerin, Tocopherol, Cellulose Acetate Butyrate, Hydrogenated Polydecene, Sodium Polyacrylate, Tricaprylin, Xanthan Gum, Sodium Phytate, Trideceth-6, Pentaerythrityl Tetra-Di-T-Butyl Hydroxyhydrocinnamate, Sodium Chloride, Phenoxyethanol, Citric Acid, Sodium Benzoate.",
+        "pdp_how_to_use_raw": "Apply two to four drops to the entire face, neck and chest once daily. Avoid the eye area. Massage gently with the fingertips until it is completely absorbed. Use in PM.",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "It fights wrinkles appearance, rejuvenates and nourishes the skin. \n\nGentle on sensitive skin. \n\nReplenishes skin. \n\nDiminishes wrinkles. \n\nShields and brightens.",
+        "pdp_description_raw": "",
+        "pdp_how_to_use_raw": "Apply two to four drops to the entire face, neck and chest once daily. Avoid the eye area. Massage gently with the fingertips until it is completely absorbed. Use in PM.",
+        "pdp_ingredients_raw": "Aqua (Water), Glycerin, Propanediol, Betaine, Retinol, Lactococcus Ferment Lysate, Lactic Acid, Ethylhexylglycerin, Tocopherol, Cellulose Acetate Butyrate, Hydrogenated Polydecene, Sodium Polyacrylate, Tricaprylin, Xanthan Gum, Sodium Phytate, Trideceth-6, Pentaerythrityl Tetra-Di-T-Butyl Hydroxyhydrocinnamate, Sodium Chloride, Phenoxyethanol, Citric Acid, Sodium Benzoate.",
+        "ingredients_polluted": false,
+        "detail_section_count": 0,
+        "polluted_detail_section_count": 0
+      }
+    },
+    {
+      "external_product_id": "ext_11509e4feaf83a2419d8c77d",
+      "seed_id": "eps_d59fad188d62afa3cf2f56fd",
+      "title": "KOJIC DRIP",
+      "canonical_url": "https://activedrip.com/products/niacinamide-kojic-acid-glow-and-corrective-serum",
+      "status": "ready",
+      "changed": false,
+      "blockers": [],
+      "skipped_fields": [
+        "no_change_same_value",
+        "no_change_same_value"
+      ],
+      "patched_fields": [],
+      "before": {
+        "description": "Inspired by Japanese fermentation traditions.",
+        "pdp_description_raw": "",
+        "pdp_ingredients_raw": "Aqua (Water), Glycerin, Niacinamide, Propanediol, Ethyl Macadamiate, Kojic Acid, Malachite Extract, Tocopheryl Acetate, Ethylhexylglycerin, Helianthus Annuus (Sunflower) Seed Oil, Hydrogenated Phosphatidylcholine, Phosphatidylcholine, Mannitol, Cholesterol, Malic Acid, Tocopherol, Xanthan Gum, Carbomer, Decyl Glucoside, Caprylyl Glycol, Sodium Chloride, Phenoxyethanol, Sodium Benzoate, Potassium Sorbate.",
+        "pdp_how_to_use_raw": "Apply two to four drops to the entire face, neck and chest once daily. Avoid the eye area. Massage gently with the fingertips until it is completely absorbed. Use in AM & PM.",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "Inspired by Japanese fermentation traditions.",
+        "pdp_description_raw": "",
+        "pdp_how_to_use_raw": "Apply two to four drops to the entire face, neck and chest once daily. Avoid the eye area. Massage gently with the fingertips until it is completely absorbed. Use in AM & PM.",
+        "pdp_ingredients_raw": "Aqua (Water), Glycerin, Niacinamide, Propanediol, Ethyl Macadamiate, Kojic Acid, Malachite Extract, Tocopheryl Acetate, Ethylhexylglycerin, Helianthus Annuus (Sunflower) Seed Oil, Hydrogenated Phosphatidylcholine, Phosphatidylcholine, Mannitol, Cholesterol, Malic Acid, Tocopherol, Xanthan Gum, Carbomer, Decyl Glucoside, Caprylyl Glycol, Sodium Chloride, Phenoxyethanol, Sodium Benzoate, Potassium Sorbate.",
+        "ingredients_polluted": false,
+        "detail_section_count": 0,
+        "polluted_detail_section_count": 0
+      }
+    },
+    {
+      "external_product_id": "ext_441b5d142009ef8ae5082262",
+      "seed_id": "eps_6bee4780bb22777b33fc2a96",
+      "title": "HYDRATE DRIP",
+      "canonical_url": "https://activedrip.com/products/hyaluronic-acid-b12-b5-serum",
+      "status": "ready",
+      "changed": false,
+      "blockers": [],
+      "skipped_fields": [
+        "no_change_same_value",
+        "no_change_same_value"
+      ],
+      "patched_fields": [],
+      "before": {
+        "description": "T hree active ingredients that: intensively hydrates and rejuvenates the skin. Increases moisture Deeply hydrates Increases smoothness Plumps and rejuvenates skin",
+        "pdp_description_raw": "",
+        "pdp_ingredients_raw": "Aqua (Water), Glycerin, Propanediol, Glycereth-26, Sodium Hyaluronate, Panthenol, Cyanocobalamin, Ethylhexylglycerin, Tocopherol, Phenoxyethanol, Citric Acid.",
+        "pdp_how_to_use_raw": "Apply two to four drops to the entire face, neck and chest twice daily. Avoid the eye area. Massage gently with the fingertips until it is completely absorbed. Use in AM & PM.",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "T hree active ingredients that: intensively hydrates and rejuvenates the skin. \n\nIncreases moisture \n\nDeeply hydrates \n\nIncreases smoothness \n\nPlumps and rejuvenates skin",
+        "pdp_description_raw": "",
+        "pdp_how_to_use_raw": "Apply two to four drops to the entire face, neck and chest twice daily. Avoid the eye area. Massage gently with the fingertips until it is completely absorbed. Use in AM & PM.",
+        "pdp_ingredients_raw": "Aqua (Water), Glycerin, Propanediol, Glycereth-26, Sodium Hyaluronate, Panthenol, Cyanocobalamin, Ethylhexylglycerin, Tocopherol, Phenoxyethanol, Citric Acid.",
+        "ingredients_polluted": false,
+        "detail_section_count": 0,
+        "polluted_detail_section_count": 0
+      }
+    },
+    {
+      "external_product_id": "ext_7e270c8cb635a23a446a76f9",
+      "seed_id": "eps_633a1262b01a320dccb6adfe",
+      "title": "THE ICONIC MOISTURISER",
+      "canonical_url": "https://activedrip.com/products/vitamin-c-hyaluronic-acid-moisturising-and-antioxidant-cream",
+      "status": "blocked",
+      "changed": false,
+      "blockers": [
+        "blocked_protect_high_quality_pdp_how_to_use_raw",
+        "no_change_same_value"
+      ],
+      "skipped_fields": [
+        "blocked_protect_high_quality_pdp_how_to_use_raw",
+        "no_change_same_value"
+      ],
+      "patched_fields": [],
+      "before": {
+        "description": "Essential all-in-one moisturiser. Prevents ageing, restores and supports healthy skin barrier. Super-hydrating formula. Softens skin. Leaves a silky finish. Light feel.",
+        "pdp_description_raw": "",
+        "pdp_ingredients_raw": "Aqua (Water), Glycerin, Caprylic/Capric Triglyceride, Propanediol, Ascorbyl Methylsilanol Pectinate, Sodium Hyaluronate, Ethylhexylglycerin, Tocopheryl Acetate, Tocopherol, Hydrogenated Polydecene, Trideceth-6, Methylpropanediol, Sodium Polyacrylate, Caprylyl Glycol, Phenoxyethanol, Citric Acid.",
+        "pdp_how_to_use_raw": "‎Massage a generous amount onto a well-cleaned face, neck and décolletage until it is completely absorbed. Avoid the eye area. Apply sunscreen on top. Use twice daily in AM & PM.",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "Essential all-in-one moisturiser. Prevents ageing, restores and supports healthy skin barrier. \n\nSuper-hydrating formula. \n\nSoftens skin. \n\nLeaves a silky finish. \n\nLight feel.",
+        "pdp_description_raw": "",
+        "pdp_how_to_use_raw": "‎Massage a generous amount onto a well-cleaned face, neck and décolletage until it is completely absorbed. Avoid the eye area. Apply sunscreen on top. Use twice daily in AM & PM.",
+        "pdp_ingredients_raw": "Aqua (Water), Glycerin, Caprylic/Capric Triglyceride, Propanediol, Ascorbyl Methylsilanol Pectinate, Sodium Hyaluronate, Ethylhexylglycerin, Tocopheryl Acetate, Tocopherol, Hydrogenated Polydecene, Trideceth-6, Methylpropanediol, Sodium Polyacrylate, Caprylyl Glycol, Phenoxyethanol, Citric Acid.",
+        "ingredients_polluted": false,
+        "detail_section_count": 0,
+        "polluted_detail_section_count": 0
+      }
+    },
+    {
+      "external_product_id": "ext_fda8be630c6dc79ef599df3c",
+      "seed_id": "eps_5de59eb0b35b9735762c5e8d",
+      "title": "NOURISHING HAND BALM",
+      "canonical_url": "https://coconutmatter.com/products/nourishing-hand-balm",
+      "status": "ready",
+      "changed": false,
+      "blockers": [],
+      "skipped_fields": [
+        "no_change_same_value",
+        "no_change_same_value"
+      ],
+      "patched_fields": [],
+      "before": {
+        "description": "Crafted with a deeply moisturising blend of plant-based ingredients like jojoba oil and our signature WILD virgin coconut oil, it absorbs immediately into the skin and nourishes without leaving a greasy feel. Choose from scents infused by Bulgaria Rose, Bulgaria Lavender or Egypt Jasmine. Feel the balm on your hands as it works wonders on dry, irritated, or cracked skin.",
+        "pdp_description_raw": "",
+        "pdp_ingredients_raw": "Vitis vinifera seed oil, Cocos nucifera oil, Jojoba oil, Butyrospermum parkii butter, Euphorbia cerifera cera, Maranta arundinacea root powder, Tocopherol, Jasminum grandifloruml oil, Lavandula angustifolia oil, d-Limonene, Geraniol, Linalol, Rosa damascena oil.",
+        "pdp_how_to_use_raw": "Soothe nourishing hand balms onto dry hands to nourish and protect your skin and cuticles. Repurpose it to soften elbow or feet. For the ultimate treat, apply generously on dry hands, slip on a pair of gloves and wake up with baby smooth hands.",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "Crafted with a deeply moisturising blend of plant-based ingredients like jojoba oil and our signature WILD virgin coconut oil, it absorbs immediately into the skin and nourishes without leaving a greasy feel. Choose from scents infused by Bulgaria Rose, Bulgaria Lavender or Egypt Jasmine. Feel the balm on your hands as it works wonders on dry, irritated, or cracked skin.",
+        "pdp_description_raw": "",
+        "pdp_how_to_use_raw": "Soothe nourishing hand balms onto dry hands to nourish and protect your skin and cuticles. Repurpose it to soften elbow or feet. For the ultimate treat, apply generously on dry hands, slip on a pair of gloves and wake up with baby smooth hands.",
+        "pdp_ingredients_raw": "Vitis vinifera seed oil, Cocos nucifera oil, Jojoba oil, Butyrospermum parkii butter, Euphorbia cerifera cera, Maranta arundinacea root powder, Tocopherol, Jasminum grandifloruml oil, Lavandula angustifolia oil, d-Limonene, Geraniol, Linalol, Rosa damascena oil.",
+        "ingredients_polluted": false,
+        "detail_section_count": 0,
+        "polluted_detail_section_count": 0
+      }
+    },
+    {
+      "external_product_id": "ext_c840771410198f627d75673a",
+      "seed_id": "eps_355b1bbbc78f41a16577c1fa",
+      "title": "TINTED COCONUT LIP BALM",
+      "canonical_url": "https://coconutmatter.com/products/tinted-coconut-lip-balm",
+      "status": "ready",
+      "changed": false,
+      "blockers": [],
+      "skipped_fields": [
+        "no_change_same_value",
+        "no_change_same_value"
+      ],
+      "patched_fields": [],
+      "before": {
+        "description": "Lightweight, sheer, and intensely nourishing, our tinted coconut lip balms are one of the easiest way to boost your natural lip color. Available in five sheer shade. Depending on swipe strength, the color can range from a sheer tint to a juicier, more saturated sheen.",
+        "pdp_description_raw": "",
+        "pdp_ingredients_raw": "Vitis vinifera seed oil, Cocos nucifera oil, Euphorbia cerifera cera, Butyrospermum parkii butter, Ricinus communis seed oil, Citrus aurantifolia Oil distilled, Tocopherol, Helianthus annuus seed oil, Mica (CI 77019), Titanium Dioxide (CI 77891), Tin oxide (CI 77861), Iron Oxides (CI 77491, 77492, 77499)",
+        "pdp_how_to_use_raw": "Soothe onto lips to nourish and boost your natural lip color for a no-makeup makeup look. Repurpose the tinted lip balm for the cheeks. Add a sweep to brighten the skin and dab it gently.",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "Lightweight, sheer, and intensely nourishing, our tinted coconut lip balms are one of the easiest way to boost your natural lip color. \n\nAvailable in five sheer shade. Depending on swipe strength, the color can range from a sheer tint to a juicier, more saturated sheen.",
+        "pdp_description_raw": "",
+        "pdp_how_to_use_raw": "Soothe onto lips to nourish and boost your natural lip color for a no-makeup makeup look. Repurpose the tinted lip balm for the cheeks. Add a sweep to brighten the skin and dab it gently.",
+        "pdp_ingredients_raw": "Vitis vinifera seed oil, Cocos nucifera oil, Euphorbia cerifera cera, Butyrospermum parkii butter, Ricinus communis seed oil, Citrus aurantifolia Oil distilled, Tocopherol, Helianthus annuus seed oil, Mica (CI 77019), Titanium Dioxide (CI 77891), Tin oxide (CI 77861), Iron Oxides (CI 77491, 77492, 77499)",
+        "ingredients_polluted": false,
+        "detail_section_count": 0,
+        "polluted_detail_section_count": 0
+      }
+    },
+    {
+      "external_product_id": "ext_a7f414cda657f8c5857fafe8",
+      "seed_id": "eps_00026571cb7185b58fb61b65",
+      "title": "Goji Shake Shampoo Concentrate | For Treated Hair",
+      "canonical_url": "https://coconutmatter.com/products/goji-shake-shampoo-concentrate",
+      "status": "ready",
+      "changed": false,
+      "blockers": [],
+      "skipped_fields": [
+        "no_change_same_value",
+        "no_change_same_value"
+      ],
+      "patched_fields": [],
+      "before": {
+        "description": "Goji Shake Shampoo Concentrate",
+        "pdp_description_raw": "",
+        "pdp_ingredients_raw": "Sodium Cocoyl Isethionate, Modified Corn Starch, Kaolin, Sorbitol, Guar hydroxypropyltrimonium chloride, Cocos Nucifera Fruit Powder, Betaine, Citric Acid, Sodium Bicarbonate, Aloe Barbadensis Leaf Powder, Hydrolyzed Rice Protein, Argania spinosa (Argan) Kernel Oil, Citrus Aurantium Peel Powder, Gluconolactone (and) Sodium Benzoate, Isoamyl laurate, Lycium Barbarum Fruit Extract, Citrus Paradisi Peel Oil, Inulin, Citrus Aurantium Dulcis Peel Oil, Cananga Odorata Flower Oil, Tocopherol, Curcuma longa L. root extract",
+        "pdp_how_to_use_raw": "Watch this tutorial video to get the perfect wash! How much powder do I need for washing? Short hair: 1/4 tsp; Medium length: 1/2 tsp; Long hair: 1 tsp Want more lather? Just add more water! Over time, you may find that you need less powder for washing your hair. Goji Shake is free from harsh sulfates, so it doesn't create as many bubbles as regular shampoo. However, it still cleans effectively, even without excessive lather! Say hello to happy, healthier hair! P.S. If you use hair styling products, a double wash will provide a deeper clean.",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "Goji Shake Shampoo Concentrate",
+        "pdp_description_raw": "",
+        "pdp_how_to_use_raw": "Watch this tutorial video to get the perfect wash! How much powder do I need for washing? Short hair: 1/4 tsp; Medium length: 1/2 tsp; Long hair: 1 tsp Want more lather? Just add more water! Over time, you may find that you need less powder for washing your hair. Goji Shake is free from harsh sulfates, so it doesn't create as many bubbles as regular shampoo. However, it still cleans effectively, even without excessive lather! Say hello to happy, healthier hair! P.S. If you use hair styling products, a double wash will provide a deeper clean.",
+        "pdp_ingredients_raw": "Sodium Cocoyl Isethionate, Modified Corn Starch, Kaolin, Sorbitol, Guar hydroxypropyltrimonium chloride, Cocos Nucifera Fruit Powder, Betaine, Citric Acid, Sodium Bicarbonate, Aloe Barbadensis Leaf Powder, Hydrolyzed Rice Protein, Argania spinosa (Argan) Kernel Oil, Citrus Aurantium Peel Powder, Gluconolactone (and) Sodium Benzoate, Isoamyl laurate, Lycium Barbarum Fruit Extract, Citrus Paradisi Peel Oil, Inulin, Citrus Aurantium Dulcis Peel Oil, Cananga Odorata Flower Oil, Tocopherol, Curcuma longa L. root extract",
+        "ingredients_polluted": false,
+        "detail_section_count": 0,
+        "polluted_detail_section_count": 0
+      }
+    },
+    {
+      "external_product_id": "ext_9518e81076efc5c5138214ee",
+      "seed_id": "eps_b62d981a219a498ecd7b94ed",
+      "title": "Matcha Shake Shampoo Concentrate | For All Hair Types",
+      "canonical_url": "https://coconutmatter.com/products/matcha-shake-shampoo-concentrate",
+      "status": "ready",
+      "changed": false,
+      "blockers": [],
+      "skipped_fields": [
+        "no_change_same_value",
+        "no_change_same_value"
+      ],
+      "patched_fields": [],
+      "before": {
+        "description": "Matcha Shake Shampoo Concentrate",
+        "pdp_description_raw": "",
+        "pdp_ingredients_raw": "Sodium Cocoyl Isethionate, Modified Corn Starch, Kaolin, Sorbitol, Guar hydroxypropyltrimonium chloride, Cocos Nucifera Fruit Powder, Betaine, Citric Acid, Sodium Bicarbonate, Aloe Barbadensis Leaf Powder, Hydrolyzed Rice Protein, Argania spinosa (Argan) Kernel Oil, Emblica officinalis fruit extract, Camellia Sinensis Leaf Powder, Gluconolactone (and) Sodium Benzoate, Isoamyl laurate, Inulin, Lavandula Angustifolia (Lavender) Oil, Litsea Cubeba Fruit Oil, Mentha Piperita Oil, Tocopherol",
+        "pdp_how_to_use_raw": "Watch this tutorial video to get the perfect wash! How much powder do I need for washing? Short hair: 1/4 tsp; Medium length: 1/2 tsp; Long hair: 1 tsp Want more lather? Just add more water! Over time, you may find that you need less powder for washing your hair. Matcha Shake is free from harsh sulfates, so it doesn't create as many bubbles as regular shampoo. However, it still cleans effectively, even without excessive lather! Say hello to happy, healthier hair! P.S. If you use hair styling products, a double wash will provide a deeper clean.",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "Matcha Shake Shampoo Concentrate",
+        "pdp_description_raw": "",
+        "pdp_how_to_use_raw": "Watch this tutorial video to get the perfect wash! How much powder do I need for washing? Short hair: 1/4 tsp; Medium length: 1/2 tsp; Long hair: 1 tsp Want more lather? Just add more water! Over time, you may find that you need less powder for washing your hair. Matcha Shake is free from harsh sulfates, so it doesn't create as many bubbles as regular shampoo. However, it still cleans effectively, even without excessive lather! Say hello to happy, healthier hair! P.S. If you use hair styling products, a double wash will provide a deeper clean.",
+        "pdp_ingredients_raw": "Sodium Cocoyl Isethionate, Modified Corn Starch, Kaolin, Sorbitol, Guar hydroxypropyltrimonium chloride, Cocos Nucifera Fruit Powder, Betaine, Citric Acid, Sodium Bicarbonate, Aloe Barbadensis Leaf Powder, Hydrolyzed Rice Protein, Argania spinosa (Argan) Kernel Oil, Emblica officinalis fruit extract, Camellia Sinensis Leaf Powder, Gluconolactone (and) Sodium Benzoate, Isoamyl laurate, Inulin, Lavandula Angustifolia (Lavender) Oil, Litsea Cubeba Fruit Oil, Mentha Piperita Oil, Tocopherol",
+        "ingredients_polluted": false,
+        "detail_section_count": 0,
+        "polluted_detail_section_count": 0
+      }
+    },
+    {
+      "external_product_id": "ext_57fe66e03e7b47b972b78c30",
+      "seed_id": "eps_ccfacc32c00451497b119be2",
+      "title": "Oaty Shake Body Wash Concentrate",
+      "canonical_url": "https://coconutmatter.com/products/oaty-shake-body-wash-concentrate",
+      "status": "ready",
+      "changed": false,
+      "blockers": [],
+      "skipped_fields": [
+        "no_change_same_value",
+        "no_change_same_value"
+      ],
+      "patched_fields": [],
+      "before": {
+        "description": "Oaty Shake Body Wash Concentrate",
+        "pdp_description_raw": "",
+        "pdp_ingredients_raw": "Sodium Cocoyl Isethionate, Modified Corn Starch, Kaolin, Avena Sativa Kernel Powder, Sorbitol, Citric Acid, Cocos Nucifera Fruit Powder, Sodium Bicarbonate, Guar Hydroxypropyltrimonium Chloride, Aloe Barbadensis Leaf Powder, Hydrolysed Rice Protein, Citrus Aurantium Peel Powder, Citrus Aurantium Dulcis Peel Oil, Gluconolactone (and) Sodium Benzoate, Isomyl laurate, Cocos Nucifera Fruit oil, Inulin, Citrus aurantifolia oil, Citrus Limon Peel Oil, Inulin, Tocopherol, Santalum album powder",
+        "pdp_how_to_use_raw": "We recommend using our Oaty Shake Body Wash Concentrate with our 2-in-1 Konjac Sponge for best skin results. Watch this tutorial video to get the perfect wash! Use ½ to 1 teaspoon for full body wash. Over time, you may find that you need less powder for washing your skin. Oaty Shake is free from harsh sulfates, so it doesn't create as many bubbles as regular body wash. However, it still cleans effectively, even without excessive lather! Say hello to happy, healthier skin!",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "Oaty Shake Body Wash Concentrate",
+        "pdp_description_raw": "",
+        "pdp_how_to_use_raw": "We recommend using our Oaty Shake Body Wash Concentrate with our 2-in-1 Konjac Sponge for best skin results. Watch this tutorial video to get the perfect wash! Use ½ to 1 teaspoon for full body wash. Over time, you may find that you need less powder for washing your skin. Oaty Shake is free from harsh sulfates, so it doesn't create as many bubbles as regular body wash. However, it still cleans effectively, even without excessive lather! Say hello to happy, healthier skin!",
+        "pdp_ingredients_raw": "Sodium Cocoyl Isethionate, Modified Corn Starch, Kaolin, Avena Sativa Kernel Powder, Sorbitol, Citric Acid, Cocos Nucifera Fruit Powder, Sodium Bicarbonate, Guar Hydroxypropyltrimonium Chloride, Aloe Barbadensis Leaf Powder, Hydrolysed Rice Protein, Citrus Aurantium Peel Powder, Citrus Aurantium Dulcis Peel Oil, Gluconolactone (and) Sodium Benzoate, Isomyl laurate, Cocos Nucifera Fruit oil, Inulin, Citrus aurantifolia oil, Citrus Limon Peel Oil, Inulin, Tocopherol, Santalum album powder",
+        "ingredients_polluted": false,
+        "detail_section_count": 0,
+        "polluted_detail_section_count": 0
+      }
+    },
+    {
+      "external_product_id": "ext_8982e4384c3bd70a5718c899",
+      "seed_id": "eps_92e6a704c5c54c367fc1b58e",
+      "title": "CLEAR LIP CARE",
+      "canonical_url": "https://coconutmatter.com/products/clear-lip-care",
+      "status": "ready",
+      "changed": false,
+      "blockers": [],
+      "skipped_fields": [
+        "no_change_same_value",
+        "no_change_same_value"
+      ],
+      "patched_fields": [],
+      "before": {
+        "description": "For those days you may want your lips CLEAR. It feels luxurious and creamy as it’s in omega fatty acids and antioxidants for intensive instant relief to dry lips. It’s so soft, you can even use it on babies. If applied in the nighttime, you’ll have plumped and hydrated pout in the morning. Say bye to harsh winters and cracked lips! Not only does it work wonders on dry, cracked lips — as well as chapped areas anywhere on the body — but it's also lightweight, non-sticky, and leaves behind a silky sheen that doesn't disappear after an hour. You can't go wrong with this one.",
+        "pdp_description_raw": "",
+        "pdp_ingredients_raw": "Persea Gratissima (Avocado) Oil, Euphorbia Cerifera (Candelilla) Wax, Cocos Nucifera (Coconut) Oil, Vitis Vinifera (Grape) Seed Oil, Theobroma Cacao (Cocoa) Seed Butter, Butyrospermum Parkii (Shea Butter), Isoamyl Laurate, Ricinus Communis (Castor) Seed Oil, Copernicia Cerifera (Carnauba) Wax, Silica, Tocopherol, Citrus Tangerina (Tangerine) Oil, Helianthus annuus (Sunflower) Seed Oil",
+        "pdp_how_to_use_raw": "Soothe CLEAR — packed with avocado oil — onto your lips before your head hits the pillow and allow the formula to melt in. When you wake up in the morning, you'll notice a smoother, softer pout. You may also love it during the day. A thin layer of the antioxidant-rich CLEAR adds the prettiest subtle sheen to lips, and it layers nicely with lipstick.",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "For those days you may want your lips CLEAR. It feels luxurious and creamy as it’s in omega fatty acids and antioxidants for intensive instant relief to dry lips. It’s so soft, you can even use it on babies. If applied in the nighttime, you’ll have plumped and hydrated pout in the morning. Say bye to harsh winters and cracked lips! Not only does it work wonders on dry, cracked lips — as well as chapped areas anywhere on the body — but it's also lightweight, non-sticky, and leaves behind a silky sheen that doesn't disappear after an hour. You can't go wrong with this one.",
+        "pdp_description_raw": "",
+        "pdp_how_to_use_raw": "Soothe CLEAR — packed with avocado oil — onto your lips before your head hits the pillow and allow the formula to melt in. When you wake up in the morning, you'll notice a smoother, softer pout. You may also love it during the day. A thin layer of the antioxidant-rich CLEAR adds the prettiest subtle sheen to lips, and it layers nicely with lipstick.",
+        "pdp_ingredients_raw": "Persea Gratissima (Avocado) Oil, Euphorbia Cerifera (Candelilla) Wax, Cocos Nucifera (Coconut) Oil, Vitis Vinifera (Grape) Seed Oil, Theobroma Cacao (Cocoa) Seed Butter, Butyrospermum Parkii (Shea Butter), Isoamyl Laurate, Ricinus Communis (Castor) Seed Oil, Copernicia Cerifera (Carnauba) Wax, Silica, Tocopherol, Citrus Tangerina (Tangerine) Oil, Helianthus annuus (Sunflower) Seed Oil",
+        "ingredients_polluted": false,
+        "detail_section_count": 0,
+        "polluted_detail_section_count": 0
+      }
+    }
+  ]
+}
