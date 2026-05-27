@@ -842,6 +842,47 @@ describe('externalSeedProducts helper', () => {
     );
   });
 
+  test('preserves reviewed formula variant axis without falling back to Default', () => {
+    const product = buildExternalSeedProduct({
+      id: 'eps_lime_eye_patch',
+      external_product_id: 'ext_lime_eye_patch',
+      canonical_url: 'https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000A',
+      destination_url: 'https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000A',
+      domain: 'en.limecosmetic.com',
+      title: 'LIME OIL GEL EYE PATCH',
+      price_amount: 18.37,
+      price_currency: 'USD',
+      seed_data: {
+        brand: 'LIME COSMETIC',
+        category: 'Skincare',
+        product_type: 'Eye Patch',
+        snapshot: {
+          variants: [
+            {
+              variant_id: 'P00000CU000A',
+              sku: 'P00000CU000A',
+              option_name: 'Select',
+              option_value: '20 TWENTY',
+              axis_kind: 'formula_variant',
+              price: '18.37',
+              currency: 'USD',
+            },
+          ],
+        },
+      },
+    });
+
+    expect(product.variants[0]).toEqual(
+      expect.objectContaining({
+        title: '20 TWENTY',
+        option_name: 'Formula',
+        option_value: '20 TWENTY',
+        axis_kind: 'formula',
+        source_quality_status: 'captured',
+      }),
+    );
+  });
+
   test('normalizes generic Variant volume rows into displayable size options', () => {
     const row = {
       id: 'eps_tf_perfume_100ml',

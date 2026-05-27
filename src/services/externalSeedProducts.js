@@ -2422,6 +2422,7 @@ const VARIANT_AXIS_LABELS = Object.freeze({
   volume: 'Size',
   pack: 'Pack',
   format: 'Format',
+  formula: 'Formula',
   scent: 'Scent',
   strength: 'Strength',
 });
@@ -2819,6 +2820,9 @@ function inferVariantAxisKind(option, context = {}) {
   if (['format', 'type', 'benefit'].includes(optionName) || format) {
     return { axis_kind: 'format', display_label: VARIANT_AXIS_LABELS.format, normalized_value: format || optionValue };
   }
+  if (['formula', 'formula variant', 'formula type', 'variant formula'].includes(optionName)) {
+    return { axis_kind: 'formula', display_label: VARIANT_AXIS_LABELS.formula, normalized_value: optionValue };
+  }
   if (['strength', 'concentration'].includes(optionName) || strength) {
     return { axis_kind: 'strength', display_label: VARIANT_AXIS_LABELS.strength, normalized_value: strength || optionValue };
   }
@@ -2897,6 +2901,9 @@ function normalizeVariantAxisKindValue(value) {
   ) return 'shade';
   if (normalized === 'capacity' || normalized === 'amount' || normalized === 'weight' || normalized === 'net_weight') {
     return 'volume';
+  }
+  if (normalized === 'formula_variant' || normalized === 'variant_formula' || normalized === 'formula_type') {
+    return 'formula';
   }
   if (normalized === 'count' || normalized === 'quantity' || normalized === 'ct') return 'pack';
   if (DISPLAYABLE_VARIANT_AXIS_KINDS.has(normalized)) return normalized;

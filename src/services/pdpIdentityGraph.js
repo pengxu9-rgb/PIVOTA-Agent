@@ -1059,6 +1059,9 @@ function extractVariantAxes(product) {
   const scent =
     parseNamedAxisFromOptions(product, ['scent', 'scents', 'fragrance', 'fragrances']) ||
     inferredGenericAxis.scent;
+  const formula =
+    parseNamedAxisFromOptions(product, ['formula', 'formula variant', 'formula type', 'variant formula']) ||
+    inferredGenericAxis.formula;
   const color = shouldSuppressColorAxisValue(product, rawColor) ? '' : rawColor;
   const shade = shouldSuppressColorAxisValue(product, rawShade) ? '' : rawShade;
   const normalized = {
@@ -1068,6 +1071,7 @@ function extractVariantAxes(product) {
     ...(shade ? { shade } : {}),
     ...(color ? { color } : {}),
     ...(scent ? { scent } : {}),
+    ...(formula ? { formula } : {}),
     multi_variant: variants.length > 1,
   };
   return normalized;
@@ -1075,7 +1079,7 @@ function extractVariantAxes(product) {
 
 function serializeVariantAxes(axes) {
   const source = asPlainObject(axes) || {};
-  const pairs = ['size', 'volume', 'pack', 'shade', 'color', 'scent']
+  const pairs = ['size', 'volume', 'pack', 'shade', 'color', 'scent', 'formula']
     .map((key) => [key, normalizeAxisValue(source[key])])
     .filter(([, value]) => Boolean(value));
   if (!pairs.length) return '';
@@ -1095,7 +1099,7 @@ function buildAxisValuePattern(value) {
 
 function stripAxisTokensFromTitle(title, axes) {
   let normalized = normalizeTitleToken(title);
-  const values = ['size', 'volume', 'pack', 'shade', 'color']
+  const values = ['size', 'volume', 'pack', 'shade', 'color', 'scent', 'formula']
     .map((key) => normalizeResolverText(axes?.[key]))
     .filter(Boolean)
     .sort((a, b) => b.length - a.length);

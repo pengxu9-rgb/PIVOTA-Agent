@@ -177,6 +177,45 @@ describe('pdpIdentityGraph', () => {
     });
   });
 
+  test('buildIdentityListingFromProduct accepts reviewed formula variants as exact axes', () => {
+    const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
+
+    const listing = buildIdentityListingFromProduct({
+      merchantId: 'external_seed',
+      productId: 'ext_lime_eye_patch',
+      sourceKind: 'external_seed',
+      product: {
+        title: 'LIME OIL GEL EYE PATCH',
+        brand: 'LIME COSMETIC',
+        product_type: 'Eye Patch',
+        canonical_url: 'https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000A',
+        variants: [
+          {
+            variant_id: 'P00000CU000A',
+            option_name: 'Formula',
+            option_value: '20 TWENTY',
+            axis_kind: 'formula',
+          },
+          {
+            variant_id: 'P00000CU000B',
+            option_name: 'Formula',
+            option_value: '30 THIRTY',
+            axis_kind: 'formula',
+          },
+        ],
+      },
+    });
+
+    expect(listing.identity_status).toBe('approved');
+    expect(listing.review_required).toBe(false);
+    expect(listing.review_reason_codes).toEqual([]);
+    expect(listing.matched_by_rule).toBe('official_url_axes');
+    expect(listing.variant_axes).toEqual({
+      formula: '20 twenty',
+      multi_variant: true,
+    });
+  });
+
   test('buildIdentityListingFromProduct classifies external seed source tier by brand-owned domain', () => {
     const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
 

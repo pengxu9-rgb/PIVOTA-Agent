@@ -260,6 +260,49 @@ describe('sync-external-seeds-to-catalog barcode capture', () => {
 });
 
 describe('sync-external-seeds-to-catalog variant prices', () => {
+  test('maps reviewed formula variants into visible catalog option labels', () => {
+    const mirror = buildMirror({
+      id: 'eps_lime_eye_patch',
+      external_product_id: 'ext_lime_eye_patch',
+      market: 'US',
+      domain: 'en.limecosmetic.com',
+      title: 'LIME OIL GEL EYE PATCH',
+      image_url: 'https://cdn.example.com/eye-patch.jpg',
+      price_amount: 18.37,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      canonical_url: 'https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000A',
+      status: 'active',
+      identity_listing: {
+        identity_status: 'approved',
+        live_read_enabled: false,
+        review_required: false,
+        sellable_item_group_id: 'sig_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+        source_tier: 'brand',
+      },
+      seed_data: {
+        brand: 'LIME COSMETIC',
+        description: 'A reviewed eye patch with source-backed directions and full ingredient tables.',
+        variants: [
+          {
+            variant_id: 'P00000CU000A',
+            sku: 'P00000CU000A',
+            option_name: 'Select',
+            option_value: '20 TWENTY',
+            axis_kind: 'formula_variant',
+            price: '18.37',
+            currency: 'USD',
+            image_url: 'https://cdn.example.com/eye-patch.jpg',
+          },
+        ],
+      },
+    });
+
+    expect(mirror.skus[0].sku.visible_attributes).toEqual({ Formula: '20 TWENTY' });
+    expect(mirror.skus[0].sku.visible_option_labels).toEqual({ Formula: '20 TWENTY' });
+    expect(mirror.skus[0].sku.sku_payload.options).toEqual({ Formula: '20 TWENTY' });
+  });
+
   test('preserves reviewed multi-size variant prices when top-level price is the minimum price', () => {
     const mirror = buildMirror({
       id: 'eps_multisize',
