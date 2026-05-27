@@ -2,67 +2,85 @@
 //
 // Goal: classify candidates produced by productRelationshipGraphBuilder into
 // `prefilter_rejected` (won't reach reviewer queue) or `review_ready` BEFORE
-// they consume human review capacity. Today's reviewer queue runs ~33%
-// approval; Phase 0 analysis showed ~67% of human_rejected edges carried
-// at least one of the four top failure-flag patterns. These gates encode
-// structural predictors of those patterns using the 8 beauty attributes
-// landed in PR #1553.
+// they consume human review capacity.
 //
 // Each gate is a PURE function. The caller composes them via applyAllGates.
 // No DB I/O inside gates — the caller is responsible for resolving
 // beauty attributes via productBeautyAttributes.lookupBeautyAttributesBatch
 // before calling.
+//
+// History
+//   v1 (74614ab3): exact-string product_form gate. approved_pass_rate=0.37.
+//   v3 (a4640bea): added PRODUCT_FORM_GROUPS family map + cosmetic↔spf
+//     exemption. approved_pass_rate=0.45.
+//   v4 (d3b6dfcb): expanded face_emollient with moisturizer + K-beauty
+//     forms. approved_pass_rate=0.52.
+//   v5: replaced product_form gate with category_leaf token-overlap.
+//     approved_pass_rate=0.909, gate_precision=0.860, catch_rate=0.326.
+//   v6 (this): expanded CATEGORY_LEAF_ALIASES (cream/lotion→moisturizer,
+//     wash→cleanser, mist→toner) + STOP additions (foaming, remineralising,
+//     toning, vitamin) + product_form fallback when leaves disagree but
+//     forms match + cheeks⊆face area compat. SHIP_V2: pass_rate=0.9705,
+//     precision=0.9432, catch=0.287.
 
 const MIN_CONFIDENCE_FOR_GATING = 0.7;
 
 // Relation types where structural gates apply. `related_product` is
-// intentionally exempt from form/area/spf gates — related products can
-// legitimately span product_forms (lipstick + lip_liner, foundation + primer)
-// and target_areas.
+// intentionally exempt — related products can legitimately span categories
+// (lipstick + lip_liner, foundation + primer).
 const STRUCTURAL_GATE_RELATION_TYPES = new Set([
   'dupe',
   'competitive_alternative',
   'niche_specialist',
 ]);
 
-// Coarse families for the product_form gate. DeepSeek assigns granular form
-// names; within-family mismatches are false positives because human reviewers
-// treat them as legitimate competitive alternatives (e.g. lipstick ↔ lip_oil,
-// cream ↔ lotion, bronzer ↔ powder). The gate compares families when both
-// forms map to one; falls back to exact-match for any unmapped form.
-// Calibrated against v1 validation results (approved_pass_rate=0.37, 256 FPs
-// from product_form gate, 5/5 sample FPs confirmed within-family).
-const PRODUCT_FORM_GROUPS = {
-  // Lip color / finish delivery — all give lip pigment or gloss
-  lipstick: 'lip_color', lip_stain: 'lip_color', lip_gloss: 'lip_color',
-  lip_oil: 'lip_color', lip_tint: 'lip_color', lip_liner: 'lip_color',
-  lip_pencil: 'lip_color', lip_crayon: 'lip_color', lip_lacquer: 'lip_color',
-  lip_butter: 'lip_color',
-  // Emollient moisturizers (leave-on hydrating products). gel is intentionally
-  // excluded — cream-vs-gel was a human-rejected TP in v1 validation.
-  // 'moisturizer' is a generic classifier DeepSeek uses alongside specific
-  // texture names (cream, lotion) causing false-positive form mismatches.
-  // K-beauty overnight formats (sleeping_pack, sleeping_mask) are leave-on
-  // moisturizers and consistently approved as competitive alternatives.
-  // Body variants are included; the target_area gate handles face-vs-body
-  // separation so form-family grouping across body/face is safe.
-  cream: 'face_emollient', lotion: 'face_emollient', moisturizer: 'face_emollient',
-  gel_cream: 'face_emollient', milk: 'face_emollient', emulsion: 'face_emollient',
-  fluid: 'face_emollient', sleeping_pack: 'face_emollient', sleeping_mask: 'face_emollient',
-  overnight_mask: 'face_emollient', night_cream: 'face_emollient', face_cream: 'face_emollient',
-  body_lotion: 'face_emollient', body_cream: 'face_emollient', body_butter: 'face_emollient',
-  // Face colour powders — bronzer ↔ powder and cream_powder ↔ powder both
-  // appeared as approved competitive_alternative pairs in validation.
-  powder: 'face_powder', bronzer: 'face_powder', blush: 'face_powder',
-  highlighter: 'face_powder', setting_powder: 'face_powder',
-  finishing_powder: 'face_powder', cream_powder: 'face_powder',
-  // Fragrance concentration variants — all deliver the same scent at
-  // different intensities; a shopper comparing them is doing competitive
-  // alternative evaluation.
-  eau_de_parfum: 'fragrance', eau_de_toilette: 'fragrance',
-  parfum: 'fragrance', cologne: 'fragrance', perfume_oil: 'fragrance',
-  solid_perfume: 'fragrance',
+// Stop-words: descriptive adjectives/qualifiers that vary across SKUs of the
+// same product type and should not factor into category-overlap detection.
+// Do NOT include body-part / area words (lip, body, face, eye, hair) — those
+// are useful category discriminators.
+const CATEGORY_LEAF_STOP_TOKENS = new Set([
+  'matte', 'sheer', 'longwear', 'luminous', 'hydrating', 'soft', 'ultra',
+  'shiny', 'natural', 'tinted', 'pressed', 'finishing', 'setting',
+  'exfoliating', 'whipped', 'liquid', 'solid', 'full', 'light', 'medium',
+  'heavy', 'dewy', 'satin', 'glossy', 'clear', 'colored', 'color', 'formula',
+  'lightweight', 'rich', 'intensive', 'firming', 'plumping', 'retinol',
+  'daily', 'overnight', 'sleeping', 'night', 'foaming', 'remineralising',
+  'toning', 'vitamin',
+]);
+
+// Synonym/stem map — collapses true equivalents. Calibrated empirically:
+// `cream → moisturizer`, `lotion → moisturizer`, `wash → cleanser`,
+// `mist → toner` all clear specific FP cohorts; the target_area gate handles
+// face/body separation so collapsing texture-named moisturizers is safe.
+// Lip-product aliases (lipstick↔balm↔gloss) are intentionally OMITTED — the
+// product_form fallback below handles same-form lip pairs without losing
+// lip_liner-vs-lipstick catches.
+const CATEGORY_LEAF_ALIASES = {
+  bronzing: 'bronzer',
+  parfum: 'fragrance', perfume: 'fragrance', eau: 'fragrance',
+  toilette: 'fragrance', cologne: 'fragrance',
+  moisturizing: 'moisturizer', cream: 'moisturizer', lotion: 'moisturizer',
+  cleansing: 'cleanser', wash: 'cleanser',
+  mist: 'toner',
 };
+
+function categoryLeafTokens(leaf) {
+  if (!leaf || typeof leaf !== 'string') return new Set();
+  const out = new Set();
+  for (const t of leaf.split('_')) {
+    if (!t || CATEGORY_LEAF_STOP_TOKENS.has(t)) continue;
+    out.add(CATEGORY_LEAF_ALIASES[t] || t);
+  }
+  return out;
+}
+
+function shareCategoryLeafToken(a, b) {
+  const ta = categoryLeafTokens(a);
+  const tb = categoryLeafTokens(b);
+  if (ta.size === 0 || tb.size === 0) return false;
+  for (const t of ta) if (tb.has(t)) return true;
+  return false;
+}
 
 function isHighConfidence(attrs, field) {
   if (!attrs) return false;
@@ -71,35 +89,50 @@ function isHighConfidence(attrs, field) {
   return value != null && confidence != null && Number(confidence) >= MIN_CONFIDENCE_FOR_GATING;
 }
 
-function productFormGroup(form) {
-  return PRODUCT_FORM_GROUPS[form] || null;
-}
-
-// Gate 1: product_form mismatch. If both anchor and candidate have a
-// high-confidence product_form and they differ outside the same form family,
-// the candidate is not a like-for-like alternative.
-function gateProductFormMismatch(anchorAttrs, candidateAttrs, relationType) {
+// Gate 1: category_leaf mismatch. Phase C extracts category_leaf as the
+// canonical product-type label (eg `whipped_body_cream`, `powder_foundation`,
+// `eau_de_parfum`). Two candidates pass if their leaves share at least one
+// non-stopword canonicalized token. Exact equality also passes.
+//
+// Why token-overlap not equality: DeepSeek's leaves include adjective-laden
+// variants (`hydrating_foundation_spf` vs `powder_foundation`). Reviewers
+// approve those as competitive alternatives. Token-overlap recovers the
+// underlying category (`foundation`) without enumerating every adjective.
+//
+// product_form fallback: when category_leaves don't share tokens but BOTH
+// anchor and candidate have the same high-confidence product_form, pass.
+// This recovers cases like `sheer_lipstick` ↔ `ultra_shine_lip_color`
+// (both `product_form=lipstick`) without aggressive lip-product aliases
+// that would mask `lip_liner ↔ lipstick` catches.
+function gateCategoryLeafMismatch(anchorAttrs, candidateAttrs, relationType) {
   if (!STRUCTURAL_GATE_RELATION_TYPES.has(relationType)) {
     return { passes: true, reason: null };
   }
-  if (!isHighConfidence(anchorAttrs, 'product_form')) return { passes: true, reason: null };
-  if (!isHighConfidence(candidateAttrs, 'product_form')) return { passes: true, reason: null };
-  const aForm = anchorAttrs.product_form;
-  const cForm = candidateAttrs.product_form;
-  if (aForm === cForm) return { passes: true, reason: null };
-  const aGroup = productFormGroup(aForm);
-  const cGroup = productFormGroup(cForm);
-  if (aGroup !== null && aGroup === cGroup) return { passes: true, reason: null };
+  if (!isHighConfidence(anchorAttrs, 'category_leaf')) return { passes: true, reason: null };
+  if (!isHighConfidence(candidateAttrs, 'category_leaf')) return { passes: true, reason: null };
+  const aLeaf = anchorAttrs.category_leaf;
+  const cLeaf = candidateAttrs.category_leaf;
+  if (aLeaf === cLeaf) return { passes: true, reason: null };
+  if (shareCategoryLeafToken(aLeaf, cLeaf)) return { passes: true, reason: null };
+  if (
+    isHighConfidence(anchorAttrs, 'product_form')
+    && isHighConfidence(candidateAttrs, 'product_form')
+    && anchorAttrs.product_form === candidateAttrs.product_form
+  ) {
+    return { passes: true, reason: null };
+  }
   return {
     passes: false,
-    reason: `product_form_mismatch:${aForm}_vs_${cForm}`,
+    reason: `category_leaf_mismatch:${aLeaf}_vs_${cLeaf}`,
   };
 }
 
-// Gate 2: target_area mismatch. Face-vs-lips, body-vs-eyes, etc. — the
-// candidate is not in the same product job space. Multi-area items pass
-// through (foundation + primer both face, but a multi-area "body+face" set
-// can pair with either).
+// Gate 2: target_area mismatch. Face-vs-lips, body-vs-eyes etc. Multi-area
+// items pass through (a multi-area set can pair with either area).
+//
+// cheeks ⊆ face: validation showed `cheek_brush ↔ powder_brush` and similar
+// face/cheek brush pairs are routinely approved as alternatives — cheek
+// products are a face subcategory in practice.
 function gateTargetAreaMismatch(anchorAttrs, candidateAttrs, relationType) {
   if (!STRUCTURAL_GATE_RELATION_TYPES.has(relationType)) {
     return { passes: true, reason: null };
@@ -112,6 +145,10 @@ function gateTargetAreaMismatch(anchorAttrs, candidateAttrs, relationType) {
   if (anchorAttrs.target_area === candidateAttrs.target_area) {
     return { passes: true, reason: null };
   }
+  const pair = new Set([anchorAttrs.target_area, candidateAttrs.target_area]);
+  if (pair.has('cheeks') && pair.has('face')) {
+    return { passes: true, reason: null };
+  }
   return {
     passes: false,
     reason: `target_area_mismatch:${anchorAttrs.target_area}_vs_${candidateAttrs.target_area}`,
@@ -120,13 +157,11 @@ function gateTargetAreaMismatch(anchorAttrs, candidateAttrs, relationType) {
 
 // Gate 3: SPF / OTC drug mismatch. Medicated products (otc_drug) and
 // cosmetics are not equivalent — one carries FDA-regulated claims the other
-// doesn't. Same for spf_otc combo products.
+// doesn't.
 //
-// cosmetic ↔ spf is intentionally EXEMPT: validation showed 19/441 approved
-// competitive_alternative pairs were cosmetic ↔ spf (moisturizer with/without
-// added SPF). Shoppers legitimately compare these as alternatives. Only the
-// OTC drug axis (acne treatments, medicated formulas) signals genuine
-// regulatory incompatibility.
+// cosmetic ↔ spf is intentionally EXEMPT: validation showed those pairs
+// (moisturizer with/without added SPF) are routinely approved as competitive
+// alternatives. Only the OTC drug axis signals genuine incompatibility.
 //
 // dupe and competitive_alternative: otc_drug axis gates apply.
 // niche_specialist: fully exempt by design.
@@ -146,8 +181,7 @@ function gateSpfOtcMismatch(anchorAttrs, candidateAttrs, relationType) {
   if ((a === 'otc_drug' && c === 'spf_otc') || (a === 'spf_otc' && c === 'otc_drug')) {
     return { passes: true, reason: null };
   }
-  // cosmetic ↔ spf: SPF is an additive benefit on an otherwise-cosmetic product;
-  // shoppers compare these as alternatives. Not a regulatory incompatibility.
+  // cosmetic ↔ spf: SPF is an additive benefit; shoppers compare these.
   if ((a === 'cosmetic' && c === 'spf') || (a === 'spf' && c === 'cosmetic')) {
     return { passes: true, reason: null };
   }
@@ -165,11 +199,10 @@ function gateSpfOtcMismatch(anchorAttrs, candidateAttrs, relationType) {
 //   - 'prefilter_rejected' if any gate fails
 //
 // prefilter_reasons is an array of structured reason codes (one per failing
-// gate). Caller persists these in a column (eg labels.prefilter_reasons) for
-// future audit + recalibration.
+// gate). Caller persists these for audit + recalibration.
 function applyAllGates(anchorAttrs, candidateAttrs, relationType) {
   const results = [
-    gateProductFormMismatch(anchorAttrs, candidateAttrs, relationType),
+    gateCategoryLeafMismatch(anchorAttrs, candidateAttrs, relationType),
     gateTargetAreaMismatch(anchorAttrs, candidateAttrs, relationType),
     gateSpfOtcMismatch(anchorAttrs, candidateAttrs, relationType),
   ];
@@ -187,8 +220,11 @@ function applyAllGates(anchorAttrs, candidateAttrs, relationType) {
 module.exports = {
   MIN_CONFIDENCE_FOR_GATING,
   STRUCTURAL_GATE_RELATION_TYPES,
-  PRODUCT_FORM_GROUPS,
-  gateProductFormMismatch,
+  CATEGORY_LEAF_STOP_TOKENS,
+  CATEGORY_LEAF_ALIASES,
+  categoryLeafTokens,
+  shareCategoryLeafToken,
+  gateCategoryLeafMismatch,
   gateTargetAreaMismatch,
   gateSpfOtcMismatch,
   applyAllGates,
