@@ -29,7 +29,7 @@ Decision vocabulary:
 | 6 | `findProductsExternalSeedDirectRetrieval` | `external_product_seeds.status='active' AND EXISTS(catalog_products + ips.serving_eligible=TRUE)` | `serving_decision='public'` with `source_lifecycle_state='active'` |
 | 7 | `findProductsExternalSeedBrandFastpath` | same as #6 | same as #6 |
 | 8 | `discoveryFeed` identity join (`.js:2120`) | `identity_status='approved' AND live_read_enabled=true` (no `review_required=false`) | `serving_decision='public'` — same gap as reader #2 |
-| 9 | `discoveryFeed` brand candidates (`.js:8589`) | `ips.serving_eligible=TRUE` | `serving_decision='public'` |
+| 9 | `discoveryFeed` brand candidates (`.js:8589`) | `ips.serving_eligible=TRUE` | `serving_decision='public'` — Phase 3a wired behind `DISCOVERY_USES_CATALOG_ROW_TRUST` (default OFF) |
 | 10 | `RecommendationEngine` identity (`.js:1485`) | `identity_status='approved' AND live_read_enabled=true` (no `review_required=false`) | `serving_decision='public'` — same gap as reader #2 |
 
 **Three readers diverge from the gate the audit reported** (`#2, #8, #10`): they accept `review_required=true` rows when the audit's contract would not. Those are surfaced by the policy as `serving_decision='shadow'` with reason code `IDENTITY_REVIEW_REQUIRED_LIVE_READ`. This is the audit's "60 external-mirror serving rows with explicit review_required=true" cohort.
@@ -79,7 +79,7 @@ ORDER BY updated_at DESC;
 |-------|-------|--------|
 | **Phase 1** | Schema + policy v0 + reader-contract matrix + backfill driver | **this PR** (no readers cut over) |
 | Phase 2 | Dual-write integration: catalog_sync_service.py, sync-external-seeds-to-catalog.cjs, pdpIdentityGraph.js, catalog_source_quarantine writes all dispatch to catalogTrustPolicy → upsert. | Not started |
-| Phase 3 | Reader cutover in risk order: discoveryFeed → RecommendationEngine → findProducts* → pdpIdentityGraph → catalogServingIndex. | Not started |
+| Phase 3 | Reader cutover in risk order: discoveryFeed → RecommendationEngine → findProducts* → pdpIdentityGraph → catalogServingIndex. | **Phase 3a in flight:** discoveryFeed brand candidates (reader #9) wired behind `DISCOVERY_USES_CATALOG_ROW_TRUST` |
 | Phase 4 | Retire duplicate per-reader predicates. Add 580-violation regression test in CI. | Not started |
 
 ## Operational properties (Phase 1)
