@@ -13,6 +13,7 @@ const {
   searchCatalogServingIndex,
   _internals: {
     buildCatalogServingPivotaInsightFromKbRow,
+    fetchCatalogServingEligibleSourceSet,
   },
 } = require('../src/services/catalogServingIndex');
 
@@ -777,6 +778,64 @@ describe('catalog serving index', () => {
         { allowLocalShadow: true },
       ),
     ).toBe(true);
+  });
+
+  describe('fetchCatalogServingEligibleSourceSet trust-gate flag (Phase 3e)', () => {
+    const FLAG = 'CATALOG_SERVING_USES_CATALOG_ROW_TRUST';
+
+    function withFlag(value, fn) {
+      const prev = process.env[FLAG];
+      if (value === undefined) {
+        delete process.env[FLAG];
+      } else {
+        process.env[FLAG] = value;
+      }
+      return Promise.resolve(fn()).finally(() => {
+        if (prev === undefined) delete process.env[FLAG];
+        else process.env[FLAG] = prev;
+      });
+    }
+
+    test('uses legacy index_pipeline_state join when flag is off', async () => {
+      let capturedSql = null;
+      const queryFn = jest.fn(async (sql) => {
+        capturedSql = String(sql);
+        return { rows: [] };
+      });
+      await withFlag(undefined, () => fetchCatalogServingEligibleSourceSet(queryFn));
+      expect(queryFn).toHaveBeenCalledTimes(1);
+      expect(capturedSql).toMatch(/FROM\s+index_pipeline_state\s+ips/i);
+      expect(capturedSql).toMatch(/ips\.serving_eligible\s*=\s*TRUE/i);
+      expect(capturedSql).not.toMatch(/catalog_row_trust/i);
+    });
+
+    test('uses catalog_row_trust gate when flag is on', async () => {
+      let capturedSql = null;
+      const queryFn = jest.fn(async (sql) => {
+        capturedSql = String(sql);
+        return { rows: [] };
+      });
+      await withFlag('true', () => fetchCatalogServingEligibleSourceSet(queryFn));
+      expect(queryFn).toHaveBeenCalledTimes(1);
+      expect(capturedSql).toMatch(/FROM\s+catalog_row_trust\s+crt/i);
+      expect(capturedSql).toMatch(/crt\.subject_type\s*=\s*'product'/i);
+      expect(capturedSql).toMatch(/cp\.product_key\s*=\s*crt\.subject_key/i);
+      expect(capturedSql).toMatch(/crt\.serving_decision\s*=\s*'public'/i);
+      expect(capturedSql).not.toMatch(/index_pipeline_state/i);
+      expect(capturedSql).not.toMatch(/ips\.serving_eligible/i);
+    });
+
+    test('returns Set of (merchant_id::source_product_id) for both flag states', async () => {
+      const sampleRows = [
+        { merchant_id: 'external_seed', source_product_id: 'ext_1' },
+        { merchant_id: 'merch_x', source_product_id: '42' },
+      ];
+      const queryFn = jest.fn(async () => ({ rows: sampleRows }));
+      const offResult = await withFlag(undefined, () => fetchCatalogServingEligibleSourceSet(queryFn));
+      const onResult = await withFlag('true', () => fetchCatalogServingEligibleSourceSet(queryFn));
+      expect(Array.from(offResult).sort()).toEqual(['external_seed::ext_1', 'merch_x::42'].sort());
+      expect(Array.from(onResult).sort()).toEqual(['external_seed::ext_1', 'merch_x::42'].sort());
+    });
   });
 
   test('index config accepts legacy workflow env aliases', () => {
