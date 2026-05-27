@@ -573,6 +573,89 @@ describe('official PDP manual insight review', () => {
     expect(catkinPlan.preview.shopping_highlight).toContain('shine finish');
   });
 
+  test('allows brand expansion rows through source-backed roles', () => {
+    const intoYouPlan = buildPlan(
+      row({
+        external_product_id: 'ext_into_you_glaze',
+        title: 'INTO YOU Aqua Burst Lip Glaze',
+        brand: 'INTO YOU',
+        canonical_url: 'https://intoyoucosmetics.com/products/aqua-burst-lip-glaze',
+        seed_data: {
+          brand: 'INTO YOU',
+          pdp_description_raw: 'A glossy lip glaze with a dewy shine finish and shade clarity.',
+          pdp_details_sections: [
+            { heading: 'Formula', body: 'Lip glaze format with shine finish and comfort-oriented lip care.' },
+          ],
+          variants: [{ title: 'AB02', options: [{ name: 'Color', value: 'AB02' }] }],
+        },
+      }),
+      { productIds: ['ext_into_you_glaze'], includeStrong: true },
+    );
+    const baiePlan = buildPlan(
+      row({
+        external_product_id: 'ext_baie_spf',
+        title: 'Organic Mineral Sunscreen for Baby & Children SPF 50',
+        brand: 'Baie Botanique',
+        canonical_url: 'https://baiebotanique.com/products/organic-mineral-sunscreen-spf-50',
+        seed_data: {
+          brand: 'Baie Botanique',
+          pdp_description_raw: 'A mineral sunscreen moisturizer for daily SPF use.',
+          pdp_active_ingredients_raw: 'Zinc Oxide 20%',
+          pdp_ingredients_raw: 'Water, Zinc Oxide, Glycerin, Shea Butter.',
+          pdp_how_to_use_raw: 'Apply generously before sun exposure.',
+          variants: [{ title: '100g', options: [{ name: 'Size', value: '100g' }] }],
+        },
+      }),
+      { productIds: ['ext_baie_spf'], includeStrong: true },
+    );
+    const linhartPlan = buildPlan(
+      row({
+        external_product_id: 'ext_linhart_lip_balm',
+        title: 'Lip Balm SPF 15',
+        brand: 'Linhart Smile Care',
+        canonical_url: 'https://linhart.nyc/products/lip-balm-spf-15',
+        seed_data: {
+          brand: 'Linhart Smile Care',
+          pdp_description_raw: 'A lip balm with SPF 15 and shea butter.',
+          pdp_active_ingredients_raw: 'Avobenzone 3%; Octinoxate 7.5%',
+          pdp_how_to_use_raw: 'Apply to lips before sun exposure.',
+          variants: [{ title: 'Vanilla Mint', options: [{ name: 'Flavor', value: 'Vanilla Mint' }] }],
+        },
+      }),
+      { productIds: ['ext_linhart_lip_balm'], includeStrong: true },
+    );
+    const tirtirPlan = buildPlan(
+      row({
+        external_product_id: 'ext_tirtir_cushion',
+        title: 'My Glow Cream Cushion',
+        brand: 'TIRTIR Global',
+        canonical_url: 'https://tirtir.global/products/my-glow-cream-cushion',
+        seed_data: {
+          brand: 'TIRTIR Global',
+          pdp_description_raw: 'A cream cushion complexion product with coverage control and glow finish.',
+          pdp_ingredients_raw: 'Water, Titanium Dioxide, Glycerin, Dimethicone.',
+          pdp_how_to_use_raw: 'Apply with the included puff and tap onto skin.',
+          variants: [{ title: '17C Porcelain', options: [{ name: 'Color', value: '17C Porcelain' }] }],
+        },
+      }),
+      { productIds: ['ext_tirtir_cushion'], includeStrong: true },
+    );
+
+    expect(intoYouPlan.blocked).toBe(false);
+    expect(intoYouPlan.preview.headline).toBe('Lip color');
+    expect(intoYouPlan.preview.what_it_is).toContain('INTO YOU');
+    expect(baiePlan.blocked).toBe(false);
+    expect(baiePlan.preview.headline).toBe('Daily sunscreen');
+    expect(baiePlan.preview.what_it_is).toContain('Baie Botanique');
+    expect(linhartPlan.blocked).toBe(false);
+    expect(linhartPlan.preview.headline).toBe('Lip treatment');
+    expect(linhartPlan.preview.what_it_is).toContain('lip balm');
+    expect(linhartPlan.preview.what_it_is).not.toContain('tinted lip balm');
+    expect(tirtirPlan.blocked).toBe(false);
+    expect(tirtirPlan.preview.headline).toBe('Complexion makeup');
+    expect(tirtirPlan.preview.what_it_is).toContain('TIRTIR Global');
+  });
+
   test('keeps Kylie lip glaze samples in lip color language', () => {
     const plan = buildPlan(
       row({
