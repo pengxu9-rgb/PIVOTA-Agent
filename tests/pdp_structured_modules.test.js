@@ -207,6 +207,35 @@ describe('pdpBuilder structured PDP modules', () => {
     ]);
   });
 
+  test('media_gallery upgrades Fenty Shopify resize variants and filters theme/nav assets', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_fenty_shadowstix',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Shadowstix Longwear Eyeshadow Stick',
+        image_url:
+          'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FB_F23_T2PRODUCT_CONCRETE_SHADOWSTIX-SHIMMER_CANDY_RAPPER_1200x1500_72DPI_4e6a2945-425d-433b-9a53-f2dd997a7cac_1200x.jpg?v=1762274304',
+        image_urls: [
+          'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FB_F23_T2PRODUCT_CONCRETE_SHADOWSTIX-SHIMMER_CANDY_RAPPER_1200x1500_72DPI_4e6a2945-425d-433b-9a53-f2dd997a7cac_1200x.jpg?v=1762274304',
+          'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FB525920-FB-SHADOWSTIX-LAUNCH_PDP_Application_1200x1500_V3_ceb45434-015b-426a-8714-daa2ceb84549_600x.jpg?v=1736552482',
+          'https://fentybeauty.com/cdn/shop/files/Regulatory_Copy_Image.png?v=1747067950',
+          'https://fentybeauty.com/cdn/shop/files/FB523150-FENTYVERSE-HP-_-BRANDED-LPS_NAV_Mobile-Nav-Categories_FS_300x.jpg?v=1692219645',
+          'https://fentybeauty.com/cdn/shop/t/2582/assets/find-shade.png?v=43805286528695367941776714264',
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const urls = findModule(payload, 'media_gallery')?.data?.items?.map((item) => item.url) || [];
+
+    expect(urls).toEqual([
+      'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FB_F23_T2PRODUCT_CONCRETE_SHADOWSTIX-SHIMMER_CANDY_RAPPER_1200x1500_72DPI_4e6a2945-425d-433b-9a53-f2dd997a7cac_1200x.jpg?v=1762274304',
+      'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FB525920-FB-SHADOWSTIX-LAUNCH_PDP_Application_1200x1500_V3_ceb45434-015b-426a-8714-daa2ceb84549.jpg?v=1736552482',
+    ]);
+  });
+
   test('emits additive beauty modules from structured ingredient fields and carries brand story separately', () => {
     const payload = buildPdpPayload({
       product: {

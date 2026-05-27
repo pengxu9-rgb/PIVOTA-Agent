@@ -2174,9 +2174,12 @@ function isDecorativePdpMediaUrl(url) {
     const pathname = decodeURIComponent(String(parsed.pathname || '')).toLowerCase();
     filename = decodeURIComponent(String(parsed.pathname.split('/').pop() || '')).toLowerCase();
     const isTheOrdinaryProductAsset = pathname.includes('/images/products/the ordinary/');
+    const isShopifyThemeAsset = /\/cdn\/shop\/t\/\d+\/assets\//i.test(pathname);
     if (
+      isShopifyThemeAsset ||
       /\/(?:before[-_ ]?after|infographics?)\//i.test(pathname) ||
       (isTheOrdinaryProductAsset && /(?:^|[-_])benefits?(?:[-_.]|$)/i.test(filename)) ||
+      /(?:regulatory[_-]?copy[_-]?image|mobile[_-]?nav|nav[_-]?(?:category|categories)|nav[-_ ]?category[-_ ]?tile|multi[-_ ]?promo|promo[-_ ]?carousel|discover[-_ ]?section|lip[-_ ]?library|rih[-_ ]?disc[-_ ]?section)/i.test(filename) ||
       /(?:^|[-_])kem[-_]/i.test(filename) ||
       /(?:^|[-_])(?:promotion|promo|pop[-_ ]?ups?|birthday[-_ ]?teaser)(?:[-_.]|$)/i.test(filename)
     ) {

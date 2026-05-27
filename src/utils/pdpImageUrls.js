@@ -25,6 +25,7 @@ const KNOWN_SDCND_FILENAME_ALIASES = {
 const TOM_FORD_SHOPIFY_FILES_PREFIX = '/s/files/1/0761/9690/5173/files/';
 const PIXI_SHOPIFY_FILES_PREFIX = '/s/files/1/1463/5858/files/';
 const DEFAULT_SHOPIFY_WIDTH_PLACEHOLDER = '1024';
+const MIN_SHOPIFY_DISPLAY_TRANSFORM_EDGE = 800;
 const SHOPIFY_CONTENT_PATH_RE = /(?:\/cdn\/shop\/files\/|\/s\/files\/)/i;
 const SHOPIFY_PRODUCT_PATH_RE = /\/cdn\/shop\/products\//i;
 
@@ -153,6 +154,27 @@ function collapseShopifyTransformSuffixForDedupe(filename) {
   return `${base}.${ext}`;
 }
 
+function collapseSmallShopifyTransformSuffixForDisplay(filename) {
+  const trimmed = String(filename || '').trim();
+  if (!trimmed) return trimmed;
+  const matched = trimmed.match(SHOPIFY_FILE_TRANSFORM_SUFFIX_RE);
+  if (!matched) return trimmed;
+  const base = matched[1];
+  const ext = matched[2];
+  const transform = trimmed.match(/_([0-9]{2,4})x([0-9]{2,4})?\.(?:avif|gif|jpe?g|png|webp)$/i);
+  const transformLongEdge = Math.max(
+    Number(transform?.[1] || 0),
+    Number(transform?.[2] || transform?.[1] || 0),
+  );
+  if (!Number.isFinite(transformLongEdge) || transformLongEdge >= MIN_SHOPIFY_DISPLAY_TRANSFORM_EDGE) {
+    return trimmed;
+  }
+  if (!/(?:^|[_-])[0-9]{3,4}x[0-9]{3,4}(?:[_-]|$)/i.test(base)) {
+    return trimmed;
+  }
+  return `${base}.${ext}`;
+}
+
 function stripImageTransformQueryParams(parsed) {
   Array.from(parsed.searchParams.keys()).forEach((key) => {
     if (IMAGE_DEDUPE_IGNORED_QUERY_KEYS.has(String(key || '').toLowerCase())) {
@@ -181,6 +203,7 @@ function normalizePdpImageUrl(value) {
       segments[lastIndex] = normalizeShopifyLikeFilename(segments[lastIndex] || '', {
         stripHash: false,
       });
+      segments[lastIndex] = collapseSmallShopifyTransformSuffixForDisplay(segments[lastIndex]);
       parsed.pathname = segments.join('/');
     }
     parsed = rewriteTomFordAssetToOfficialShopify(parsed);

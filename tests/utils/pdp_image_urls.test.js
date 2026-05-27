@@ -47,6 +47,24 @@ describe('pdp image URL normalization', () => {
     );
   });
 
+  test('upgrades low-resolution Shopify display transforms when the source filename carries larger dimensions', () => {
+    expect(
+      normalizePdpImageUrl(
+        'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FB_F23_T2PRODUCT_CONCRETE_SHADOWSTIX-SHIMMER_CANDY_RAPPER_1200x1500_72DPI_4e6a2945-425d-433b-9a53-f2dd997a7cac_600x.jpg?v=1762274304',
+      ),
+    ).toBe(
+      'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FB_F23_T2PRODUCT_CONCRETE_SHADOWSTIX-SHIMMER_CANDY_RAPPER_1200x1500_72DPI_4e6a2945-425d-433b-9a53-f2dd997a7cac.jpg?v=1762274304',
+    );
+
+    expect(
+      normalizePdpImageUrl(
+        'https://www.rarebeauty.com/cdn/shop/files/PDP-USAGE-FIND-COMFORT-BODY-HAIR-FRAGRANCE-MIST-MINI-1268x1268_1024x.jpg?v=1740424675',
+      ),
+    ).toBe(
+      'https://www.rarebeauty.com/cdn/shop/files/PDP-USAGE-FIND-COMFORT-BODY-HAIR-FRAGRANCE-MIST-MINI-1268x1268_1024x.jpg?v=1740424675',
+    );
+  });
+
   test('rewrites Pixi storefront /files assets to the official Shopify CDN path', () => {
     expect(
       normalizePdpImageUrl(
