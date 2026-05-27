@@ -38,10 +38,19 @@ const PRODUCT_FORM_GROUPS = {
   lip_oil: 'lip_color', lip_tint: 'lip_color', lip_liner: 'lip_color',
   lip_pencil: 'lip_color', lip_crayon: 'lip_color', lip_lacquer: 'lip_color',
   lip_butter: 'lip_color',
-  // Emollient face moisturizers (cream-weight textures) — gel is intentionally
-  // excluded because cream-vs-gel was a human-rejected pair in validation.
-  cream: 'face_emollient', lotion: 'face_emollient', gel_cream: 'face_emollient',
-  milk: 'face_emollient', emulsion: 'face_emollient', fluid: 'face_emollient',
+  // Emollient moisturizers (leave-on hydrating products). gel is intentionally
+  // excluded — cream-vs-gel was a human-rejected TP in v1 validation.
+  // 'moisturizer' is a generic classifier DeepSeek uses alongside specific
+  // texture names (cream, lotion) causing false-positive form mismatches.
+  // K-beauty overnight formats (sleeping_pack, sleeping_mask) are leave-on
+  // moisturizers and consistently approved as competitive alternatives.
+  // Body variants are included; the target_area gate handles face-vs-body
+  // separation so form-family grouping across body/face is safe.
+  cream: 'face_emollient', lotion: 'face_emollient', moisturizer: 'face_emollient',
+  gel_cream: 'face_emollient', milk: 'face_emollient', emulsion: 'face_emollient',
+  fluid: 'face_emollient', sleeping_pack: 'face_emollient', sleeping_mask: 'face_emollient',
+  overnight_mask: 'face_emollient', night_cream: 'face_emollient', face_cream: 'face_emollient',
+  body_lotion: 'face_emollient', body_cream: 'face_emollient', body_butter: 'face_emollient',
   // Face colour powders — bronzer ↔ powder and cream_powder ↔ powder both
   // appeared as approved competitive_alternative pairs in validation.
   powder: 'face_powder', bronzer: 'face_powder', blush: 'face_powder',

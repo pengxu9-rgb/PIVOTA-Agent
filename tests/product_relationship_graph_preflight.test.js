@@ -110,6 +110,24 @@ describe('gateProductFormMismatch', () => {
     expect(r).toEqual({ passes: true, reason: null });
   });
 
+  test('passes cream vs moisturizer (same face_emollient family, generic vs specific form name)', () => {
+    const r = gateProductFormMismatch(
+      attrs({ product_form: 'cream' }),
+      attrs({ product_form: 'moisturizer' }),
+      'competitive_alternative',
+    );
+    expect(r).toEqual({ passes: true, reason: null });
+  });
+
+  test('passes sleeping_pack vs moisturizer (K-beauty overnight = leave-on moisturizer)', () => {
+    const r = gateProductFormMismatch(
+      attrs({ product_form: 'sleeping_pack' }),
+      attrs({ product_form: 'moisturizer' }),
+      'competitive_alternative',
+    );
+    expect(r).toEqual({ passes: true, reason: null });
+  });
+
   test('passes when both forms are in the same family (face_powder: bronzer vs powder)', () => {
     const r = gateProductFormMismatch(
       attrs({ product_form: 'bronzer' }),
@@ -142,6 +160,8 @@ describe('gateProductFormMismatch', () => {
     expect(typeof PRODUCT_FORM_GROUPS).toBe('object');
     expect(PRODUCT_FORM_GROUPS.lipstick).toBe('lip_color');
     expect(PRODUCT_FORM_GROUPS.cream).toBe('face_emollient');
+    expect(PRODUCT_FORM_GROUPS.moisturizer).toBe('face_emollient');
+    expect(PRODUCT_FORM_GROUPS.sleeping_pack).toBe('face_emollient');
     expect(PRODUCT_FORM_GROUPS.powder).toBe('face_powder');
     expect(PRODUCT_FORM_GROUPS.eau_de_parfum).toBe('fragrance');
   });
