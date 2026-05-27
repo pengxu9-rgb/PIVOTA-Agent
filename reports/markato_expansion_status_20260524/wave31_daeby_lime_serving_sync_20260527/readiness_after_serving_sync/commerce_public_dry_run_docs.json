@@ -1,0 +1,236 @@
+{
+  "generated_at": "2026-05-27T11:54:58.508Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 4,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_303cd69abca9ff69eeab8596",
+      "sellable_item_group_id": "sig_303cd69abca9ff69eeab8596",
+      "product_line_id": "pl_0c226c97594579a50d748864",
+      "review_family_id": "rf_0c226c97594579a50d748864",
+      "brand_name": "DAEBY",
+      "category_paths": [
+        "Skincare",
+        "Cleanser"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Daily Cleanser",
+      "subtitle": "Daily Cleanser is a DAEBY cleanser with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Sodium C14-16 Olefin Sulfonate, Disodium Laureth Sulfosuccinate, Lauryl Betaine, Sodium Lauroyl Methyl Isethionate.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://www.daebyskin.com/cdn/shop/files/daily-cleanser-2641825.jpg?v=1767685448",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://www.daebyskin.com/cdn/shop/files/daily-cleanser-2641825.jpg?v=1767685448",
+        "http://www.daebyskin.com/cdn/shop/files/daily-cleanser-2641825.jpg?v=1767685448",
+        "https://www.daebyskin.com/cdn/shop/files/daily-cleanser-2641825.jpg?v=1767685448&amp;width=200",
+        "https://www.daebyskin.com/cdn/shop/files/daily-cleanser-5219868.png?v=1775565862&amp;width=200",
+        "https://www.daebyskin.com/cdn/shop/files/10_2.svg?v=1775565862&amp;width=200",
+        "https://www.daebyskin.com/cdn/shop/files/11_1.svg?v=1775565862&amp;width=200",
+        "https://www.daebyskin.com/cdn/shop/files/12.svg?v=1775565862&amp;width=200",
+        "https://www.daebyskin.com/cdn/shop/files/13.svg?v=1775565862&amp;width=200"
+      ],
+      "price_min": 19,
+      "price_max": 19,
+      "default_offer_id": "external_seed:ext_e1c4eb330321ebc6e9672d73",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A DAEBY cleanser listed on the brand source page as Daily Cleanser.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "DAEBY",
+        "Skincare",
+        "Cleanser"
+      ],
+      "sort_keys": {
+        "price_min": 19,
+        "price_max": 19,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_e1c4eb330321ebc6e9672d73"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_46aea7b66d57935e8d0f2cad",
+      "sellable_item_group_id": "sig_46aea7b66d57935e8d0f2cad",
+      "product_line_id": "pl_6e0f230fbde44deeba712f44",
+      "review_family_id": "rf_6e0f230fbde44deeba712f44",
+      "brand_name": "DAEBY",
+      "category_paths": [
+        "Skincare",
+        "Facial Scrub"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Exfoliating Facial Scrub",
+      "subtitle": "Exfoliating Facial Scrub is a DAEBY facial scrub with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Coco-Betaine, Sodium Lauroyl Methyl Isethionate, Oryza Sativa Powder, Polyacrylate Crosspolymer-6.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://www.daebyskin.com/cdn/shop/files/gentle-scrub-5952419.jpg?v=1767685448",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://www.daebyskin.com/cdn/shop/files/gentle-scrub-5952419.jpg?v=1767685448",
+        "http://www.daebyskin.com/cdn/shop/files/gentle-scrub-5952419.jpg?v=1767685448",
+        "https://www.daebyskin.com/cdn/shop/files/gentle-scrub-5952419.jpg?v=1767685448&amp;width=200",
+        "https://www.daebyskin.com/cdn/shop/files/gentle-scrub-3535137.png?v=1775565943&amp;width=200",
+        "https://www.daebyskin.com/cdn/shop/files/2_1.svg?v=1775565943&amp;width=200",
+        "https://www.daebyskin.com/cdn/shop/files/3_2.svg?v=1775565943&amp;width=200",
+        "https://www.daebyskin.com/cdn/shop/files/4_1.svg?v=1775565943&amp;width=200",
+        "https://www.daebyskin.com/cdn/shop/files/5_1.svg?v=1775565943&amp;width=200"
+      ],
+      "price_min": 18,
+      "price_max": 18,
+      "default_offer_id": "external_seed:ext_81f5ddbf0c3ba5da04eabf9b",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A DAEBY skincare product listed on the brand source page as Exfoliating Facial Scrub.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "DAEBY",
+        "Skincare",
+        "Facial Scrub"
+      ],
+      "sort_keys": {
+        "price_min": 18,
+        "price_max": 18,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_81f5ddbf0c3ba5da04eabf9b"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_b9155794d9908e3f29b3cac7",
+      "sellable_item_group_id": "sig_b9155794d9908e3f29b3cac7",
+      "product_line_id": "pl_4a5391838f5a2777934cb75d",
+      "review_family_id": "rf_4a5391838f5a2777934cb75d",
+      "brand_name": "LIME COSMETIC",
+      "category_paths": [
+        "Makeup",
+        "Tone-Up Cream"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "LIME GIGA WHITE TONE-UP CREAM",
+      "subtitle": "LIME GIGA WHITE TONE-UP CREAM is a LIME COSMETIC tone-up cream with source-backed use directions and a reviewed full ingredient table. Key listed ingredients include Water, Cyclopentasiloxane, Titanium Dioxide, Ethylhexyl Methoxycinnamate, Dipropylene Glycol.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://en.limecosmetic.com/web/product/big/202406/aa1d5eca8737a427c3729e5aab48b6ad.jpg",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://en.limecosmetic.com/web/product/big/202406/aa1d5eca8737a427c3729e5aab48b6ad.jpg"
+      ],
+      "price_min": 27.84,
+      "price_max": 27.84,
+      "default_offer_id": "external_seed:ext_ef9930ea4e8bf403866dc73d",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A LIME COSMETIC skincare product listed on the brand source page as LIME GIGA WHITE TONE-UP CREAM. The source description identifies: LIME GIGA WHITE TONE-UP CREAM is a LIME COSMETIC tone-up cream with source-backed use directions and a reviewed full ingredient table.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "LIME COSMETIC",
+        "Makeup",
+        "Tone-Up Cream"
+      ],
+      "sort_keys": {
+        "price_min": 27.84,
+        "price_max": 27.84,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_ef9930ea4e8bf403866dc73d"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_2f1b96a71288e8853116ef12",
+      "sellable_item_group_id": "sig_2f1b96a71288e8853116ef12",
+      "product_line_id": "pl_d55e1587d547c4413752701a",
+      "review_family_id": "rf_d55e1587d547c4413752701a",
+      "brand_name": "LIME COSMETIC",
+      "category_paths": [
+        "Skincare",
+        "Eye Patch"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "LIME OIL GEL EYE PATCH",
+      "subtitle": "LIME OIL GEL EYE PATCH is a LIME COSMETIC eye patch with source-backed use directions and a reviewed full ingredient table. Key listed ingredients include Water, Glycerin, Niacinamide, Carrageenan, Butylene Glycol.",
+      "variant_axes": {
+        "formula": "20 twenty",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://en.limecosmetic.com/web/product/big/202406/4f67fe7722cee02c519f8fc2039f3a86.jpg",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://en.limecosmetic.com/web/product/big/202406/4f67fe7722cee02c519f8fc2039f3a86.jpg"
+      ],
+      "price_min": 18.37,
+      "price_max": 18.37,
+      "default_offer_id": "external_seed:ext_ba4570b613069031f940d9b2",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A LIME COSMETIC eye treatment listed on the brand source page as LIME OIL GEL EYE PATCH.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "LIME COSMETIC",
+        "Skincare",
+        "Eye Patch"
+      ],
+      "sort_keys": {
+        "price_min": 18.37,
+        "price_max": 18.37,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_ba4570b613069031f940d9b2"
+      ]
+    }
+  ]
+}

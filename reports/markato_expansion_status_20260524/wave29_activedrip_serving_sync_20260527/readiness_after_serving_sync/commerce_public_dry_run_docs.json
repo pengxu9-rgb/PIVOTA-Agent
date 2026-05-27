@@ -1,0 +1,177 @@
+{
+  "generated_at": "2026-05-27T11:28:39.444Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 3,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_059a529bc3acbb6e14d8a572",
+      "sellable_item_group_id": "sig_059a529bc3acbb6e14d8a572",
+      "product_line_id": "pl_f1d65081da00a08b5c777ef5",
+      "review_family_id": "rf_f1d65081da00a08b5c777ef5",
+      "brand_name": "Active Drip",
+      "category_paths": [
+        "Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "HYDRATE DRIP",
+      "subtitle": "T hree active ingredients that: intensively hydrates and rejuvenates the skin. \n\nIncreases moisture \n\nDeeply hydrates \n\nIncreases smoothness \n\nPlumps and rejuvenates skin",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/AI_images_21.png?v=1778588482",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/AI_images_21.png?v=1778588482",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/Copy_of_Boutiqaat_Visual_Assets_3_5.png?v=1772057490",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/17_8abe977d-33a8-4dc5-8a79-1344a0208f9c.png?v=1772057490",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/18_a517ed74-0027-46b0-8318-1f144eb32937.png?v=1772057490",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/19_a5af25ee-1558-47ae-a112-9d7f5b67b680.png?v=1772057490",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/20_a48a29fe-b15f-4eec-8821-8e07eb27430e.png?v=1772057490"
+      ],
+      "price_min": 52.9,
+      "price_max": 52.9,
+      "default_offer_id": "external_seed:ext_441b5d142009ef8ae5082262",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Active Drip HYDRATE DRIP is a serum whose official PDP frames hyaluronic acid, B12, and B5 around hydration, moisture, smoothness, and plump-looking skin.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Active Drip",
+        "Serum"
+      ],
+      "sort_keys": {
+        "price_min": 52.9,
+        "price_max": 52.9,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_441b5d142009ef8ae5082262"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_e96f8431d6e888b0f426f3c1",
+      "sellable_item_group_id": "sig_e96f8431d6e888b0f426f3c1",
+      "product_line_id": "pl_aa6656481b38744162e7bfbd",
+      "review_family_id": "rf_aa6656481b38744162e7bfbd",
+      "brand_name": "Active Drip",
+      "category_paths": [
+        "Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "C + E DRIP",
+      "subtitle": "Revitalises, brightens and boosts skin radiance. \n\nTightens skin \n\nImproves luminosity \n\nIdeal revitaliser \n\nProtects skin",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-c-e-drip-vitamin-c-e-serum-brightening.png?v=1778768734",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-c-e-drip-vitamin-c-e-serum-brightening.png?v=1778768734",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/c-e-drip-vitamin-c-serum-dropper-glowing-skin.png?v=1778768770",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/vitamin-c-e-serum-ingredients-antioxidants-collagen-brighten.png?v=1778768803",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/c-e-drip-before-and-after-3-weeks-skin-texture-dark-spots.png?v=1778768831",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/c-e-drip-clinical-results-3-weeks-brighter-protected-skin.png?v=1778768855",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/brightening-serum-lab-tested-sensitive-skin-fragrance-free.png?v=1778768878"
+      ],
+      "price_min": 59.9,
+      "price_max": 59.9,
+      "default_offer_id": "external_seed:ext_eea9ddc94177c421b32a1ed5",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Active Drip C + E DRIP is a vitamin C and E serum described around radiance, luminosity, and revitalized-looking skin.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Active Drip",
+        "Serum"
+      ],
+      "sort_keys": {
+        "price_min": 59.9,
+        "price_max": 59.9,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_eea9ddc94177c421b32a1ed5"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_d96d3d4d7ab909300b7e3fda",
+      "sellable_item_group_id": "sig_d96d3d4d7ab909300b7e3fda",
+      "product_line_id": "pl_2873ff99bf3803d671edfc17",
+      "review_family_id": "rf_2873ff99bf3803d671edfc17",
+      "brand_name": "Active Drip",
+      "category_paths": [
+        "Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "RETINOL DRIP",
+      "subtitle": "It fights wrinkles appearance, rejuvenates and nourishes the skin. \n\nGentle on sensitive skin. \n\nReplenishes skin. \n\nDiminishes wrinkles. \n\nShields and brightens.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-retinol-drip-anti-wrinkle-serum.png?v=1778768974",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-retinol-drip-anti-wrinkle-serum.png?v=1778768974",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/retinol-drip-vitamin-a-serum-dropper-application.png?v=1778768997",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/retinol-drip-vitamin-a-aha-anti-ageing-ingredients.png?v=1778769019",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/retinol-drip-before-and-after-4-weeks-fine-lines.png?v=1778769041",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/retinol-drip-clinical-results-4-weeks-wrinkles-texture-tone.png?v=1778769068",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/bestselling-anti-ageing-retinol-serum-lab-tested-sensitive-skin.png?v=1778769099"
+      ],
+      "price_min": 59.9,
+      "price_max": 59.9,
+      "default_offer_id": "external_seed:ext_edef015844086dd8eaa792b2",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Active Drip RETINOL DRIP is a retinol serum described around the appearance of wrinkles, nourishment, replenishment, and brighter-looking skin.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Active Drip",
+        "Serum"
+      ],
+      "sort_keys": {
+        "price_min": 59.9,
+        "price_max": 59.9,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_edef015844086dd8eaa792b2"
+      ]
+    }
+  ]
+}

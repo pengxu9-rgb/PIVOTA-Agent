@@ -1,0 +1,997 @@
+{
+  "generated_at": "2026-05-27T10:56:32.911Z",
+  "mode": "dry_run",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": true,
+  "requested_ids": 4,
+  "fetched_rows": 4,
+  "mirror_rows": 4,
+  "planned_sku_rows": 4,
+  "planned_offer_rows": 4,
+  "planned_index_state_rows": 4,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "dry_run",
+    "existing_before": {
+      "catalog_products": 4,
+      "catalog_skus": 4,
+      "catalog_offers": 4,
+      "product_group_members": 4
+    },
+    "stale_delete_preview": {
+      "current_sku_rows": 8,
+      "current_offer_rows": 8,
+      "planned_stale_sku_deletes": 4,
+      "planned_stale_offer_deletes": 4,
+      "sample_stale_skus": [
+        {
+          "title": "Glimmer Tanning Body Oil Colloidal Gold",
+          "sku_key": "prod::external_seed::external_seed::ext_3405f1b2b381c9a5e0941c20::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_3405f1b2b381c9a5e0941c20",
+          "source_variant_id": "prod::external_seed::external_seed::ext_3405f1b2b381c9a5e0941c20",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Firming & Toning Body Cream Pineapple & Retinol",
+          "sku_key": "prod::external_seed::external_seed::ext_9695064b5f7d76303f88beb1::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_9695064b5f7d76303f88beb1",
+          "source_variant_id": "prod::external_seed::external_seed::ext_9695064b5f7d76303f88beb1",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Cleansing Face Milk Bulgarian Rose",
+          "sku_key": "prod::external_seed::external_seed::ext_99b5d36c01c7614a5de71fa1::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_99b5d36c01c7614a5de71fa1",
+          "source_variant_id": "prod::external_seed::external_seed::ext_99b5d36c01c7614a5de71fa1",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Rejuvenating Night Face Cream Bulgarian Rose",
+          "sku_key": "prod::external_seed::external_seed::ext_b5dafedce57973dfcca9fb5b::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_b5dafedce57973dfcca9fb5b",
+          "source_variant_id": "prod::external_seed::external_seed::ext_b5dafedce57973dfcca9fb5b",
+          "visible_attributes": {}
+        }
+      ],
+      "sample_stale_offers": [
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_3405f1b2b381c9a5e0941c20::canonical",
+          "offer_id": "offer:external_seed:f7f288762e78bd81892952806be596cb",
+          "list_price": 34.99,
+          "product_key": "prod::external_seed::external_seed::ext_3405f1b2b381c9a5e0941c20",
+          "merchant_effective_price": 34.99
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_9695064b5f7d76303f88beb1::canonical",
+          "offer_id": "offer:external_seed:7e683e99cfa2615be6d10319c9cd5707",
+          "list_price": 45.99,
+          "product_key": "prod::external_seed::external_seed::ext_9695064b5f7d76303f88beb1",
+          "merchant_effective_price": 45.99
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_99b5d36c01c7614a5de71fa1::canonical",
+          "offer_id": "offer:external_seed:d6c2fba4e6c2dd1eaeba464f212622c4",
+          "list_price": 39.99,
+          "product_key": "prod::external_seed::external_seed::ext_99b5d36c01c7614a5de71fa1",
+          "merchant_effective_price": 39.99
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_b5dafedce57973dfcca9fb5b::canonical",
+          "offer_id": "offer:external_seed:6a149cfc171f8a40ef0a9bcc617f9df9",
+          "list_price": 49.99,
+          "product_key": "prod::external_seed::external_seed::ext_b5dafedce57973dfcca9fb5b",
+          "merchant_effective_price": 49.99
+        }
+      ]
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 4
+    },
+    "product_upserts": 0,
+    "sku_upserts": 0,
+    "offer_upserts": 0,
+    "group_member_upserts": 0,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 0,
+    "identity_live_read_updates": 0,
+    "catalog_row_trust_upserts": 0,
+    "stale_offer_deletes": 0,
+    "stale_sku_deletes": 0
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_99b5d36c01c7614a5de71fa1",
+      "product_key": "prod::external_seed::external_seed::ext_99b5d36c01c7614a5de71fa1",
+      "product_group_id": "sig_344eafc02c8931679c020a25",
+      "title": "Cleansing Face Milk Bulgarian Rose",
+      "brand": "Delicate Daisys Botanical Beauty",
+      "product_type": "Cleanser",
+      "category": "Cleanser",
+      "category_path": "beauty/skincare/cleansers",
+      "canonical_url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose",
+      "pivota_signature_id": "sig_344eafc02c8931679c020a25",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_99b5d36c01c7614a5de71fa1::sku_082013546404bc8a5686",
+        "product_key": "prod::external_seed::external_seed::ext_99b5d36c01c7614a5de71fa1",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_99b5d36c01c7614a5de71fa1",
+        "source_variant_id": "ext_99b5d36c01c7614a5de71fa1:47818391847186",
+        "source_domain": "delicatedaisys.com",
+        "sku": "860008494009",
+        "barcode": null,
+        "title": "Cleansing Face Milk Bulgarian Rose",
+        "currency": "USD",
+        "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3349.jpg?v=1779411477",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_99b5d36c01c7614a5de71fa1",
+          "raw_variant_id": "47818391847186",
+          "source_variant_id": "ext_99b5d36c01c7614a5de71fa1:47818391847186",
+          "variant_sku": "860008494009",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose",
+          "external_redirect_url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose",
+          "price": "39.99",
+          "price_amount": 39.99,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3349.jpg?v=1779411477",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "860008494009",
+            "url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose?variant=47818391847186&utm_source=pivota&utm_medium=affiliate",
+            "price": "39.99",
+            "stock": "In Stock",
+            "title": "Default Title",
+            "options": [],
+            "currency": "USD",
+            "deep_link": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose?variant=47818391847186&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3349.jpg?v=1779411477",
+            "image_urls": [
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3349.jpg?v=1779411477",
+              "https://delicatedaisys.com/cdn/shop/files/cleansing-face-milk-bulgarian-rose-353063.jpg?v=1725349381",
+              "https://delicatedaisys.com/cdn/shop/files/cleansing-face-milk-bulgarian-rose-783357.jpg?v=1725349381",
+              "https://delicatedaisys.com/cdn/shop/files/cleansing-face-milk-bulgarian-rose-349638.jpg?v=1725349381",
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3351.png?v=1779411776",
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3243.png?v=1779317759",
+              "https://delicatedaisys.com/cdn/shop/files/cleansing-face-milk-bulgarian-rose-139536.jpg?v=1725312396"
+            ],
+            "variant_id": "47818391847186",
+            "product_url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:e6d1d0a16eb6fb323c779bad17b0e44b",
+        "sku_key": "prod::external_seed::external_seed::ext_99b5d36c01c7614a5de71fa1::sku_082013546404bc8a5686",
+        "product_key": "prod::external_seed::external_seed::ext_99b5d36c01c7614a5de71fa1",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 39.99,
+        "merchant_effective_price": 39.99,
+        "estimated_best_price": 39.99,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_bfe66983319825686ed76f14",
+        "source_domain": "delicatedaisys.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_bfe66983319825686ed76f14",
+          "external_product_id": "ext_99b5d36c01c7614a5de71fa1",
+          "domain": "delicatedaisys.com",
+          "market": "US",
+          "product_title": "Cleansing Face Milk Bulgarian Rose",
+          "variant_title": "Cleansing Face Milk Bulgarian Rose",
+          "variant_sku": "860008494009",
+          "raw_variant_id": "47818391847186",
+          "url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose",
+          "offer_url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose",
+          "canonical_url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose",
+          "destination_url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose",
+          "external_redirect_url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose",
+          "merchant_display_name": "Delicate Daisys Botanical Beauty",
+          "price": "39.99",
+          "price_amount": 39.99,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T00:24:58.123Z",
+            "evidence_url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T00:24:58.123Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose"
+            },
+            "regional_price": {
+              "amount": 39.99,
+              "currency": "USD",
+              "display_raw": "39.99",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose",
+              "captured_at": "2026-05-23T00:24:58.123Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:24:58.123Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T00:24:58.123Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T00:24:58.123Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 39.99,
+              "currency": "USD",
+              "display_raw": "39.99",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://delicatedaisys.com/products/cleansing-face-milk-bulgarian-rose",
+              "captured_at": "2026-05-23T00:24:58.123Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:24:58.123Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 775
+      }
+    },
+    {
+      "external_product_id": "ext_9695064b5f7d76303f88beb1",
+      "product_key": "prod::external_seed::external_seed::ext_9695064b5f7d76303f88beb1",
+      "product_group_id": "sig_f0c452f8504c681b0c410a4f",
+      "title": "Firming & Toning Body Cream Pineapple & Retinol",
+      "brand": "Delicate Daisys Botanical Beauty",
+      "product_type": "Skincare Set",
+      "category": "Skincare Set",
+      "category_path": "beauty/skincare/sets",
+      "canonical_url": "https://delicatedaisys.com/products/firming-toning-body-cream-pineapple-retinol",
+      "pivota_signature_id": "sig_f0c452f8504c681b0c410a4f",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_9695064b5f7d76303f88beb1::sku_08dd6c785dbee6ebaa19",
+        "product_key": "prod::external_seed::external_seed::ext_9695064b5f7d76303f88beb1",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_9695064b5f7d76303f88beb1",
+        "source_variant_id": "ext_9695064b5f7d76303f88beb1:50203281424658",
+        "source_domain": "delicatedaisys.com",
+        "sku": "SHOPIFY-50203281424658",
+        "barcode": null,
+        "title": "3L",
+        "currency": "USD",
+        "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3410.png?v=1779467076",
+        "visible_attributes": {
+          "Size": "3L"
+        },
+        "visible_option_labels": {
+          "Size": "3L"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_9695064b5f7d76303f88beb1",
+          "raw_variant_id": "50203281424658",
+          "source_variant_id": "ext_9695064b5f7d76303f88beb1:50203281424658",
+          "variant_sku": "SHOPIFY-50203281424658",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://delicatedaisys.com/products/firming-toning-body-cream-pineapple-retinol",
+          "external_redirect_url": "https://delicatedaisys.com/products/firming-toning-body-cream-pineapple-retinol",
+          "price": "45.99",
+          "price_amount": 45.99,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3410.png?v=1779467076",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "3L"
+          },
+          "raw_variant": {
+            "sku": "SHOPIFY-50203281424658",
+            "url": "https://delicatedaisys.com/products/firming-toning-body-cream-pineapple-retinol?variant=50203281424658&utm_source=pivota&utm_medium=affiliate",
+            "price": "45.99",
+            "stock": "In Stock",
+            "title": "3L",
+            "options": [
+              {
+                "name": "Size",
+                "value": "3L"
+              }
+            ],
+            "currency": "USD",
+            "deep_link": "https://delicatedaisys.com/products/firming-toning-body-cream-pineapple-retinol?variant=50203281424658&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3410.png?v=1779467076",
+            "image_urls": [
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3410.png?v=1779467076",
+              "https://delicatedaisys.com/cdn/shop/files/firming-toning-body-cream-pineapple-retinol-302883.jpg?v=1725349380",
+              "https://delicatedaisys.com/cdn/shop/files/firming-toning-body-cream-pineapple-retinol-861179.jpg?v=1725349380",
+              "https://delicatedaisys.com/cdn/shop/files/firming-toning-body-cream-pineapple-retinol-104111.jpg?v=1725349380",
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3409.png?v=1779467075",
+              "https://delicatedaisys.com/cdn/shop/files/firming-toning-body-cream-pineapple-retinol-988260.jpg?v=1725349380",
+              "https://m.media-amazon.com/images/I/512boGEq-3L.jpg",
+              "https://m.media-amazon.com/images/I/61+C6UujlfL.jpg",
+              "https://m.media-amazon.com/images/I/61-Dmh39EKL.jpg"
+            ],
+            "variant_id": "50203281424658",
+            "option_name": "Size",
+            "product_url": "https://delicatedaisys.com/products/firming-toning-body-cream-pineapple-retinol",
+            "option_value": "3L"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:6c5203f59e6ce43dcbd7d8ef81a1cc53",
+        "sku_key": "prod::external_seed::external_seed::ext_9695064b5f7d76303f88beb1::sku_08dd6c785dbee6ebaa19",
+        "product_key": "prod::external_seed::external_seed::ext_9695064b5f7d76303f88beb1",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 45.99,
+        "merchant_effective_price": 45.99,
+        "estimated_best_price": 45.99,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_cbe791e3565d702ac4fc546a",
+        "source_domain": "delicatedaisys.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_cbe791e3565d702ac4fc546a",
+          "external_product_id": "ext_9695064b5f7d76303f88beb1",
+          "domain": "delicatedaisys.com",
+          "market": "US",
+          "product_title": "Firming & Toning Body Cream Pineapple & Retinol",
+          "variant_title": "3L",
+          "variant_sku": "SHOPIFY-50203281424658",
+          "raw_variant_id": "50203281424658",
+          "url": "https://delicatedaisys.com/products/firming-toning-body-cream-pineapple-retinol",
+          "offer_url": "https://delicatedaisys.com/products/firming-toning-body-cream-pineapple-retinol",
+          "canonical_url": "https://delicatedaisys.com/products/firming-toning-body-cream-pineapple-retinol",
+          "destination_url": "https://delicatedaisys.com/products/firming-toning-body-cream-pineapple-retinol",
+          "external_redirect_url": "https://delicatedaisys.com/products/firming-toning-body-cream-pineapple-retinol",
+          "merchant_display_name": "Delicate Daisys Botanical Beauty",
+          "price": "45.99",
+          "price_amount": 45.99,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T00:26:06.058Z",
+            "evidence_url": "https://delicatedaisys.com/products/firming-toning-body-cream-pineapple-retinol",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T00:26:06.058Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://delicatedaisys.com/products/firming-toning-body-cream-pineapple-retinol"
+            },
+            "regional_price": {
+              "amount": 45.99,
+              "currency": "USD",
+              "display_raw": "45.99",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://delicatedaisys.com/products/firming-toning-body-cream-pineapple-retinol",
+              "captured_at": "2026-05-23T00:26:06.058Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:26:06.058Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T00:26:06.058Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T00:26:06.058Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 45.99,
+              "currency": "USD",
+              "display_raw": "45.99",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://delicatedaisys.com/products/firming-toning-body-cream-pineapple-retinol",
+              "captured_at": "2026-05-23T00:26:06.058Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:26:06.058Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 589
+      }
+    },
+    {
+      "external_product_id": "ext_3405f1b2b381c9a5e0941c20",
+      "product_key": "prod::external_seed::external_seed::ext_3405f1b2b381c9a5e0941c20",
+      "product_group_id": "sig_46a6391643f5a1383dd066e6",
+      "title": "Glimmer Tanning Body Oil Colloidal Gold",
+      "brand": "Delicate Daisys Botanical Beauty",
+      "product_type": "Body Oil",
+      "category": "Body Oil",
+      "category_path": "beauty/body-care/body-oils",
+      "canonical_url": "https://delicatedaisys.com/products/glimmer-tanning-body-oil-colloidal-gold",
+      "pivota_signature_id": "sig_46a6391643f5a1383dd066e6",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_3405f1b2b381c9a5e0941c20::sku_211a8a361c58930e368a",
+        "product_key": "prod::external_seed::external_seed::ext_3405f1b2b381c9a5e0941c20",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_3405f1b2b381c9a5e0941c20",
+        "source_variant_id": "ext_3405f1b2b381c9a5e0941c20:47818612769042",
+        "source_domain": "delicatedaisys.com",
+        "sku": "SHOPIFY-47818612769042",
+        "barcode": null,
+        "title": "Glimmer Tanning Body Oil Colloidal Gold",
+        "currency": "USD",
+        "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3436.png?v=1779473303",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_3405f1b2b381c9a5e0941c20",
+          "raw_variant_id": "47818612769042",
+          "source_variant_id": "ext_3405f1b2b381c9a5e0941c20:47818612769042",
+          "variant_sku": "SHOPIFY-47818612769042",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://delicatedaisys.com/products/glimmer-tanning-body-oil-colloidal-gold",
+          "external_redirect_url": "https://delicatedaisys.com/products/glimmer-tanning-body-oil-colloidal-gold",
+          "price": "34.99",
+          "price_amount": 34.99,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3436.png?v=1779473303",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "SHOPIFY-47818612769042",
+            "url": "https://delicatedaisys.com/products/glimmer-tanning-body-oil-colloidal-gold?variant=47818612769042&utm_source=pivota&utm_medium=affiliate",
+            "price": "34.99",
+            "stock": "In Stock",
+            "title": "Default Title",
+            "options": [],
+            "currency": "USD",
+            "deep_link": "https://delicatedaisys.com/products/glimmer-tanning-body-oil-colloidal-gold?variant=47818612769042&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3436.png?v=1779473303",
+            "image_urls": [
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3436.png?v=1779473303",
+              "https://delicatedaisys.com/cdn/shop/files/glimmer-tanning-body-oil-colloidal-gold-581835.jpg?v=1725349382",
+              "https://delicatedaisys.com/cdn/shop/files/glimmer-tanning-body-oil-colloidal-gold-376720.jpg?v=1725349382",
+              "https://delicatedaisys.com/cdn/shop/files/glimmer-tanning-body-oil-colloidal-gold-848082.jpg?v=1725349382",
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3437.png?v=1779473435",
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3282_b5c6f75e-62da-45aa-a2c2-1ca36a27c7ab.png?v=1779473304",
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3281_0d8f7467-1b8f-4ced-b0c8-d14da658c14f.png?v=1779473304",
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3279_46de2c66-e313-4151-9b9c-87c5856423ab.png?v=1779473304"
+            ],
+            "variant_id": "47818612769042",
+            "description": "Expertly crafted, our multi-purpose body oil features Colloidal Gold for a radiant glow when in the sun and nourished skin thanks to coconut oil and cocoa butter. With nanoparticle technology, Colloidal Gold penetrates deeply to protect and rejuvenate skin. Ideal for daily use, sunbathing, and tanning beds.",
+            "product_url": "https://delicatedaisys.com/products/glimmer-tanning-body-oil-colloidal-gold"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:d847e08d6436fc33410451effb11a512",
+        "sku_key": "prod::external_seed::external_seed::ext_3405f1b2b381c9a5e0941c20::sku_211a8a361c58930e368a",
+        "product_key": "prod::external_seed::external_seed::ext_3405f1b2b381c9a5e0941c20",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 34.99,
+        "merchant_effective_price": 34.99,
+        "estimated_best_price": 34.99,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_9c3a54c931f5b4bdf1e65b03",
+        "source_domain": "delicatedaisys.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_9c3a54c931f5b4bdf1e65b03",
+          "external_product_id": "ext_3405f1b2b381c9a5e0941c20",
+          "domain": "delicatedaisys.com",
+          "market": "US",
+          "product_title": "Glimmer Tanning Body Oil Colloidal Gold",
+          "variant_title": "Glimmer Tanning Body Oil Colloidal Gold",
+          "variant_sku": "SHOPIFY-47818612769042",
+          "raw_variant_id": "47818612769042",
+          "url": "https://delicatedaisys.com/products/glimmer-tanning-body-oil-colloidal-gold",
+          "offer_url": "https://delicatedaisys.com/products/glimmer-tanning-body-oil-colloidal-gold",
+          "canonical_url": "https://delicatedaisys.com/products/glimmer-tanning-body-oil-colloidal-gold",
+          "destination_url": "https://delicatedaisys.com/products/glimmer-tanning-body-oil-colloidal-gold",
+          "external_redirect_url": "https://delicatedaisys.com/products/glimmer-tanning-body-oil-colloidal-gold",
+          "merchant_display_name": "Delicate Daisys Botanical Beauty",
+          "price": "34.99",
+          "price_amount": 34.99,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T00:26:29.089Z",
+            "evidence_url": "https://delicatedaisys.com/products/glimmer-tanning-body-oil-colloidal-gold",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T00:26:29.089Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://delicatedaisys.com/products/glimmer-tanning-body-oil-colloidal-gold"
+            },
+            "regional_price": {
+              "amount": 34.99,
+              "currency": "USD",
+              "display_raw": "34.99",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://delicatedaisys.com/products/glimmer-tanning-body-oil-colloidal-gold",
+              "captured_at": "2026-05-23T00:26:29.089Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:26:29.089Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T00:26:29.089Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T00:26:29.089Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 34.99,
+              "currency": "USD",
+              "display_raw": "34.99",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://delicatedaisys.com/products/glimmer-tanning-body-oil-colloidal-gold",
+              "captured_at": "2026-05-23T00:26:29.089Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:26:29.089Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 308
+      }
+    },
+    {
+      "external_product_id": "ext_b5dafedce57973dfcca9fb5b",
+      "product_key": "prod::external_seed::external_seed::ext_b5dafedce57973dfcca9fb5b",
+      "product_group_id": "sig_d275edcf29109760764a2288",
+      "title": "Rejuvenating Night Face Cream Bulgarian Rose",
+      "brand": "Delicate Daisys Botanical Beauty",
+      "product_type": "Moisturizer",
+      "category": "Moisturizer",
+      "category_path": "beauty/skincare/moisturizers",
+      "canonical_url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose",
+      "pivota_signature_id": "sig_d275edcf29109760764a2288",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_b5dafedce57973dfcca9fb5b::sku_5a9584d31963a01f07e4",
+        "product_key": "prod::external_seed::external_seed::ext_b5dafedce57973dfcca9fb5b",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_b5dafedce57973dfcca9fb5b",
+        "source_variant_id": "ext_b5dafedce57973dfcca9fb5b:47818365010194",
+        "source_domain": "delicatedaisys.com",
+        "sku": "860008494092",
+        "barcode": null,
+        "title": "Rejuvenating Night Face Cream Bulgarian Rose",
+        "currency": "USD",
+        "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3224.jpg?v=1779314439",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_b5dafedce57973dfcca9fb5b",
+          "raw_variant_id": "47818365010194",
+          "source_variant_id": "ext_b5dafedce57973dfcca9fb5b:47818365010194",
+          "variant_sku": "860008494092",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose",
+          "external_redirect_url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose",
+          "price": "49.99",
+          "price_amount": 49.99,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3224.jpg?v=1779314439",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "860008494092",
+            "url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose?variant=47818365010194&utm_source=pivota&utm_medium=affiliate",
+            "price": "49.99",
+            "stock": "In Stock",
+            "title": "Default Title",
+            "options": [],
+            "currency": "USD",
+            "deep_link": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose?variant=47818365010194&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3224.jpg?v=1779314439",
+            "image_urls": [
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3224.jpg?v=1779314439",
+              "https://delicatedaisys.com/cdn/shop/files/rejuvenating-night-face-cream-bulgarian-rose-254487.jpg?v=1725183707",
+              "https://delicatedaisys.com/cdn/shop/files/rejuvenating-night-face-cream-bulgarian-rose-864694.jpg?v=1725183707",
+              "https://delicatedaisys.com/cdn/shop/files/rejuvenating-night-face-cream-bulgarian-rose-132645.jpg?v=1725183707",
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3230.png?v=1779314932",
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3231.png?v=1779314932",
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3232.png?v=1779314932",
+              "https://delicatedaisys.com/cdn/shop/files/FullSizeRender.jpg?v=1779315170"
+            ],
+            "variant_id": "47818365010194",
+            "product_url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:472aa0def64faec4833ccf4f9357ec7a",
+        "sku_key": "prod::external_seed::external_seed::ext_b5dafedce57973dfcca9fb5b::sku_5a9584d31963a01f07e4",
+        "product_key": "prod::external_seed::external_seed::ext_b5dafedce57973dfcca9fb5b",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 49.99,
+        "merchant_effective_price": 49.99,
+        "estimated_best_price": 49.99,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_9bea2beb5e5ef01fd465b526",
+        "source_domain": "delicatedaisys.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_9bea2beb5e5ef01fd465b526",
+          "external_product_id": "ext_b5dafedce57973dfcca9fb5b",
+          "domain": "delicatedaisys.com",
+          "market": "US",
+          "product_title": "Rejuvenating Night Face Cream Bulgarian Rose",
+          "variant_title": "Rejuvenating Night Face Cream Bulgarian Rose",
+          "variant_sku": "860008494092",
+          "raw_variant_id": "47818365010194",
+          "url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose",
+          "offer_url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose",
+          "canonical_url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose",
+          "destination_url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose",
+          "external_redirect_url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose",
+          "merchant_display_name": "Delicate Daisys Botanical Beauty",
+          "price": "49.99",
+          "price_amount": 49.99,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T00:27:32.720Z",
+            "evidence_url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T00:27:32.720Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose"
+            },
+            "regional_price": {
+              "amount": 49.99,
+              "currency": "USD",
+              "display_raw": "49.99",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose",
+              "captured_at": "2026-05-23T00:27:32.720Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:27:32.720Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T00:27:32.720Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T00:27:32.720Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 49.99,
+              "currency": "USD",
+              "display_raw": "49.99",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose",
+              "captured_at": "2026-05-23T00:27:32.720Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:27:32.720Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 498
+      }
+    }
+  ]
+}

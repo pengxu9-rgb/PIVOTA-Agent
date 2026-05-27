@@ -1,0 +1,1013 @@
+{
+  "generated_at": "2026-05-27T11:44:25.263Z",
+  "mode": "dry_run",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": true,
+  "requested_ids": 4,
+  "fetched_rows": 4,
+  "mirror_rows": 4,
+  "planned_sku_rows": 6,
+  "planned_offer_rows": 6,
+  "planned_index_state_rows": 4,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "dry_run",
+    "existing_before": {
+      "catalog_products": 4,
+      "catalog_skus": 6,
+      "catalog_offers": 6,
+      "product_group_members": 4
+    },
+    "stale_delete_preview": {
+      "current_sku_rows": 10,
+      "current_offer_rows": 10,
+      "planned_stale_sku_deletes": 4,
+      "planned_stale_offer_deletes": 4,
+      "sample_stale_skus": [
+        {
+          "title": "Exfoliating Facial Scrub",
+          "sku_key": "prod::external_seed::external_seed::ext_81f5ddbf0c3ba5da04eabf9b::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_81f5ddbf0c3ba5da04eabf9b",
+          "source_variant_id": "prod::external_seed::external_seed::ext_81f5ddbf0c3ba5da04eabf9b",
+          "visible_attributes": {}
+        },
+        {
+          "title": "LIME OIL GEL EYE PATCH",
+          "sku_key": "prod::external_seed::external_seed::ext_ba4570b613069031f940d9b2::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_ba4570b613069031f940d9b2",
+          "source_variant_id": "prod::external_seed::external_seed::ext_ba4570b613069031f940d9b2",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Daily Cleanser",
+          "sku_key": "prod::external_seed::external_seed::ext_e1c4eb330321ebc6e9672d73::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_e1c4eb330321ebc6e9672d73",
+          "source_variant_id": "prod::external_seed::external_seed::ext_e1c4eb330321ebc6e9672d73",
+          "visible_attributes": {}
+        },
+        {
+          "title": "LIME GIGA WHITE TONE-UP CREAM",
+          "sku_key": "prod::external_seed::external_seed::ext_ef9930ea4e8bf403866dc73d::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_ef9930ea4e8bf403866dc73d",
+          "source_variant_id": "prod::external_seed::external_seed::ext_ef9930ea4e8bf403866dc73d",
+          "visible_attributes": {}
+        }
+      ],
+      "sample_stale_offers": [
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_81f5ddbf0c3ba5da04eabf9b::canonical",
+          "offer_id": "offer:external_seed:328322862d1591359a2f358c8e8e5723",
+          "list_price": 18,
+          "product_key": "prod::external_seed::external_seed::ext_81f5ddbf0c3ba5da04eabf9b",
+          "merchant_effective_price": 18
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_ba4570b613069031f940d9b2::canonical",
+          "offer_id": "offer:external_seed:852246c98f84ff9fd63e6491de49b659",
+          "list_price": 18.37,
+          "product_key": "prod::external_seed::external_seed::ext_ba4570b613069031f940d9b2",
+          "merchant_effective_price": 18.37
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_e1c4eb330321ebc6e9672d73::canonical",
+          "offer_id": "offer:external_seed:796b66d5d5e8a1261723ac30ad7b63de",
+          "list_price": 19,
+          "product_key": "prod::external_seed::external_seed::ext_e1c4eb330321ebc6e9672d73",
+          "merchant_effective_price": 19
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_ef9930ea4e8bf403866dc73d::canonical",
+          "offer_id": "offer:external_seed:1837d31b379102d5d5b7c5f185bcc4ee",
+          "list_price": 27.84,
+          "product_key": "prod::external_seed::external_seed::ext_ef9930ea4e8bf403866dc73d",
+          "merchant_effective_price": 27.84
+        }
+      ]
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 6
+    },
+    "product_upserts": 0,
+    "sku_upserts": 0,
+    "offer_upserts": 0,
+    "group_member_upserts": 0,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 0,
+    "identity_live_read_updates": 0,
+    "catalog_row_trust_upserts": 0,
+    "stale_offer_deletes": 0,
+    "stale_sku_deletes": 0
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_e1c4eb330321ebc6e9672d73",
+      "product_key": "prod::external_seed::external_seed::ext_e1c4eb330321ebc6e9672d73",
+      "product_group_id": "sig_303cd69abca9ff69eeab8596",
+      "title": "Daily Cleanser",
+      "brand": "DAEBY",
+      "product_type": "Cleanser",
+      "category": "Cleanser",
+      "category_path": "beauty/skincare/cleanse/cleanser",
+      "canonical_url": "https://www.daebyskin.com/products/cleanser?country=US",
+      "pivota_signature_id": "sig_b7861d41783ae62b5ed6b46df01e1e74",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_e1c4eb330321ebc6e9672d73::sku_8d06d82d485c2a37d6c2",
+        "product_key": "prod::external_seed::external_seed::ext_e1c4eb330321ebc6e9672d73",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_e1c4eb330321ebc6e9672d73",
+        "source_variant_id": "ext_e1c4eb330321ebc6e9672d73:45409374765222",
+        "source_domain": "daebyskin.com",
+        "sku": "199284610552",
+        "barcode": null,
+        "title": "Daily Cleanser",
+        "currency": "USD",
+        "image_url": "https://www.daebyskin.com/cdn/shop/files/daily-cleanser-2641825.jpg?v=1767685448",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_e1c4eb330321ebc6e9672d73",
+          "raw_variant_id": "45409374765222",
+          "source_variant_id": "ext_e1c4eb330321ebc6e9672d73:45409374765222",
+          "variant_sku": "199284610552",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://www.daebyskin.com/products/cleanser?country=US",
+          "external_redirect_url": "https://www.daebyskin.com/products/cleanser?country=US",
+          "price": "19",
+          "price_amount": 19,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://www.daebyskin.com/cdn/shop/files/daily-cleanser-2641825.jpg?v=1767685448",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "199284610552",
+            "url": "https://www.daebyskin.com/products/cleanser?variant=45409374765222&country=US",
+            "price": "19",
+            "stock": "In Stock",
+            "images": [
+              "https://www.daebyskin.com/cdn/shop/files/daily-cleanser-2641825.jpg?v=1767685448"
+            ],
+            "currency": "USD",
+            "image_url": "https://www.daebyskin.com/cdn/shop/files/daily-cleanser-2641825.jpg?v=1767685448",
+            "image_urls": [
+              "https://www.daebyskin.com/cdn/shop/files/daily-cleanser-2641825.jpg?v=1767685448"
+            ],
+            "variant_id": "45409374765222",
+            "description": "Daily Cleanser is a DAEBY cleanser with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Sodium C14-16 Olefin Sulfonate, Disodium Laureth Sulfosuccinate, Lauryl Betaine, Sodium Lauroyl Methyl Isethionate.",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:be14d96738ab42ca5bd6dd4819e13828",
+        "sku_key": "prod::external_seed::external_seed::ext_e1c4eb330321ebc6e9672d73::sku_8d06d82d485c2a37d6c2",
+        "product_key": "prod::external_seed::external_seed::ext_e1c4eb330321ebc6e9672d73",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 19,
+        "merchant_effective_price": 19,
+        "estimated_best_price": 19,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_e061138dca4586901570de42",
+        "source_domain": "daebyskin.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_e061138dca4586901570de42",
+          "external_product_id": "ext_e1c4eb330321ebc6e9672d73",
+          "domain": "daebyskin.com",
+          "market": "US",
+          "product_title": "Daily Cleanser",
+          "variant_title": "Daily Cleanser",
+          "variant_sku": "199284610552",
+          "raw_variant_id": "45409374765222",
+          "url": "https://www.daebyskin.com/products/cleanser?country=US",
+          "offer_url": "https://www.daebyskin.com/products/cleanser?country=US",
+          "canonical_url": "https://www.daebyskin.com/products/cleanser?country=US",
+          "destination_url": "https://www.daebyskin.com/products/cleanser?country=US",
+          "external_redirect_url": "https://www.daebyskin.com/products/cleanser?country=US",
+          "merchant_display_name": "DAEBY",
+          "price": "19",
+          "price_amount": 19,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "official_daeby_shopify_country_us_pdp_html",
+            "captured_at": "2026-05-25T16:36:28.433Z",
+            "evidence_url": "https://www.daebyskin.com/products/cleanser?country=US",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "official_daeby_shopify_country_us_pdp_html",
+              "confidence": "unknown",
+              "checked_at": "2026-05-25T16:36:28.433Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://www.daebyskin.com/products/cleanser?country=US"
+            },
+            "regional_price": {
+              "amount": 19,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.daebyskin.com/products/cleanser?country=US",
+              "captured_at": "2026-05-25T16:36:28.433Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_daeby_shopify_country_us_pdp_html",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T16:36:28.433Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "official_daeby_shopify_country_us_pdp_html",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T16:36:28.433Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "official_daeby_shopify_country_us_pdp_html",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T16:36:28.433Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 19,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.daebyskin.com/products/cleanser?country=US",
+              "captured_at": "2026-05-25T16:36:28.433Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_daeby_shopify_country_us_pdp_html",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T16:36:28.433Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 254
+      }
+    },
+    {
+      "external_product_id": "ext_81f5ddbf0c3ba5da04eabf9b",
+      "product_key": "prod::external_seed::external_seed::ext_81f5ddbf0c3ba5da04eabf9b",
+      "product_group_id": "sig_46aea7b66d57935e8d0f2cad",
+      "title": "Exfoliating Facial Scrub",
+      "brand": "DAEBY",
+      "product_type": "Facial Scrub",
+      "category": "Facial Scrub",
+      "category_path": "beauty/skincare/exfoliate/face-scrub",
+      "canonical_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+      "pivota_signature_id": "sig_05be8b2c9c3d425a95b0ef1b5cae9695",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_81f5ddbf0c3ba5da04eabf9b::sku_8e7882a7beff0db30569",
+        "product_key": "prod::external_seed::external_seed::ext_81f5ddbf0c3ba5da04eabf9b",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_81f5ddbf0c3ba5da04eabf9b",
+        "source_variant_id": "ext_81f5ddbf0c3ba5da04eabf9b:45409382662310",
+        "source_domain": "daebyskin.com",
+        "sku": "199284310551",
+        "barcode": null,
+        "title": "Exfoliating Facial Scrub",
+        "currency": "USD",
+        "image_url": "https://www.daebyskin.com/cdn/shop/files/gentle-scrub-5952419.jpg?v=1767685448",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_81f5ddbf0c3ba5da04eabf9b",
+          "raw_variant_id": "45409382662310",
+          "source_variant_id": "ext_81f5ddbf0c3ba5da04eabf9b:45409382662310",
+          "variant_sku": "199284310551",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+          "external_redirect_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+          "price": "18",
+          "price_amount": 18,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://www.daebyskin.com/cdn/shop/files/gentle-scrub-5952419.jpg?v=1767685448",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "199284310551",
+            "url": "https://www.daebyskin.com/products/gentle-scrub?variant=45409382662310&country=US",
+            "price": "18",
+            "stock": "In Stock",
+            "images": [
+              "https://www.daebyskin.com/cdn/shop/files/gentle-scrub-5952419.jpg?v=1767685448"
+            ],
+            "currency": "USD",
+            "image_url": "https://www.daebyskin.com/cdn/shop/files/gentle-scrub-5952419.jpg?v=1767685448",
+            "image_urls": [
+              "https://www.daebyskin.com/cdn/shop/files/gentle-scrub-5952419.jpg?v=1767685448"
+            ],
+            "variant_id": "45409382662310",
+            "description": "Exfoliating Facial Scrub is a DAEBY facial scrub with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Coco-Betaine, Sodium Lauroyl Methyl Isethionate, Oryza Sativa Powder, Polyacrylate Crosspolymer-6.",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:ca033f87c11a66ab2be998d4940dbb01",
+        "sku_key": "prod::external_seed::external_seed::ext_81f5ddbf0c3ba5da04eabf9b::sku_8e7882a7beff0db30569",
+        "product_key": "prod::external_seed::external_seed::ext_81f5ddbf0c3ba5da04eabf9b",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 18,
+        "merchant_effective_price": 18,
+        "estimated_best_price": 18,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_2752d5a2dc5a62e09d50c96c",
+        "source_domain": "daebyskin.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_2752d5a2dc5a62e09d50c96c",
+          "external_product_id": "ext_81f5ddbf0c3ba5da04eabf9b",
+          "domain": "daebyskin.com",
+          "market": "US",
+          "product_title": "Exfoliating Facial Scrub",
+          "variant_title": "Exfoliating Facial Scrub",
+          "variant_sku": "199284310551",
+          "raw_variant_id": "45409382662310",
+          "url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+          "offer_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+          "canonical_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+          "destination_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+          "external_redirect_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+          "merchant_display_name": "DAEBY",
+          "price": "18",
+          "price_amount": 18,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "official_daeby_shopify_country_us_pdp_html",
+            "captured_at": "2026-05-25T16:36:28.433Z",
+            "evidence_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "official_daeby_shopify_country_us_pdp_html",
+              "confidence": "unknown",
+              "checked_at": "2026-05-25T16:36:28.433Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://www.daebyskin.com/products/gentle-scrub?country=US"
+            },
+            "regional_price": {
+              "amount": 18,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+              "captured_at": "2026-05-25T16:36:28.433Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_daeby_shopify_country_us_pdp_html",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T16:36:28.433Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "official_daeby_shopify_country_us_pdp_html",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T16:36:28.433Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "official_daeby_shopify_country_us_pdp_html",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T16:36:28.433Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 18,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.daebyskin.com/products/gentle-scrub?country=US",
+              "captured_at": "2026-05-25T16:36:28.433Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_daeby_shopify_country_us_pdp_html",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T16:36:28.433Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 251
+      }
+    },
+    {
+      "external_product_id": "ext_ef9930ea4e8bf403866dc73d",
+      "product_key": "prod::external_seed::external_seed::ext_ef9930ea4e8bf403866dc73d",
+      "product_group_id": "sig_b9155794d9908e3f29b3cac7",
+      "title": "LIME GIGA WHITE TONE-UP CREAM",
+      "brand": "LIME COSMETIC",
+      "product_type": "Tone Up Cream",
+      "category": "Tone Up Cream",
+      "category_path": "beauty/makeup/base",
+      "canonical_url": "https://en.limecosmetic.com/product/lime-giga-white-tone-up-cream/70",
+      "pivota_signature_id": "sig_0179121f7a92b13d74066ae5599856cc",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_ef9930ea4e8bf403866dc73d::sku_ecf35fa3a59cd6eb2b87",
+        "product_key": "prod::external_seed::external_seed::ext_ef9930ea4e8bf403866dc73d",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_ef9930ea4e8bf403866dc73d",
+        "source_variant_id": "ext_ef9930ea4e8bf403866dc73d:P00000CS000A",
+        "source_domain": "en.limecosmetic.com",
+        "sku": "P00000CS000A",
+        "barcode": null,
+        "title": "LIME GIGA WHITE TONE-UP CREAM",
+        "currency": "USD",
+        "image_url": "https://en.limecosmetic.com/web/product/big/202406/aa1d5eca8737a427c3729e5aab48b6ad.jpg",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_ef9930ea4e8bf403866dc73d",
+          "raw_variant_id": "P00000CS000A",
+          "source_variant_id": "ext_ef9930ea4e8bf403866dc73d:P00000CS000A",
+          "variant_sku": "P00000CS000A",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://en.limecosmetic.com/product/lime-giga-white-tone-up-cream/70",
+          "external_redirect_url": "https://en.limecosmetic.com/product/lime-giga-white-tone-up-cream/70",
+          "price": "27.84",
+          "price_amount": 27.84,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://en.limecosmetic.com/web/product/big/202406/aa1d5eca8737a427c3729e5aab48b6ad.jpg",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "P00000CS000A",
+            "url": "https://en.limecosmetic.com/product/lime-giga-white-tone-up-cream/70",
+            "price": "27.84",
+            "stock": "In Stock",
+            "images": [
+              "https://en.limecosmetic.com/web/product/big/202406/aa1d5eca8737a427c3729e5aab48b6ad.jpg"
+            ],
+            "currency": "USD",
+            "image_url": "https://en.limecosmetic.com/web/product/big/202406/aa1d5eca8737a427c3729e5aab48b6ad.jpg",
+            "image_urls": [
+              "https://en.limecosmetic.com/web/product/big/202406/aa1d5eca8737a427c3729e5aab48b6ad.jpg"
+            ],
+            "variant_id": "P00000CS000A",
+            "description": "LIME GIGA WHITE TONE-UP CREAM",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:2298c1439e86185dbdc891d84295a105",
+        "sku_key": "prod::external_seed::external_seed::ext_ef9930ea4e8bf403866dc73d::sku_ecf35fa3a59cd6eb2b87",
+        "product_key": "prod::external_seed::external_seed::ext_ef9930ea4e8bf403866dc73d",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 27.84,
+        "merchant_effective_price": 27.84,
+        "estimated_best_price": 27.84,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_ef9930ea4e8bf403866dc73d",
+        "source_domain": "en.limecosmetic.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_ef9930ea4e8bf403866dc73d",
+          "external_product_id": "ext_ef9930ea4e8bf403866dc73d",
+          "domain": "en.limecosmetic.com",
+          "market": "US",
+          "product_title": "LIME GIGA WHITE TONE-UP CREAM",
+          "variant_title": "LIME GIGA WHITE TONE-UP CREAM",
+          "variant_sku": "P00000CS000A",
+          "raw_variant_id": "P00000CS000A",
+          "url": "https://en.limecosmetic.com/product/lime-giga-white-tone-up-cream/70",
+          "offer_url": "https://en.limecosmetic.com/product/lime-giga-white-tone-up-cream/70",
+          "canonical_url": "https://en.limecosmetic.com/product/lime-giga-white-tone-up-cream/70",
+          "destination_url": "https://en.limecosmetic.com/product/lime-giga-white-tone-up-cream/70",
+          "external_redirect_url": "https://en.limecosmetic.com/product/lime-giga-white-tone-up-cream/70",
+          "merchant_display_name": "LIME COSMETIC",
+          "price": "27.84",
+          "price_amount": 27.84,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "official_lime_cafe24_pdp_detail_image_review",
+            "captured_at": "2026-05-27T02:11:01.768Z",
+            "evidence_url": "https://en.limecosmetic.com/product/lime-giga-white-tone-up-cream/70",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "official_lime_cafe24_pdp_detail_image_review",
+              "confidence": "unknown",
+              "checked_at": "2026-05-27T02:11:01.768Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://en.limecosmetic.com/product/lime-giga-white-tone-up-cream/70"
+            },
+            "regional_price": {
+              "amount": 27.84,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://en.limecosmetic.com/product/lime-giga-white-tone-up-cream/70",
+              "captured_at": "2026-05-27T02:11:01.768Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_lime_cafe24_pdp_detail_image_review",
+              "confidence": "medium",
+              "captured_at": "2026-05-27T02:11:01.768Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "official_lime_cafe24_pdp_detail_image_review",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-27T02:11:01.768Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "official_lime_cafe24_pdp_detail_image_review",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-27T02:11:01.768Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 27.84,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://en.limecosmetic.com/product/lime-giga-white-tone-up-cream/70",
+              "captured_at": "2026-05-27T02:11:01.768Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_lime_cafe24_pdp_detail_image_review",
+              "confidence": "medium",
+              "captured_at": "2026-05-27T02:11:01.768Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 259
+      }
+    },
+    {
+      "external_product_id": "ext_ba4570b613069031f940d9b2",
+      "product_key": "prod::external_seed::external_seed::ext_ba4570b613069031f940d9b2",
+      "product_group_id": "sig_2f1b96a71288e8853116ef12",
+      "title": "LIME OIL GEL EYE PATCH",
+      "brand": "LIME COSMETIC",
+      "product_type": "Eye Patch",
+      "category": "Eye Patch",
+      "category_path": "beauty/skincare/eye-care",
+      "canonical_url": "https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000A",
+      "pivota_signature_id": "sig_06eebe3d006d1e423eb390f5de9b19e5",
+      "sku_rows": 3,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_ba4570b613069031f940d9b2::sku_26c70150231a69d1bdf4",
+        "product_key": "prod::external_seed::external_seed::ext_ba4570b613069031f940d9b2",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_ba4570b613069031f940d9b2",
+        "source_variant_id": "ext_ba4570b613069031f940d9b2:P00000CU000A",
+        "source_domain": "en.limecosmetic.com",
+        "sku": "P00000CU000A",
+        "barcode": null,
+        "title": "LIME OIL GEL EYE PATCH",
+        "currency": "USD",
+        "image_url": "https://en.limecosmetic.com/web/product/big/202406/4f67fe7722cee02c519f8fc2039f3a86.jpg",
+        "visible_attributes": {
+          "Formula": "20 TWENTY"
+        },
+        "visible_option_labels": {
+          "Formula": "20 TWENTY"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_ba4570b613069031f940d9b2",
+          "raw_variant_id": "P00000CU000A",
+          "source_variant_id": "ext_ba4570b613069031f940d9b2:P00000CU000A",
+          "variant_sku": "P00000CU000A",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000A",
+          "external_redirect_url": "https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000A",
+          "price": "18.37",
+          "price_amount": 18.37,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://en.limecosmetic.com/web/product/big/202406/4f67fe7722cee02c519f8fc2039f3a86.jpg",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Formula": "20 TWENTY"
+          },
+          "raw_variant": {
+            "sku": "P00000CU000A",
+            "url": "https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000A",
+            "price": "18.37",
+            "stock": "In Stock",
+            "images": [
+              "https://en.limecosmetic.com/web/product/big/202406/4f67fe7722cee02c519f8fc2039f3a86.jpg"
+            ],
+            "currency": "USD",
+            "axis_kind": "formula_variant",
+            "image_url": "https://en.limecosmetic.com/web/product/big/202406/4f67fe7722cee02c519f8fc2039f3a86.jpg",
+            "image_urls": [
+              "https://en.limecosmetic.com/web/product/big/202406/4f67fe7722cee02c519f8fc2039f3a86.jpg"
+            ],
+            "variant_id": "P00000CU000A",
+            "description": "LIME OIL GEL EYE PATCH 20 TWENTY",
+            "option_name": "Select",
+            "option_value": "20 TWENTY",
+            "stock_number": 97,
+            "ingredients_inci": [
+              "Water",
+              "Glycerin",
+              "Niacinamide",
+              "Carrageenan",
+              "Butylene Glycol",
+              "Rosa Canina Fruit Oil",
+              "Hibiscus Sabdariffa Flower Extract",
+              "Citrus Paradisi (Grapefruit) Fruit Extract",
+              "Citrus Grandis (Grapefruit) Seed Extract",
+              "Bambusa Vulgaris Stem Extract",
+              "Pinus Palustris Leaf Extract",
+              "Euterpe Oleracea Fruit Extract",
+              "Panthenol",
+              "Retinol",
+              "Methylpropanediol",
+              "Tocopheryl Acetate",
+              "Hydrogenated Lecithin",
+              "Polysorbate 20",
+              "Glutathione",
+              "Guar Gum",
+              "Potassium Chloride",
+              "Calcium Chloride",
+              "Allantoin",
+              "Ceratonia Siliqua (Carob) Gum",
+              "Sucrose",
+              "Ricinus Communis (Castor) Seed Oil",
+              "Cellulose Gum",
+              "Calcium Lactate",
+              "Adenosine",
+              "PEG-60 Hydrogenated Castor Oil",
+              "Disodium EDTA",
+              "Arginine",
+              "Dipotassium Glycyrrhizate",
+              "Pentylene Glycol",
+              "Cocos Nucifera (Coconut) Fruit Extract",
+              "Pinus Sylvestris Leaf Extract",
+              "Chlorphenesin",
+              "Ethyl Hexanediol",
+              "1,2-Hexanediol",
+              "Propanediol",
+              "Caprylyl Glycol",
+              "Ethylhexylglycerin",
+              "Calcium Aluminum Borosilicate",
+              "Titanium Dioxide",
+              "Tin Oxide",
+              "Carmine"
+            ],
+            "pdp_ingredients_raw": "Water, Glycerin, Niacinamide, Carrageenan, Butylene Glycol, Rosa Canina Fruit Oil, Hibiscus Sabdariffa Flower Extract, Citrus Paradisi (Grapefruit) Fruit Extract, Citrus Grandis (Grapefruit) Seed Extract, Bambusa Vulgaris Stem Extract, Pinus Palustris Leaf Extract, Euterpe Oleracea Fruit Extract, Panthenol, Retinol, Methylpropanediol, Tocopheryl Acetate, Hydrogenated Lecithin, Polysorbate 20, Glutathione, Guar Gum, Potassium Chloride, Calcium Chloride, Allantoin, Ceratonia Siliqua (Carob) Gum, Sucrose, Ricinus Communis (Castor) Seed Oil, Cellulose Gum, Calcium Lactate, Adenosine, PEG-60 Hydrogenated Castor Oil, Disodium EDTA, Arginine, Dipotassium Glycyrrhizate, Pentylene Glycol, Cocos Nucifera (Coconut) Fruit Extract, Pinus Sylvestris Leaf Extract, Chlorphenesin, Ethyl Hexanediol, 1,2-Hexanediol, Propanediol, Caprylyl Glycol, Ethylhexylglycerin, Calcium Aluminum Borosilicate, Titanium Dioxide, Tin Oxide, Carmine",
+            "source_ingredients_raw_ko": "정제수, 글리세린, 나이아신아마이드, 카라기난, 부틸렌글라이콜, 로즈힙열매오일, 히비스커스꽃추출물, 자몽추출물, 왕귤씨추출물, 위버대나무줄기추출물, 대왕송잎추출물, 아사이팜열매추출물, 판테놀, 레티놀, 메틸프로판다이올, 토코페릴아세테이트, 하이드로제네이티드레시틴, 폴리솔베이트20, 글루타티온, 구아검, 포타슘클로라이드, 칼슘클로라이드, 알란토인, 캐롭검, 수크로오스, 피마자씨오일, 셀룰로오스검, 칼슘락테이트, 아데노신, 피이지-60하이드로제네이티드캐스터오일, 다이소듐이디티에이, 알지닌, 다이포타슘글리시리제이트, 펜틸렌글라이콜, 코코넛야자열매추출물, 구주소나무잎추출물, 클로페네신, 에틸헥산다이올, 1,2-헥산다이올, 프로판다이올, 카프릴릴글라이콜, 에틸헥실글리세린, 칼슘알루미늄보로실리케이트, 티타늄디옥사이드, 틴옥사이드, 카민"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:201b1872fcf8184a500fb9043aacb437",
+        "sku_key": "prod::external_seed::external_seed::ext_ba4570b613069031f940d9b2::sku_26c70150231a69d1bdf4",
+        "product_key": "prod::external_seed::external_seed::ext_ba4570b613069031f940d9b2",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 18.37,
+        "merchant_effective_price": 18.37,
+        "estimated_best_price": 18.37,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_ba4570b613069031f940d9b2",
+        "source_domain": "en.limecosmetic.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_ba4570b613069031f940d9b2",
+          "external_product_id": "ext_ba4570b613069031f940d9b2",
+          "domain": "en.limecosmetic.com",
+          "market": "US",
+          "product_title": "LIME OIL GEL EYE PATCH",
+          "variant_title": "LIME OIL GEL EYE PATCH",
+          "variant_sku": "P00000CU000A",
+          "raw_variant_id": "P00000CU000A",
+          "url": "https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000A",
+          "offer_url": "https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000A",
+          "canonical_url": "https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000A",
+          "destination_url": "https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000A",
+          "external_redirect_url": "https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000A",
+          "merchant_display_name": "LIME COSMETIC",
+          "price": "18.37",
+          "price_amount": 18.37,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "official_lime_cafe24_pdp_detail_image_review",
+            "captured_at": "2026-05-27T02:11:01.768Z",
+            "evidence_url": "https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000A",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "official_lime_cafe24_pdp_detail_image_review",
+              "confidence": "unknown",
+              "checked_at": "2026-05-27T02:11:01.768Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000A"
+            },
+            "regional_price": {
+              "amount": 18.37,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000A",
+              "captured_at": "2026-05-27T02:11:01.768Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_lime_cafe24_pdp_detail_image_review",
+              "confidence": "medium",
+              "captured_at": "2026-05-27T02:11:01.768Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "official_lime_cafe24_pdp_detail_image_review",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-27T02:11:01.768Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "official_lime_cafe24_pdp_detail_image_review",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-27T02:11:01.768Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 18.37,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000A",
+              "captured_at": "2026-05-27T02:11:01.768Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_lime_cafe24_pdp_detail_image_review",
+              "confidence": "medium",
+              "captured_at": "2026-05-27T02:11:01.768Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 214
+      }
+    }
+  ]
+}

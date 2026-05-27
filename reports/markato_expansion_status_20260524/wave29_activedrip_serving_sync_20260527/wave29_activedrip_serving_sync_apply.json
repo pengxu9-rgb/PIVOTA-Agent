@@ -1,0 +1,697 @@
+{
+  "generated_at": "2026-05-27T11:27:33.642Z",
+  "mode": "apply",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": true,
+  "requested_ids": 3,
+  "fetched_rows": 3,
+  "mirror_rows": 3,
+  "planned_sku_rows": 3,
+  "planned_offer_rows": 3,
+  "planned_index_state_rows": 3,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "apply",
+    "existing_before": {
+      "catalog_products": 3,
+      "catalog_skus": 3,
+      "catalog_offers": 3,
+      "product_group_members": 3
+    },
+    "stale_delete_preview": {
+      "current_sku_rows": 3,
+      "current_offer_rows": 3,
+      "planned_stale_sku_deletes": 0,
+      "planned_stale_offer_deletes": 0,
+      "sample_stale_skus": [],
+      "sample_stale_offers": []
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 3
+    },
+    "product_upserts": 3,
+    "sku_upserts": 3,
+    "offer_upserts": 3,
+    "group_member_upserts": 3,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 3,
+    "identity_live_read_updates": 0,
+    "catalog_row_trust_upserts": 3,
+    "stale_offer_deletes": 0,
+    "stale_sku_deletes": 0
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_eea9ddc94177c421b32a1ed5",
+      "product_key": "prod::external_seed::external_seed::ext_eea9ddc94177c421b32a1ed5",
+      "product_group_id": "sig_e96f8431d6e888b0f426f3c1",
+      "title": "C + E DRIP",
+      "brand": "Active Drip",
+      "product_type": "Serum",
+      "category": "Serum",
+      "category_path": "beauty/skincare/serum",
+      "canonical_url": "https://activedrip.com/products/vitamin-c-e-serum",
+      "pivota_signature_id": "sig_e96f8431d6e888b0f426f3c1",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_eea9ddc94177c421b32a1ed5::sku_22a1b7e032dc1369bc8c",
+        "product_key": "prod::external_seed::external_seed::ext_eea9ddc94177c421b32a1ed5",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_eea9ddc94177c421b32a1ed5",
+        "source_variant_id": "ext_eea9ddc94177c421b32a1ed5:40823317168162",
+        "source_domain": "activedrip.com",
+        "sku": "8436585435159",
+        "barcode": null,
+        "title": "C + E DRIP",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-c-e-drip-vitamin-c-e-serum-brightening.png?v=1778768734",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_eea9ddc94177c421b32a1ed5",
+          "raw_variant_id": "40823317168162",
+          "source_variant_id": "ext_eea9ddc94177c421b32a1ed5:40823317168162",
+          "variant_sku": "8436585435159",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://activedrip.com/products/vitamin-c-e-serum",
+          "external_redirect_url": "https://activedrip.com/products/vitamin-c-e-serum",
+          "price": "59.9",
+          "price_amount": 59.9,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-c-e-drip-vitamin-c-e-serum-brightening.png?v=1778768734",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "8436585435159",
+            "url": "https://activedrip.com/products/vitamin-c-e-serum",
+            "price": "59.9",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-c-e-drip-vitamin-c-e-serum-brightening.png?v=1778768734",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-c-e-drip-vitamin-c-e-serum-brightening.png?v=1778768734",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/c-e-drip-vitamin-c-serum-dropper-glowing-skin.png?v=1778768770",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/vitamin-c-e-serum-ingredients-antioxidants-collagen-brighten.png?v=1778768803",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/c-e-drip-before-and-after-3-weeks-skin-texture-dark-spots.png?v=1778768831",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/c-e-drip-clinical-results-3-weeks-brighter-protected-skin.png?v=1778768855",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/brightening-serum-lab-tested-sensitive-skin-fragrance-free.png?v=1778768878"
+            ],
+            "variant_id": "40823317168162",
+            "description": "Revitalises, brightens and boosts skin radiance. \n\nTightens skin \n\nImproves luminosity \n\nIdeal revitaliser \n\nProtects skin",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:8824bb08982f46c57564a7b76c457594",
+        "sku_key": "prod::external_seed::external_seed::ext_eea9ddc94177c421b32a1ed5::sku_22a1b7e032dc1369bc8c",
+        "product_key": "prod::external_seed::external_seed::ext_eea9ddc94177c421b32a1ed5",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 59.9,
+        "merchant_effective_price": 59.9,
+        "estimated_best_price": 59.9,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_e1559acb34ff118e7583a696",
+        "source_domain": "activedrip.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_e1559acb34ff118e7583a696",
+          "external_product_id": "ext_eea9ddc94177c421b32a1ed5",
+          "domain": "activedrip.com",
+          "market": "US",
+          "product_title": "C + E DRIP",
+          "variant_title": "C + E DRIP",
+          "variant_sku": "8436585435159",
+          "raw_variant_id": "40823317168162",
+          "url": "https://activedrip.com/products/vitamin-c-e-serum",
+          "offer_url": "https://activedrip.com/products/vitamin-c-e-serum",
+          "canonical_url": "https://activedrip.com/products/vitamin-c-e-serum",
+          "destination_url": "https://activedrip.com/products/vitamin-c-e-serum",
+          "external_redirect_url": "https://activedrip.com/products/vitamin-c-e-serum",
+          "merchant_display_name": "Active Drip",
+          "price": "59.9",
+          "price_amount": 59.9,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T01:07:13.798Z",
+            "evidence_url": "https://activedrip.com/products/vitamin-c-e-serum",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-24T01:07:13.798Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://activedrip.com/products/vitamin-c-e-serum"
+            },
+            "regional_price": {
+              "amount": 59.9,
+              "currency": "USD",
+              "display_raw": "59.90",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://activedrip.com/products/vitamin-c-e-serum",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T01:07:13.798Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T01:07:13.798Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 59.9,
+              "currency": "USD",
+              "display_raw": "59.90",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://activedrip.com/products/vitamin-c-e-serum",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 83,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 122
+      }
+    },
+    {
+      "external_product_id": "ext_441b5d142009ef8ae5082262",
+      "product_key": "prod::external_seed::external_seed::ext_441b5d142009ef8ae5082262",
+      "product_group_id": "sig_059a529bc3acbb6e14d8a572",
+      "title": "HYDRATE DRIP",
+      "brand": "Active Drip",
+      "product_type": "Serum",
+      "category": "Serum",
+      "category_path": "beauty/skincare/serum",
+      "canonical_url": "https://activedrip.com/products/hyaluronic-acid-b12-b5-serum",
+      "pivota_signature_id": "sig_059a529bc3acbb6e14d8a572",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_441b5d142009ef8ae5082262::sku_cfafe01ac7f28125721f",
+        "product_key": "prod::external_seed::external_seed::ext_441b5d142009ef8ae5082262",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_441b5d142009ef8ae5082262",
+        "source_variant_id": "ext_441b5d142009ef8ae5082262:40823175151650",
+        "source_domain": "activedrip.com",
+        "sku": "8436585435128",
+        "barcode": null,
+        "title": "HYDRATE DRIP",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/AI_images_21.png?v=1778588482",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_441b5d142009ef8ae5082262",
+          "raw_variant_id": "40823175151650",
+          "source_variant_id": "ext_441b5d142009ef8ae5082262:40823175151650",
+          "variant_sku": "8436585435128",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://activedrip.com/products/hyaluronic-acid-b12-b5-serum",
+          "external_redirect_url": "https://activedrip.com/products/hyaluronic-acid-b12-b5-serum",
+          "price": "52.9",
+          "price_amount": 52.9,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/AI_images_21.png?v=1778588482",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "8436585435128",
+            "url": "https://activedrip.com/products/hyaluronic-acid-b12-b5-serum",
+            "price": "52.9",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/AI_images_21.png?v=1778588482",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/AI_images_21.png?v=1778588482",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/Copy_of_Boutiqaat_Visual_Assets_3_5.png?v=1772057490",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/17_8abe977d-33a8-4dc5-8a79-1344a0208f9c.png?v=1772057490",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/18_a517ed74-0027-46b0-8318-1f144eb32937.png?v=1772057490",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/19_a5af25ee-1558-47ae-a112-9d7f5b67b680.png?v=1772057490",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/20_a48a29fe-b15f-4eec-8821-8e07eb27430e.png?v=1772057490"
+            ],
+            "variant_id": "40823175151650",
+            "description": "T hree active ingredients that: intensively hydrates and rejuvenates the skin. \n\nIncreases moisture \n\nDeeply hydrates \n\nIncreases smoothness \n\nPlumps and rejuvenates skin",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:b6c2bfd658eceffbb792c7e1c63eb0d4",
+        "sku_key": "prod::external_seed::external_seed::ext_441b5d142009ef8ae5082262::sku_cfafe01ac7f28125721f",
+        "product_key": "prod::external_seed::external_seed::ext_441b5d142009ef8ae5082262",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 52.9,
+        "merchant_effective_price": 52.9,
+        "estimated_best_price": 52.9,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_6bee4780bb22777b33fc2a96",
+        "source_domain": "activedrip.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_6bee4780bb22777b33fc2a96",
+          "external_product_id": "ext_441b5d142009ef8ae5082262",
+          "domain": "activedrip.com",
+          "market": "US",
+          "product_title": "HYDRATE DRIP",
+          "variant_title": "HYDRATE DRIP",
+          "variant_sku": "8436585435128",
+          "raw_variant_id": "40823175151650",
+          "url": "https://activedrip.com/products/hyaluronic-acid-b12-b5-serum",
+          "offer_url": "https://activedrip.com/products/hyaluronic-acid-b12-b5-serum",
+          "canonical_url": "https://activedrip.com/products/hyaluronic-acid-b12-b5-serum",
+          "destination_url": "https://activedrip.com/products/hyaluronic-acid-b12-b5-serum",
+          "external_redirect_url": "https://activedrip.com/products/hyaluronic-acid-b12-b5-serum",
+          "merchant_display_name": "Active Drip",
+          "price": "52.9",
+          "price_amount": 52.9,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T01:07:13.798Z",
+            "evidence_url": "https://activedrip.com/products/hyaluronic-acid-b12-b5-serum",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-24T01:07:13.798Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://activedrip.com/products/hyaluronic-acid-b12-b5-serum"
+            },
+            "regional_price": {
+              "amount": 52.9,
+              "currency": "USD",
+              "display_raw": "52.90",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://activedrip.com/products/hyaluronic-acid-b12-b5-serum",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T01:07:13.798Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T01:07:13.798Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 52.9,
+              "currency": "USD",
+              "display_raw": "52.90",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://activedrip.com/products/hyaluronic-acid-b12-b5-serum",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 170
+      }
+    },
+    {
+      "external_product_id": "ext_edef015844086dd8eaa792b2",
+      "product_key": "prod::external_seed::external_seed::ext_edef015844086dd8eaa792b2",
+      "product_group_id": "sig_d96d3d4d7ab909300b7e3fda",
+      "title": "RETINOL DRIP",
+      "brand": "Active Drip",
+      "product_type": "Serum",
+      "category": "Serum",
+      "category_path": "beauty/skincare/serum",
+      "canonical_url": "https://activedrip.com/products/retinol-anti-wrinkle-serum",
+      "pivota_signature_id": "sig_d96d3d4d7ab909300b7e3fda",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_edef015844086dd8eaa792b2::sku_e23cee7d2c262485664a",
+        "product_key": "prod::external_seed::external_seed::ext_edef015844086dd8eaa792b2",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_edef015844086dd8eaa792b2",
+        "source_variant_id": "ext_edef015844086dd8eaa792b2:40823313465378",
+        "source_domain": "activedrip.com",
+        "sku": "8436585435142",
+        "barcode": null,
+        "title": "RETINOL DRIP",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-retinol-drip-anti-wrinkle-serum.png?v=1778768974",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_edef015844086dd8eaa792b2",
+          "raw_variant_id": "40823313465378",
+          "source_variant_id": "ext_edef015844086dd8eaa792b2:40823313465378",
+          "variant_sku": "8436585435142",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://activedrip.com/products/retinol-anti-wrinkle-serum",
+          "external_redirect_url": "https://activedrip.com/products/retinol-anti-wrinkle-serum",
+          "price": "59.9",
+          "price_amount": 59.9,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-retinol-drip-anti-wrinkle-serum.png?v=1778768974",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "8436585435142",
+            "url": "https://activedrip.com/products/retinol-anti-wrinkle-serum",
+            "price": "59.9",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-retinol-drip-anti-wrinkle-serum.png?v=1778768974",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-retinol-drip-anti-wrinkle-serum.png?v=1778768974",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/retinol-drip-vitamin-a-serum-dropper-application.png?v=1778768997",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/retinol-drip-vitamin-a-aha-anti-ageing-ingredients.png?v=1778769019",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/retinol-drip-before-and-after-4-weeks-fine-lines.png?v=1778769041",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/retinol-drip-clinical-results-4-weeks-wrinkles-texture-tone.png?v=1778769068",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/bestselling-anti-ageing-retinol-serum-lab-tested-sensitive-skin.png?v=1778769099"
+            ],
+            "variant_id": "40823313465378",
+            "description": "It fights wrinkles appearance, rejuvenates and nourishes the skin. \n\nGentle on sensitive skin. \n\nReplenishes skin. \n\nDiminishes wrinkles. \n\nShields and brightens.",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:a1e485d73d3b15c543998273d165eb6f",
+        "sku_key": "prod::external_seed::external_seed::ext_edef015844086dd8eaa792b2::sku_e23cee7d2c262485664a",
+        "product_key": "prod::external_seed::external_seed::ext_edef015844086dd8eaa792b2",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 59.9,
+        "merchant_effective_price": 59.9,
+        "estimated_best_price": 59.9,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_a6510b980d592be3a98d30e6",
+        "source_domain": "activedrip.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_a6510b980d592be3a98d30e6",
+          "external_product_id": "ext_edef015844086dd8eaa792b2",
+          "domain": "activedrip.com",
+          "market": "US",
+          "product_title": "RETINOL DRIP",
+          "variant_title": "RETINOL DRIP",
+          "variant_sku": "8436585435142",
+          "raw_variant_id": "40823313465378",
+          "url": "https://activedrip.com/products/retinol-anti-wrinkle-serum",
+          "offer_url": "https://activedrip.com/products/retinol-anti-wrinkle-serum",
+          "canonical_url": "https://activedrip.com/products/retinol-anti-wrinkle-serum",
+          "destination_url": "https://activedrip.com/products/retinol-anti-wrinkle-serum",
+          "external_redirect_url": "https://activedrip.com/products/retinol-anti-wrinkle-serum",
+          "merchant_display_name": "Active Drip",
+          "price": "59.9",
+          "price_amount": 59.9,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T01:07:13.798Z",
+            "evidence_url": "https://activedrip.com/products/retinol-anti-wrinkle-serum",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-24T01:07:13.798Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://activedrip.com/products/retinol-anti-wrinkle-serum"
+            },
+            "regional_price": {
+              "amount": 59.9,
+              "currency": "USD",
+              "display_raw": "59.90",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://activedrip.com/products/retinol-anti-wrinkle-serum",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T01:07:13.798Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T01:07:13.798Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 59.9,
+              "currency": "USD",
+              "display_raw": "59.90",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://activedrip.com/products/retinol-anti-wrinkle-serum",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 162
+      }
+    }
+  ]
+}

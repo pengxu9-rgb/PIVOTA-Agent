@@ -1,0 +1,180 @@
+{
+  "generated_at": "2026-05-27T11:54:55.298Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 3,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_bb93738e3170cb9abebe3632",
+      "sellable_item_group_id": "sig_bb93738e3170cb9abebe3632",
+      "product_line_id": "pl_ad5df8a001e24218344dcaa6",
+      "review_family_id": "rf_ad5df8a001e24218344dcaa6",
+      "brand_name": "Lucamar Skin Care",
+      "category_paths": [
+        "Body Care",
+        "Body Balm"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Baa Ram Ewe  Lanolin Skin Balm  120g UNSCENTED",
+      "subtitle": "Baa Ram Ewe  Lanolin Skin Balm  120g UNSCENTED is a source-backed Lucamar body balm from the brand-owned US-localized Shopify product feed. The official ingredient section includes Lanolin Anhydrous, Pure Australian Lanolin, Vitellaria Paradora, Organic Shea Butter, Cera Alba. Price, availability, imagery, ingredient text, and Daily Ritual instructions are captured from the official source.",
+      "variant_axes": {
+        "volume": "120g",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_14.png?v=1701869178",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_14.png?v=1701869178",
+        "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_20.png?v=1701869399",
+        "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_2722_3_b4230ea2-39cf-4f96-918c-1abf18a74681.jpg?v=1701869399",
+        "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_5128.jpg?v=1701869399"
+      ],
+      "price_min": 17,
+      "price_max": 17,
+      "default_offer_id": "external_seed:ext_c26547ca63d530592ed62d63",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Lucamar Skin Care body balm listed on the brand source page as Baa Ram Ewe Lanolin Skin Balm 120g UNSCENTED. The source description identifies: Baa Ram Ewe Lanolin Skin Balm 120g UNSCENTED is a source-backed Lucamar body balm from the brand-owned US-localized Shopify product feed.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Lucamar Skin Care",
+        "Body Care",
+        "Body Balm"
+      ],
+      "sort_keys": {
+        "price_min": 17,
+        "price_max": 17,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_c26547ca63d530592ed62d63"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_a6130a657e5ea0e91dcb4d10",
+      "sellable_item_group_id": "sig_a6130a657e5ea0e91dcb4d10",
+      "product_line_id": "pl_65f3a6f4242abbaf57068915",
+      "review_family_id": "rf_65f3a6f4242abbaf57068915",
+      "brand_name": "Lucamar Skin Care",
+      "category_paths": [
+        "Body Care",
+        "Body Balm"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Baa Ram Ewe  Lanolin Skin Balm  120g",
+      "subtitle": "Baa Ram Ewe  Lanolin Skin Balm  120g is a source-backed Lucamar body balm from the brand-owned US-localized Shopify product feed. The official ingredient section includes Lanolin Anhydrous, Pure Australian Lanolin, Vitellaria Paradora, Organic Shea Butter, Cera Alba. Price, availability, imagery, ingredient text, and Daily Ritual instructions are captured from the official source.",
+      "variant_axes": {
+        "volume": "120g",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_14.png?v=1701869178",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_14.png?v=1701869178",
+        "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_20.png?v=1701869399",
+        "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_2722_3_b4230ea2-39cf-4f96-918c-1abf18a74681.jpg?v=1701869399",
+        "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_5128.jpg?v=1701869399"
+      ],
+      "price_min": 17,
+      "price_max": 17,
+      "default_offer_id": "external_seed:ext_0836525e72365da8ecbcc3b5",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Lucamar Skin Care body balm listed on the brand source page as Baa Ram Ewe Lanolin Skin Balm 120g. The source description identifies: Baa Ram Ewe Lanolin Skin Balm 120g is a source-backed Lucamar body balm from the brand-owned US-localized Shopify product feed.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Lucamar Skin Care",
+        "Body Care",
+        "Body Balm"
+      ],
+      "sort_keys": {
+        "price_min": 17,
+        "price_max": 17,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_0836525e72365da8ecbcc3b5"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_83e5dd4c102d5115bfd303c9",
+      "sellable_item_group_id": "sig_83e5dd4c102d5115bfd303c9",
+      "product_line_id": "pl_65f3a6f4242abbaf57068915",
+      "review_family_id": "rf_65f3a6f4242abbaf57068915",
+      "brand_name": "Lucamar Skin Care",
+      "category_paths": [
+        "Body Care",
+        "Body Balm"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Baa Ram Ewe Lanolin Skin Balm 50g",
+      "subtitle": "Baa Ram Ewe Lanolin Skin Balm 50g is a source-backed Lucamar body balm from the brand-owned US-localized Shopify product feed. The official ingredient section includes Lanolin Anhydrous, Pure Australian Lanolin, Vitellaria Paradora, Organic Shea Butter, Cera Alba. Price, availability, imagery, ingredient text, and Daily Ritual instructions are captured from the official source.",
+      "variant_axes": {
+        "volume": "50g",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_19.png?v=1701869285",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_19.png?v=1701869285",
+        "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_21.png?v=1701869579",
+        "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_5152.jpg?v=1701869579",
+        "https://cdn.shopify.com/s/files/1/2713/6250/files/7ef164cf-15d3-44b3-b9e4-85d26bba4154.png?v=1701869579"
+      ],
+      "price_min": 12,
+      "price_max": 12,
+      "default_offer_id": "external_seed:ext_edcf7e510314384ac432b385",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Lucamar Skin Care body balm listed on the brand source page as Baa Ram Ewe Lanolin Skin Balm 50g. The source description identifies: Baa Ram Ewe Lanolin Skin Balm 50g is a source-backed Lucamar body balm from the brand-owned US-localized Shopify product feed.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Lucamar Skin Care",
+        "Body Care",
+        "Body Balm"
+      ],
+      "sort_keys": {
+        "price_min": 12,
+        "price_max": 12,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_edcf7e510314384ac432b385"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,242 @@
+{
+  "generated_at": "2026-05-27T10:58:47.436Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 4,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_d275edcf29109760764a2288",
+      "sellable_item_group_id": "sig_d275edcf29109760764a2288",
+      "product_line_id": "pl_0a8017de1ab27cc20b7e4360",
+      "review_family_id": "rf_0a8017de1ab27cc20b7e4360",
+      "brand_name": "Delicate Daisys Botanical Beauty",
+      "category_paths": [
+        "Moisturizer"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Rejuvenating Night Face Cream Bulgarian Rose",
+      "subtitle": "Our Rejuvenating Night Face Cream is specially formulated with pure oils and organic butters to effectively rejuvenate and nourish your skin. By protecting against fine lines and wrinkles, it provides 24-hour continuous action for maximum benefits when applied nightly. Plus, it's all-natural, vegan, and cruelty-free certified for your peace of mind.\n\nReady to wake up glowing? Use after our rose water spray to lock in moisture and soothe skin overnight. This combo is a nighttime skincare dream.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://delicatedaisys.com/cdn/shop/files/IMG-3224.jpg?v=1779314439",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3224.jpg?v=1779314439",
+        "https://delicatedaisys.com/cdn/shop/files/rejuvenating-night-face-cream-bulgarian-rose-254487.jpg?v=1725183707",
+        "https://delicatedaisys.com/cdn/shop/files/rejuvenating-night-face-cream-bulgarian-rose-864694.jpg?v=1725183707",
+        "https://delicatedaisys.com/cdn/shop/files/rejuvenating-night-face-cream-bulgarian-rose-132645.jpg?v=1725183707",
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3230.png?v=1779314932",
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3231.png?v=1779314932",
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3232.png?v=1779314932",
+        "https://delicatedaisys.com/cdn/shop/files/FullSizeRender.jpg?v=1779315170"
+      ],
+      "price_min": 49.99,
+      "price_max": 49.99,
+      "default_offer_id": "external_seed:ext_b5dafedce57973dfcca9fb5b",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Delicate Daisys Botanical Beauty moisturizer listed on the brand source page as Rejuvenating Night Face Cream Bulgarian Rose. The source description identifies: Our Rejuvenating Night Face Cream is specially formulated with pure oils and organic butters to effectively rejuvenate and nourish your skin.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Delicate Daisys Botanical Beauty",
+        "Moisturizer"
+      ],
+      "sort_keys": {
+        "price_min": 49.99,
+        "price_max": 49.99,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_b5dafedce57973dfcca9fb5b"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_f0c452f8504c681b0c410a4f",
+      "sellable_item_group_id": "sig_f0c452f8504c681b0c410a4f",
+      "product_line_id": "pl_3545617c840f7298b3024e0d",
+      "review_family_id": "rf_3545617c840f7298b3024e0d",
+      "brand_name": "Delicate Daisys Botanical Beauty",
+      "category_paths": [
+        "Body Cream",
+        "Body Moisturizer"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Firming & Toning Body Cream Pineapple & Retinol",
+      "subtitle": "Revitalize your body with our all-natural Pineapple & Retinol infused Firming & Toning Body Cream, specially formulated to target cellulite and stimulate fat burning, while preventing the formation of new cells. Enhance your daily workout routine with this cream and pair it with cupping therapy, massage, and body brushing for optimal results. Don't worry if you feel a slight tingling or warming sensation, as it is a natural and temporary part of the stimulation process. Trust us, your body will thank you!\n\nFor best results, apply after cleansing with our pineapple enzyme body wash .",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://delicatedaisys.com/cdn/shop/files/IMG-3410.png?v=1779467076",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3410.png?v=1779467076",
+        "https://delicatedaisys.com/cdn/shop/files/firming-toning-body-cream-pineapple-retinol-302883.jpg?v=1725349380",
+        "https://delicatedaisys.com/cdn/shop/files/firming-toning-body-cream-pineapple-retinol-861179.jpg?v=1725349380",
+        "https://delicatedaisys.com/cdn/shop/files/firming-toning-body-cream-pineapple-retinol-104111.jpg?v=1725349380",
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3409.png?v=1779467075",
+        "https://delicatedaisys.com/cdn/shop/files/firming-toning-body-cream-pineapple-retinol-988260.jpg?v=1725349380",
+        "https://m.media-amazon.com/images/I/512boGEq-3L.jpg",
+        "https://m.media-amazon.com/images/I/61+C6UujlfL.jpg"
+      ],
+      "price_min": 45.99,
+      "price_max": 45.99,
+      "default_offer_id": "external_seed:ext_9695064b5f7d76303f88beb1",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Delicate Daisys Botanical Beauty moisturizer listed on the brand source page as Firming & Toning Body Cream Pineapple & Retinol.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Delicate Daisys Botanical Beauty",
+        "Body Cream",
+        "Body Moisturizer"
+      ],
+      "sort_keys": {
+        "price_min": 45.99,
+        "price_max": 45.99,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_9695064b5f7d76303f88beb1"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_46a6391643f5a1383dd066e6",
+      "sellable_item_group_id": "sig_46a6391643f5a1383dd066e6",
+      "product_line_id": "pl_37647bb6da4e2d9cc223fa96",
+      "review_family_id": "rf_37647bb6da4e2d9cc223fa96",
+      "brand_name": "Delicate Daisys Botanical Beauty",
+      "category_paths": [
+        "Body Oil"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Glimmer Tanning Body Oil Colloidal Gold",
+      "subtitle": "Expertly crafted, our multi-purpose body oil features Colloidal Gold for a radiant glow when in the sun and nourished skin thanks to coconut oil and cocoa butter. With nanoparticle technology, Colloidal Gold penetrates deeply to protect and rejuvenate skin. Ideal for daily use, sunbathing, and tanning beds.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://delicatedaisys.com/cdn/shop/files/IMG-3436.png?v=1779473303",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3436.png?v=1779473303",
+        "https://delicatedaisys.com/cdn/shop/files/glimmer-tanning-body-oil-colloidal-gold-581835.jpg?v=1725349382",
+        "https://delicatedaisys.com/cdn/shop/files/glimmer-tanning-body-oil-colloidal-gold-376720.jpg?v=1725349382",
+        "https://delicatedaisys.com/cdn/shop/files/glimmer-tanning-body-oil-colloidal-gold-848082.jpg?v=1725349382",
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3437.png?v=1779473435",
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3282_b5c6f75e-62da-45aa-a2c2-1ca36a27c7ab.png?v=1779473304",
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3281_0d8f7467-1b8f-4ced-b0c8-d14da658c14f.png?v=1779473304",
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3279_46de2c66-e313-4151-9b9c-87c5856423ab.png?v=1779473304"
+      ],
+      "price_min": 34.99,
+      "price_max": 34.99,
+      "default_offer_id": "external_seed:ext_3405f1b2b381c9a5e0941c20",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Delicate Daisys Botanical Beauty body oil listed on the brand source page as Glimmer Tanning Body Oil Colloidal Gold. The source description identifies: Expertly crafted, our multi-purpose body oil features Colloidal Gold for a radiant glow when in the sun and nourished skin thanks to coconut oil and cocoa butter.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Delicate Daisys Botanical Beauty",
+        "Body Oil"
+      ],
+      "sort_keys": {
+        "price_min": 34.99,
+        "price_max": 34.99,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_3405f1b2b381c9a5e0941c20"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_344eafc02c8931679c020a25",
+      "sellable_item_group_id": "sig_344eafc02c8931679c020a25",
+      "product_line_id": "pl_ffe7fee8956b23b45da389b7",
+      "review_family_id": "rf_ffe7fee8956b23b45da389b7",
+      "brand_name": "Delicate Daisys Botanical Beauty",
+      "category_paths": [
+        "Cleanser"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Cleansing Face Milk Bulgarian Rose",
+      "subtitle": "With this gentle, waterless cleansing milk, you can effectively cleanse, refresh, and soothe your face and neck without stripping your skin of important oils. Made with Organic Damask Rose Water and Oil, this product has the added benefits of pore-tightening, skin irritation relief, and protection against cell damage. Simply pump onto a cotton wipe or pad, massage, and wipe away for convenient and effective facial cleansing that can be done anytime and anywhere.\n\nCleanse gently, then follow with our Rose Water Spray to calm and tone. Perfect for sensitive skin or minimalist routines.\n\nDirections for use: Use a cotton wipe or pad to clean the face and eyes in the morning and evening. No rinse is necessary. Suitable for all skin types and gentle enough for daily use.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://delicatedaisys.com/cdn/shop/files/IMG-3349.jpg?v=1779411477",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3349.jpg?v=1779411477",
+        "https://delicatedaisys.com/cdn/shop/files/cleansing-face-milk-bulgarian-rose-353063.jpg?v=1725349381",
+        "https://delicatedaisys.com/cdn/shop/files/cleansing-face-milk-bulgarian-rose-783357.jpg?v=1725349381",
+        "https://delicatedaisys.com/cdn/shop/files/cleansing-face-milk-bulgarian-rose-349638.jpg?v=1725349381",
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3351.png?v=1779411776",
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3243.png?v=1779317759",
+        "https://delicatedaisys.com/cdn/shop/files/cleansing-face-milk-bulgarian-rose-139536.jpg?v=1725312396"
+      ],
+      "price_min": 39.99,
+      "price_max": 39.99,
+      "default_offer_id": "external_seed:ext_99b5d36c01c7614a5de71fa1",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Delicate Daisys Botanical Beauty cleanser listed on the brand source page as Cleansing Face Milk Bulgarian Rose. The source description identifies: With this gentle, waterless cleansing milk, you can effectively cleanse, refresh, and soothe your face and neck without stripping your skin of important oils.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Delicate Daisys Botanical Beauty",
+        "Cleanser"
+      ],
+      "sort_keys": {
+        "price_min": 39.99,
+        "price_max": 39.99,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_99b5d36c01c7614a5de71fa1"
+      ]
+    }
+  ]
+}
