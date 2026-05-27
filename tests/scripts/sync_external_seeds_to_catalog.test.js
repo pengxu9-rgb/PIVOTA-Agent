@@ -424,6 +424,58 @@ describe('sync-external-seeds-to-catalog variant prices', () => {
     expect(mirror.skus[0].offer.offer_payload.variant_title).toBe('Hydration Skincare Set');
   });
 
+  test('does not surface generic single item labels as SKU options', () => {
+    const mirror = buildMirror({
+      id: 'eps_single_item',
+      external_product_id: 'ext_single_item_serum',
+      market: 'US',
+      domain: 'murad.com',
+      title: 'Gentle Glycolic Acid Resurfacing Serum',
+      image_url: 'https://cdn.example.com/serum.jpg',
+      price_amount: 65,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      canonical_url: 'https://www.murad.com/products/heartleaf-gentle-resurfacing-serum',
+      status: 'active',
+      identity_listing: {
+        identity_status: 'approved',
+        live_read_enabled: true,
+        review_required: false,
+        sellable_item_group_id: 'sig_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+        source_tier: 'brand',
+      },
+      seed_data: {
+        brand: 'Murad',
+        description:
+          'A reviewed serum with source-backed product content and current commerce details.',
+        variants: [
+          {
+            variant_id: '50559680610607',
+            sku: '15014',
+            title: 'Single item',
+            option_name: 'Format',
+            option_value: 'Single item',
+            options: [
+              {
+                name: 'Format',
+                value: 'Single item',
+                axis_kind: 'format',
+              },
+            ],
+            price: '65.00',
+            currency: 'USD',
+            image_url: 'https://cdn.example.com/serum.jpg',
+          },
+        ],
+      },
+    });
+
+    expect(mirror.skus[0].sku.title).toBe('Gentle Glycolic Acid Resurfacing Serum');
+    expect(mirror.skus[0].sku.visible_attributes).toEqual({});
+    expect(mirror.skus[0].sku.visible_option_labels).toEqual({});
+    expect(mirror.skus[0].offer.offer_payload.variant_title).toBe('Gentle Glycolic Acid Resurfacing Serum');
+  });
+
   test('preserves reviewed multi-size variant prices when top-level price is the minimum price', () => {
     const mirror = buildMirror({
       id: 'eps_multisize',

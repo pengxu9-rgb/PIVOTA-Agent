@@ -589,7 +589,7 @@ function isNonUserFacingVariantLabel(value, axis = '') {
   if (!label) return true;
   const normalized = label.toLowerCase();
   const axisNorm = asString(axis).toLowerCase();
-  if (/^(?:default(?:\s+title)?|single|one\s+size|title)$/i.test(label)) return true;
+  if (/^(?:default(?:\s+title)?|single(?:\s+item)?|one\s+size|title)$/i.test(label)) return true;
   if (/\b(?:repeat\s+order|subscription|subscribe|auto[-\s]*ship|autoship|purchase\s+option)\b/i.test(label)) {
     return true;
   }
@@ -1170,18 +1170,115 @@ async function existingCounts(mirrors) {
   };
 }
 
+function buildStaleDeletePlan(mirrors) {
+  return mirrors.map((mirror) => ({
+    product_key: mirror.productKey,
+    sku_keys: mirror.skus.map((skuMirror) => skuMirror.sku.sku_key).filter(Boolean),
+    offer_ids: mirror.skus.map((skuMirror) => skuMirror.offer.offer_id).filter(Boolean),
+  }));
+}
+
+async function staleDeletePreview(mirrors, sampleLimit = 50) {
+  if (!mirrors.length) {
+    return {
+      current_sku_rows: 0,
+      current_offer_rows: 0,
+      planned_stale_sku_deletes: 0,
+      planned_stale_offer_deletes: 0,
+      sample_stale_skus: [],
+      sample_stale_offers: [],
+    };
+  }
+  const plan = buildStaleDeletePlan(mirrors);
+  const res = await query(
+    `
+      WITH planned AS (
+        SELECT product_key, sku_keys, offer_ids
+        FROM jsonb_to_recordset($1::jsonb) AS p(
+          product_key text,
+          sku_keys jsonb,
+          offer_ids jsonb
+        )
+      ),
+      current_skus AS (
+        SELECT cs.product_key, cs.sku_key, cs.source_variant_id, cs.title, cs.visible_attributes
+        FROM planned p
+        JOIN catalog_skus cs
+          ON cs.product_key = p.product_key
+         AND cs.merchant_id = $2
+         AND cs.platform = $3
+      ),
+      current_offers AS (
+        SELECT co.product_key, co.offer_id, co.sku_key, co.list_price, co.merchant_effective_price
+        FROM planned p
+        JOIN catalog_offers co
+          ON co.product_key = p.product_key
+         AND co.merchant_id = $2
+         AND co.source_system = $4
+      ),
+      stale_skus AS (
+        SELECT cs.*
+        FROM planned p
+        JOIN current_skus cs
+          ON cs.product_key = p.product_key
+        WHERE NOT (
+          cs.sku_key = ANY(ARRAY(SELECT jsonb_array_elements_text(p.sku_keys)))
+        )
+      ),
+      stale_offers AS (
+        SELECT co.*
+        FROM planned p
+        JOIN current_offers co
+          ON co.product_key = p.product_key
+        WHERE NOT (
+          co.offer_id = ANY(ARRAY(SELECT jsonb_array_elements_text(p.offer_ids)))
+        )
+      )
+      SELECT
+        (SELECT count(*)::int FROM current_skus) AS current_sku_rows,
+        (SELECT count(*)::int FROM current_offers) AS current_offer_rows,
+        (SELECT count(*)::int FROM stale_skus) AS planned_stale_sku_deletes,
+        (SELECT count(*)::int FROM stale_offers) AS planned_stale_offer_deletes,
+        COALESCE((
+          SELECT jsonb_agg(to_jsonb(s) ORDER BY s.product_key, s.sku_key)
+          FROM (
+            SELECT * FROM stale_skus ORDER BY product_key, sku_key LIMIT $5
+          ) s
+        ), '[]'::jsonb) AS sample_stale_skus,
+        COALESCE((
+          SELECT jsonb_agg(to_jsonb(o) ORDER BY o.product_key, o.offer_id)
+          FROM (
+            SELECT * FROM stale_offers ORDER BY product_key, offer_id LIMIT $5
+          ) o
+        ), '[]'::jsonb) AS sample_stale_offers
+    `,
+    [JSON.stringify(plan), MERCHANT_ID, PLATFORM, SOURCE_SYSTEM, Number(sampleLimit || 50)],
+  );
+  const row = res.rows[0] || {};
+  return {
+    current_sku_rows: Number(row.current_sku_rows || 0),
+    current_offer_rows: Number(row.current_offer_rows || 0),
+    planned_stale_sku_deletes: Number(row.planned_stale_sku_deletes || 0),
+    planned_stale_offer_deletes: Number(row.planned_stale_offer_deletes || 0),
+    sample_stale_skus: Array.isArray(row.sample_stale_skus) ? row.sample_stale_skus : [],
+    sample_stale_offers: Array.isArray(row.sample_stale_offers) ? row.sample_stale_offers : [],
+  };
+}
+
 async function applyMirrors(
   mirrors,
   dryRun,
   { upsertServingState = false, batchSize = 0, bootstrapReviewedIdentityLiveRead = false } = {},
 ) {
   const existingBefore = await existingCounts(mirrors);
+  const stalePreview = await staleDeletePreview(mirrors);
   const normalizedBatchSize = normalizeBatchSize(batchSize);
   const batches = chunkArray(mirrors, normalizedBatchSize);
   const auditReasons = mergeAuditReasons(mirrors);
   const totals = {
     mode: dryRun ? 'dry_run' : 'apply',
     existing_before: existingBefore,
+    stale_delete_preview: stalePreview,
     batch_size: normalizedBatchSize || null,
     batches: batches.length,
     audit_reasons: auditReasons,
