@@ -275,6 +275,46 @@ test('external_seed: approved + review_required flag set → degrades to shadow'
   assert.equal(trust.identity_status, 'review_required');
 });
 
+// ---- IPS-NULL EXTERNAL_SEED BLOCK (c1.v0.4) ---------------------------------
+//
+// Phase 3c parity surfaced 80 external_seed catalog rows with public trust but
+// no index_pipeline_state row. c1.v0.4 closes this: external_seed catalogs
+// require IPS to opine (existence + serving_eligible=true). First-party rows
+// keep the legacy "ips=null means OK" behavior because IPS doesn't process
+// them by design.
+
+test('external_seed: no IPS row → blocked with INDEX_NOT_SERVING_ELIGIBLE (c1.v0.4)', () => {
+  const trust = callExternalSeed({ ips: null });
+  assert.equal(trust.serving_decision, 'blocked');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.INDEX_NOT_SERVING_ELIGIBLE));
+});
+
+test('external_seed: IPS row present + serving_eligible=true → public (unchanged)', () => {
+  const trust = callExternalSeed();
+  assert.equal(trust.serving_decision, 'public');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.PUBLIC_PASSTHROUGH));
+});
+
+test('external_seed: IPS row present + serving_eligible=false → blocked (unchanged)', () => {
+  const trust = callExternalSeed({ ips: eligibleIps({ serving_eligible: false }) });
+  assert.equal(trust.serving_decision, 'blocked');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.INDEX_NOT_SERVING_ELIGIBLE));
+});
+
+test('first-party: no IPS row → public (c1.v0.4 keeps the c1.v0.3 carve-out)', () => {
+  // MOYU/GR/PawStyle case — first-party merchants don't get IPS coverage, but
+  // the merchant is the source of truth, so absence of IPS does not block.
+  const trust = call({ ips: null });
+  assert.equal(trust.serving_decision, 'public');
+  assert.ok(!trust.serving_reason_codes.includes(REASON_CODES.INDEX_NOT_SERVING_ELIGIBLE));
+});
+
+test('first-party: IPS row present + serving_eligible=false STILL blocks (unchanged)', () => {
+  const trust = call({ ips: eligibleIps({ serving_eligible: false }) });
+  assert.equal(trust.serving_decision, 'blocked');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.INDEX_NOT_SERVING_ELIGIBLE));
+});
+
 // ---- FIRST-PARTY CARVE-OUT (c1.v0.3) ----------------------------------------
 //
 // Internal merchants (anything that's not external_seed) are the source of
