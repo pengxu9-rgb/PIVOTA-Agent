@@ -33,14 +33,31 @@ function catalogServingFailOpenOnIpsMiss(env = process.env) {
   return isTruthyEnvFlag(env.CATALOG_SERVING_FAIL_OPEN_ON_IPS_MISS);
 }
 
+function catalogServingUsesCatalogRowTrust() {
+  const flag = String(process.env.CATALOG_SERVING_USES_CATALOG_ROW_TRUST || '').trim().toLowerCase();
+  return flag === '1' || flag === 'true' || flag === 'yes' || flag === 'on';
+}
+
 async function fetchCatalogServingEligibleSourceSet(queryFn) {
-  const eligibleRes = await queryFn(
-    `SELECT cp.merchant_id, cp.source_product_id
-     FROM index_pipeline_state ips
-     JOIN catalog_products cp ON cp.content_key = ips.content_key
-     WHERE ips.serving_eligible = TRUE`,
-    [],
-  );
+  // Layer C1 Phase 3e: when CATALOG_SERVING_USES_CATALOG_ROW_TRUST is on,
+  // gate eligibility on catalog_row_trust.serving_decision='public' instead
+  // of index_pipeline_state.serving_eligible=TRUE. The trust gate composes
+  // identity + source lifecycle + IPS + quarantine + tombstone + the
+  // c1.v0.3 first-party carve-out + c1.v0.4 no-IPS-external_seed block in
+  // one place — feeding through to is_public (catalogServingIndex.js:709)
+  // and on to publish_state on the resulting serving docs, which readers
+  // #4 and #5 already consume directly.
+  const sql = catalogServingUsesCatalogRowTrust()
+    ? `SELECT cp.merchant_id, cp.source_product_id
+       FROM catalog_row_trust crt
+       JOIN catalog_products cp ON cp.product_key = crt.subject_key
+       WHERE crt.subject_type = 'product'
+         AND crt.serving_decision = 'public'`
+    : `SELECT cp.merchant_id, cp.source_product_id
+       FROM index_pipeline_state ips
+       JOIN catalog_products cp ON cp.content_key = ips.content_key
+       WHERE ips.serving_eligible = TRUE`;
+  const eligibleRes = await queryFn(sql, []);
   return new Set(
     (eligibleRes.rows || []).map(
       (row) => `${asString(row?.merchant_id)}::${asString(row?.source_product_id)}`,

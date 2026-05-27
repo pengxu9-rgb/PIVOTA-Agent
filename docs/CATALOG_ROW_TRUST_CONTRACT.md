@@ -24,9 +24,9 @@ Decision vocabulary:
 |---|--------|-----------------------------------------|------------------------|
 | 1 | `activeCatalogSourceSql` | `merchant_id='external_seed' OR merchant_stores.status='active'` + domain present | `source_lifecycle_state IN ('active','suspect')` |
 | 2 | `pdpIdentityGraph.listLivePdpIdentityRowsForRefs` | `identity_status='approved' AND live_read_enabled=true` + active external seed predicate (no `review_required=false`) | `serving_decision='public'` — Phase 3d wired behind `PDP_IDENTITY_USES_CATALOG_ROW_TRUST` (default OFF) |
-| 3 | `catalogServingIndex.fetchCatalogServingEligibleSourceSet` | `ips.serving_eligible=TRUE` | subset of `serving_decision='public'` |
-| 4 | `catalogServingIndex` external search body | `publish_state='public'` (doc-level) + market | `serving_decision='public'` after document re-trust hydration |
-| 5 | `catalogServingIndex` local serving scan | `publish_state='public'` + market + optional `servingEligibleOnly` flag | `serving_decision='public'` |
+| 3 | `catalogServingIndex.fetchCatalogServingEligibleSourceSet` | `ips.serving_eligible=TRUE` | subset of `serving_decision='public'` — Phase 3e wired behind `CATALOG_SERVING_USES_CATALOG_ROW_TRUST` (default OFF) |
+| 4 | `catalogServingIndex` external search body | `publish_state='public'` (doc-level) + market | Already trust-derived end-to-end: doc `publish_state` is built from `is_public` (catalogServingIndex.js:709) which is sourced from identity rows that Phase 3d wires to trust. No separate cutover needed. |
+| 5 | `catalogServingIndex` local serving scan | `publish_state='public'` + market + optional `servingEligibleOnly` flag | Same as #4 — already trust-derived end-to-end via doc-build pipeline. |
 | 6 | `findProductsExternalSeedDirectRetrieval` | `external_product_seeds.status='active' AND EXISTS(catalog_products + ips.serving_eligible=TRUE)` | `serving_decision='public'` with `source_lifecycle_state='active'` — Phase 3c wired behind `FIND_PRODUCTS_USES_CATALOG_ROW_TRUST` (default OFF) |
 | 7 | `findProductsExternalSeedBrandFastpath` | same as #6 | same as #6 — Phase 3c wired behind `FIND_PRODUCTS_USES_CATALOG_ROW_TRUST` |
 | 8 | `discoveryFeed` identity join (`.js:2120`) | `identity_status='approved' AND live_read_enabled=true` (no `review_required=false`) | `serving_decision='public'` — same gap as reader #2 |
@@ -81,7 +81,7 @@ ORDER BY updated_at DESC;
 |-------|-------|--------|
 | **Phase 1** | Schema + policy v0 + reader-contract matrix + backfill driver | **this PR** (no readers cut over) |
 | Phase 2 | Dual-write integration: catalog_sync_service.py, sync-external-seeds-to-catalog.cjs, pdpIdentityGraph.js, catalog_source_quarantine writes all dispatch to catalogTrustPolicy → upsert. | Not started |
-| Phase 3 | Reader cutover in risk order: discoveryFeed → RecommendationEngine → findProducts* → pdpIdentityGraph → catalogServingIndex. | **Phase 3a live on prod** (`DISCOVERY_USES_CATALOG_ROW_TRUST=true`, reader #9). **Phase 3b merged, flag OFF** (RecommendationEngine reader #10 — identity-dedup semantics differ from serving; see follow-up). **Phase 3c live on prod** (`FIND_PRODUCTS_USES_CATALOG_ROW_TRUST=true`, readers #6/#7). **Phase 3d in flight:** pdpIdentityGraph reader #2 wired behind `PDP_IDENTITY_USES_CATALOG_ROW_TRUST` |
+| Phase 3 | Reader cutover in risk order: discoveryFeed → RecommendationEngine → findProducts* → pdpIdentityGraph → catalogServingIndex. | **3a live** (`DISCOVERY_USES_CATALOG_ROW_TRUST`, #9). **3b merged flag-OFF** (RecommendationEngine #10, identity-dedup semantics gap). **3c live** (`FIND_PRODUCTS_USES_CATALOG_ROW_TRUST`, #6/#7). **3d live** (`PDP_IDENTITY_USES_CATALOG_ROW_TRUST`, #2). **3e in flight:** catalogServingIndex reader #3 behind `CATALOG_SERVING_USES_CATALOG_ROW_TRUST`; #4/#5 inherit trust via doc-build pipeline. |
 | Phase 4 | Retire duplicate per-reader predicates. Add 580-violation regression test in CI. | Not started |
 
 ## Operational properties (Phase 1)
