@@ -27,8 +27,8 @@ Decision vocabulary:
 | 3 | `catalogServingIndex.fetchCatalogServingEligibleSourceSet` | `ips.serving_eligible=TRUE` | subset of `serving_decision='public'` |
 | 4 | `catalogServingIndex` external search body | `publish_state='public'` (doc-level) + market | `serving_decision='public'` after document re-trust hydration |
 | 5 | `catalogServingIndex` local serving scan | `publish_state='public'` + market + optional `servingEligibleOnly` flag | `serving_decision='public'` |
-| 6 | `findProductsExternalSeedDirectRetrieval` | `external_product_seeds.status='active' AND EXISTS(catalog_products + ips.serving_eligible=TRUE)` | `serving_decision='public'` with `source_lifecycle_state='active'` |
-| 7 | `findProductsExternalSeedBrandFastpath` | same as #6 | same as #6 |
+| 6 | `findProductsExternalSeedDirectRetrieval` | `external_product_seeds.status='active' AND EXISTS(catalog_products + ips.serving_eligible=TRUE)` | `serving_decision='public'` with `source_lifecycle_state='active'` — Phase 3c wired behind `FIND_PRODUCTS_USES_CATALOG_ROW_TRUST` (default OFF) |
+| 7 | `findProductsExternalSeedBrandFastpath` | same as #6 | same as #6 — Phase 3c wired behind `FIND_PRODUCTS_USES_CATALOG_ROW_TRUST` |
 | 8 | `discoveryFeed` identity join (`.js:2120`) | `identity_status='approved' AND live_read_enabled=true` (no `review_required=false`) | `serving_decision='public'` — same gap as reader #2 |
 | 9 | `discoveryFeed` brand candidates (`.js:8589`) | `ips.serving_eligible=TRUE` | `serving_decision='public'` — Phase 3a wired behind `DISCOVERY_USES_CATALOG_ROW_TRUST` (default OFF) |
 | 10 | `RecommendationEngine` identity (`loadLiveIdentityRowsForRecommendationProducts`) | `identity_status='approved' AND live_read_enabled=true` (no `review_required=false`) | `serving_decision='public'` — Phase 3b wired behind `RECOMMENDATIONS_USES_CATALOG_ROW_TRUST` (default OFF) |
@@ -81,7 +81,7 @@ ORDER BY updated_at DESC;
 |-------|-------|--------|
 | **Phase 1** | Schema + policy v0 + reader-contract matrix + backfill driver | **this PR** (no readers cut over) |
 | Phase 2 | Dual-write integration: catalog_sync_service.py, sync-external-seeds-to-catalog.cjs, pdpIdentityGraph.js, catalog_source_quarantine writes all dispatch to catalogTrustPolicy → upsert. | Not started |
-| Phase 3 | Reader cutover in risk order: discoveryFeed → RecommendationEngine → findProducts* → pdpIdentityGraph → catalogServingIndex. | **Phase 3a live on prod** (`DISCOVERY_USES_CATALOG_ROW_TRUST=true`, reader #9). **Phase 3b in flight:** RecommendationEngine identity (reader #10) wired behind `RECOMMENDATIONS_USES_CATALOG_ROW_TRUST` |
+| Phase 3 | Reader cutover in risk order: discoveryFeed → RecommendationEngine → findProducts* → pdpIdentityGraph → catalogServingIndex. | **Phase 3a live on prod** (`DISCOVERY_USES_CATALOG_ROW_TRUST=true`, reader #9). **Phase 3b merged, flag OFF** (RecommendationEngine reader #10 — parity found identity-dedup semantics differ from serving; see follow-up). **Phase 3c in flight:** findProducts external_seed readers #6/#7 wired behind `FIND_PRODUCTS_USES_CATALOG_ROW_TRUST` |
 | Phase 4 | Retire duplicate per-reader predicates. Add 580-violation regression test in CI. | Not started |
 
 ## Operational properties (Phase 1)
