@@ -37,6 +37,20 @@ function hasFlag(name) {
   return process.argv.includes(`--${name}`);
 }
 
+// Pure helper: derive the default label_state from the --review-status arg.
+//
+//   - reviewStatusArg null/missing  → 'generated' (fresh builder output,
+//     subject to Phase B preflight gating).
+//   - reviewStatusArg present       → mapped via reviewStatusToLabelState;
+//     gate is skipped because the reviewer's decision is authoritative.
+//
+// Used by main(); exported for unit testing.
+function resolveDefaultLabelState(reviewStatusArg) {
+  if (!reviewStatusArg) return 'generated';
+  const normalized = normalizeLower(reviewStatusArg, 32);
+  return reviewStatusToLabelState(normalized) || 'generated';
+}
+
 // Pure helper: classify a single edge into { label_state, prefilter_reasons,
 // bucket } given resolved beauty attrs. Bucket is 'rejected' | 'passed' |
 // 'skipped' (skipped = no attrs available on one or both sides).
@@ -344,7 +358,11 @@ async function main() {
   const anchorOffset = numberArg('anchor-offset', 0, { min: 0, max: 5000 });
   const market = normalizeString(argValue('market') || 'US', 24).toUpperCase() || 'US';
   const input = readInputFile(argValue('input'));
-  const reviewStatus = normalizeLower(argValue('review-status') || 'pending', 32) || 'pending';
+  const reviewStatusArg = argValue('review-status');
+  // reviewStatus is stamped onto each generated edge as review_status. Fresh
+  // builder output is 'pending' review by default.
+  const reviewStatus = normalizeLower(reviewStatusArg || 'pending', 32) || 'pending';
+  const defaultLabelState = resolveDefaultLabelState(reviewStatusArg);
   const maxPerAnchor = numberArg('max-per-anchor', 24, { min: 1, max: 100 });
   const includeTransitiveRecall = !hasFlag('no-transitive-recall');
   const maxBridgePerAnchor = numberArg('max-bridge-per-anchor', 8, { min: 1, max: 24 });
@@ -371,11 +389,9 @@ async function main() {
     limit,
   });
 
-  // Build-script output is raw generator candidates. By default they enter
-  // the labels table as `generated` (pre-review). When --review-status is
-  // explicitly approved/rejected/pending it maps via reviewStatusToLabelState.
-  const defaultLabelState = reviewStatusToLabelState(reviewStatus) || 'generated';
-
+  // defaultLabelState resolution above (via resolveDefaultLabelState):
+  //   - No --review-status  → 'generated' (Phase B gate runs).
+  //   - --review-status set → mapped reviewer state (gate skipped).
   // Phase B preflight gates. When defaultLabelState is 'generated' (no
   // explicit reviewer decision), run applyAllGates on each edge using the
   // anchor/candidate beauty attributes; gate failures are routed to
@@ -472,4 +488,5 @@ module.exports = {
   attachCandidateSignals,
   numberArg,
   classifyEdgeForPrefilter,
+  resolveDefaultLabelState,
 };
