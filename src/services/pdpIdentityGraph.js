@@ -436,7 +436,8 @@ function looksLikeRelationMissing(err) {
     message.includes('does not exist') &&
     (message.includes('pdp_identity_listing') ||
       message.includes('pdp_identity_review_queue') ||
-      message.includes('pdp_identity_override'))
+      message.includes('pdp_identity_override') ||
+      message.includes('catalog_row_trust'))
   );
 }
 
@@ -3938,6 +3939,11 @@ async function resolveLivePdpIdentityGroupForPdp({
   }
 }
 
+function pdpIdentityUsesCatalogRowTrust() {
+  const flag = String(process.env.PDP_IDENTITY_USES_CATALOG_ROW_TRUST || '').trim().toLowerCase();
+  return flag === '1' || flag === 'true' || flag === 'yes' || flag === 'on';
+}
+
 async function listLivePdpIdentityRowsForRefs({
   sourceListingRefs = [],
   queryFn = query,
@@ -3948,9 +3954,41 @@ async function listLivePdpIdentityRowsForRefs({
   const refs = uniqueStrings(sourceListingRefs, 500);
   if (!refs.length) return [];
 
-  try {
-    const result = await queryFn(
+  // Layer C1 Phase 3d: when PDP_IDENTITY_USES_CATALOG_ROW_TRUST is on, gate
+  // identity rows on catalog_row_trust.serving_decision='public' (via EXISTS
+  // on source_listing_ref) instead of the legacy identity_status / live_read /
+  // active-external-seed compound predicate. The trust gate composes all of
+  // those gates plus quarantine, tombstone, IPS, sync_status, and the c1.v0.3
+  // first-party carve-out in one place — matching the contract semantics for
+  // both serving (catalogServingIndex doc builds) and dedup (discoveryFeed
+  // identity-graph candidate merging) callers.
+  const useTrustContract = pdpIdentityUsesCatalogRowTrust();
+  const sql = useTrustContract
+    ? `
+        SELECT
+          pil.source_listing_ref,
+          pil.merchant_id,
+          pil.product_id,
+          pil.source_kind,
+          pil.source_tier,
+          pil.live_read_enabled,
+          pil.sellable_item_group_id,
+          pil.product_line_id,
+          pil.review_family_id,
+          pil.identity_status,
+          pil.identity_confidence,
+          pil.match_basis
+        FROM pdp_identity_listing pil
+        WHERE pil.source_listing_ref = ANY($1::text[])
+          AND EXISTS (
+            SELECT 1
+            FROM catalog_row_trust crt
+            WHERE crt.subject_type = 'product'
+              AND crt.source_listing_ref = pil.source_listing_ref
+              AND crt.serving_decision = 'public'
+          )
       `
+    : `
         SELECT
           source_listing_ref,
           merchant_id,
@@ -3969,9 +4007,10 @@ async function listLivePdpIdentityRowsForRefs({
           AND identity_status = 'approved'
           AND live_read_enabled = true
           AND ${buildActiveExternalSeedIdentityPredicate('pdp_identity_listing')}
-      `,
-      [refs],
-    );
+      `;
+
+  try {
+    const result = await queryFn(sql, [refs]);
     return normalizeIdentityRows(result?.rows);
   } catch (err) {
     if (looksLikeRelationMissing(err)) return [];
