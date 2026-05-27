@@ -111,6 +111,35 @@ function normalizeText(value) {
     .replace(/\s+/g, ' ');
 }
 
+function normalizeVariantAxisKey(value) {
+  const normalized = asString(value).toLowerCase().replace(/[\s-]+/g, '_');
+  if (!normalized) return '';
+  if (normalized === 'colour') return 'color';
+  if (['shades', 'tone', 'tones', 'hue', 'undertone', 'skin_undertone'].includes(normalized)) return 'shade';
+  if (['capacity', 'amount', 'weight', 'net_weight'].includes(normalized)) return 'volume';
+  if (['count', 'quantity', 'ct'].includes(normalized)) return 'pack';
+  if (['formula_variant', 'variant_formula', 'formula_type'].includes(normalized)) return 'formula';
+  return normalized;
+}
+
+function displayLabelForVariantAxis(optionName, axisKind) {
+  const normalized = normalizeVariantAxisKey(axisKind || optionName);
+  if (normalized === 'shade') return 'Shade';
+  if (normalized === 'color') return 'Color';
+  if (normalized === 'size' || normalized === 'volume') return 'Size';
+  if (normalized === 'pack') return 'Pack';
+  if (normalized === 'format') return 'Format';
+  if (normalized === 'formula') return 'Formula';
+  if (normalized === 'scent') return 'Scent';
+  if (normalized === 'strength') return 'Strength';
+  return asString(optionName || axisKind || 'Option') || 'Option';
+}
+
+function isDisplayableVariantOptionValue(value) {
+  const normalized = asString(value).toLowerCase();
+  return Boolean(normalized && !['default', 'default title', 'title', 'option', 'variant'].includes(normalized));
+}
+
 function normalizeAmount(value) {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   const cleaned = asString(value).replace(/[^0-9.-]+/g, '');
@@ -540,24 +569,45 @@ function variantOptionMap(variant) {
   const attrs = {};
   const labels = {};
   for (const option of asArray(variant.options)) {
-    const name = asString(option?.name || option?.label || option?.axis || 'Option');
+    const name = displayLabelForVariantAxis(option?.name || option?.label || option?.axis, option?.axis_kind || option?.axisKind);
     const value = asString(option?.value || option?.label || option?.name);
-    if (!name || !value) continue;
+    if (!name || !isDisplayableVariantOptionValue(value)) continue;
     const visibleAxis = inferVisibleVariantAxis(value, name);
     if (!visibleAxis) continue;
     attrs[visibleAxis] = value;
     labels[visibleAxis] = value;
   }
   for (const [key, value] of Object.entries(asObject(variant.option_values))) {
-    if (!asString(value)) continue;
-    const visibleAxis = inferVisibleVariantAxis(value, key);
+    if (!isDisplayableVariantOptionValue(value)) continue;
+    const label = displayLabelForVariantAxis(key);
+    const visibleAxis = inferVisibleVariantAxis(value, label);
     if (!visibleAxis) continue;
     attrs[visibleAxis] = asString(value);
     labels[visibleAxis] = asString(value);
   }
+  const optionValue = asString(
+    variant.option_value || variant.optionValue || variant.option1 || variant.selected || variant.label_value,
+  );
+  if (isDisplayableVariantOptionValue(optionValue)) {
+    const label = displayLabelForVariantAxis(
+      variant.option_name || variant.optionName || variant.axis || variant.axis_name,
+      variant.axis_kind || variant.axisKind,
+    );
+    const visibleAxis = inferVisibleVariantAxis(optionValue, label);
+    if (visibleAxis) {
+      attrs[visibleAxis] = optionValue;
+      labels[visibleAxis] = optionValue;
+    }
+  }
   const title = asString(variant.title || variant.name || variant.variant_title);
-  const titleAxis = inferVisibleVariantAxis(title, variant.option_name || variant.option_label || 'Title');
-  if (!Object.keys(attrs).length && title && titleAxis) {
+  const titleAxis = inferVisibleVariantAxis(
+    title,
+    displayLabelForVariantAxis(
+      variant.option_name || variant.option_label || variant.optionName || variant.axis || 'Title',
+      variant.axis_kind || variant.axisKind,
+    ),
+  );
+  if (!Object.keys(attrs).length && isDisplayableVariantOptionValue(title) && titleAxis) {
     attrs[titleAxis] = title;
     labels[titleAxis] = title;
   }
