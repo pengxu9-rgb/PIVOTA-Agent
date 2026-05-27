@@ -24,6 +24,83 @@ function buildDeps(overrides = {}) {
 }
 
 describe('runExternalSeedBrandMainlineFastpath', () => {
+  test('gates on index_pipeline_state.serving_eligible when FIND_PRODUCTS_USES_CATALOG_ROW_TRUST is off', async () => {
+    const prev = process.env.FIND_PRODUCTS_USES_CATALOG_ROW_TRUST;
+    delete process.env.FIND_PRODUCTS_USES_CATALOG_ROW_TRUST;
+    jest.resetModules();
+    const queries = [];
+    const deps = buildDeps({
+      query: jest.fn(async (sql, params) => {
+        queries.push({ sql: String(sql), params });
+        return {
+          rows: [
+            { id: 'seed_x', external_product_id: 'ext_x', title: 'X', total_rows: 1 },
+          ],
+        };
+      }),
+    });
+    try {
+      const { runExternalSeedBrandMainlineFastpath: freshRunner } = require('../../src/findProductsExternalSeedBrandFastpath');
+      await freshRunner({
+        relevanceQueryText: 'fenty',
+        market: 'US',
+        tool: '*',
+        inStockOnly: false,
+        safePage: 1,
+        safeLimit: 24,
+        safeOffset: 0,
+        deps,
+      });
+      expect(deps.query).toHaveBeenCalledTimes(1);
+      expect(queries[0].sql).toMatch(/INNER\s+JOIN\s+index_pipeline_state\s+ips/i);
+      expect(queries[0].sql).toMatch(/ips\.serving_eligible\s*=\s*TRUE/i);
+      expect(queries[0].sql).not.toMatch(/catalog_row_trust/i);
+    } finally {
+      if (prev === undefined) delete process.env.FIND_PRODUCTS_USES_CATALOG_ROW_TRUST;
+      else process.env.FIND_PRODUCTS_USES_CATALOG_ROW_TRUST = prev;
+    }
+  });
+
+  test('gates on catalog_row_trust when FIND_PRODUCTS_USES_CATALOG_ROW_TRUST is on', async () => {
+    const prev = process.env.FIND_PRODUCTS_USES_CATALOG_ROW_TRUST;
+    process.env.FIND_PRODUCTS_USES_CATALOG_ROW_TRUST = 'true';
+    jest.resetModules();
+    const queries = [];
+    const deps = buildDeps({
+      query: jest.fn(async (sql, params) => {
+        queries.push({ sql: String(sql), params });
+        return {
+          rows: [
+            { id: 'seed_x', external_product_id: 'ext_x', title: 'X', total_rows: 1 },
+          ],
+        };
+      }),
+    });
+    try {
+      const { runExternalSeedBrandMainlineFastpath: freshRunner } = require('../../src/findProductsExternalSeedBrandFastpath');
+      await freshRunner({
+        relevanceQueryText: 'fenty',
+        market: 'US',
+        tool: '*',
+        inStockOnly: false,
+        safePage: 1,
+        safeLimit: 24,
+        safeOffset: 0,
+        deps,
+      });
+      expect(deps.query).toHaveBeenCalledTimes(1);
+      expect(queries[0].sql).toMatch(/INNER\s+JOIN\s+catalog_row_trust\s+crt/i);
+      expect(queries[0].sql).toMatch(/crt\.subject_type\s*=\s*'product'/i);
+      expect(queries[0].sql).toMatch(/crt\.subject_key\s*=\s*cp\.product_key/i);
+      expect(queries[0].sql).toMatch(/crt\.serving_decision\s*=\s*'public'/i);
+      expect(queries[0].sql).not.toMatch(/INNER\s+JOIN\s+index_pipeline_state\s+ips/i);
+      expect(queries[0].sql).not.toMatch(/ips\.serving_eligible/i);
+    } finally {
+      if (prev === undefined) delete process.env.FIND_PRODUCTS_USES_CATALOG_ROW_TRUST;
+      else process.env.FIND_PRODUCTS_USES_CATALOG_ROW_TRUST = prev;
+    }
+  });
+
   test('uses a single windowed exact-brand query for covered pages', async () => {
     const queries = [];
     const deps = buildDeps({
