@@ -549,7 +549,7 @@ async function getProviderById(providerId) {
        sp.rating_count
      FROM service_providers sp
      WHERE sp.provider_id = $1
-       AND sp.status = 'active'`,
+       AND sp.status IN ('candidate', 'live')`,
     [providerId],
   );
 
