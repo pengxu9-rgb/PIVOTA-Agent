@@ -424,6 +424,112 @@ describe('sync-external-seeds-to-catalog variant prices', () => {
     expect(mirror.skus[0].offer.offer_payload.variant_title).toBe('Hydration Skincare Set');
   });
 
+  test('uses reviewed source-backed size when official single-SKU option says Single item', () => {
+    const mirror = buildMirror({
+      id: 'eps_murad_single_size',
+      external_product_id: 'ext_murad_single_size',
+      market: 'US',
+      domain: 'murad.com',
+      title: 'Biome-Balancing Clear & Prevent Acne Treatment Serum',
+      image_url: 'https://cdn.example.com/murad-serum.jpg',
+      price_amount: 45,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      canonical_url: 'https://www.murad.com/products/biome-balancing-acne-treatment-serum',
+      status: 'active',
+      identity_listing: {
+        identity_status: 'approved',
+        live_read_enabled: true,
+        review_required: false,
+        sellable_item_group_id: 'sig_murad_single_size',
+        source_tier: 'brand',
+      },
+      seed_data: {
+        brand: 'Murad',
+        description:
+          'A reviewed official serum PDP with complete commerce details and source-backed product size.',
+        size_detail_label: '1.0 oz',
+        net_content: '1.0 oz',
+        reviewed_product_specs_v1: {
+          review_state: 'assistant_reviewed',
+          source_quality_status: 'high',
+          fields: ['size_detail_label', 'net_content'],
+        },
+        variants: [
+          {
+            variant_id: '51103515214127',
+            sku: '15036',
+            title: 'Single item',
+            option_name: 'Format',
+            option_value: 'Single item',
+            options: [
+              {
+                name: 'Format',
+                value: 'Single item',
+                axis_kind: 'format',
+              },
+            ],
+            price: '45.00',
+            currency: 'USD',
+            image_url: 'https://cdn.example.com/murad-serum.jpg',
+          },
+        ],
+      },
+    });
+
+    expect(mirror.skus[0].sku.title).toBe('Biome-Balancing Clear & Prevent Acne Treatment Serum');
+    expect(mirror.skus[0].sku.visible_attributes).toEqual({ Size: '1.0 oz' });
+    expect(mirror.skus[0].sku.visible_option_labels).toEqual({ Size: '1.0 oz' });
+    expect(mirror.skus[0].offer.offer_payload.variant_title).toBe(
+      'Biome-Balancing Clear & Prevent Acne Treatment Serum',
+    );
+  });
+
+  test('does not use unreviewed size-like copy to replace Single item', () => {
+    const mirror = buildMirror({
+      id: 'eps_unreviewed_single_size',
+      external_product_id: 'ext_unreviewed_single_size',
+      market: 'US',
+      domain: 'example.com',
+      title: 'Unreviewed Serum',
+      image_url: 'https://cdn.example.com/serum.jpg',
+      price_amount: 20,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      canonical_url: 'https://example.com/products/serum',
+      status: 'active',
+      identity_listing: {
+        identity_status: 'approved',
+        live_read_enabled: true,
+        review_required: false,
+        sellable_item_group_id: 'sig_unreviewed_single_size',
+        source_tier: 'brand',
+      },
+      seed_data: {
+        brand: 'Example',
+        description: 'A basic product row without reviewed spec provenance.',
+        size_detail_label: '1.0 oz',
+        variants: [
+          {
+            variant_id: 'default',
+            sku: 'SERUM',
+            title: 'Single item',
+            option_name: 'Format',
+            option_value: 'Single item',
+            options: [{ name: 'Format', value: 'Single item' }],
+            price: '20.00',
+            currency: 'USD',
+            image_url: 'https://cdn.example.com/serum.jpg',
+          },
+        ],
+      },
+    });
+
+    expect(mirror.skus[0].sku.title).toBe('Unreviewed Serum');
+    expect(mirror.skus[0].sku.visible_attributes).toEqual({});
+    expect(mirror.skus[0].sku.visible_option_labels).toEqual({});
+  });
+
   test('preserves reviewed multi-size variant prices when top-level price is the minimum price', () => {
     const mirror = buildMirror({
       id: 'eps_multisize',

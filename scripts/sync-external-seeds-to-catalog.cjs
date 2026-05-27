@@ -564,6 +564,55 @@ function variantOptionMap(variant) {
   return { attrs, labels };
 }
 
+function looksLikeSizeOrCountLabel(value) {
+  const label = asString(value);
+  return /\b\d+(?:\.\d+)?\s*(?:ml|mL|l|oz|fl\.?\s*oz|g|kg|lb|lbs|ct|count|pack|pcs?|pieces?|capsules?|tablets?|pads?|sheets?)\b/i.test(
+    label,
+  );
+}
+
+function reviewedProductSpecIsTrusted(specs) {
+  const spec = asObject(specs);
+  const quality = asString(spec.source_quality_status).toLowerCase();
+  const reviewState = asString(spec.review_state).toLowerCase();
+  const sourceOrigin = asString(spec.source_origin).toLowerCase();
+  return (
+    quality === 'high' ||
+    quality === 'official_authoritative' ||
+    quality === 'reviewed_external_source' ||
+    quality === 'reviewed' ||
+    reviewState.includes('reviewed') ||
+    sourceOrigin.includes('reviewed')
+  );
+}
+
+function snapshotContractHasTrustedStructuredFields(contract) {
+  const data = asObject(contract);
+  return (
+    data.authoritative === true &&
+    data.structured_fields_authoritative === true &&
+    data.legacy_fields_quarantined === true
+  );
+}
+
+function pickSourceBackedSizeLabel(seedData, snapshot) {
+  const source = asObject(seedData);
+  const snap = asObject(snapshot);
+  const trusted =
+    reviewedProductSpecIsTrusted(source.reviewed_product_specs_v1) ||
+    reviewedProductSpecIsTrusted(snap.reviewed_product_specs_v1) ||
+    snapshotContractHasTrustedStructuredFields(source.external_seed_snapshot_contract) ||
+    snapshotContractHasTrustedStructuredFields(snap.external_seed_snapshot_contract);
+  if (!trusted) return '';
+
+  for (const value of [source.size_detail_label, source.net_content, snap.size_detail_label, snap.net_content]) {
+    const label = asString(value);
+    if (!label || isNonUserFacingVariantLabel(label, 'Size') || !looksLikeSizeOrCountLabel(label)) continue;
+    return label;
+  }
+  return '';
+}
+
 function inferVisibleVariantAxis(value, axis = '') {
   const label = asString(value);
   if (isNonUserFacingVariantLabel(label, axis)) return '';
@@ -589,7 +638,7 @@ function isNonUserFacingVariantLabel(value, axis = '') {
   if (!label) return true;
   const normalized = label.toLowerCase();
   const axisNorm = asString(axis).toLowerCase();
-  if (/^(?:default(?:\s+title)?|single|one\s+size|title)$/i.test(label)) return true;
+  if (/^(?:default(?:\s+title)?|single(?:\s+item)?|one\s+size|title)$/i.test(label)) return true;
   if (/\b(?:repeat\s+order|subscription|subscribe|auto[-\s]*ship|autoship|purchase\s+option)\b/i.test(label)) {
     return true;
   }
@@ -756,6 +805,7 @@ function collectVariants(row) {
   const raw = [...asArray(seedData.variants), ...asArray(snapshot.variants)];
   const title = asString(row.title || seedData.title || snapshot.title || row.external_product_id);
   const imageUrl = pickImageUrl(row);
+  const sourceBackedSizeLabel = pickSourceBackedSizeLabel(seedData, snapshot);
   const byKey = new Map();
   raw.forEach((variant, index) => {
     const object = asObject(variant);
@@ -764,6 +814,11 @@ function collectVariants(row) {
     const key = asString(rawVariantId) || pickVariantTitle(object, `variant_${index + 1}`);
     if (!key || byKey.has(key)) return;
     const strongIdentifier = pickStrongIdentifier(object, seedData, snapshot, row);
+    const visible = variantOptionMap(object);
+    if (!Object.keys(visible.attrs).length && sourceBackedSizeLabel) {
+      visible.attrs.Size = sourceBackedSizeLabel;
+      visible.labels.Size = sourceBackedSizeLabel;
+    }
     byKey.set(key, {
       raw: object,
       raw_variant_id: rawVariantId,
@@ -776,7 +831,7 @@ function collectVariants(row) {
       price_currency: pickVariantCurrency(object, row),
       availability: pickVariantAvailability(object, row),
       image_url: pickVariantImage(object, imageUrl),
-      ...variantOptionMap(object),
+      ...visible,
     });
   });
   if (byKey.size > 0) return Array.from(byKey.values());
@@ -794,8 +849,8 @@ function collectVariants(row) {
       price_currency: pickVariantCurrency({}, row),
       availability: pickVariantAvailability({}, row),
       image_url: imageUrl,
-      attrs: {},
-      labels: {},
+      attrs: sourceBackedSizeLabel ? { Size: sourceBackedSizeLabel } : {},
+      labels: sourceBackedSizeLabel ? { Size: sourceBackedSizeLabel } : {},
     },
   ];
 }
