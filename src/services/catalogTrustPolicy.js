@@ -18,7 +18,7 @@
 // Versioning: POLICY_VERSION must bump on any change to derivation logic.
 // The backfill job uses POLICY_VERSION to detect stale rows.
 
-const POLICY_VERSION = 'c1.v0.3';
+const POLICY_VERSION = 'c1.v0.4';
 
 // ---- Reason codes (authoritative vocabulary) -------------------------------
 //
@@ -399,7 +399,21 @@ function deriveServingDecision({
   // Index pipeline gate. All public readers honor this today; the contract
   // makes it explicit. sync_status='live' is the equivalent for catalog rows
   // before they reach IPS — see migration 084.
+  //
+  // c1.v0.4: for non-first-party (external_seed) catalog rows, a missing IPS
+  // row is treated as INDEX_NOT_SERVING_ELIGIBLE. Pre-c1.v0.4 the policy let
+  // ips=null pass on the assumption "no IPS opinion = no reason to block",
+  // but Phase 3c parity found 80 external_seed catalog products with public
+  // trust + no IPS row — i.e., shipping content that the index pipeline
+  // hasn't quality-gated yet. First-party rows (MOYU/GR/PawStyle/etc.) keep
+  // the legacy behavior since first-party merchants are the source of truth
+  // for their own content and IPS coverage is sparse there by design.
   if (product) {
+    const isFirstPartyCatalog = product.merchant_id !== 'external_seed';
+    if (!isFirstPartyCatalog && !ips) {
+      reasons.push(REASON_CODES.INDEX_NOT_SERVING_ELIGIBLE);
+      return { decision: 'blocked' };
+    }
     if (ips && ips.serving_eligible !== true) {
       reasons.push(REASON_CODES.INDEX_NOT_SERVING_ELIGIBLE);
       return { decision: 'blocked' };

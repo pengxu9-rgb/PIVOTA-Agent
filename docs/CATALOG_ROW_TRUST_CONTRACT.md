@@ -2,7 +2,7 @@
 
 **Status:** Phase 3a (discoveryFeed brand candidates wired behind flag).
 **Migration:** `pivota-backend-quality-gate/db/migrations/136_catalog_row_trust.sql`
-**Policy:** `src/services/catalogTrustPolicy.js` (POLICY_VERSION = `c1.v0.3`)
+**Policy:** `src/services/catalogTrustPolicy.js` (POLICY_VERSION = `c1.v0.4`)
 **Python parity:** `pivota-backend/services/catalog_trust_policy.py` (same version)
 **Backfill:** `scripts/backfill-catalog-row-trust.cjs`
 
@@ -51,7 +51,7 @@ Authoritative source: `src/services/catalogTrustPolicy.js` (`REASON_CODES`).
 | `ROW_TOMBSTONED`                    | blocked         | `catalog_products.suppression_reason` set (PR #666 / migration 135).                           |
 | `EXTERNAL_SEED_INACTIVE`            | blocked         | `external_product_seeds.status` != `active`.                                                   |
 | `MERCHANT_STORE_INACTIVE`           | blocked         | `merchant_stores.status` != `active`.                                                          |
-| `INDEX_NOT_SERVING_ELIGIBLE`        | blocked         | `index_pipeline_state.serving_eligible=false`.                                                 |
+| `INDEX_NOT_SERVING_ELIGIBLE`        | blocked         | `index_pipeline_state.serving_eligible=false` OR (c1.v0.4+) no IPS row for non-first-party catalog. |
 | `PUBLISH_STATE_NOT_PUBLIC`          | blocked         | `catalog_products.sync_status` != `live`. (Name kept for forward-compat with audit copy.)      |
 | `IDENTITY_CONFLICT`                 | blocked         | `pdp_identity_listing.identity_status='conflict'`.                                             |
 | `OFFER_SUPPRESSED`                  | blocked         | subject_type=`offer`, offer.suppression_reason set.                                            |
