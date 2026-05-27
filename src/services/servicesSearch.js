@@ -304,6 +304,11 @@ function _buildServicesSearchQueries(params) {
         sp.metadata->>'english_friendly_signal' AS english_friendly_signal,
         sp.metadata->>'english_friendly_evidence' AS english_friendly_evidence,
         sp.metadata->'tourist_metadata' AS tourist_metadata,
+        sp.metadata->>'name_kr' AS name_kr,
+        sp.metadata->>'address_kr' AS address_kr,
+        sp.metadata->>'neighborhood' AS neighborhood,
+        sp.photos,
+        sp.hours,
         sp.rating,
         sp.rating_count,
         provider_agg.service_types_offered,
@@ -459,14 +464,34 @@ function _normalizePreviewListings(value) {
     .map((item) => item.listing);
 }
 
-function _buildProvider(row = {}) {
+function _buildListing(row = {}) {
+  return {
+    listing_id: _asNonEmptyString(row.listing_id) || null,
+    id: _asNonEmptyString(row.listing_id) || null,
+    service_type: _asNonEmptyString(row.service_type) || null,
+    title: _asNonEmptyString(row.title) || null,
+    price_cents: _normalizeNullableInteger(row.price_cents),
+    currency: _asNonEmptyString(row.currency) || 'KRW',
+    duration_minutes: _normalizeNullableInteger(row.duration_minutes),
+    requires_consult: _normalizeNullableBoolean(row.requires_consult) || false,
+  };
+}
+
+function _buildProvider(row = {}, opts = {}) {
   const displayName = _asNonEmptyString(row.display_name || row.name || row.provider_id);
   const name = _asNonEmptyString(row.name || displayName);
+  const photos = _parseJsonArray(row.photos);
+  const previewListings = _normalizePreviewListings(row.preview_listings);
+  const allListings = opts.allListings || null;
   return {
+    id: _asNonEmptyString(row.provider_id) || null,
     provider_id: _asNonEmptyString(row.provider_id) || null,
     name: name || displayName || null,
+    name_kr: _asNonEmptyString(row.name_kr) || null,
     display_name: displayName || name || null,
     address: _composeAddress(row) || null,
+    address_kr: _asNonEmptyString(row.address_kr) || null,
+    neighborhood: _asNonEmptyString(row.neighborhood || row.region) || null,
     url: _normalizeProviderUrl(row.provider_url),
     english_friendly_signal: _asNonEmptyString(row.english_friendly_signal) || null,
     english_friendly_evidence: _asNonEmptyString(row.english_friendly_evidence) || null,
@@ -475,7 +500,12 @@ function _buildProvider(row = {}) {
     rating_count: _normalizeNullableInteger(row.rating_count),
     service_types_offered: _parseTextArray(row.service_types_offered),
     matching_listings_count: _normalizeNullableInteger(row.matching_listings_count) || 0,
-    preview_listings: _normalizePreviewListings(row.preview_listings),
+    matching_listings: allListings || previewListings,
+    preview_listings: previewListings,
+    photos,
+    photo: photos[0] || null,
+    hours: _parseJsonObject(row.hours),
+    is_real: true,
   };
 }
 
@@ -496,8 +526,62 @@ async function searchServices(params = {}) {
   return value;
 }
 
+async function getProviderById(providerId) {
+  const providerResult = await query(
+    `SELECT
+       sp.provider_id,
+       sp.display_name,
+       sp.name,
+       sp.address_line1,
+       sp.city,
+       sp.region,
+       sp.country_code,
+       COALESCE(sp.metadata->>'final_url', sp.website_url) AS provider_url,
+       sp.metadata->>'english_friendly_signal' AS english_friendly_signal,
+       sp.metadata->>'english_friendly_evidence' AS english_friendly_evidence,
+       sp.metadata->'tourist_metadata' AS tourist_metadata,
+       sp.metadata->>'name_kr' AS name_kr,
+       sp.metadata->>'address_kr' AS address_kr,
+       sp.metadata->>'neighborhood' AS neighborhood,
+       sp.photos,
+       sp.hours,
+       sp.rating,
+       sp.rating_count
+     FROM service_providers sp
+     WHERE sp.provider_id = $1
+       AND sp.status = 'active'`,
+    [providerId],
+  );
+
+  const row = providerResult?.rows?.[0];
+  if (!row) return null;
+
+  const listingsResult = await query(
+    `SELECT
+       sl.listing_id,
+       sl.service_type,
+       sl.title,
+       sl.price_cents,
+       sl.currency,
+       sl.duration_minutes,
+       sl.requires_consult
+     FROM service_listings sl
+     WHERE sl.provider_id = $1
+       AND sl.status = 'active'
+     ORDER BY (sl.price_cents IS NULL), sl.price_cents ASC, sl.title ASC`,
+    [providerId],
+  );
+
+  const allListings = (listingsResult?.rows || []).map(_buildListing);
+  return _buildProvider(
+    { ...row, matching_listings_count: allListings.length },
+    { allListings },
+  );
+}
+
 module.exports = {
   searchServices,
+  getProviderById,
   normalizeServicesSearchParams,
   ServicesSearchValidationError,
   SERVICE_TYPE_ALLOW_LIST,
