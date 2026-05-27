@@ -67,6 +67,49 @@ function parseDelimitedIds(value) {
   );
 }
 
+function positiveInteger(value, fallback, { min = 0, max = Number.MAX_SAFE_INTEGER } = {}) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(Math.floor(parsed), max));
+}
+
+function resolveCatalogExtractTimeoutMs(options = {}) {
+  return positiveInteger(
+    options.extractTimeoutMs || process.env.CATALOG_INTELLIGENCE_TIMEOUT_MS,
+    90000,
+    { min: 1000, max: 300000 },
+  );
+}
+
+function classifyBackfillFailure(error) {
+  const message = normalizeNonEmptyString(error?.message || error || '').toLowerCase();
+  const code = normalizeNonEmptyString(error?.code).toUpperCase();
+  const status = Number(error?.response?.status || 0);
+  if (code === 'ECONNABORTED' || code === 'ETIMEDOUT' || /\btimeout|timed out\b/.test(message)) {
+    return 'extract_timeout';
+  }
+  if (status === 429) return 'extract_rate_limited';
+  if (status >= 500) return 'extract_http_5xx';
+  if (status >= 400) return 'extract_http_4xx';
+  if (['ENOTFOUND', 'EAI_AGAIN', 'ECONNRESET', 'ECONNREFUSED', 'EPIPE'].includes(code)) {
+    return 'extract_network';
+  }
+  if (message.includes('network') || message.includes('socket') || message.includes('connection')) {
+    return 'extract_network';
+  }
+  return 'unknown';
+}
+
+function buildBackfillFailureDiagnostics(error) {
+  const status = Number(error?.response?.status || 0);
+  return {
+    failure_category: classifyBackfillFailure(error),
+    error: String(error?.message || error || 'unknown_error'),
+    ...(normalizeNonEmptyString(error?.code) ? { error_code: normalizeNonEmptyString(error.code) } : {}),
+    ...(status ? { http_status: status } : {}),
+  };
+}
+
 function readDelimitedIdsFile(filePath) {
   const path = normalizeNonEmptyString(filePath);
   if (!path) return [];
@@ -5824,6 +5867,7 @@ async function upsertVariantSeedRows(client, rows) {
 function buildFailureSeedData(row, targetUrl, error) {
   const seedData = ensureJsonObject(row?.seed_data);
   const snapshot = ensureJsonObject(seedData.snapshot);
+  const failureDiagnostics = buildBackfillFailureDiagnostics(error);
   const existingImageUrls = sanitizeSeedImageUrls(collectSeedImageUrls(seedData, row));
   const imageOverride = lookupExternalSeedImageOverride(
     targetUrl,
@@ -5849,8 +5893,7 @@ function buildFailureSeedData(row, targetUrl, error) {
       canonical_url: normalizeUrlLike(snapshot.canonical_url) || normalizeUrlLike(targetUrl),
       diagnostics: {
         ...(snapshot.diagnostics && typeof snapshot.diagnostics === 'object' ? snapshot.diagnostics : {}),
-        failure_category: 'unknown',
-        error: String(error?.message || error || 'unknown_error'),
+        ...failureDiagnostics,
         ...(manualImageOverrideApplied
           ? {
               manual_image_override: {
@@ -5885,6 +5928,7 @@ function buildFailureSeedData(row, targetUrl, error) {
 function buildMinimalFailureSeedData(row, targetUrl, error) {
   const seedData = ensureJsonObject(row?.seed_data);
   const snapshot = ensureJsonObject(seedData.snapshot);
+  const failureDiagnostics = buildBackfillFailureDiagnostics(error);
   const imageUrls = sanitizeSeedImageUrls(collectSeedImageUrls(seedData, row));
   const normalizedTargetUrl = normalizeUrlLike(targetUrl);
   const variants = normalizeSeedVariants(seedData, row);
@@ -5912,8 +5956,8 @@ function buildMinimalFailureSeedData(row, targetUrl, error) {
         normalizeUrlLike(snapshot.canonical_url) ||
         normalizeUrlLike(row?.canonical_url),
       diagnostics: {
-        failure_category: 'unknown',
-        error: sanitizeTextForPostgres(error?.message || error || 'unknown_error'),
+        ...failureDiagnostics,
+        error: sanitizeTextForPostgres(failureDiagnostics.error),
       },
       image_url: imageUrls[0] || sanitizeTextForPostgres(row?.image_url || ''),
       image_urls: imageUrls,
@@ -6026,10 +6070,10 @@ async function fetchRows(options) {
   return res.rows || [];
 }
 
-async function extractSeed(targetUrl, row, baseUrl) {
+async function extractSeed(targetUrl, row, baseUrl, options = {}) {
   const requestBody = buildExtractRequestBody(targetUrl, row);
   const response = await axios.post(`${baseUrl.replace(/\/$/, '')}/api/extract`, requestBody, {
-    timeout: Number(process.env.CATALOG_INTELLIGENCE_TIMEOUT_MS || 90000),
+    timeout: resolveCatalogExtractTimeoutMs(options),
     headers: { 'Content-Type': 'application/json' },
   });
   return response.data || {};
@@ -6596,13 +6640,13 @@ async function maybeRecoverDirectPdpFromShopifyProductsJson(response, targetUrl,
   };
 }
 
-async function extractSeedCommerceFacts(targetUrl, row, baseUrl) {
+async function extractSeedCommerceFacts(targetUrl, row, baseUrl, options = {}) {
   const requestBody = {
     ...buildExtractRequestBody(targetUrl, row),
     limit: 10,
   };
   const response = await axios.post(`${baseUrl.replace(/\/$/, '')}/api/extract-v2`, requestBody, {
-    timeout: Number(process.env.CATALOG_INTELLIGENCE_TIMEOUT_MS || 90000),
+    timeout: resolveCatalogExtractTimeoutMs(options),
     headers: { 'Content-Type': 'application/json' },
   });
   return response.data || {};
@@ -6904,9 +6948,9 @@ async function processRow(row, options) {
   }
 
   try {
-    let response = await extractSeed(targetUrl, row, options.baseUrl);
+    let response = await extractSeed(targetUrl, row, options.baseUrl, options);
     const responseV2 = options.includeCommerceFacts
-      ? await extractSeedCommerceFacts(targetUrl, row, options.baseUrl)
+      ? await extractSeedCommerceFacts(targetUrl, row, options.baseUrl, options)
       : null;
     let products = Array.isArray(response?.products) ? response.products : [];
     if (looksLikeDirectProductTargetUrl(targetUrl) && products.length === 0) {
@@ -7125,6 +7169,7 @@ async function processRow(row, options) {
       },
     };
   } catch (error) {
+    const failureDiagnostics = buildBackfillFailureDiagnostics(error);
     const nextSeedData = buildFailureSeedData(row, targetUrl, error);
     const minimalFailureSeedData = buildMinimalFailureSeedData(row, targetUrl, error);
     const failureEnrichment = await enrichExternalSeedRowIngredients({
@@ -7146,7 +7191,17 @@ async function processRow(row, options) {
     if (!options.dryRun) {
       await persistFailureSeedData(row, [persistedSeedData, minimalFailureSeedData]);
     }
-    return { status: 'failed', row, targetUrl, error };
+    return {
+      status: 'failed',
+      failure_category: failureDiagnostics.failure_category,
+      row,
+      targetUrl,
+      error,
+      payload: {
+        diagnostics: failureDiagnostics,
+        ingredient_enrichment: failureEnrichment || null,
+      },
+    };
   }
 }
 
@@ -7164,6 +7219,82 @@ async function mapWithConcurrency(items, concurrency, fn) {
 
   await Promise.all(workers);
   return results;
+}
+
+function chunkRowsForBackfill(rows, shardSize = 0) {
+  const items = Array.isArray(rows) ? rows : [];
+  const size = positiveInteger(shardSize, 0, { min: 0, max: 1000 });
+  if (!size || items.length <= size) return [items];
+  const chunks = [];
+  for (let start = 0; start < items.length; start += size) {
+    chunks.push(items.slice(start, start + size));
+  }
+  return chunks;
+}
+
+async function processRowsInShards(rows, options = {}, processFn = processRow) {
+  const shards = chunkRowsForBackfill(rows, options.shardSize);
+  const results = [];
+  const shardReports = [];
+  for (let index = 0; index < shards.length; index += 1) {
+    const shardRows = shards[index];
+    const startedAt = Date.now();
+    if (options.shardSize) {
+      process.stderr.write(
+        `[external-seed-backfill] shard ${index + 1}/${shards.length} rows=${shardRows.length} concurrency=${options.concurrency}\n`,
+      );
+    }
+    const shardResults = await mapWithConcurrency(shardRows, options.concurrency, async (row) => processFn(row, options));
+    results.push(...shardResults);
+    const failed = shardResults.filter((result) => result?.status === 'failed').length;
+    const failureCategories = countBy(
+      shardResults
+        .filter((result) => result?.status === 'failed')
+        .map((result) => result.failure_category || result?.payload?.diagnostics?.failure_category || 'unknown'),
+    );
+    shardReports.push({
+      index: index + 1,
+      rows: shardRows.length,
+      dry_run: shardResults.filter((result) => result?.status === 'dry_run').length,
+      updated: shardResults.filter((result) => result?.status === 'updated').length,
+      skipped: shardResults.filter((result) => result?.status === 'skipped').length,
+      failed,
+      failure_categories: failureCategories,
+      duration_ms: Date.now() - startedAt,
+    });
+  }
+  return { results, shardReports };
+}
+
+function countBy(values) {
+  const counts = {};
+  for (const value of values || []) {
+    const key = normalizeNonEmptyString(value) || 'unknown';
+    counts[key] = (counts[key] || 0) + 1;
+  }
+  return counts;
+}
+
+function summarizeBackfillResults(rows, results, options = {}, shardReports = []) {
+  return {
+    scanned: Array.isArray(rows) ? rows.length : 0,
+    updated: results.filter((result) => result?.status === 'updated').length,
+    dry_run: results.filter((result) => result?.status === 'dry_run').length,
+    skipped: results.filter((result) => result?.status === 'skipped').length,
+    failed: results.filter((result) => result?.status === 'failed').length,
+    failure_categories: countBy(
+      results
+        .filter((result) => result?.status === 'failed')
+        .map((result) => result.failure_category || result?.payload?.diagnostics?.failure_category || 'unknown'),
+    ),
+    shard_size: positiveInteger(options.shardSize, 0, { min: 0, max: 1000 }),
+    shards: shardReports,
+    variant_seed_rows: results.reduce(
+      (sum, result) => sum + (Array.isArray(result?.payload?.variant_seed_rows) ? result.payload.variant_seed_rows.length : 0),
+      0,
+    ),
+    commerce_facts_hold: results.filter((result) => result?.payload?.commerce_facts_v2?.gate?.status === 'hold').length,
+  };
 }
 
 function ensureDirectory(dirPath) {
@@ -7198,6 +7329,7 @@ function serializeBackfillResult(result) {
   return {
     status: normalizeNonEmptyString(result?.status),
     reason: normalizeNonEmptyString(result?.reason),
+    failure_category: normalizeNonEmptyString(result?.failure_category || payload?.diagnostics?.failure_category),
     target_url: normalizeUrlLike(result?.targetUrl),
     row: {
       id: normalizeNonEmptyString(row?.id),
@@ -7240,6 +7372,8 @@ function serializeBackfillResult(result) {
     error: result?.error
       ? {
           message: normalizeNonEmptyString(result.error?.message || result.error),
+          code: normalizeNonEmptyString(result.error?.code),
+          http_status: Number(result.error?.response?.status || 0) || null,
           stack: normalizeNonEmptyString(result.error?.stack),
         }
       : null,
@@ -7265,6 +7399,8 @@ function writeBackfillReport({ outDir, options, rows, summary, results, insights
       limit: Number(options?.limit || 0),
       offset: Number(options?.offset || 0),
       concurrency: Number(options?.concurrency || 0),
+      shard_size: Number(options?.shardSize || 0),
+      extract_timeout_ms: Number(options?.extractTimeoutMs || 0),
       external_product_ids: Array.isArray(options?.externalProductIds) ? options.externalProductIds : [],
       external_product_id: normalizeNonEmptyString(options?.externalProductId),
       seed_id: normalizeNonEmptyString(options?.seedId),
@@ -7464,6 +7600,12 @@ async function main() {
   const limit = Math.max(1, Math.min(Number(argValue('limit') || 50), 1000));
   const offset = Math.max(0, Number(argValue('offset') || 0));
   const concurrency = Math.max(1, Math.min(Number(argValue('concurrency') || 3), 10));
+  const shardSize = positiveInteger(argValue('shard-size') || argValue('shardSize'), 0, { min: 0, max: 1000 });
+  const extractTimeoutMs = positiveInteger(
+    argValue('extract-timeout-ms') || argValue('extractTimeoutMs') || process.env.CATALOG_INTELLIGENCE_TIMEOUT_MS,
+    90000,
+    { min: 1000, max: 300000 },
+  );
   const targetUrlOverrides = readTargetUrlOverridesFile(
     argValue('target-url-overrides-file') ||
       argValue('targetUrlOverridesFile') ||
@@ -7489,6 +7631,8 @@ async function main() {
     limit,
     offset,
     concurrency,
+    shardSize,
+    extractTimeoutMs,
     dryRun: hasFlag('dry-run') || hasFlag('dryRun'),
     contentOnly: hasFlag('content-only') || hasFlag('contentOnly'),
     preserveCommerce: hasFlag('preserve-commerce') || hasFlag('preserveCommerce'),
@@ -7518,19 +7662,8 @@ async function main() {
   delete printableOptions.targetUrlOverrides;
   console.log(JSON.stringify({ rows: rows.length, ...printableOptions }, null, 2));
 
-  const results = await mapWithConcurrency(rows, concurrency, async (row) => processRow(row, options));
-  const summary = {
-    scanned: rows.length,
-    updated: results.filter((result) => result.status === 'updated').length,
-    dry_run: results.filter((result) => result.status === 'dry_run').length,
-    skipped: results.filter((result) => result.status === 'skipped').length,
-    failed: results.filter((result) => result.status === 'failed').length,
-    variant_seed_rows: results.reduce(
-      (sum, result) => sum + (Array.isArray(result.payload?.variant_seed_rows) ? result.payload.variant_seed_rows.length : 0),
-      0,
-    ),
-    commerce_facts_hold: results.filter((result) => result.payload?.commerce_facts_v2?.gate?.status === 'hold').length,
-  };
+  const { results, shardReports } = await processRowsInShards(rows, options);
+  const summary = summarizeBackfillResults(rows, results, options, shardReports);
   console.log(JSON.stringify(summary, null, 2));
 
   const insightsCoverage = await preparePivotaInsightsForBackfill(results, options);
@@ -7556,6 +7689,7 @@ async function main() {
       .map((result) => ({
         id: result.row?.id,
         targetUrl: result.targetUrl,
+        failure_category: result.failure_category || result.payload?.diagnostics?.failure_category || 'unknown',
         error: String(result.error?.message || result.error || ''),
       }));
     console.error(JSON.stringify({ failed }, null, 2));
@@ -7572,13 +7706,20 @@ if (require.main === module) {
 module.exports = {
   fetchRows,
   processRow,
+  processRowsInShards,
+  summarizeBackfillResults,
+  chunkRowsForBackfill,
   pickSeedTargetUrl,
   parseDelimitedIds,
   readDelimitedIdsFile,
   readTargetUrlOverridesFile,
   resolveTargetUrlOverride,
   buildExtractRequestBody,
+  extractSeed,
   extractSeedCommerceFacts,
+  resolveCatalogExtractTimeoutMs,
+  classifyBackfillFailure,
+  buildBackfillFailureDiagnostics,
   findCommerceFactsOfferForBackfill,
   findCommerceFactsForBackfill,
   enrichPayloadWithCommerceFacts,

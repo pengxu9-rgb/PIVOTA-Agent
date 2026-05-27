@@ -11,6 +11,9 @@ const {
   enrichPayloadWithCommerceFacts,
   chooseRepresentativeProduct,
   processRow,
+  processRowsInShards,
+  summarizeBackfillResults,
+  chunkRowsForBackfill,
   buildSeedUpdatePayload,
   buildVariantSeedRows,
   comparableSeedData,
@@ -41,6 +44,8 @@ const {
   reapplyApprovedPdpIngredientFieldsToRow,
   serializeBackfillResult,
   writeBackfillReport,
+  extractSeed,
+  classifyBackfillFailure,
 } = require('../../scripts/backfill-external-product-seeds-catalog');
 
 describe('backfill-external-product-seeds-catalog', () => {
@@ -50,6 +55,56 @@ describe('backfill-external-product-seeds-catalog', () => {
 
   test('parses external product id lists from comma or newline input', () => {
     expect(parseDelimitedIds('ext_a, ext_b\next_a\n\next_c')).toEqual(['ext_a', 'ext_b', 'ext_c']);
+  });
+
+  test('uses explicit catalog extraction timeout for extractor calls', async () => {
+    jest.spyOn(axios, 'post').mockResolvedValueOnce({ data: { products: [] } });
+
+    await extractSeed(
+      'https://example.com/products/a',
+      { id: 'eps_a', market: 'US', seed_data: { brand: 'Example' } },
+      'https://catalog.test',
+      { extractTimeoutMs: 1234 },
+    );
+
+    expect(axios.post).toHaveBeenCalledWith(
+      'https://catalog.test/api/extract',
+      expect.objectContaining({ domain: 'https://example.com/products/a', market: 'US' }),
+      expect.objectContaining({ timeout: 1234 }),
+    );
+  });
+
+  test('classifies extractor failures for reporting', () => {
+    expect(classifyBackfillFailure({ code: 'ECONNABORTED', message: 'timeout of 2000ms exceeded' })).toBe('extract_timeout');
+    expect(classifyBackfillFailure({ response: { status: 429 }, message: 'Too Many Requests' })).toBe('extract_rate_limited');
+    expect(classifyBackfillFailure({ response: { status: 503 }, message: 'Service Unavailable' })).toBe('extract_http_5xx');
+    expect(classifyBackfillFailure({ response: { status: 404 }, message: 'Not Found' })).toBe('extract_http_4xx');
+    expect(classifyBackfillFailure({ code: 'ECONNRESET', message: 'socket hang up' })).toBe('extract_network');
+  });
+
+  test('chunks rows and summarizes failure categories for shard runs', async () => {
+    const rows = [{ id: 'eps_1' }, { id: 'eps_2' }, { id: 'eps_3' }];
+    expect(chunkRowsForBackfill(rows, 2).map((chunk) => chunk.map((row) => row.id))).toEqual([
+      ['eps_1', 'eps_2'],
+      ['eps_3'],
+    ]);
+
+    const { results, shardReports } = await processRowsInShards(
+      rows,
+      { shardSize: 2, concurrency: 2 },
+      async (row) => (
+        row.id === 'eps_2'
+          ? { status: 'failed', row, failure_category: 'extract_timeout', payload: { diagnostics: { failure_category: 'extract_timeout' } } }
+          : { status: 'dry_run', row, payload: { variant_seed_rows: [] } }
+      ),
+    );
+    const summary = summarizeBackfillResults(rows, results, { shardSize: 2 }, shardReports);
+
+    expect(summary.scanned).toBe(3);
+    expect(summary.dry_run).toBe(2);
+    expect(summary.failed).toBe(1);
+    expect(summary.failure_categories).toEqual({ extract_timeout: 1 });
+    expect(summary.shards).toHaveLength(2);
   });
 
   test('removes null bytes from JSON before postgres jsonb writes', () => {
