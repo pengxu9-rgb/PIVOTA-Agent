@@ -15,6 +15,8 @@ function attrs(overrides = {}) {
   return {
     category_leaf: 'serum',
     category_leaf_confidence: 0.95,
+    product_form: 'serum',
+    product_form_confidence: 0.95,
     target_area: 'face',
     target_area_confidence: 0.95,
     spf_or_otc_flag: 'cosmetic',
@@ -54,6 +56,24 @@ describe('categoryLeafTokens', () => {
   test('applies alias canonicalization (bronzing → bronzer)', () => {
     // 'powder' is not in STOP; bronzer alias still ensures overlap with bare 'bronzer'.
     expect(categoryLeafTokens('bronzing_powder').has('bronzer')).toBe(true);
+  });
+
+  test('cream/lotion alias to moisturizer (v6: clears night_cream ↔ moisturizer FPs)', () => {
+    expect(categoryLeafTokens('night_cream').has('moisturizer')).toBe(true);
+    expect(categoryLeafTokens('body_cream').has('moisturizer')).toBe(true);
+    expect(categoryLeafTokens('hydrating_lotion').has('moisturizer')).toBe(true);
+    expect(categoryLeafTokens('vitamin_c_lotion').has('moisturizer')).toBe(true);
+  });
+
+  test('wash alias to cleanser (v6: clears face_wash ↔ daily_cleanser FPs)', () => {
+    expect(categoryLeafTokens('face_wash').has('cleanser')).toBe(true);
+    expect(categoryLeafTokens('foaming_face_wash').has('cleanser')).toBe(true);
+    expect(categoryLeafTokens('daily_cleanser').has('cleanser')).toBe(true);
+  });
+
+  test('mist alias to toner (v6: clears toning_mist ↔ remineralising_toner FPs)', () => {
+    expect(categoryLeafTokens('toning_mist').has('toner')).toBe(true);
+    expect(categoryLeafTokens('remineralising_toner').has('toner')).toBe(true);
   });
 
   test('returns empty set for null or empty leaf', () => {
@@ -114,8 +134,8 @@ describe('gateCategoryLeafMismatch', () => {
 
   test('rejects when leaves do not share any token (lip_balm vs eye_cream)', () => {
     const r = gateCategoryLeafMismatch(
-      attrs({ category_leaf: 'lip_balm' }),
-      attrs({ category_leaf: 'eye_cream' }),
+      attrs({ category_leaf: 'lip_balm', product_form: 'balm' }),
+      attrs({ category_leaf: 'eye_cream', product_form: 'cream' }),
       'competitive_alternative',
     );
     expect(r.passes).toBe(false);
@@ -124,8 +144,8 @@ describe('gateCategoryLeafMismatch', () => {
 
   test('rejects body_oil vs natural_deodorant (no overlap)', () => {
     const r = gateCategoryLeafMismatch(
-      attrs({ category_leaf: 'body_oil' }),
-      attrs({ category_leaf: 'natural_deodorant' }),
+      attrs({ category_leaf: 'body_oil', product_form: 'oil' }),
+      attrs({ category_leaf: 'natural_deodorant', product_form: 'deodorant' }),
       'competitive_alternative',
     );
     expect(r.passes).toBe(false);
@@ -166,8 +186,8 @@ describe('gateCategoryLeafMismatch', () => {
   test('applies to all three structural relation types', () => {
     for (const rt of ['dupe', 'competitive_alternative', 'niche_specialist']) {
       const r = gateCategoryLeafMismatch(
-        attrs({ category_leaf: 'lipstick' }),
-        attrs({ category_leaf: 'foundation' }),
+        attrs({ category_leaf: 'lipstick', product_form: 'lipstick' }),
+        attrs({ category_leaf: 'foundation', product_form: 'foundation' }),
         rt,
       );
       expect(r.passes).toBe(false);
@@ -182,9 +202,43 @@ describe('gateCategoryLeafMismatch', () => {
   test('CATEGORY_LEAF_STOP_TOKENS and CATEGORY_LEAF_ALIASES are exported as plain objects/sets', () => {
     expect(CATEGORY_LEAF_STOP_TOKENS instanceof Set).toBe(true);
     expect(CATEGORY_LEAF_STOP_TOKENS.has('matte')).toBe(true);
+    expect(CATEGORY_LEAF_STOP_TOKENS.has('foaming')).toBe(true);
     expect(typeof CATEGORY_LEAF_ALIASES).toBe('object');
     expect(CATEGORY_LEAF_ALIASES.parfum).toBe('fragrance');
     expect(CATEGORY_LEAF_ALIASES.bronzing).toBe('bronzer');
+    expect(CATEGORY_LEAF_ALIASES.cream).toBe('moisturizer');
+    expect(CATEGORY_LEAF_ALIASES.wash).toBe('cleanser');
+  });
+
+  describe('product_form fallback (v6)', () => {
+    test('passes when leaves disagree but product_forms match (sheer_lipstick ↔ ultra_shine_lip_color)', () => {
+      // category_leaf tokens: {lipstick} vs {lip} — no overlap.
+      // product_form: both 'lipstick' high-conf → fallback passes.
+      const r = gateCategoryLeafMismatch(
+        attrs({ category_leaf: 'sheer_lipstick', product_form: 'lipstick' }),
+        attrs({ category_leaf: 'ultra_shine_lip_color', product_form: 'lipstick' }),
+        'competitive_alternative',
+      );
+      expect(r).toEqual({ passes: true, reason: null });
+    });
+
+    test('does NOT pass when leaves disagree AND product_forms also disagree (lip_liner ↔ lipstick TN preserved)', () => {
+      const r = gateCategoryLeafMismatch(
+        attrs({ category_leaf: 'lip_liner', product_form: 'lip_liner' }),
+        attrs({ category_leaf: 'matte_liquid_lipstick', product_form: 'lipstick' }),
+        'competitive_alternative',
+      );
+      expect(r.passes).toBe(false);
+    });
+
+    test('fallback requires high product_form confidence on both sides', () => {
+      const r = gateCategoryLeafMismatch(
+        attrs({ category_leaf: 'sheer_lipstick', product_form: 'lipstick', product_form_confidence: 0.5 }),
+        attrs({ category_leaf: 'ultra_shine_lip_color', product_form: 'lipstick' }),
+        'competitive_alternative',
+      );
+      expect(r.passes).toBe(false);
+    });
   });
 });
 
@@ -218,6 +272,27 @@ describe('gateTargetAreaMismatch', () => {
       attrs({ target_area: 'lips' }),
       'related_product',
     ).passes).toBe(true);
+  });
+
+  test('cheeks ⊆ face: cheek_brush ↔ face_brush passes (v6)', () => {
+    expect(gateTargetAreaMismatch(
+      attrs({ target_area: 'cheeks' }),
+      attrs({ target_area: 'face' }),
+      'competitive_alternative',
+    ).passes).toBe(true);
+    expect(gateTargetAreaMismatch(
+      attrs({ target_area: 'face' }),
+      attrs({ target_area: 'cheeks' }),
+      'competitive_alternative',
+    ).passes).toBe(true);
+  });
+
+  test('cheeks does NOT compat with lips or body (only with face)', () => {
+    expect(gateTargetAreaMismatch(
+      attrs({ target_area: 'cheeks' }),
+      attrs({ target_area: 'lips' }),
+      'competitive_alternative',
+    ).passes).toBe(false);
   });
 });
 
@@ -316,8 +391,8 @@ describe('applyAllGates', () => {
 
   test('single failing gate yields prefilter_rejected with one reason', () => {
     const r = applyAllGates(
-      attrs({ category_leaf: 'lipstick', target_area: 'face', spf_or_otc_flag: 'cosmetic' }),
-      attrs({ category_leaf: 'foundation', target_area: 'face', spf_or_otc_flag: 'cosmetic' }),
+      attrs({ category_leaf: 'lipstick', product_form: 'lipstick', target_area: 'face', spf_or_otc_flag: 'cosmetic' }),
+      attrs({ category_leaf: 'foundation', product_form: 'foundation', target_area: 'face', spf_or_otc_flag: 'cosmetic' }),
       'competitive_alternative',
     );
     expect(r.passes).toBe(false);
@@ -327,8 +402,8 @@ describe('applyAllGates', () => {
 
   test('multiple failing gates accumulate reasons', () => {
     const r = applyAllGates(
-      attrs({ category_leaf: 'lipstick', target_area: 'lips', spf_or_otc_flag: 'cosmetic' }),
-      attrs({ category_leaf: 'foundation', target_area: 'face', spf_or_otc_flag: 'otc_drug' }),
+      attrs({ category_leaf: 'lipstick', product_form: 'lipstick', target_area: 'lips', spf_or_otc_flag: 'cosmetic' }),
+      attrs({ category_leaf: 'foundation', product_form: 'foundation', target_area: 'face', spf_or_otc_flag: 'otc_drug' }),
       'dupe',
     );
     expect(r.passes).toBe(false);

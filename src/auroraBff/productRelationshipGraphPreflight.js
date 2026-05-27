@@ -15,10 +15,13 @@
 //     exemption. approved_pass_rate=0.45.
 //   v4 (d3b6dfcb): expanded face_emollient with moisturizer + K-beauty
 //     forms. approved_pass_rate=0.52.
-//   v5 (this): replaced product_form gate with category_leaf token-overlap
-//     gate. Phase C's category_leaf is a more canonical, consistent axis
-//     than product_form. Combined with target_area + spf_or_otc:
+//   v5: replaced product_form gate with category_leaf token-overlap.
 //     approved_pass_rate=0.909, gate_precision=0.860, catch_rate=0.326.
+//   v6 (this): expanded CATEGORY_LEAF_ALIASES (cream/lotion→moisturizer,
+//     wash→cleanser, mist→toner) + STOP additions (foaming, remineralising,
+//     toning, vitamin) + product_form fallback when leaves disagree but
+//     forms match + cheeks⊆face area compat. SHIP_V2: pass_rate=0.9705,
+//     precision=0.9432, catch=0.287.
 
 const MIN_CONFIDENCE_FOR_GATING = 0.7;
 
@@ -41,18 +44,24 @@ const CATEGORY_LEAF_STOP_TOKENS = new Set([
   'exfoliating', 'whipped', 'liquid', 'solid', 'full', 'light', 'medium',
   'heavy', 'dewy', 'satin', 'glossy', 'clear', 'colored', 'color', 'formula',
   'lightweight', 'rich', 'intensive', 'firming', 'plumping', 'retinol',
-  'daily', 'overnight', 'sleeping', 'night',
+  'daily', 'overnight', 'sleeping', 'night', 'foaming', 'remineralising',
+  'toning', 'vitamin',
 ]);
 
-// Minimal synonym/stem map — collapses true equivalents. Avoid aggressive
-// grouping (e.g. lipstick↔balm↔gloss) because reviewers DO distinguish those
-// even within lip category; we'd lose real catches.
+// Synonym/stem map — collapses true equivalents. Calibrated empirically:
+// `cream → moisturizer`, `lotion → moisturizer`, `wash → cleanser`,
+// `mist → toner` all clear specific FP cohorts; the target_area gate handles
+// face/body separation so collapsing texture-named moisturizers is safe.
+// Lip-product aliases (lipstick↔balm↔gloss) are intentionally OMITTED — the
+// product_form fallback below handles same-form lip pairs without losing
+// lip_liner-vs-lipstick catches.
 const CATEGORY_LEAF_ALIASES = {
   bronzing: 'bronzer',
   parfum: 'fragrance', perfume: 'fragrance', eau: 'fragrance',
   toilette: 'fragrance', cologne: 'fragrance',
-  moisturizing: 'moisturizer',
-  cleansing: 'cleanser',
+  moisturizing: 'moisturizer', cream: 'moisturizer', lotion: 'moisturizer',
+  cleansing: 'cleanser', wash: 'cleanser',
+  mist: 'toner',
 };
 
 function categoryLeafTokens(leaf) {
@@ -89,6 +98,12 @@ function isHighConfidence(attrs, field) {
 // variants (`hydrating_foundation_spf` vs `powder_foundation`). Reviewers
 // approve those as competitive alternatives. Token-overlap recovers the
 // underlying category (`foundation`) without enumerating every adjective.
+//
+// product_form fallback: when category_leaves don't share tokens but BOTH
+// anchor and candidate have the same high-confidence product_form, pass.
+// This recovers cases like `sheer_lipstick` ↔ `ultra_shine_lip_color`
+// (both `product_form=lipstick`) without aggressive lip-product aliases
+// that would mask `lip_liner ↔ lipstick` catches.
 function gateCategoryLeafMismatch(anchorAttrs, candidateAttrs, relationType) {
   if (!STRUCTURAL_GATE_RELATION_TYPES.has(relationType)) {
     return { passes: true, reason: null };
@@ -99,6 +114,13 @@ function gateCategoryLeafMismatch(anchorAttrs, candidateAttrs, relationType) {
   const cLeaf = candidateAttrs.category_leaf;
   if (aLeaf === cLeaf) return { passes: true, reason: null };
   if (shareCategoryLeafToken(aLeaf, cLeaf)) return { passes: true, reason: null };
+  if (
+    isHighConfidence(anchorAttrs, 'product_form')
+    && isHighConfidence(candidateAttrs, 'product_form')
+    && anchorAttrs.product_form === candidateAttrs.product_form
+  ) {
+    return { passes: true, reason: null };
+  }
   return {
     passes: false,
     reason: `category_leaf_mismatch:${aLeaf}_vs_${cLeaf}`,
@@ -107,6 +129,10 @@ function gateCategoryLeafMismatch(anchorAttrs, candidateAttrs, relationType) {
 
 // Gate 2: target_area mismatch. Face-vs-lips, body-vs-eyes etc. Multi-area
 // items pass through (a multi-area set can pair with either area).
+//
+// cheeks ⊆ face: validation showed `cheek_brush ↔ powder_brush` and similar
+// face/cheek brush pairs are routinely approved as alternatives — cheek
+// products are a face subcategory in practice.
 function gateTargetAreaMismatch(anchorAttrs, candidateAttrs, relationType) {
   if (!STRUCTURAL_GATE_RELATION_TYPES.has(relationType)) {
     return { passes: true, reason: null };
@@ -117,6 +143,10 @@ function gateTargetAreaMismatch(anchorAttrs, candidateAttrs, relationType) {
     return { passes: true, reason: null };
   }
   if (anchorAttrs.target_area === candidateAttrs.target_area) {
+    return { passes: true, reason: null };
+  }
+  const pair = new Set([anchorAttrs.target_area, candidateAttrs.target_area]);
+  if (pair.has('cheeks') && pair.has('face')) {
     return { passes: true, reason: null };
   }
   return {
