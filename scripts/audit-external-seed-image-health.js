@@ -15,6 +15,10 @@ function argValue(name) {
   return value;
 }
 
+function hasFlag(name) {
+  return process.argv.includes(`--${name}`);
+}
+
 function normalizeNonEmptyString(value) {
   return String(value || '').trim();
 }
@@ -22,6 +26,16 @@ function normalizeNonEmptyString(value) {
 function normalizeUrlLike(value) {
   const normalized = normalizeNonEmptyString(value);
   return /^https?:\/\//i.test(normalized) ? normalized : '';
+}
+
+function looksLikeImageAssetUrl(value) {
+  const url = normalizeUrlLike(value);
+  if (!url) return false;
+  return (
+    /\.(?:avif|gif|jpe?g|png|webp)(?:[?#].*)?$/i.test(url) ||
+    /\/(?:cdn|images?|media|files)\//i.test(url) ||
+    /(?:shopify|cloudfront|cloudinary|imgix|images|cdn)/i.test(url)
+  );
 }
 
 function readJsonFile(filePath, fallback) {
@@ -41,7 +55,7 @@ function collectImageUrlsFromValue(value, out) {
   if (!value) return;
   if (typeof value === 'string') {
     const url = normalizeUrlLike(value);
-    if (url) out.push(url);
+    if (url && looksLikeImageAssetUrl(url)) out.push(url);
     return;
   }
   if (Array.isArray(value)) {
@@ -50,14 +64,10 @@ function collectImageUrlsFromValue(value, out) {
   }
   if (typeof value !== 'object') return;
   const typed = value;
-  [
-    typed.url,
-    typed.src,
-    typed.image,
-    typed.image_url,
-    typed.thumbnail_url,
-    typed.primary_image_url,
-  ].forEach((candidate) => collectImageUrlsFromValue(candidate, out));
+  if (looksLikeImageAssetUrl(typed.url)) collectImageUrlsFromValue(typed.url, out);
+  if (looksLikeImageAssetUrl(typed.src)) collectImageUrlsFromValue(typed.src, out);
+  [typed.image, typed.image_url, typed.thumbnail_url, typed.primary_image_url]
+    .forEach((candidate) => collectImageUrlsFromValue(candidate, out));
   [
     typed.images,
     typed.image_urls,
@@ -90,12 +100,12 @@ function collectSeedImageUrls(row) {
   return Array.from(new Set(out));
 }
 
-async function fetchRows({ market, domain, limit, offset }) {
+async function fetchRows({ market, domain, limit, offset, includeAttached = false, includeAllTools = false }) {
   const where = [
     `status = 'active'`,
-    `attached_product_key IS NULL`,
-    `(tool = '*' OR tool = 'creator_agents')`,
   ];
+  if (!includeAttached) where.push(`attached_product_key IS NULL`);
+  if (!includeAllTools) where.push(`(tool = '*' OR tool = 'creator_agents')`);
   const params = [];
   const bind = (value) => {
     params.push(value);
@@ -133,14 +143,14 @@ async function fetchRows({ market, domain, limit, offset }) {
   return res.rows || [];
 }
 
-async function checkUrls(urls, checkpoint, concurrency) {
+async function checkUrls(urls, checkpoint, concurrency, options = {}) {
   const queue = urls.filter((url) => !checkpoint.checked_urls[url]);
   let cursor = 0;
   const worker = async () => {
     while (cursor < queue.length) {
       const current = queue[cursor];
       cursor += 1;
-      checkpoint.checked_urls[current] = await probeImageUrl(current);
+      checkpoint.checked_urls[current] = await probeImageUrl(current, options);
     }
   };
   await Promise.all(
@@ -153,6 +163,11 @@ function summarizeRows(rows, checkpoint) {
     const urls = collectSeedImageUrls(row);
     const checks = urls.map((url) => checkpoint.checked_urls[url]).filter(Boolean);
     const broken = checks.filter((item) => !item.ok);
+    const lowResolution = checks.filter((item) => item.ok && item.low_resolution);
+    const dimensionErrors = checks.filter((item) => item.ok && item.dimension_error);
+    const measuredLongEdges = checks
+      .map((item) => Number(item.long_edge))
+      .filter((value) => Number.isFinite(value) && value > 0);
     return {
       seed_id: String(row.id),
       external_product_id: row.external_product_id,
@@ -163,6 +178,12 @@ function summarizeRows(rows, checkpoint) {
       checked_url_count: checks.length,
       broken_count: broken.length,
       broken_urls: broken.slice(0, 20),
+      low_resolution_count: lowResolution.length,
+      low_resolution_urls: lowResolution.slice(0, 20),
+      dimension_error_count: dimensionErrors.length,
+      dimension_error_urls: dimensionErrors.slice(0, 20),
+      min_long_edge: measuredLongEdges.length ? Math.min(...measuredLongEdges) : null,
+      primary_long_edge: Number(checks[0]?.long_edge) || null,
     };
   });
 
@@ -174,21 +195,38 @@ function summarizeRows(rows, checkpoint) {
       {
         products_scanned: 0,
         products_with_broken_images: 0,
+        products_with_low_resolution_images: 0,
+        products_with_dimension_errors: 0,
         checked_url_count: 0,
         broken_url_count: 0,
+        low_resolution_url_count: 0,
+        dimension_error_url_count: 0,
+        min_long_edge: null,
       };
     bucket.products_scanned += 1;
     bucket.checked_url_count += item.checked_url_count;
     bucket.broken_url_count += item.broken_count;
+    bucket.low_resolution_url_count += item.low_resolution_count;
+    bucket.dimension_error_url_count += item.dimension_error_count;
     if (item.broken_count > 0) bucket.products_with_broken_images += 1;
+    if (item.low_resolution_count > 0) bucket.products_with_low_resolution_images += 1;
+    if (item.dimension_error_count > 0) bucket.products_with_dimension_errors += 1;
+    if (item.min_long_edge) {
+      bucket.min_long_edge =
+        bucket.min_long_edge == null ? item.min_long_edge : Math.min(bucket.min_long_edge, item.min_long_edge);
+    }
     domainBuckets[key] = bucket;
   });
 
   return {
     scanned: rowResults.length,
     products_with_broken_images: rowResults.filter((item) => item.broken_count > 0).length,
+    products_with_low_resolution_images: rowResults.filter((item) => item.low_resolution_count > 0).length,
+    products_with_dimension_errors: rowResults.filter((item) => item.dimension_error_count > 0).length,
     checked_url_count: rowResults.reduce((sum, item) => sum + item.checked_url_count, 0),
     broken_url_count: rowResults.reduce((sum, item) => sum + item.broken_count, 0),
+    low_resolution_url_count: rowResults.reduce((sum, item) => sum + item.low_resolution_count, 0),
+    dimension_error_url_count: rowResults.reduce((sum, item) => sum + item.dimension_error_count, 0),
     domain_buckets: domainBuckets,
     results: rowResults,
   };
@@ -201,6 +239,10 @@ async function main() {
   const limit = limitArg == null ? null : Math.max(1, Number(limitArg) || 1);
   const offset = Math.max(0, Number(argValue('offset') || 0) || 0);
   const concurrency = Math.max(1, Math.min(16, Number(argValue('concurrency') || 4) || 4));
+  const inspectDimensions = hasFlag('image-dimension-check') || hasFlag('image-dimensions');
+  const imageMinLongEdge = argValue('image-min-long-edge');
+  const includeAttached = hasFlag('include-attached') || hasFlag('includeAttached');
+  const includeAllTools = hasFlag('include-all-tools') || hasFlag('includeAllTools');
   const checkpointPath =
     argValue('checkpoint') ||
     path.join(process.cwd(), '.tmp', 'external-seed-image-health-checkpoint.json');
@@ -217,9 +259,12 @@ async function main() {
       ? checkpoint.checked_urls
       : {};
 
-  const rows = await fetchRows({ market, domain, limit, offset });
+  const rows = await fetchRows({ market, domain, limit, offset, includeAttached, includeAllTools });
   const allUrls = Array.from(new Set(rows.flatMap((row) => collectSeedImageUrls(row))));
-  await checkUrls(allUrls, checkpoint, concurrency);
+  await checkUrls(allUrls, checkpoint, concurrency, {
+    inspectDimensions,
+    minLongEdge: imageMinLongEdge,
+  });
   checkpoint.updated_at = new Date().toISOString();
   writeJsonFile(checkpointPath, checkpoint);
 

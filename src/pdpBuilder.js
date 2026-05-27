@@ -2401,12 +2401,18 @@ function buildMediaItems(product, variants) {
     Array.isArray(variants) &&
     variants.length > 1 &&
     variants.some((variant) => looksLikePackOrBundleVariant(variant));
+  const shouldKeepProductGalleryForSparseVariantGallery =
+    isExternalSeedLikeProduct(product) &&
+    primaryVariantImageKeys.size <= 1 &&
+    productImageKeys.size >= 3 &&
+    productImageKeys.size > primaryVariantImageKeys.size;
   const hasAuthoritativeVariantGallery =
     Array.isArray(variants) &&
     variants.length > 1 &&
     primaryVariantImages.some((value) => buildPdpImageDedupeKey(value)) &&
     !shouldKeepProductGalleryForSharedVariantImage &&
-    !shouldKeepProductGalleryForPackVariants;
+    !shouldKeepProductGalleryForPackVariants &&
+    !shouldKeepProductGalleryForSparseVariantGallery;
 
   media.forEach((m) => {
     if (typeof m === 'object' && m && !isPublicContributionVisible(m)) return;

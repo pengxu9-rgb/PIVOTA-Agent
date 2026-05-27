@@ -362,6 +362,161 @@ describe('official PDP manual insight review', () => {
     expect(plan.preview.shopping_highlight).toBe('Cocoa Precision Pout Lip Liner + Underestimated Gloss Drip');
   });
 
+  test('allows Joocyee and Judydoll through the reviewed official-PDP template', () => {
+    const joocyeePlan = buildPlan(
+      row({
+        external_product_id: 'ext_joocyee_brow',
+        title: 'Dual-Ended Eyebrow Pencil & Cream 2.0',
+        brand: 'Joocyee',
+        canonical_url: 'https://joocyee.com/products/dual-ended-eyebrow-pencil-cream-2-0',
+        seed_data: {
+          brand: 'Joocyee',
+          pdp_description_raw:
+            'One fine stroke for precise feathered brows, one sweep for brow color that never stains skin.',
+          pdp_how_to_use_raw: 'Use the pencil tip to define brows, then sweep the cream through the brow hair.',
+          pdp_details_sections: [
+            { heading: 'Finish', body: 'Soft matte finish with buildable color.' },
+          ],
+          variants: [
+            { title: '03 Cool Misty Brown', options: [{ name: 'Color', value: '03 Cool Misty Brown' }] },
+          ],
+        },
+      }),
+      { brand: 'Joocyee', includeStrong: false },
+    );
+    const judydollPlan = buildPlan(
+      row({
+        external_product_id: 'ext_judydoll_contour',
+        title: 'Dual-Ended Contour Stick',
+        brand: 'Judydoll',
+        canonical_url: 'https://judydoll.com/products/dual-ended-contour-stick',
+        seed_data: {
+          brand: 'Judydoll',
+          pdp_description_raw:
+            'A dual-ended contour stick for sculpting and highlighting with a creamy, blendable texture.',
+          pdp_how_to_use_raw: 'Swipe onto the face and blend with fingers, sponge, or brush.',
+          pdp_details_sections: [
+            { heading: 'Texture', body: 'Creamy stick format designed for easy blending.' },
+          ],
+          variants: [
+            { title: '02 Warm Yellow Undertones', options: [{ name: 'Shade', value: '02 Warm Yellow Undertones' }] },
+          ],
+        },
+      }),
+      { brand: 'Judydoll', includeStrong: false },
+    );
+    const lipInkPlan = buildPlan(
+      row({
+        external_product_id: 'ext_judydoll_lip_ink',
+        title: 'Silky Matte Lip Ink',
+        brand: 'Judydoll',
+        canonical_url: 'https://judydoll.com/products/silky-matte-lip-ink',
+        seed_data: {
+          brand: 'Judydoll',
+          pdp_description_raw:
+            'Bold, lightweight color with a silky matte feel, transfer-resistant wear, and comfortable non-drying texture.',
+          pdp_how_to_use_raw: 'Apply directly to the lips and let the color set for a soft matte finish.',
+          pdp_details_sections: [
+            { heading: 'Finish', body: 'Silky matte color designed for long-lasting lip wear.' },
+          ],
+          variants: [
+            { title: '10 Terra Ink', options: [{ name: 'Shade', value: '10 Terra Ink' }] },
+          ],
+        },
+      }),
+      { brand: 'Judydoll', includeStrong: false },
+    );
+    const highlighterPlan = buildPlan(
+      row({
+        external_product_id: 'ext_judydoll_highlighter',
+        title: 'Sheer Tinted Highlighter',
+        brand: 'Judydoll',
+        canonical_url: 'https://judydoll.com/products/sheer-tinted-highlighter',
+        seed_data: {
+          brand: 'Judydoll',
+          pdp_description_raw:
+            'A sheer tinted highlighter with buildable glow payoff and a lightweight, blendable finish.',
+          pdp_how_to_use_raw: 'Apply to cheekbones, brow bones, or other high points of the face.',
+          variants: [
+            { title: '03 Peach Sorbet', options: [{ name: 'Shade', value: '03 Peach Sorbet' }] },
+          ],
+        },
+      }),
+      { brand: 'Judydoll', includeStrong: false },
+    );
+
+    expect(joocyeePlan.blocked).toBe(false);
+    expect(joocyeePlan.evidence_profile).toBe('official_pdp_reviewed_line');
+    expect(joocyeePlan.preview.what_it_is).toContain('Joocyee');
+    expect(judydollPlan.blocked).toBe(false);
+    expect(judydollPlan.evidence_profile).toBe('official_pdp_reviewed_line');
+    expect(judydollPlan.preview.what_it_is).toContain('Judydoll');
+    expect(lipInkPlan.blocked).toBe(false);
+    expect(lipInkPlan.preview.headline).toBe('Lip color');
+    expect(lipInkPlan.preview.shopping_highlight).not.toBe('Beauty product');
+    expect(highlighterPlan.blocked).toBe(false);
+    expect(highlighterPlan.preview.shopping_highlight).toContain('glow payoff');
+    expect(highlighterPlan.preview.shopping_highlight).not.toContain('bronzing/contour');
+  });
+
+  test('allows Flower Knows, RMS Beauty, and Catkin through source-backed roles', () => {
+    const flowerPlan = buildPlan(
+      row({
+        external_product_id: 'ext_flower_palette',
+        title: 'Midsummer Fairytales Embossed Five-Color Makeup Palette',
+        brand: 'Flower Knows',
+        canonical_url: 'https://flowerknows.co/products/midsummer-fairytales-embossed-five-color-makeup-palette-usa',
+        seed_data: {
+          brand: 'Flower Knows',
+          pdp_description_raw: 'A five-color makeup palette with embossed pans and a soft powder texture.',
+          pdp_details_sections: [{ heading: 'Color story', body: 'Five shades are arranged for eye looks.' }],
+          variants: [{ title: '01 Dream', options: [{ name: 'Color', value: '01 Dream' }] }],
+        },
+      }),
+      { brand: 'Flower Knows', includeStrong: false },
+    );
+    const rmsEyePlan = buildPlan(
+      row({
+        external_product_id: 'ext_rms_spf_eye',
+        title: 'ReFresh Eye Brightener SPF 30 + Correcting Tint',
+        brand: 'RMS Beauty',
+        canonical_url: 'https://www.rmsbeauty.com/products/refresh-eye-brightener-spf-30',
+        seed_data: {
+          brand: 'RMS Beauty',
+          pdp_description_raw: 'A correcting eye tint with SPF 30, mineral sunscreen, and hydrating support.',
+          pdp_active_ingredients_raw: 'Active Ingredients: Titanium Dioxide 4.9%, Zinc Oxide 6.3%.',
+          variants: [{ title: 'Hush', options: [{ name: 'Shade', value: 'Hush' }] }],
+        },
+      }),
+      { includeStrong: false },
+    );
+    const catkinPlan = buildPlan(
+      row({
+        external_product_id: 'ext_catkin_balm',
+        title: 'CATKIN Tinted Glossy Lip Balm',
+        brand: 'CATKIN Cosmetics',
+        canonical_url: 'https://www.catkin.com/products/catkin-tinted-glossy-lip-balm',
+        seed_data: {
+          brand: 'CATKIN Cosmetics',
+          pdp_description_raw: 'A tinted glossy lip balm with a shine finish and color selection.',
+          pdp_details_sections: [{ heading: 'Finish', body: 'Glossy tinted finish.' }],
+          variants: [{ title: 'C01 Peach', options: [{ name: 'Shade', value: 'C01 Peach' }] }],
+        },
+      }),
+      { includeStrong: false },
+    );
+
+    expect(flowerPlan.blocked).toBe(false);
+    expect(flowerPlan.preview.headline).toBe('Eye makeup');
+    expect(flowerPlan.preview.what_it_is).toContain('eye makeup palette');
+    expect(rmsEyePlan.blocked).toBe(false);
+    expect(rmsEyePlan.preview.headline).toBe('Daily sunscreen');
+    expect(rmsEyePlan.preview.what_it_is).toContain('SPF eye brightener');
+    expect(catkinPlan.blocked).toBe(false);
+    expect(catkinPlan.preview.headline).toBe('Lip treatment');
+    expect(catkinPlan.preview.shopping_highlight).toContain('shine finish');
+  });
+
   test('keeps Kylie lip glaze samples in lip color language', () => {
     const plan = buildPlan(
       row({

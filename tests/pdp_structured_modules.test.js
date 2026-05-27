@@ -158,6 +158,55 @@ describe('pdpBuilder structured PDP modules', () => {
     ]);
   });
 
+  test('media_gallery keeps external seed product gallery when shade variants only expose one hero image', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_rms_eye_brightener',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'ReFresh Eye Brightener SPF 30 + Correcting Tint',
+        image_url: 'https://cdn.shopify.com/rms/adore-pack.jpg?v=1',
+        image_urls: [
+          'https://cdn.shopify.com/rms/adore-pack.jpg?v=1',
+          'https://cdn.shopify.com/rms/model-quad.jpg?v=1',
+          'https://cdn.shopify.com/rms/group-swatch.jpg?v=1',
+          'https://cdn.shopify.com/rms/texture.jpg?v=1',
+        ],
+        variants: [
+          {
+            variant_id: 'adore',
+            title: 'Adore',
+            image_url: 'https://cdn.shopify.com/rms/adore-pack.jpg?v=1',
+            image_urls: ['https://cdn.shopify.com/rms/adore-pack.jpg?v=1'],
+            options: [{ name: 'Shade', value: 'Adore' }],
+          },
+          {
+            variant_id: 'cherish',
+            title: 'Cherish',
+            image_url: 'https://cdn.shopify.com/rms/cherish-pack.jpg?v=1',
+            image_urls: ['https://cdn.shopify.com/rms/cherish-pack.jpg?v=1'],
+            options: [{ name: 'Shade', value: 'Cherish' }],
+          },
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const mediaGallery = findModule(payload, 'media_gallery');
+    const urls = Array.isArray(mediaGallery?.data?.items)
+      ? mediaGallery.data.items.map((item) => item.url)
+      : [];
+
+    expect(urls).toEqual([
+      'https://cdn.shopify.com/rms/adore-pack.jpg?v=1',
+      'https://cdn.shopify.com/rms/model-quad.jpg?v=1',
+      'https://cdn.shopify.com/rms/group-swatch.jpg?v=1',
+      'https://cdn.shopify.com/rms/texture.jpg?v=1',
+      'https://cdn.shopify.com/rms/cherish-pack.jpg?v=1',
+    ]);
+  });
+
   test('emits additive beauty modules from structured ingredient fields and carries brand story separately', () => {
     const payload = buildPdpPayload({
       product: {
