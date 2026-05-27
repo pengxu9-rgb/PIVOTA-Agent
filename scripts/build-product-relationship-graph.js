@@ -17,6 +17,13 @@ const {
   buildCandidatesByAnchorFromSources,
   loadProductRelationshipGraphSourceInputs,
 } = require('../src/auroraBff/productRelationshipGraphSources');
+const {
+  applyAllGates,
+} = require('../src/auroraBff/productRelationshipGraphPreflight');
+const {
+  lookupBeautyAttributesBatch,
+  normalizeKey,
+} = require('../src/auroraBff/productBeautyAttributes');
 
 function argValue(name) {
   const idx = process.argv.indexOf(`--${name}`);
@@ -28,6 +35,29 @@ function argValue(name) {
 
 function hasFlag(name) {
   return process.argv.includes(`--${name}`);
+}
+
+// Pure helper: classify a single edge into { label_state, prefilter_reasons,
+// bucket } given resolved beauty attrs. Bucket is 'rejected' | 'passed' |
+// 'skipped' (skipped = no attrs available on one or both sides).
+//
+// Used by main() in the apply loop; exported for unit testing.
+function classifyEdgeForPrefilter({ edge, defaultLabelState, anchorAttrs, candidateAttrs }) {
+  if (defaultLabelState !== 'generated') {
+    return { label_state: defaultLabelState, prefilter_reasons: null, bucket: null };
+  }
+  const gateResult = applyAllGates(anchorAttrs, candidateAttrs, edge.relation_type);
+  if (!gateResult.passes) {
+    return {
+      label_state: 'prefilter_rejected',
+      prefilter_reasons: gateResult.prefilter_reasons,
+      bucket: 'rejected',
+    };
+  }
+  if (anchorAttrs && candidateAttrs) {
+    return { label_state: 'generated', prefilter_reasons: null, bucket: 'passed' };
+  }
+  return { label_state: 'generated', prefilter_reasons: null, bucket: 'skipped' };
 }
 
 function numberArg(name, fallback, { min = 0, max = Number.MAX_SAFE_INTEGER } = {}) {
@@ -346,14 +376,51 @@ async function main() {
   // explicitly approved/rejected/pending it maps via reviewStatusToLabelState.
   const defaultLabelState = reviewStatusToLabelState(reviewStatus) || 'generated';
 
+  // Phase B preflight gates. When defaultLabelState is 'generated' (no
+  // explicit reviewer decision), run applyAllGates on each edge using the
+  // anchor/candidate beauty attributes; gate failures are routed to
+  // 'prefilter_rejected' so they never reach the reviewer queue.
+  //
+  // Explicit reviewer decisions (--review-status approved|rejected|pending)
+  // bypass the gate — the reviewer's call is authoritative.
+  let attrsByKey = new Map();
+  if (hasFlag('apply') && defaultLabelState === 'generated' && report.edges.length) {
+    const productKeys = new Set();
+    for (const edge of report.edges) {
+      const aKey = normalizeKey(edge.anchor_ref);
+      const cKey = normalizeKey(edge.candidate_product_ref);
+      if (aKey) productKeys.add(aKey);
+      if (cKey) productKeys.add(cKey);
+    }
+    if (productKeys.size > 0) {
+      attrsByKey = await lookupBeautyAttributesBatch(Array.from(productKeys));
+    }
+  }
+
   let applied = 0;
+  let prefilterRejected = 0;
+  let prefilterPassed = 0;
+  let prefilterSkipped = 0;
   if (hasFlag('apply')) {
     for (const edge of report.edges) {
+      const anchorAttrs = attrsByKey.get(normalizeKey(edge.anchor_ref));
+      const candidateAttrs = attrsByKey.get(normalizeKey(edge.candidate_product_ref));
+      const classification = classifyEdgeForPrefilter({
+        edge,
+        defaultLabelState,
+        anchorAttrs,
+        candidateAttrs,
+      });
+      if (classification.bucket === 'rejected') prefilterRejected += 1;
+      else if (classification.bucket === 'passed') prefilterPassed += 1;
+      else if (classification.bucket === 'skipped') prefilterSkipped += 1;
+
       // eslint-disable-next-line no-await-in-loop
       await upsertRelationshipCandidateLabel({
         ...edge,
         edge_id: edge.id,
-        label_state: defaultLabelState,
+        label_state: classification.label_state,
+        prefilter_reasons: classification.prefilter_reasons,
       });
       applied += 1;
     }
@@ -367,6 +434,10 @@ async function main() {
       source_diagnostics: payload.sourceDiagnostics || payload.source_diagnostics || null,
       dry_run: !hasFlag('apply'),
       applied_count: applied,
+      prefilter_applied: hasFlag('apply') && defaultLabelState === 'generated',
+      prefilter_rejected_count: prefilterRejected,
+      prefilter_passed_count: prefilterPassed,
+      prefilter_skipped_count: prefilterSkipped,
     },
   };
   if (hasFlag('require-anchors') && Number(finalReport.summary.anchor_count || 0) <= 0) {
@@ -400,4 +471,5 @@ module.exports = {
   buildNeedCandidateMap,
   attachCandidateSignals,
   numberArg,
+  classifyEdgeForPrefilter,
 };

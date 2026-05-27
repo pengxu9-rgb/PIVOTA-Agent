@@ -774,6 +774,18 @@ async function upsertRelationshipCandidateLabel(input = {}, { queryFn = query } 
         .filter(Boolean)
     : extractReasonFlags(humanReview);
 
+  const prefilterReasons = Array.isArray(input.prefilter_reasons)
+    ? input.prefilter_reasons
+        .map((reason) => normalizeLower(reason, 240))
+        .filter(Boolean)
+    : null;
+
+  if (labelState === 'prefilter_rejected' && (!prefilterReasons || prefilterReasons.length === 0)) {
+    const err = new Error('missing_prefilter_reasons');
+    err.code = 'MISSING_PREFILTER_REASONS';
+    throw err;
+  }
+
   await queryFn(
     `
       INSERT INTO relationship_candidate_labels (
@@ -783,7 +795,7 @@ async function upsertRelationshipCandidateLabel(input = {}, { queryFn = query } 
         label_state, score_total, score_breakdown,
         price_evidence, source_refs, evidence_grade,
         why_candidate, tradeoffs, watchouts,
-        human_review, reason_flags, source_report, provenance,
+        human_review, reason_flags, prefilter_reasons, source_report, provenance,
         reviewed_at, last_verified_at, expires_at, updated_at
       )
       VALUES (
@@ -793,8 +805,8 @@ async function upsertRelationshipCandidateLabel(input = {}, { queryFn = query } 
         $14, $15, $16::jsonb,
         $17::jsonb, $18::jsonb, $19,
         $20::jsonb, $21::jsonb, $22::jsonb,
-        $23::jsonb, $24, $25, $26::jsonb,
-        $27::timestamptz, $28::timestamptz, $29::timestamptz, now()
+        $23::jsonb, $24, $25, $26, $27::jsonb,
+        $28::timestamptz, $29::timestamptz, $30::timestamptz, now()
       )
       ON CONFLICT (market, anchor_type, lower(anchor_ref), lower(candidate_product_ref), relation_type)
       DO UPDATE SET
@@ -816,6 +828,7 @@ async function upsertRelationshipCandidateLabel(input = {}, { queryFn = query } 
         watchouts = EXCLUDED.watchouts,
         human_review = EXCLUDED.human_review,
         reason_flags = EXCLUDED.reason_flags,
+        prefilter_reasons = EXCLUDED.prefilter_reasons,
         source_report = EXCLUDED.source_report,
         provenance = EXCLUDED.provenance,
         reviewed_at = EXCLUDED.reviewed_at,
@@ -848,6 +861,7 @@ async function upsertRelationshipCandidateLabel(input = {}, { queryFn = query } 
       normalizeJsonbParam(edge.watchouts, []),
       humanReview ? normalizeJsonbParam(humanReview, {}) : null,
       reasonFlags,
+      prefilterReasons,
       normalizeString(input.source_report, 260) || null,
       normalizeJsonbParam(edge.provenance, {}),
       input.reviewed_at || null,
