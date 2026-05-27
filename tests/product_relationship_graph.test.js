@@ -5,6 +5,7 @@ const {
   buildAnchorRefsFromProduct,
   listApprovedRelationshipEdgesForAnchor,
   upsertRelationshipEdge,
+  upsertRelationshipCandidateLabel,
   extractReasonFlags,
   extractFailureReasonFlags,
 } = require('../src/auroraBff/productRelationshipGraph');
@@ -307,6 +308,103 @@ describe('product relationship graph store helpers', () => {
       errors: expect.arrayContaining(['dupe_same_brand_blocked']),
     });
     expect(queryFn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('upsertRelationshipCandidateLabel — prefilter_reasons persistence', () => {
+  function generatedEdge(overrides = {}) {
+    // Minimal valid input for a 'generated' (pre-review) label.
+    return {
+      id: 'prel_gen_test_001',
+      anchor_type: 'product',
+      anchor_ref: 'product:ext_anchor_aaa',
+      anchor_snapshot: { product_id: 'ext_anchor_aaa', brand: 'Brand A', name: 'A' },
+      candidate_product_ref: 'product:ext_cand_bbb',
+      candidate_snapshot: { product_id: 'ext_cand_bbb', brand: 'Brand B', name: 'B' },
+      relation_type: 'competitive_alternative',
+      market: 'US',
+      ...overrides,
+    };
+  }
+
+  test('persists prefilter_reasons on prefilter_rejected label', async () => {
+    const queryFn = jest.fn(async () => ({ rowCount: 1, rows: [] }));
+    await upsertRelationshipCandidateLabel(
+      {
+        ...generatedEdge(),
+        label_state: 'prefilter_rejected',
+        prefilter_reasons: [
+          'category_leaf_mismatch:lipstick_vs_foundation',
+          'target_area_mismatch:lips_vs_face',
+        ],
+      },
+      { queryFn },
+    );
+    expect(queryFn).toHaveBeenCalledTimes(1);
+    const params = queryFn.mock.calls[0][1];
+    expect(params).toEqual(
+      expect.arrayContaining([
+        [
+          'category_leaf_mismatch:lipstick_vs_foundation',
+          'target_area_mismatch:lips_vs_face',
+        ],
+      ]),
+    );
+  });
+
+  test('throws MISSING_PREFILTER_REASONS when label_state is prefilter_rejected but no reasons given', async () => {
+    const queryFn = jest.fn(async () => ({ rowCount: 1, rows: [] }));
+    await expect(
+      upsertRelationshipCandidateLabel(
+        { ...generatedEdge(), label_state: 'prefilter_rejected' },
+        { queryFn },
+      ),
+    ).rejects.toMatchObject({ code: 'MISSING_PREFILTER_REASONS' });
+    expect(queryFn).not.toHaveBeenCalled();
+  });
+
+  test('throws MISSING_PREFILTER_REASONS when prefilter_rejected and reasons is empty array', async () => {
+    const queryFn = jest.fn(async () => ({ rowCount: 1, rows: [] }));
+    await expect(
+      upsertRelationshipCandidateLabel(
+        {
+          ...generatedEdge(),
+          label_state: 'prefilter_rejected',
+          prefilter_reasons: [],
+        },
+        { queryFn },
+      ),
+    ).rejects.toMatchObject({ code: 'MISSING_PREFILTER_REASONS' });
+  });
+
+  test('generated label may omit prefilter_reasons (column nullable)', async () => {
+    const queryFn = jest.fn(async () => ({ rowCount: 1, rows: [] }));
+    await upsertRelationshipCandidateLabel(
+      { ...generatedEdge(), label_state: 'generated' },
+      { queryFn },
+    );
+    expect(queryFn).toHaveBeenCalledTimes(1);
+    const params = queryFn.mock.calls[0][1];
+    // prefilter_reasons param should be null (not provided)
+    expect(params).toEqual(expect.arrayContaining([null]));
+  });
+
+  test('normalizes prefilter_reasons (lowercase, length-limited, drops empties)', async () => {
+    const queryFn = jest.fn(async () => ({ rowCount: 1, rows: [] }));
+    await upsertRelationshipCandidateLabel(
+      {
+        ...generatedEdge(),
+        label_state: 'prefilter_rejected',
+        prefilter_reasons: ['CATEGORY_LEAF_MISMATCH:Lipstick_vs_FOUNDATION', '', null],
+      },
+      { queryFn },
+    );
+    const params = queryFn.mock.calls[0][1];
+    expect(params).toEqual(
+      expect.arrayContaining([
+        ['category_leaf_mismatch:lipstick_vs_foundation'],
+      ]),
+    );
   });
 });
 
