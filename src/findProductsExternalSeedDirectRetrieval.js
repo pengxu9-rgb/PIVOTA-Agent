@@ -3,6 +3,27 @@ const {
   classifyExternalSeedRecallMatchSource,
 } = require('./services/externalSeedRecall');
 
+function findProductsUsesCatalogRowTrust() {
+  const flag = String(process.env.FIND_PRODUCTS_USES_CATALOG_ROW_TRUST || '').trim().toLowerCase();
+  return flag === '1' || flag === 'true' || flag === 'yes' || flag === 'on';
+}
+
+function buildExternalSeedServingEligibleJoinSql() {
+  // Layer C1 Phase 3c: when FIND_PRODUCTS_USES_CATALOG_ROW_TRUST is on, gate
+  // catalog_products by catalog_row_trust.serving_decision='public' instead of
+  // index_pipeline_state.serving_eligible=TRUE. The two predicates are
+  // semantically the same for external_seed retrieval at c1.v0.3 — the trust
+  // gate just additionally enforces source lifecycle + tombstones + quarantine.
+  return findProductsUsesCatalogRowTrust()
+    ? `INNER JOIN catalog_row_trust crt
+        ON crt.subject_type = 'product'
+       AND crt.subject_key = cp.product_key
+       AND crt.serving_decision = 'public'`
+    : `INNER JOIN index_pipeline_state ips
+        ON ips.content_key = cp.content_key
+       AND ips.serving_eligible = TRUE`;
+}
+
 async function retrieveExternalSeedDirectCandidates({
   retrievalQueries = [],
   relevanceQueryText = '',
@@ -146,9 +167,7 @@ async function retrieveExternalSeedDirectCandidates({
               AND EXISTS (
                 SELECT 1
                 FROM catalog_products cp
-                INNER JOIN index_pipeline_state ips
-                  ON ips.content_key = cp.content_key
-                 AND ips.serving_eligible = TRUE
+                ${buildExternalSeedServingEligibleJoinSql()}
                 WHERE cp.product_key = external_product_seeds.attached_product_key
                    OR (
                     cp.merchant_id = 'external_seed'
@@ -236,4 +255,8 @@ async function retrieveExternalSeedDirectCandidates({
 
 module.exports = {
   retrieveExternalSeedDirectCandidates,
+  _internals: {
+    findProductsUsesCatalogRowTrust,
+    buildExternalSeedServingEligibleJoinSql,
+  },
 };
