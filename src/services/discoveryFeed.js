@@ -8584,6 +8584,10 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
         SELECT
           apv.content_key,
           apv.pivota_signature_id,
+          first_party.merchant_id AS first_party_merchant_id,
+          first_party.platform AS first_party_platform,
+          first_party.source_product_id AS first_party_source_product_id,
+          first_party.product_key AS first_party_product_key,
           ext_seed.source_product_id AS external_product_id,
           ext_seed.product_key AS external_product_key,
           apv.brand,
@@ -8601,12 +8605,24 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
         JOIN brand_match bm ON bm.content_key = apv.content_key
         ${gateJoinSql}
         LEFT JOIN LATERAL (
+          SELECT cp.merchant_id, cp.platform, cp.source_product_id, cp.product_key
+          FROM catalog_products cp
+          WHERE cp.content_key = apv.content_key
+            AND cp.merchant_id <> 'external_seed'
+            AND cp.sync_status = 'live'
+            AND cp.suppression_reason IS NULL
+          ORDER BY cp.updated_at DESC NULLS LAST
+          LIMIT 1
+        ) first_party ON TRUE
+        LEFT JOIN LATERAL (
           SELECT cp.source_product_id, cp.product_key
           FROM catalog_products cp
           WHERE cp.content_key = apv.content_key
             AND cp.merchant_id = 'external_seed'
             AND cp.platform = 'external_seed'
             AND cp.source_product_id LIKE 'ext_%'
+            AND cp.suppression_reason IS NULL
+            AND cp.sync_status = 'live'
           ORDER BY cp.updated_at DESC NULLS LAST
           LIMIT 1
         ) ext_seed ON TRUE
@@ -8624,14 +8640,34 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
         const offers = Array.isArray(row.offers) ? row.offers : null;
         const imageUrls = Array.isArray(row.image_urls) ? row.image_urls : [];
         const priceMin = Number(row.price_min);
+        // Prefer the first-party catalog row when one exists. The legacy mapper
+        // hardcoded merchant_id='external_seed', which works for Pivota-seeded
+        // brands like Fenty but mangles every first-party brand (MOYU, GR,
+        // PawStyle, etc.) — they ship without the real merchant/platform that
+        // downstream hydration needs.
+        const firstPartyMerchantId = row.first_party_merchant_id
+          ? String(row.first_party_merchant_id)
+          : null;
+        const isFirstParty = !!firstPartyMerchantId;
+        const merchantId = isFirstParty ? firstPartyMerchantId : 'external_seed';
+        const platform = isFirstParty
+          ? (row.first_party_platform ? String(row.first_party_platform) : 'shopify')
+          : 'external_seed';
+        const sourceProductId = isFirstParty
+          ? (row.first_party_source_product_id != null ? String(row.first_party_source_product_id) : null)
+          : (row.external_product_id != null ? String(row.external_product_id) : null);
+        const productKey = isFirstParty
+          ? (row.first_party_product_key ? String(row.first_party_product_key) : null)
+          : (row.external_product_key ? String(row.external_product_key) : null);
         return {
           id: productId,
           product_id: productId,
-          merchant_id: 'external_seed',
-          platform: 'external_seed',
+          merchant_id: merchantId,
+          platform,
           pivota_signature_id: productId,
-          ...(row.external_product_id ? { external_product_id: String(row.external_product_id), source_product_id: String(row.external_product_id) } : {}),
-          ...(row.external_product_key ? { external_product_key: String(row.external_product_key) } : {}),
+          ...(sourceProductId ? { source_product_id: sourceProductId } : {}),
+          ...(productKey ? (isFirstParty ? { product_key: productKey } : { external_product_key: productKey }) : {}),
+          ...(!isFirstParty && row.external_product_id ? { external_product_id: String(row.external_product_id) } : {}),
           ...(row.content_key ? { content_key: String(row.content_key) } : {}),
           ...(row.canonical_url ? { pivota_canonical_url: String(row.canonical_url) } : {}),
           title: String(row.title || '').trim() || productId,
