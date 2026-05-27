@@ -7422,4 +7422,135 @@ Contains four types of peptides`,
       }),
     );
   });
+
+  test('content-only payload preserves commerce, media, and variants while accepting source-backed PDP copy', () => {
+    const canonicalUrl = 'https://www.murad.com/products/example-treatment';
+    const existingImageUrl = 'https://cdn.example.com/murad-existing.jpg';
+    const incomingImageUrl = 'https://cdn.example.com/murad-new.jpg';
+    const row = {
+      id: 'eps_murad_example',
+      external_product_id: 'ext_murad_example',
+      title: 'Example Treatment',
+      canonical_url: canonicalUrl,
+      destination_url: canonicalUrl,
+      image_url: existingImageUrl,
+      price_amount: 89,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        title: 'Example Treatment',
+        image_url: existingImageUrl,
+        image_urls: [existingImageUrl],
+        price_amount: 89,
+        price_currency: 'USD',
+        availability: 'in_stock',
+        variants: [
+          {
+            id: 'existing-default',
+            sku: 'MURAD-EXISTING',
+            title: '1.0 oz',
+            price: '89.00',
+            currency: 'USD',
+            stock: 'In Stock',
+            image_url: existingImageUrl,
+            image_urls: [existingImageUrl],
+          },
+        ],
+        snapshot: {
+          canonical_url: canonicalUrl,
+          title: 'Example Treatment',
+          image_url: existingImageUrl,
+          image_urls: [existingImageUrl],
+          images: [existingImageUrl],
+          price_amount: 89,
+          price_currency: 'USD',
+          availability: 'in_stock',
+          variants: [
+            {
+              id: 'existing-default',
+              sku: 'MURAD-EXISTING',
+              title: '1.0 oz',
+              price: '89.00',
+              currency: 'USD',
+              stock: 'In Stock',
+              image_url: existingImageUrl,
+              image_urls: [existingImageUrl],
+            },
+          ],
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        mode: 'puppeteer',
+        products: [
+          {
+            title: 'Example Treatment',
+            url: canonicalUrl,
+            image_url: incomingImageUrl,
+            image_urls: [incomingImageUrl],
+            description_raw:
+              'A source-backed treatment that helps refine the look of texture while keeping skin comfortable.',
+            how_to_use_raw: 'Apply a thin layer to clean skin, then follow with moisturizer and sunscreen.',
+            field_quality_summary: {
+              description_raw: {
+                source_quality_status: 'high',
+                source_origin: 'official_pdp',
+                source_kinds: ['official_pdp'],
+              },
+              how_to_use_raw: {
+                source_quality_status: 'high',
+                source_origin: 'official_pdp',
+                source_kinds: ['official_pdp'],
+              },
+            },
+            variants: [
+              {
+                id: 'incoming-default',
+                sku: 'MURAD-INCOMING',
+                title: 'Default Title',
+                price: '999.00',
+                currency: 'USD',
+                stock: 'Out of Stock',
+                image_url: incomingImageUrl,
+                image_urls: [incomingImageUrl],
+              },
+            ],
+          },
+        ],
+        variants: [],
+        diagnostics: {},
+      },
+      canonicalUrl,
+      { contentOnly: true },
+    );
+
+    expect(payload.nextRow.price_amount).toBe(89);
+    expect(payload.nextRow.price_currency).toBe('USD');
+    expect(payload.nextRow.availability).toBe('in_stock');
+    expect(payload.nextRow.image_url).toBe(existingImageUrl);
+    expect(payload.nextRow.seed_data.price_amount).toBe(89);
+    expect(payload.nextRow.seed_data.snapshot.price_amount).toBe(89);
+    expect(payload.nextRow.seed_data.availability).toBe('in_stock');
+    expect(payload.nextRow.seed_data.snapshot.availability).toBe('in_stock');
+    expect(payload.nextRow.seed_data.image_url).toBe(existingImageUrl);
+    expect(payload.nextRow.seed_data.snapshot.image_url).toBe(existingImageUrl);
+    expect(payload.nextRow.seed_data.variants).toHaveLength(1);
+    expect(payload.nextRow.seed_data.variants[0]).toEqual(
+      expect.objectContaining({
+        sku: 'MURAD-EXISTING',
+        stock: 'In Stock',
+      }),
+    );
+    expect(payload.nextRow.seed_data.pdp_description_raw).toContain('source-backed treatment');
+    expect(payload.nextRow.seed_data.pdp_how_to_use_raw).toContain('Apply a thin layer');
+    expect(payload.nextRow.seed_data.derived.backfill_guardrails_v1).toMatchObject({
+      commerce_preserved: true,
+      media_preserved: true,
+      mode: 'content_only',
+    });
+    expect(payload.nextRow.seed_data.derived.recall).toEqual(expect.any(Object));
+  });
 });

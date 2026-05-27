@@ -3921,9 +3921,12 @@ async function maybeHydrateRepresentativeProductSizeEvidence(row, representative
   };
 }
 
-function buildSeedUpdatePayload(row, response, targetUrl) {
+function buildSeedUpdatePayload(row, response, targetUrl, options = {}) {
   const seedData = ensureJsonObject(row?.seed_data);
   const snapshot = ensureJsonObject(seedData.snapshot);
+  const contentOnly = Boolean(options?.contentOnly);
+  const preserveCommerce = contentOnly || Boolean(options?.preserveCommerce);
+  const preserveMedia = contentOnly || Boolean(options?.preserveMedia);
   const manualOverrides = ensureJsonObject(seedData.manual_overrides);
   const manualDescription = normalizeNonEmptyString(manualOverrides.description);
   const existingDescriptionOrigin = normalizeNonEmptyString(
@@ -3937,8 +3940,13 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     normalizeRepresentativeProductUrlForSeedTarget(representativeProduct?.url, targetUrl) ||
     normalizeUrlLike(targetUrl) ||
     normalizeUrlLike(row?.canonical_url);
+  const existingRawSeedVariants = Array.isArray(seedData.variants) ? cloneJsonValue(seedData.variants) : [];
+  const existingRawSnapshotVariants = Array.isArray(snapshot.variants) ? cloneJsonValue(snapshot.variants) : [];
+  const existingSeedVariants = normalizeSeedVariants(seedData, row);
+  const existingSnapshotVariants = normalizeSeedVariants(snapshot, row);
   const snapshotVariants = mapSnapshotVariants(representativeProduct, response, seedData);
-  const effectiveSnapshotVariants = fallbackPollutedRow && !representativeProduct ? [] : snapshotVariants;
+  const effectiveSnapshotVariants =
+    preserveCommerce ? existingSeedVariants : fallbackPollutedRow && !representativeProduct ? [] : snapshotVariants;
   const selectedSnapshotVariant = pickVariantByHints(effectiveSnapshotVariants, [
     seedData.selected_variant_id,
     seedData.default_variant_id,
@@ -5142,14 +5150,244 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   }
   nextSeedData = sanitizeStoredSeedVariantDescriptions(nextSeedData);
 
+  if (contentOnly) {
+    const restoreScalarIfMissing = (field) => {
+      if (!normalizeNonEmptyString(nextSeedData[field]) && normalizeNonEmptyString(seedData[field])) {
+        nextSeedData[field] = seedData[field];
+      }
+      if (
+        nextSeedData.snapshot &&
+        typeof nextSeedData.snapshot === 'object' &&
+        !normalizeNonEmptyString(nextSeedData.snapshot[field]) &&
+        normalizeNonEmptyString(snapshot[field])
+      ) {
+        nextSeedData.snapshot[field] = snapshot[field];
+      }
+    };
+    const restoreArrayIfMissing = (field) => {
+      if ((!Array.isArray(nextSeedData[field]) || nextSeedData[field].length === 0) && Array.isArray(seedData[field]) && seedData[field].length > 0) {
+        nextSeedData[field] = cloneJsonValue(seedData[field]);
+      }
+      if (
+        nextSeedData.snapshot &&
+        typeof nextSeedData.snapshot === 'object' &&
+        (!Array.isArray(nextSeedData.snapshot[field]) || nextSeedData.snapshot[field].length === 0) &&
+        Array.isArray(snapshot[field]) &&
+        snapshot[field].length > 0
+      ) {
+        nextSeedData.snapshot[field] = cloneJsonValue(snapshot[field]);
+      }
+    };
+
+    restoreScalarIfMissing('description');
+    restoreScalarIfMissing('pdp_description_raw');
+    restoreArrayIfMissing('pdp_details_sections');
+    restoreScalarIfMissing('pdp_ingredients_raw');
+    restoreScalarIfMissing('pdp_active_ingredients_raw');
+    restoreScalarIfMissing('pdp_how_to_use_raw');
+    restoreArrayIfMissing('pdp_faq_items');
+    restoreArrayIfMissing('content_image_urls');
+    nextSnapshot.description = nextSeedData.snapshot?.description;
+    if (normalizeNonEmptyString(nextSeedData.snapshot?.pdp_description_raw)) {
+      nextSnapshot.pdp_description_raw = nextSeedData.snapshot.pdp_description_raw;
+    }
+    if (Array.isArray(nextSeedData.snapshot?.pdp_details_sections)) {
+      nextSnapshot.pdp_details_sections = nextSeedData.snapshot.pdp_details_sections;
+    }
+    if (normalizeNonEmptyString(nextSeedData.snapshot?.pdp_ingredients_raw)) {
+      nextSnapshot.pdp_ingredients_raw = nextSeedData.snapshot.pdp_ingredients_raw;
+    }
+    if (normalizeNonEmptyString(nextSeedData.snapshot?.pdp_active_ingredients_raw)) {
+      nextSnapshot.pdp_active_ingredients_raw = nextSeedData.snapshot.pdp_active_ingredients_raw;
+    }
+    if (normalizeNonEmptyString(nextSeedData.snapshot?.pdp_how_to_use_raw)) {
+      nextSnapshot.pdp_how_to_use_raw = nextSeedData.snapshot.pdp_how_to_use_raw;
+    }
+    if (Array.isArray(nextSeedData.snapshot?.pdp_faq_items)) {
+      nextSnapshot.pdp_faq_items = nextSeedData.snapshot.pdp_faq_items;
+    }
+  }
+
+  const preservedPriceAmount =
+    typeof row?.price_amount === 'number'
+      ? row.price_amount
+      : parsePrice(row?.price_amount ?? seedData.price_amount ?? snapshot.price_amount);
+  const preservedSeedPriceAmount = parsePrice(seedData.price_amount);
+  const preservedSnapshotPriceAmount = parsePrice(snapshot.price_amount);
+  const preservedCurrency =
+    normalizeCurrencyCode(row?.price_currency) ||
+    normalizeCurrencyCode(seedData.price_currency) ||
+    normalizeCurrencyCode(snapshot.price_currency) ||
+    currency;
+  const preservedSeedCurrency = normalizeCurrencyCode(seedData.price_currency);
+  const preservedSnapshotCurrency = normalizeCurrencyCode(snapshot.price_currency);
+  const preservedAvailability =
+    normalizeSeedAvailability(row?.availability || seedData.availability || snapshot.availability) ||
+    normalizeNonEmptyString(row?.availability || seedData.availability || snapshot.availability);
+  const preservedSeedAvailability =
+    normalizeSeedAvailability(seedData.availability) || normalizeNonEmptyString(seedData.availability);
+  const preservedSnapshotAvailability =
+    normalizeSeedAvailability(snapshot.availability) || normalizeNonEmptyString(snapshot.availability);
+  const preservedSeedImageUrl = normalizeNonEmptyString(seedData.image_url);
+  const preservedSnapshotImageUrl = normalizeNonEmptyString(snapshot.image_url);
+  const preservedImageUrl =
+    normalizeNonEmptyString(row?.image_url) ||
+    preservedSeedImageUrl ||
+    preservedSnapshotImageUrl ||
+    existingImageUrls[0] ||
+    imageUrl;
+  const preservedSeedImageUrls = sanitizeSeedImageUrls(
+    Array.isArray(seedData.image_urls) && seedData.image_urls.length > 0
+      ? seedData.image_urls
+      : Array.isArray(seedData.images)
+        ? seedData.images
+        : [],
+    { mode: 'gallery' },
+  );
+  const preservedSnapshotImageUrls = sanitizeSeedImageUrls(
+    Array.isArray(snapshot.image_urls) && snapshot.image_urls.length > 0
+      ? snapshot.image_urls
+      : Array.isArray(snapshot.images)
+        ? snapshot.images
+        : [],
+    { mode: 'gallery' },
+  );
+  const preservedImageUrls = existingImageUrls.length > 0 ? existingImageUrls : preservedImageUrl ? [preservedImageUrl] : [];
+  if (preserveCommerce) {
+    if (preservedPriceAmount != null) {
+      if (preservedSeedPriceAmount != null) nextSeedData.price_amount = preservedSeedPriceAmount;
+      else delete nextSeedData.price_amount;
+      if (preservedSnapshotPriceAmount != null) nextSnapshot.price_amount = preservedSnapshotPriceAmount;
+      else delete nextSnapshot.price_amount;
+    } else {
+      delete nextSeedData.price_amount;
+      delete nextSnapshot.price_amount;
+    }
+    if (preservedSeedCurrency) nextSeedData.price_currency = preservedSeedCurrency;
+    else delete nextSeedData.price_currency;
+    if (preservedSnapshotCurrency) nextSnapshot.price_currency = preservedSnapshotCurrency;
+    else delete nextSnapshot.price_currency;
+    if (preservedSeedAvailability) nextSeedData.availability = preservedSeedAvailability;
+    else delete nextSeedData.availability;
+    if (preservedSnapshotAvailability) {
+      nextSnapshot.availability = preservedSnapshotAvailability;
+    } else {
+      delete nextSnapshot.availability;
+    }
+    if (existingRawSeedVariants.length > 0) {
+      nextSeedData.variants = existingRawSeedVariants;
+      nextSeedData.variant_skus = uniqueStrings(existingSeedVariants.map((variant) => variant.sku));
+    } else {
+      delete nextSeedData.variants;
+      delete nextSeedData.variant_skus;
+    }
+    if (existingRawSnapshotVariants.length > 0) {
+      nextSnapshot.variants = existingRawSnapshotVariants;
+      nextSnapshot.variant_skus = uniqueStrings(existingSnapshotVariants.map((variant) => variant.sku));
+    } else {
+      delete nextSnapshot.variants;
+      delete nextSnapshot.variant_skus;
+    }
+    delete nextSeedData.content_quality;
+    delete nextSeedData.source_page_type;
+    delete nextSnapshot.content_quality;
+    delete nextSnapshot.source_page_type;
+  }
+  if (preserveMedia) {
+    if (preservedSeedImageUrl) nextSeedData.image_url = preservedSeedImageUrl;
+    else delete nextSeedData.image_url;
+    if (preservedSnapshotImageUrl) nextSnapshot.image_url = preservedSnapshotImageUrl;
+    else delete nextSnapshot.image_url;
+    if (preservedSeedImageUrls.length > 0) {
+      nextSeedData.image_urls = preservedSeedImageUrls;
+      nextSeedData.images = preservedSeedImageUrls;
+    } else {
+      delete nextSeedData.image_urls;
+      delete nextSeedData.images;
+    }
+    if (preservedSnapshotImageUrls.length > 0) {
+      nextSnapshot.image_urls = preservedSnapshotImageUrls;
+      nextSnapshot.images = preservedSnapshotImageUrls;
+    } else {
+      delete nextSnapshot.image_urls;
+      delete nextSnapshot.images;
+    }
+    if (Array.isArray(seedData.content_image_urls)) {
+      nextSeedData.content_image_urls = seedData.content_image_urls;
+    } else {
+      delete nextSeedData.content_image_urls;
+    }
+    if (Array.isArray(snapshot.content_image_urls)) {
+      nextSnapshot.content_image_urls = snapshot.content_image_urls;
+    } else {
+      delete nextSnapshot.content_image_urls;
+    }
+  }
+  if (preserveCommerce || preserveMedia) {
+    nextSeedData.snapshot = nextSnapshot;
+  }
+  const nextPriceAmount = preserveCommerce ? preservedPriceAmount : priceAmount;
+  const nextCurrency = preserveCommerce ? preservedCurrency : currency;
+  const nextAvailability = preserveCommerce ? preservedAvailability : availability;
+  const nextImageUrl = preserveMedia ? preservedImageUrl : imageUrl || normalizeNonEmptyString(row?.image_url);
+
+  if (preserveCommerce || preserveMedia) {
+    nextSeedData.derived = {
+      ...ensureJsonObject(nextSeedData.derived),
+      backfill_guardrails_v1: {
+        ...(preserveCommerce ? { commerce_preserved: true } : {}),
+        ...(preserveMedia ? { media_preserved: true } : {}),
+        mode: contentOnly ? 'content_only' : 'preserve_selected_fields',
+        updated_at: new Date().toISOString(),
+      },
+    };
+
+    nextSeedData = applyLocalityFactsToSeedData(
+      nextSeedData,
+      resolveExternalSeedLocalityFacts({
+        row: {
+          ...row,
+          title,
+          canonical_url: representativeProductUrl || row?.canonical_url,
+          destination_url: destinationUrl || row?.destination_url,
+          price_currency: nextCurrency,
+          price_amount: nextPriceAmount,
+          availability: nextAvailability,
+          image_url: nextImageUrl,
+        },
+        seedData: nextSeedData,
+        snapshot: ensureJsonObject(nextSeedData.snapshot),
+      }),
+    );
+    nextSeedData = applyReviewedActiveIngredientContract(nextSeedData);
+    nextSeedData.derived = {
+      ...ensureJsonObject(nextSeedData.derived),
+      recall: buildExternalSeedRecallDoc({
+        row: {
+          ...row,
+          title,
+          description,
+          canonical_url: representativeProductUrl || row?.canonical_url,
+          destination_url: destinationUrl || row?.destination_url,
+          price_amount: nextPriceAmount,
+          price_currency: nextCurrency,
+          availability: nextAvailability,
+          image_url: nextImageUrl,
+        },
+        seedData: nextSeedData,
+        snapshot: ensureJsonObject(nextSeedData.snapshot),
+      }),
+    };
+  }
+
   const nextRow = {
     title,
     canonical_url: representativeProductUrl || normalizeNonEmptyString(row?.canonical_url),
     destination_url: destinationUrl || normalizeNonEmptyString(row?.destination_url),
-    image_url: imageUrl || normalizeNonEmptyString(row?.image_url),
-    price_amount: priceAmount,
-    price_currency: currency,
-    availability: availability || normalizeNonEmptyString(row?.availability),
+    image_url: nextImageUrl,
+    price_amount: nextPriceAmount,
+    price_currency: nextCurrency,
+    availability: nextAvailability || normalizeNonEmptyString(row?.availability),
     seed_data: nextSeedData,
   };
 
@@ -6732,7 +6970,7 @@ async function processRow(row, options) {
       const matchedIndex = response.products.findIndex((product) => product === chooseRepresentativeProduct(response, targetUrl, row));
       if (matchedIndex >= 0) response.products[matchedIndex] = representativeProduct;
     }
-    let payload = buildSeedUpdatePayload(row, response, targetUrl);
+    let payload = buildSeedUpdatePayload(row, response, targetUrl, options);
     if (options.includeCommerceFacts) {
       payload = enrichPayloadWithCommerceFacts({
         row,
@@ -6769,7 +7007,7 @@ async function processRow(row, options) {
         enrichedNextRow.seed_data?.snapshot?.pdp_active_ingredients_raw,
     });
     let imageHealthValidation = null;
-    if (options.validateImageHealth) {
+    if (options.validateImageHealth && !options.contentOnly && !options.preserveMedia) {
       const validationResult = await validateNextRowImageHealth(enrichedNextRow);
       imageHealthValidation = validationResult.validation;
       if (validationResult.validation?.status === 'failed_no_valid_images') {
@@ -7018,6 +7256,9 @@ function writeBackfillReport({ outDir, options, rows, summary, results, insights
     options: {
       market: normalizeNonEmptyString(options?.market),
       dry_run: Boolean(options?.dryRun),
+      content_only: Boolean(options?.contentOnly),
+      preserve_commerce: Boolean(options?.preserveCommerce),
+      preserve_media: Boolean(options?.preserveMedia),
       include_commerce_facts: Boolean(options?.includeCommerceFacts),
       skip_insights: Boolean(options?.skipInsights),
       expand_variants: Boolean(options?.expandVariants),
@@ -7249,6 +7490,9 @@ async function main() {
     offset,
     concurrency,
     dryRun: hasFlag('dry-run') || hasFlag('dryRun'),
+    contentOnly: hasFlag('content-only') || hasFlag('contentOnly'),
+    preserveCommerce: hasFlag('preserve-commerce') || hasFlag('preserveCommerce'),
+    preserveMedia: hasFlag('preserve-media') || hasFlag('preserveMedia'),
     expandVariants: hasFlag('expand-variants') || hasFlag('expandVariants'),
     includeCommerceFacts: hasFlag('include-commerce-facts') || hasFlag('includeCommerceFacts'),
     skipInsights: hasFlag('skip-insights') || hasFlag('skipInsights'),
