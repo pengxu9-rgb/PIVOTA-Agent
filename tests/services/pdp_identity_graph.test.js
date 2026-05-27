@@ -3314,6 +3314,86 @@ describe('pdpIdentityGraph', () => {
     );
   });
 
+  test('listLivePdpIdentityRowsForRefs gates on identity_status/live_read when catalog_row_trust flag is off', async () => {
+    process.env = {
+      ...ORIGINAL_ENV,
+      NODE_ENV: 'test',
+      DATABASE_URL: 'postgresql://example.test/pdp-identity-trust-off',
+      PDP_IDENTITY_GRAPH_ENABLED: 'false',
+    };
+    delete process.env.PDP_IDENTITY_USES_CATALOG_ROW_TRUST;
+    jest.resetModules();
+    const { listLivePdpIdentityRowsForRefs } = require('../../src/services/pdpIdentityGraph');
+    let capturedSql = null;
+    const queryFn = jest.fn(async (sql) => {
+      capturedSql = String(sql);
+      return { rows: [] };
+    });
+    await listLivePdpIdentityRowsForRefs({
+      sourceListingRefs: ['external_seed:ext_1'],
+      queryFn,
+    });
+    expect(queryFn).toHaveBeenCalledTimes(1);
+    expect(capturedSql).toMatch(/FROM\s+pdp_identity_listing\s*$/m);
+    expect(capturedSql).toMatch(/identity_status\s*=\s*'approved'/i);
+    expect(capturedSql).toMatch(/live_read_enabled\s*=\s*true/i);
+    expect(capturedSql).not.toMatch(/catalog_row_trust/i);
+  });
+
+  test('listLivePdpIdentityRowsForRefs gates on catalog_row_trust when flag is on', async () => {
+    process.env = {
+      ...ORIGINAL_ENV,
+      NODE_ENV: 'test',
+      DATABASE_URL: 'postgresql://example.test/pdp-identity-trust-on',
+      PDP_IDENTITY_GRAPH_ENABLED: 'false',
+      PDP_IDENTITY_USES_CATALOG_ROW_TRUST: 'true',
+    };
+    jest.resetModules();
+    const { listLivePdpIdentityRowsForRefs } = require('../../src/services/pdpIdentityGraph');
+    let capturedSql = null;
+    const queryFn = jest.fn(async (sql) => {
+      capturedSql = String(sql);
+      return { rows: [] };
+    });
+    await listLivePdpIdentityRowsForRefs({
+      sourceListingRefs: ['external_seed:ext_1'],
+      queryFn,
+    });
+    expect(queryFn).toHaveBeenCalledTimes(1);
+    expect(capturedSql).toMatch(/FROM\s+pdp_identity_listing\s+pil/i);
+    expect(capturedSql).toMatch(/catalog_row_trust\s+crt/i);
+    expect(capturedSql).toMatch(/crt\.subject_type\s*=\s*'product'/i);
+    expect(capturedSql).toMatch(/crt\.source_listing_ref\s*=\s*pil\.source_listing_ref/i);
+    expect(capturedSql).toMatch(/crt\.serving_decision\s*=\s*'public'/i);
+    // Legacy identity_status/live_read/active-external-seed filters are
+    // composed into the trust gate; the SQL must not duplicate them.
+    expect(capturedSql).not.toMatch(/identity_status\s*=\s*'approved'/i);
+    expect(capturedSql).not.toMatch(/live_read_enabled\s*=\s*true/i);
+    expect(capturedSql).not.toMatch(/FROM\s+external_product_seeds\s+eps/i);
+  });
+
+  test('listLivePdpIdentityRowsForRefs fails open when catalog_row_trust table is missing', async () => {
+    process.env = {
+      ...ORIGINAL_ENV,
+      NODE_ENV: 'test',
+      DATABASE_URL: 'postgresql://example.test/pdp-identity-trust-missing',
+      PDP_IDENTITY_GRAPH_ENABLED: 'false',
+      PDP_IDENTITY_USES_CATALOG_ROW_TRUST: 'true',
+    };
+    jest.resetModules();
+    const { listLivePdpIdentityRowsForRefs } = require('../../src/services/pdpIdentityGraph');
+    const queryFn = jest.fn(async () => {
+      const err = new Error('relation "catalog_row_trust" does not exist');
+      err.code = '42P01';
+      throw err;
+    });
+    const rows = await listLivePdpIdentityRowsForRefs({
+      sourceListingRefs: ['external_seed:ext_1'],
+      queryFn,
+    });
+    expect(rows).toEqual([]);
+  });
+
   test('listLivePdpIdentityRowsForRefs ignores inactive external-seed identity rows', async () => {
     process.env = {
       ...ORIGINAL_ENV,
