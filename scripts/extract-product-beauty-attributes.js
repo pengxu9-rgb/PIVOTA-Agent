@@ -320,25 +320,69 @@ function parseLlmResponse(text, productKey, options = {}) {
   return { ok: true, value, errors: [] };
 }
 
-async function loadCandidateUniverse({ queryFn = query } = {}) {
-  const res = await queryFn(`
-    SELECT
-      CASE
-        WHEN anchor_type = 'product' THEN regexp_replace(anchor_ref, '^product:', '')
-      END AS product_key,
-      anchor_snapshot AS snapshot
-    FROM relationship_candidate_labels
-    WHERE anchor_type = 'product'
-    UNION ALL
-    SELECT
-      regexp_replace(candidate_product_ref, '^product:', '') AS product_key,
-      candidate_snapshot AS snapshot
-    FROM relationship_candidate_labels
-    WHERE candidate_product_ref LIKE 'product:%'
-  `);
+const UNIVERSE_SOURCES = new Set(['labels', 'external_seed', 'all']);
+
+// SQL fragments — kept separate so callers (and tests) can introspect.
+const LABELS_UNIVERSE_SQL = `
+  SELECT
+    CASE
+      WHEN anchor_type = 'product' THEN regexp_replace(anchor_ref, '^product:', '')
+    END AS product_key,
+    anchor_snapshot AS snapshot
+  FROM relationship_candidate_labels
+  WHERE anchor_type = 'product'
+  UNION ALL
+  SELECT
+    regexp_replace(candidate_product_ref, '^product:', '') AS product_key,
+    candidate_snapshot AS snapshot
+  FROM relationship_candidate_labels
+  WHERE candidate_product_ref LIKE 'product:%'
+`;
+
+// External-seed universe — Phase C.3 backfill target.
+// The relation-graph builder generates edges keyed on `ext_*` product ids
+// which originate as `external_product_seeds.external_product_id`. This SQL
+// gives us the full set of those keys, minus the ones Phase C.2 already
+// classified. Snapshot is constructed from external_product_seeds columns.
+const EXTERNAL_SEED_UNIVERSE_SQL = `
+  SELECT DISTINCT ON (eps.external_product_id)
+    eps.external_product_id AS product_key,
+    jsonb_build_object(
+      'product_id', eps.external_product_id,
+      'name', eps.title,
+      'brand', NULLIF(eps.seed_data->>'brand', ''),
+      'category_taxonomy', COALESCE(eps.seed_data->'category_taxonomy', '[]'::jsonb),
+      'price', CASE
+        WHEN eps.price_amount IS NOT NULL THEN jsonb_build_object('amount', eps.price_amount, 'currency', eps.price_currency)
+        ELSE NULL
+      END,
+      'url', eps.canonical_url,
+      'domain', eps.domain,
+      'description', NULLIF(eps.seed_data->>'description', '')
+    ) AS snapshot
+  FROM external_product_seeds eps
+  WHERE eps.external_product_id LIKE 'ext_%'
+    AND eps.external_product_id NOT IN (SELECT product_key FROM product_beauty_attributes)
+  ORDER BY eps.external_product_id, eps.updated_at DESC NULLS LAST
+`;
+
+async function loadCandidateUniverse({ queryFn = query, source = 'labels' } = {}) {
+  if (!UNIVERSE_SOURCES.has(source)) {
+    throw new Error(`unknown universe source: ${source}. Expected one of: ${Array.from(UNIVERSE_SOURCES).join(', ')}`);
+  }
+
+  const rows = [];
+  if (source === 'labels' || source === 'all') {
+    const res = await queryFn(LABELS_UNIVERSE_SQL);
+    rows.push(...(res.rows || []));
+  }
+  if (source === 'external_seed' || source === 'all') {
+    const res = await queryFn(EXTERNAL_SEED_UNIVERSE_SQL);
+    rows.push(...(res.rows || []));
+  }
 
   const bestByKey = new Map();
-  for (const row of res.rows || []) {
+  for (const row of rows) {
     const key = normalizeString(row.product_key, 260).replace(/^product:/, '');
     if (!key) continue;
     const snapshot = normalizeSnapshot(row.snapshot);
@@ -435,10 +479,13 @@ function parseArgs(argv = process.argv) {
     : dryRun
       ? DEFAULT_DRY_RUN_LIMIT
       : null;
+  const universeSourceRaw = normalizeString(argValue(argv, 'universe-source', 'labels'), 32).toLowerCase();
+  const universeSource = UNIVERSE_SOURCES.has(universeSourceRaw) ? universeSourceRaw : 'labels';
   return {
     dryRun,
     apply,
     limit,
+    universeSource,
     concurrency: parseInteger(argValue(argv, 'concurrency', DEFAULT_CONCURRENCY), DEFAULT_CONCURRENCY, { min: 1, max: 25 }),
     reportsDir: argValue(argv, 'reports-dir', ''),
     reportPath: argValue(argv, 'report-path', DEFAULT_REPORT_PATH),
@@ -794,7 +841,10 @@ async function runExtraction(options = {}) {
   const config = options.providerConfig || resolveProviderConfig();
   const extractorVersion = options.extractorVersion || buildExtractorVersion(config.provider, config.model);
   const llmFn = options.llmFn || createDefaultLlmFn(config);
-  const universe = await loadCandidateUniverse({ queryFn: options.queryFn || query });
+  const universe = await loadCandidateUniverse({
+    queryFn: options.queryFn || query,
+    source: options.universeSource || 'labels',
+  });
   const selected = options.limit ? universe.slice(0, options.limit) : universe;
   const failures = [];
   const successes = [];
@@ -902,7 +952,7 @@ async function main(argv = process.argv) {
 
   const providerConfig = resolveProviderConfig();
   if (!providerConfig.apiKey || providerConfig.kind === 'missing') {
-    const universe = await loadCandidateUniverse({ queryFn: query });
+    const universe = await loadCandidateUniverse({ queryFn: query, source: args.universeSource });
     const emptyExtractionSummary = summarizeExtractions([]);
     const summary = {
       mode: args.apply ? 'apply' : 'dry-run',
@@ -958,6 +1008,7 @@ async function main(argv = process.argv) {
     apply: args.apply,
     limit: args.limit,
     concurrency: args.concurrency,
+    universeSource: args.universeSource,
     providerConfig,
   });
 
@@ -1000,6 +1051,9 @@ if (require.main === module) {
 module.exports = {
   ATTRIBUTE_SOURCE_FIELDS,
   DEFAULT_REPORT_PATH,
+  LABELS_UNIVERSE_SQL,
+  EXTERNAL_SEED_UNIVERSE_SQL,
+  UNIVERSE_SOURCES,
   buildMarkdownReport,
   buildPrompt,
   createDefaultLlmFn,

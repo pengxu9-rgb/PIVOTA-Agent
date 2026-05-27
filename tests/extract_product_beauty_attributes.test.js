@@ -4,7 +4,11 @@ const {
   buildPrompt,
   extractOne,
   loadCandidateUniverse,
+  parseArgs,
   parseLlmResponse,
+  LABELS_UNIVERSE_SQL,
+  EXTERNAL_SEED_UNIVERSE_SQL,
+  UNIVERSE_SOURCES,
 } = require('../scripts/extract-product-beauty-attributes');
 const { validateExtractionPayload } = require('../src/auroraBff/productBeautyAttributes');
 
@@ -131,6 +135,109 @@ describe('extract-product-beauty-attributes', () => {
         snapshot: expect.objectContaining({ name: 'Lipstick' }),
       },
     ]);
+  });
+
+  test('loadCandidateUniverse defaults to labels source (one queryFn call)', async () => {
+    const queryFn = jest.fn(async () => ({ rows: [] }));
+    await loadCandidateUniverse({ queryFn });
+    expect(queryFn).toHaveBeenCalledTimes(1);
+    expect(queryFn.mock.calls[0][0]).toBe(LABELS_UNIVERSE_SQL);
+  });
+
+  test('loadCandidateUniverse with source=external_seed runs catalog query only', async () => {
+    const queryFn = jest.fn(async () => ({
+      rows: [
+        { product_key: 'ext_cat_a', snapshot: { product_id: 'ext_cat_a', brand: 'Brand', name: 'New Product' } },
+      ],
+    }));
+    const result = await loadCandidateUniverse({ queryFn, source: 'external_seed' });
+    expect(queryFn).toHaveBeenCalledTimes(1);
+    expect(queryFn.mock.calls[0][0]).toBe(EXTERNAL_SEED_UNIVERSE_SQL);
+    expect(result).toEqual([
+      { product_key: 'ext_cat_a', snapshot: expect.objectContaining({ name: 'New Product' }) },
+    ]);
+  });
+
+  test('loadCandidateUniverse with source=all queries both sources and dedupes', async () => {
+    const queryFn = jest.fn(async (sql) => {
+      if (sql === LABELS_UNIVERSE_SQL) {
+        return {
+          rows: [
+            { product_key: 'ext_shared', snapshot: { product_id: 'ext_shared', name: 'Labels Snapshot' } },
+          ],
+        };
+      }
+      if (sql === EXTERNAL_SEED_UNIVERSE_SQL) {
+        return {
+          rows: [
+            {
+              product_key: 'ext_shared',
+              snapshot: {
+                product_id: 'ext_shared',
+                brand: 'Brand X',
+                name: 'Catalog Snapshot',
+                category_taxonomy: ['Beauty', 'Skin'],
+              },
+            },
+            { product_key: 'ext_catalog_only', snapshot: { product_id: 'ext_catalog_only', name: 'Catalog Only' } },
+          ],
+        };
+      }
+      throw new Error('unexpected sql');
+    });
+    const result = await loadCandidateUniverse({ queryFn, source: 'all' });
+    expect(queryFn).toHaveBeenCalledTimes(2);
+    // Dedup keeps the richer snapshot (catalog one has brand + taxonomy)
+    const shared = result.find((r) => r.product_key === 'ext_shared');
+    expect(shared.snapshot).toEqual(expect.objectContaining({ brand: 'Brand X' }));
+    expect(result.find((r) => r.product_key === 'ext_catalog_only')).toBeTruthy();
+    expect(result).toHaveLength(2);
+  });
+
+  test('loadCandidateUniverse throws on unknown source', async () => {
+    const queryFn = jest.fn(async () => ({ rows: [] }));
+    await expect(loadCandidateUniverse({ queryFn, source: 'garbage' })).rejects.toThrow(/unknown universe source/);
+  });
+
+  test('EXTERNAL_SEED_UNIVERSE_SQL skips already-classified products (NOT IN product_beauty_attributes)', () => {
+    expect(EXTERNAL_SEED_UNIVERSE_SQL).toMatch(/NOT IN \(SELECT product_key FROM product_beauty_attributes\)/);
+  });
+
+  test('EXTERNAL_SEED_UNIVERSE_SQL targets ext_* keys from external_product_seeds', () => {
+    expect(EXTERNAL_SEED_UNIVERSE_SQL).toMatch(/FROM external_product_seeds/);
+    expect(EXTERNAL_SEED_UNIVERSE_SQL).toMatch(/external_product_id LIKE 'ext_%'/);
+  });
+
+  test('EXTERNAL_SEED_UNIVERSE_SQL dedupes via DISTINCT ON to handle multi-row eps entries', () => {
+    expect(EXTERNAL_SEED_UNIVERSE_SQL).toMatch(/SELECT DISTINCT ON \(eps\.external_product_id\)/);
+  });
+
+  test('UNIVERSE_SOURCES exposes the three known values', () => {
+    expect(UNIVERSE_SOURCES instanceof Set).toBe(true);
+    expect(UNIVERSE_SOURCES.has('labels')).toBe(true);
+    expect(UNIVERSE_SOURCES.has('external_seed')).toBe(true);
+    expect(UNIVERSE_SOURCES.has('all')).toBe(true);
+    expect(UNIVERSE_SOURCES.has('serving_catalog')).toBe(false);  // renamed in v2
+  });
+
+  test('parseArgs defaults universeSource to labels for backward compatibility', () => {
+    const args = parseArgs(['node', 'script.js', '--dry-run']);
+    expect(args.universeSource).toBe('labels');
+  });
+
+  test('parseArgs accepts --universe-source=external_seed', () => {
+    const args = parseArgs(['node', 'script.js', '--apply', '--universe-source', 'external_seed']);
+    expect(args.universeSource).toBe('external_seed');
+  });
+
+  test('parseArgs accepts --universe-source=all', () => {
+    const args = parseArgs(['node', 'script.js', '--apply', '--universe-source', 'all']);
+    expect(args.universeSource).toBe('all');
+  });
+
+  test('parseArgs falls back to labels on unknown universe-source value', () => {
+    const args = parseArgs(['node', 'script.js', '--apply', '--universe-source', 'garbage']);
+    expect(args.universeSource).toBe('labels');
   });
 
   test('extractOne calls injected llmFn and validates against validateExtractionPayload', async () => {
