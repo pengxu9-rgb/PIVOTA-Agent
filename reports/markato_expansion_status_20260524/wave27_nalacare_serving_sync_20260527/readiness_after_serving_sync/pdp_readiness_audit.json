@@ -1,0 +1,787 @@
+{
+  "generated_at": "2026-05-27T09:36:26.886Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": null,
+    "externalProductIds": [
+      "ext_e08d2e62205f1691dfe30753",
+      "ext_e5f66cf29d6c516775bb0fce",
+      "ext_446a5f126507ff6adba46258",
+      "ext_b36935c92dc89857bf62f25e",
+      "ext_21216a67b62b16d88661367f",
+      "ext_8136f11be69e6c18781a7f02",
+      "ext_5975f96c1d90b02d02329960"
+    ],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave27_nalacare_serving_sync_20260527/readiness_after_serving_sync/pdp_readiness_checkpoint",
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": true,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json"
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 7,
+    "by_market": {
+      "US": 7
+    },
+    "by_domain": [
+      {
+        "key": "nalacare.com",
+        "count": 7
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 7
+      }
+    ],
+    "coverage": {
+      "missing_inci": 0,
+      "missing_active_raw": 7,
+      "missing_details": 0,
+      "missing_how_to": 0,
+      "missing_faq": 0
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 7,
+        "high_quality_ready": 7,
+        "missing_kb": 0,
+        "not_displayable": 0
+      },
+      "effective": {
+        "displayable": 7,
+        "high_quality_ready": 7,
+        "missing_kb": 0,
+        "not_displayable": 0,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [],
+      "effective_issue_domains": [],
+      "quality_state": [
+        {
+          "key": "reviewed",
+          "count": 7
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "seller_plus_formula",
+          "count": 7
+        }
+      ],
+      "samples": {}
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 0,
+      "any_active_items": 0,
+      "status": [
+        {
+          "key": "not_expected_missing",
+          "count": 7
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "source_origin": [
+        {
+          "key": "pdp_section",
+          "count": 7
+        }
+      ],
+      "samples": {}
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "no_visible_variant_axis",
+          "count": 4
+        },
+        {
+          "key": "ready",
+          "count": 3
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_f71587e76c7f38fd91249f6b",
+      "external_product_id": "ext_446a5f126507ff6adba46258",
+      "market": "US",
+      "domain": "nalacare.com",
+      "title": "Eucalyptus & Champa, Extra Strength Natural Deodorant",
+      "canonical_url": "https://nalacare.com/products/eucalyptus-natural-deodorant",
+      "product_family": "single_formula",
+      "product_line_id": "pl_b92855b4d461e828216e5da3",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_446a5f126507ff6adba46258",
+          "kb_key": "product:ext_446a5f126507ff6adba46258",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_446a5f126507ff6adba46258",
+          "kb_key": "product:ext_446a5f126507ff6adba46258",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_b92855b4d461e828216e5da3",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 6,
+          "how_to_chars": 90,
+          "inci_chars": 641,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 641,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 6,
+        "how_to_chars": 90,
+        "inci_chars": 641,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 641,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_4e147a8448a969b3bd3c46a9",
+      "external_product_id": "ext_b36935c92dc89857bf62f25e",
+      "market": "US",
+      "domain": "nalacare.com",
+      "title": "Grapefruit & Neroli, Extra Strength Natural Deodorant",
+      "canonical_url": "https://nalacare.com/products/grapefruit-neroli-natural-deodorant",
+      "product_family": "single_formula",
+      "product_line_id": "pl_4620c3736a14c5e0e09af523",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_b36935c92dc89857bf62f25e",
+          "kb_key": "product:ext_b36935c92dc89857bf62f25e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_b36935c92dc89857bf62f25e",
+          "kb_key": "product:ext_b36935c92dc89857bf62f25e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_4620c3736a14c5e0e09af523",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 6,
+          "how_to_chars": 90,
+          "inci_chars": 461,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 461,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 6,
+        "how_to_chars": 90,
+        "inci_chars": 461,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 461,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_397f9fecae5c0008b37ef970",
+      "external_product_id": "ext_21216a67b62b16d88661367f",
+      "market": "US",
+      "domain": "nalacare.com",
+      "title": "Lavender & Vetiver, Sensitive Skin Natural Deodorant",
+      "canonical_url": "https://nalacare.com/products/lavender-and-vetiver-charcoal-natural-deodorant",
+      "product_family": "single_formula",
+      "product_line_id": "pl_694450939140db330c1ea653",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_21216a67b62b16d88661367f",
+          "kb_key": "product:ext_21216a67b62b16d88661367f",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_21216a67b62b16d88661367f",
+          "kb_key": "product:ext_21216a67b62b16d88661367f",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_694450939140db330c1ea653",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 6,
+          "how_to_chars": 90,
+          "inci_chars": 556,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 556,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 6,
+        "how_to_chars": 90,
+        "inci_chars": 556,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 556,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_3f6b17eb288ce4725cbd191a",
+      "external_product_id": "ext_8136f11be69e6c18781a7f02",
+      "market": "US",
+      "domain": "nalacare.com",
+      "title": "Peppermint & Activated Charcoal, Natural Deodorant",
+      "canonical_url": "https://nalacare.com/products/natural-deodorant-peppermint-charcoal",
+      "product_family": "single_formula",
+      "product_line_id": "pl_96a3e360f8615ad37d4aeb9e",
+      "identity_variant_axes": {
+        "volume": "60g",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_8136f11be69e6c18781a7f02",
+          "kb_key": "product:ext_8136f11be69e6c18781a7f02",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_8136f11be69e6c18781a7f02",
+          "kb_key": "product:ext_8136f11be69e6c18781a7f02",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_96a3e360f8615ad37d4aeb9e",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 8,
+          "how_to_chars": 90,
+          "inci_chars": 589,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 589,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 8,
+        "how_to_chars": 90,
+        "inci_chars": 589,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 589,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_70cc3400fbd348ddea653644",
+      "external_product_id": "ext_5975f96c1d90b02d02329960",
+      "market": "US",
+      "domain": "nalacare.com",
+      "title": "Unscented, Sensitive Skin Natural Deodorant",
+      "canonical_url": "https://nalacare.com/products/unscented-natural-deodorant",
+      "product_family": "single_formula",
+      "product_line_id": "pl_e6f5488af794bb7d3dcf82d6",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_5975f96c1d90b02d02329960",
+          "kb_key": "product:ext_5975f96c1d90b02d02329960",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_5975f96c1d90b02d02329960",
+          "kb_key": "product:ext_5975f96c1d90b02d02329960",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_e6f5488af794bb7d3dcf82d6",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 6,
+          "how_to_chars": 90,
+          "inci_chars": 322,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 322,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 6,
+        "how_to_chars": 90,
+        "inci_chars": 322,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 322,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_18d393cf24840b4bbe6b1a52",
+      "external_product_id": "ext_e08d2e62205f1691dfe30753",
+      "market": "US",
+      "domain": "nalacare.com",
+      "title": "Coastal Waters, Extra Strength Natural Deodorant",
+      "canonical_url": "https://nalacare.com/products/coastal-waters-natural-deodorant-extra-strength",
+      "product_family": "single_formula",
+      "product_line_id": "pl_870b8abffbc9367ccb6c0122",
+      "identity_variant_axes": {
+        "volume": "60g",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_e08d2e62205f1691dfe30753",
+          "kb_key": "product:ext_e08d2e62205f1691dfe30753",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_e08d2e62205f1691dfe30753",
+          "kb_key": "product:ext_e08d2e62205f1691dfe30753",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_870b8abffbc9367ccb6c0122",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 6,
+          "how_to_chars": 90,
+          "inci_chars": 725,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 725,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 6,
+        "how_to_chars": 90,
+        "inci_chars": 725,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 725,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_2a694bb944824411ac2da0a2",
+      "external_product_id": "ext_e5f66cf29d6c516775bb0fce",
+      "market": "US",
+      "domain": "nalacare.com",
+      "title": "Essence of Rosewood, Extra Strength Natural Deodorant",
+      "canonical_url": "https://nalacare.com/products/essence-of-rosewood-extra-strength-deodorant",
+      "product_family": "single_formula",
+      "product_line_id": "pl_4c6d2e665826225e7c6fa577",
+      "identity_variant_axes": {
+        "volume": "60g",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_e5f66cf29d6c516775bb0fce",
+          "kb_key": "product:ext_e5f66cf29d6c516775bb0fce",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_e5f66cf29d6c516775bb0fce",
+          "kb_key": "product:ext_e5f66cf29d6c516775bb0fce",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_4c6d2e665826225e7c6fa577",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 8,
+          "how_to_chars": 90,
+          "inci_chars": 727,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 727,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 8,
+        "how_to_chars": 90,
+        "inci_chars": 727,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 727,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

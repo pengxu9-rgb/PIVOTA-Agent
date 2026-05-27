@@ -1,0 +1,417 @@
+{
+  "generated_at": "2026-05-27T09:36:28.662Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 7,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_4d5786ae6535963a72172e4a",
+      "sellable_item_group_id": "sig_4d5786ae6535963a72172e4a",
+      "product_line_id": "pl_b92855b4d461e828216e5da3",
+      "review_family_id": "rf_b92855b4d461e828216e5da3",
+      "brand_name": "Nala Care",
+      "category_paths": [
+        "Deodorant"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Eucalyptus & Champa, Extra Strength Natural Deodorant",
+      "subtitle": "For a spa-like escape baked into your daily routine, reach for this refreshing and restorative eucalyptus blend. Promote relaxation before your day even begins, this unique blend of essential oils is naturally stress relieving.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Eucalyptus_Champa_Transparent_Box.png?v=1752600258",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Eucalyptus_Champa_Transparent_Box.png?v=1752600258",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Tube.png?v=1752600229",
+        "https://nalacare.com/cdn/shop/files/AK5A1190.png?v=1778824029",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Sandalwood_Bergamot_Transparent_Box.png?v=1752600440",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Rosewood_Transparent_Box.png?v=1752600292",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Coastal_Waters_Transparent_Box.png?v=1752600326",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Grapefruit_Neroli_Transparent_Box.png?v=1752600087",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Peach_Chamomile_Transparent_Box.png?v=1752600403"
+      ],
+      "price_min": 26,
+      "price_max": 26,
+      "default_offer_id": "external_seed:ext_446a5f126507ff6adba46258",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Nala Care deodorant listed on the brand source page as Eucalyptus & Champa, Extra Strength Natural Deodorant. The source description identifies: For a spa-like escape baked into your daily routine, reach for this refreshing and restorative eucalyptus blend.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Nala Care",
+        "Deodorant"
+      ],
+      "sort_keys": {
+        "price_min": 26,
+        "price_max": 26,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_446a5f126507ff6adba46258"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_0c5ce72c1a7bb40617f0b83d",
+      "sellable_item_group_id": "sig_0c5ce72c1a7bb40617f0b83d",
+      "product_line_id": "pl_4620c3736a14c5e0e09af523",
+      "review_family_id": "rf_4620c3736a14c5e0e09af523",
+      "brand_name": "Nala Care",
+      "category_paths": [
+        "Deodorant"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Grapefruit & Neroli, Extra Strength Natural Deodorant",
+      "subtitle": "An intoxicating blend of pink grapefruit, neroli flower oil, basil, and black peppercorn. Black peppercorn gives a subtle but sharp contrast to the bright blend of citrus & floral, elevating the whole.\n\nMade with luxurious camellia seed oil, organic botanical extracts, and scientifically-validated ingredients of the highest quality, this natural deodorant neutralizes underarm odor and nourishes delicate underarm skin.\n\nScented with organic essential oils, no artificial fragrance.\n\nFree-from aluminum, parabens, pthalates, petroleum, carcinogens.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Grapefruit_Neroli_Transparent_Box.png?v=1752600087",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Grapefruit_Neroli_Transparent_Box.png?v=1752600087",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Tube.png?v=1752600229",
+        "https://nalacare.com/cdn/shop/files/AK5A1190.png?v=1778824029",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Coastal_Waters_Transparent_Box.png?v=1752600326",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Sandalwood_Bergamot_Transparent_Box.png?v=1752600440",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Eucalyptus_Champa_Transparent_Box.png?v=1752600258",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Rosewood_Transparent_Box.png?v=1752600292",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Peach_Chamomile_Transparent_Box.png?v=1752600403"
+      ],
+      "price_min": 26,
+      "price_max": 26,
+      "default_offer_id": "external_seed:ext_b36935c92dc89857bf62f25e",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Nala Care deodorant listed on the brand source page as Grapefruit & Neroli, Extra Strength Natural Deodorant. The source description identifies: An intoxicating blend of pink grapefruit, neroli flower oil, basil, and black peppercorn.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Nala Care",
+        "Deodorant"
+      ],
+      "sort_keys": {
+        "price_min": 26,
+        "price_max": 26,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_b36935c92dc89857bf62f25e"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_3593c2c3e729fd45ede0996a",
+      "sellable_item_group_id": "sig_3593c2c3e729fd45ede0996a",
+      "product_line_id": "pl_694450939140db330c1ea653",
+      "review_family_id": "rf_694450939140db330c1ea653",
+      "brand_name": "Nala Care",
+      "category_paths": [
+        "Deodorant"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Lavender & Vetiver, Sensitive Skin Natural Deodorant",
+      "subtitle": "This one is for all you lavender lovers. It smells like the purest of lavenders, a grounding and soothing blend of lavender, vetiver, sage, and fir. Soft and delicate notes of lavender connect with earthy and smoky hints of vetiver. This relaxing fragrance is balanced with the light citrusy scent of fir needle oil and crisp sage.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Lavender_Vetiver_Transparent_Box.png?v=1752600139",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Lavender_Vetiver_Transparent_Box.png?v=1752600139",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Tube.png?v=1752600229",
+        "https://nalacare.com/cdn/shop/files/AK5A1190.png?v=1778824029",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Peppermint_Charcoal_Transparent_Box.png?v=1752599986",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Palo_Santo_Sage_Transparent_Box.png?v=1752600229",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Unscented_Transparent_Box.png?v=1752600176",
+        "https://nalacare.com/cdn/shop/files/Nala_Breast_Oil_Transparent.png?v=1753798279",
+        "https://nalacare.com/cdn/shop/files/241205_Nala_7409_web.jpg?v=1735323818"
+      ],
+      "price_min": 26,
+      "price_max": 26,
+      "default_offer_id": "external_seed:ext_21216a67b62b16d88661367f",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "The source description identifies: This one is for all you lavender lovers.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Nala Care",
+        "Deodorant"
+      ],
+      "sort_keys": {
+        "price_min": 26,
+        "price_max": 26,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_21216a67b62b16d88661367f"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_6b92f753966ed06a55217641",
+      "sellable_item_group_id": "sig_6b92f753966ed06a55217641",
+      "product_line_id": "pl_96a3e360f8615ad37d4aeb9e",
+      "review_family_id": "rf_96a3e360f8615ad37d4aeb9e",
+      "brand_name": "Nala Care",
+      "category_paths": [
+        "Deodorant"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Peppermint & Activated Charcoal, Natural Deodorant",
+      "subtitle": "Make the easy switch from conventional deodorants with the Peppermint & Activated Charcoal Deodorant.\n\nAn effective formula that is both refreshing and eliminating. Neutralize odour and wetness naturally with our pairing of energizing peppermint and detoxing charcoal. Safe and",
+      "variant_axes": {
+        "volume": "60g",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Peppermint_Charcoal_Transparent_Box.png?v=1752599986",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Peppermint_Charcoal_Transparent_Box.png?v=1752599986",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Tube.png?v=1752600229",
+        "https://nalacare.com/cdn/shop/files/AK5A1190.png?v=1778824029",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Palo_Santo_Sage_Transparent_Box.png?v=1752600229",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Lavender_Vetiver_Transparent_Box.png?v=1752600139",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Unscented_Transparent_Box.png?v=1752600176",
+        "https://nalacare.com/cdn/shop/files/241205_Nala_7409_web.jpg?v=1735323818"
+      ],
+      "price_min": 26,
+      "price_max": 26,
+      "default_offer_id": "external_seed:ext_8136f11be69e6c18781a7f02",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Nala Care deodorant listed on the brand source page as Peppermint & Activated Charcoal, Natural Deodorant. The source description identifies: Make the easy switch from conventional deodorants with the Peppermint & Activated Charcoal Deodorant.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Nala Care",
+        "Deodorant"
+      ],
+      "sort_keys": {
+        "price_min": 26,
+        "price_max": 26,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_8136f11be69e6c18781a7f02"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_176d0cbeaaff82a732c51ef4",
+      "sellable_item_group_id": "sig_176d0cbeaaff82a732c51ef4",
+      "product_line_id": "pl_e6f5488af794bb7d3dcf82d6",
+      "review_family_id": "rf_e6f5488af794bb7d3dcf82d6",
+      "brand_name": "Nala Care",
+      "category_paths": [
+        "Deodorant"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Unscented, Sensitive Skin Natural Deodorant",
+      "subtitle": "All the moisture absorbing, odor reducing and protective properties of our base formula without any of the scent. Perfect for those who work in scent-free environments or prefer to keep their routine simple and bare.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Unscented_Transparent_Box.png?v=1752600176",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Unscented_Transparent_Box.png?v=1752600176",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Tube.png?v=1752600229",
+        "https://nalacare.com/cdn/shop/files/AK5A1190.png?v=1778824029",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Peppermint_Charcoal_Transparent_Box.png?v=1752599986",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Palo_Santo_Sage_Transparent_Box.png?v=1752600229",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Lavender_Vetiver_Transparent_Box.png?v=1752600139",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Eucalyptus_Champa_Transparent_Box.png?v=1752600258",
+        "https://nalacare.com/cdn/shop/files/241205_Nala_7409_web.jpg?v=1735323818"
+      ],
+      "price_min": 26,
+      "price_max": 26,
+      "default_offer_id": "external_seed:ext_5975f96c1d90b02d02329960",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Nala Care deodorant listed on the brand source page as Unscented, Sensitive Skin Natural Deodorant. The source description identifies: All the moisture absorbing, odor reducing and protective properties of our base formula without any of the scent.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Nala Care",
+        "Deodorant"
+      ],
+      "sort_keys": {
+        "price_min": 26,
+        "price_max": 26,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_5975f96c1d90b02d02329960"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_585510673ac14ed71e01b4a9",
+      "sellable_item_group_id": "sig_585510673ac14ed71e01b4a9",
+      "product_line_id": "pl_870b8abffbc9367ccb6c0122",
+      "review_family_id": "rf_870b8abffbc9367ccb6c0122",
+      "brand_name": "Nala Care",
+      "category_paths": [
+        "Deodorant"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Coastal Waters, Extra Strength Natural Deodorant",
+      "subtitle": "A rugged but energizing blend of natural elements, this deodorant embodies life by the ocean. A heavier, woody scent that comes from Frankincense essential oil is balanced with lighter hints of citrus and swirls of fresh mint. The final touch in this blend is a hint of salt, reminiscent of a cool, ocean breeze.\n\n60 g",
+      "variant_axes": {
+        "volume": "60g",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Coastal_Waters_Transparent_Box.png?v=1752600326",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Coastal_Waters_Transparent_Box.png?v=1752600326",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Tube.png?v=1752600229",
+        "https://nalacare.com/cdn/shop/files/AK5A1190.png?v=1778824029",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Sandalwood_Bergamot_Transparent_Box.png?v=1752600440",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Eucalyptus_Champa_Transparent_Box.png?v=1752600258",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Rosewood_Transparent_Box.png?v=1752600292",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Grapefruit_Neroli_Transparent_Box.png?v=1752600087",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Peach_Chamomile_Transparent_Box.png?v=1752600403"
+      ],
+      "price_min": 26,
+      "price_max": 26,
+      "default_offer_id": "external_seed:ext_e08d2e62205f1691dfe30753",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Nala Care deodorant listed on the brand source page as Coastal Waters, Extra Strength Natural Deodorant. The source description identifies: A rugged but energizing blend of natural elements, this deodorant embodies life by the ocean.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Nala Care",
+        "Deodorant"
+      ],
+      "sort_keys": {
+        "price_min": 26,
+        "price_max": 26,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_e08d2e62205f1691dfe30753"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_dc67c95a05ea55d137601330",
+      "sellable_item_group_id": "sig_dc67c95a05ea55d137601330",
+      "product_line_id": "pl_4c6d2e665826225e7c6fa577",
+      "review_family_id": "rf_4c6d2e665826225e7c6fa577",
+      "brand_name": "Nala Care",
+      "category_paths": [
+        "Deodorant"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Essence of Rosewood, Extra Strength Natural Deodorant",
+      "subtitle": "Rosewood is renowned for its sophisticated scent as well as its harmonizing and relaxing properties on the mind. Imagine a wood smelling rose that's more wood than rose and you can begin to appreciate one of the most complex scents in perfumery.\n\nAll Nala deodorants are made with organic essential oils for a subtle, not overpowering, scent.\n\nAs always, free-from carcinogens, free-from aluminum, free-from cruelty.\n\n60 g",
+      "variant_axes": {
+        "volume": "60g",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Rosewood_Transparent_Box.png?v=1752600292",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Rosewood_Transparent_Box.png?v=1752600292",
+        "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Tube.png?v=1752600229",
+        "https://cdn.stamped.io/cdn/images/pixel.png",
+        "https://cdn1.stamped.io/uploads/productImages/139780_8139512938596.png",
+        "https://cdn1.stamped.io/uploads/productImages/139780_6580323811428.png",
+        "https://cdn1.stamped.io/uploads/productImages/139780_7212833800292.png",
+        "https://cdn1.stamped.io/uploads/productImages/139780_6597643403364.png",
+        "https://cdn1.stamped.io/uploads/productImages/139780_6580314734692.png"
+      ],
+      "price_min": 26,
+      "price_max": 26,
+      "default_offer_id": "external_seed:ext_e5f66cf29d6c516775bb0fce",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Nala Care deodorant listed on the brand source page as Essence of Rosewood, Extra Strength Natural Deodorant. The source description identifies: Rosewood is renowned for its sophisticated scent as well as its harmonizing and relaxing properties on the mind.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Nala Care",
+        "Deodorant"
+      ],
+      "sort_keys": {
+        "price_min": 26,
+        "price_max": 26,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_e5f66cf29d6c516775bb0fce"
+      ]
+    }
+  ]
+}

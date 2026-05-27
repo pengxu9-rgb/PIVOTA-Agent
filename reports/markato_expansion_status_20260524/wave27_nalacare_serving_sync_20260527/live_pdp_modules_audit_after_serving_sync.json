@@ -1,0 +1,756 @@
+{
+  "generated_at": "2026-05-27T09:36:33.445Z",
+  "source": "external_seed_live_pdp_modules_audit",
+  "query": {
+    "market": "US",
+    "domain": null,
+    "brand": null,
+    "external_product_id": null,
+    "external_product_ids": [
+      "ext_e08d2e62205f1691dfe30753",
+      "ext_e5f66cf29d6c516775bb0fce",
+      "ext_446a5f126507ff6adba46258",
+      "ext_b36935c92dc89857bf62f25e",
+      "ext_21216a67b62b16d88661367f",
+      "ext_8136f11be69e6c18781a7f02",
+      "ext_5975f96c1d90b02d02329960"
+    ],
+    "include_attached": true,
+    "limit": 50,
+    "offset": 0,
+    "include_similar": true,
+    "use_sig": false
+  },
+  "summary": {
+    "scanned": 7,
+    "ready": 7,
+    "thin": 0,
+    "not_conversion_ready": 0,
+    "by_domain": [
+      {
+        "key": "nalacare.com",
+        "count": 7
+      }
+    ],
+    "blocker_counts": [],
+    "weak_insights_ids": [],
+    "seller_only_insights_ids": [],
+    "force_filled_ids": [],
+    "content_gap_ids": []
+  },
+  "rows": [
+    {
+      "external_product_id": "ext_5975f96c1d90b02d02329960",
+      "pivota_signature_id": "sig_176d0cbeaaff82a732c51ef4",
+      "probed_product_id": "ext_5975f96c1d90b02d02329960",
+      "probed_id_type": "ext",
+      "seed_id": "eps_70cc3400fbd348ddea653644",
+      "market": "US",
+      "domain": "nalacare.com",
+      "title": "Unscented, Sensitive Skin Natural Deodorant",
+      "canonical_url": "https://nalacare.com/products/unscented-natural-deodorant",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "321ce2b8eb5e",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 8,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "nalacare.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Deodorant identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 16,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 8,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 23
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "set_or_collection",
+        "reasons": [
+          "bundle_set_overrides_single_formula_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": false
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_8136f11be69e6c18781a7f02",
+      "pivota_signature_id": "sig_6b92f753966ed06a55217641",
+      "probed_product_id": "ext_8136f11be69e6c18781a7f02",
+      "probed_id_type": "ext",
+      "seed_id": "eps_3f6b17eb288ce4725cbd191a",
+      "market": "US",
+      "domain": "nalacare.com",
+      "title": "Peppermint & Activated Charcoal, Natural Deodorant",
+      "canonical_url": "https://nalacare.com/products/natural-deodorant-peppermint-charcoal",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "321ce2b8eb5e",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 7,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "nalacare.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 60 g",
+          "60 g"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Deodorant identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 23,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 8,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 23
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_21216a67b62b16d88661367f",
+      "pivota_signature_id": "sig_3593c2c3e729fd45ede0996a",
+      "probed_product_id": "ext_21216a67b62b16d88661367f",
+      "probed_id_type": "ext",
+      "seed_id": "eps_397f9fecae5c0008b37ef970",
+      "market": "US",
+      "domain": "nalacare.com",
+      "title": "Lavender & Vetiver, Sensitive Skin Natural Deodorant",
+      "canonical_url": "https://nalacare.com/products/lavender-and-vetiver-charcoal-natural-deodorant",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "321ce2b8eb5e",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 8,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "nalacare.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Deodorant identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 24,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 8,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 23
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_b36935c92dc89857bf62f25e",
+      "pivota_signature_id": "sig_0c5ce72c1a7bb40617f0b83d",
+      "probed_product_id": "ext_b36935c92dc89857bf62f25e",
+      "probed_id_type": "ext",
+      "seed_id": "eps_4e147a8448a969b3bd3c46a9",
+      "market": "US",
+      "domain": "nalacare.com",
+      "title": "Grapefruit & Neroli, Extra Strength Natural Deodorant",
+      "canonical_url": "https://nalacare.com/products/grapefruit-neroli-natural-deodorant",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "321ce2b8eb5e",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 10,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "nalacare.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Deodorant identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 18,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 7,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 16
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_446a5f126507ff6adba46258",
+      "pivota_signature_id": "sig_4d5786ae6535963a72172e4a",
+      "probed_product_id": "ext_446a5f126507ff6adba46258",
+      "probed_id_type": "ext",
+      "seed_id": "eps_f71587e76c7f38fd91249f6b",
+      "market": "US",
+      "domain": "nalacare.com",
+      "title": "Eucalyptus & Champa, Extra Strength Natural Deodorant",
+      "canonical_url": "https://nalacare.com/products/eucalyptus-natural-deodorant",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "321ce2b8eb5e",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 10,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "nalacare.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Deodorant identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 26,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 7,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 22
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "set_or_collection",
+        "reasons": [
+          "bundle_set_overrides_single_formula_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": false
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_e5f66cf29d6c516775bb0fce",
+      "pivota_signature_id": "sig_dc67c95a05ea55d137601330",
+      "probed_product_id": "ext_e5f66cf29d6c516775bb0fce",
+      "probed_id_type": "ext",
+      "seed_id": "eps_2a694bb944824411ac2da0a2",
+      "market": "US",
+      "domain": "nalacare.com",
+      "title": "Essence of Rosewood, Extra Strength Natural Deodorant",
+      "canonical_url": "https://nalacare.com/products/essence-of-rosewood-extra-strength-deodorant",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "321ce2b8eb5e",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients"
+      ],
+      "gallery": {
+        "image_count": 11,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "nalacare.com",
+          "cdn.stamped.io",
+          "cdn1.stamped.io"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 60 g",
+          "60 g"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Deodorant identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 28,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 7,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 31
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_e08d2e62205f1691dfe30753",
+      "pivota_signature_id": "sig_585510673ac14ed71e01b4a9",
+      "probed_product_id": "ext_e08d2e62205f1691dfe30753",
+      "probed_id_type": "ext",
+      "seed_id": "eps_18d393cf24840b4bbe6b1a52",
+      "market": "US",
+      "domain": "nalacare.com",
+      "title": "Coastal Waters, Extra Strength Natural Deodorant",
+      "canonical_url": "https://nalacare.com/products/coastal-waters-natural-deodorant-extra-strength",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "321ce2b8eb5e",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients"
+      ],
+      "gallery": {
+        "image_count": 9,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "nalacare.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 60 g",
+          "60 g"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Deodorant identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 26,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 7,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 32
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    }
+  ]
+}

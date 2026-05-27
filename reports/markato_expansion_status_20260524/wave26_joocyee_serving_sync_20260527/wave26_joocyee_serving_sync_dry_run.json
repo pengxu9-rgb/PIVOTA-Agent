@@ -1,0 +1,115 @@
+{
+  "generated_at": "2026-05-27T09:25:46.635Z",
+  "mode": "dry_run",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": true,
+  "requested_ids": 17,
+  "fetched_rows": 17,
+  "mirror_rows": 0,
+  "planned_sku_rows": 0,
+  "planned_offer_rows": 0,
+  "planned_index_state_rows": 0,
+  "missing_ids": [],
+  "skipped": [
+    {
+      "external_product_id": "ext_3ca7c85748b01b4bc8e2f3bb",
+      "reason": "duplicate_canonical_url_identity_review_required"
+    },
+    {
+      "external_product_id": "ext_794deab047eb4a75225329df",
+      "reason": "duplicate_canonical_url_identity_review_required"
+    },
+    {
+      "external_product_id": "ext_8bced3f34a8100c3cfa62377",
+      "reason": "duplicate_canonical_url_identity_review_required"
+    },
+    {
+      "external_product_id": "ext_4fe791cb17f27395a25f91ee",
+      "reason": "duplicate_canonical_url_identity_review_required"
+    },
+    {
+      "external_product_id": "ext_613e3bbbf834dcce655539b3",
+      "reason": "duplicate_canonical_url_identity_review_required"
+    },
+    {
+      "external_product_id": "ext_d479efb9a5fafb985e19bd3c",
+      "reason": "duplicate_canonical_url_identity_review_required"
+    },
+    {
+      "external_product_id": "ext_2881559170714581057e21eb",
+      "reason": "duplicate_canonical_url_identity_review_required"
+    },
+    {
+      "external_product_id": "ext_35ffa71281354a958ef30f7e",
+      "reason": "duplicate_canonical_url_identity_review_required"
+    },
+    {
+      "external_product_id": "ext_3c9980e0455d648c3173c14e",
+      "reason": "duplicate_canonical_url_identity_review_required"
+    },
+    {
+      "external_product_id": "ext_41c98523b6fc0a8279c3095c",
+      "reason": "duplicate_canonical_url_identity_review_required"
+    },
+    {
+      "external_product_id": "ext_4888a0d0940daa58fc77af80",
+      "reason": "duplicate_canonical_url_identity_review_required"
+    },
+    {
+      "external_product_id": "ext_52a27acd606756dea463a717",
+      "reason": "duplicate_canonical_url_identity_review_required"
+    },
+    {
+      "external_product_id": "ext_70a0b0b3c68a48630060c7ff",
+      "reason": "duplicate_canonical_url_identity_review_required"
+    },
+    {
+      "external_product_id": "ext_75c1cd3bbad92bbdbc6ab010",
+      "reason": "duplicate_canonical_url_identity_review_required"
+    },
+    {
+      "external_product_id": "ext_a9a9d873995dc784e34cb222",
+      "reason": "duplicate_canonical_url_identity_review_required"
+    },
+    {
+      "external_product_id": "ext_bb9685457f5a919c945ee9ce",
+      "reason": "duplicate_canonical_url_identity_review_required"
+    },
+    {
+      "external_product_id": "ext_c037778265747b32fc52a16c",
+      "reason": "duplicate_canonical_url_identity_review_required"
+    }
+  ],
+  "applied": {
+    "mode": "dry_run",
+    "existing_before": {
+      "catalog_products": 0,
+      "catalog_skus": 0,
+      "catalog_offers": 0,
+      "product_group_members": 0
+    },
+    "stale_delete_preview": {
+      "current_sku_rows": 0,
+      "current_offer_rows": 0,
+      "planned_stale_sku_deletes": 0,
+      "planned_stale_offer_deletes": 0,
+      "sample_stale_skus": [],
+      "sample_stale_offers": []
+    },
+    "batch_size": null,
+    "batches": 0,
+    "audit_reasons": {},
+    "product_upserts": 0,
+    "sku_upserts": 0,
+    "offer_upserts": 0,
+    "group_member_upserts": 0,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 0,
+    "identity_live_read_updates": 0,
+    "catalog_row_trust_upserts": 0,
+    "stale_offer_deletes": 0,
+    "stale_sku_deletes": 0
+  },
+  "sample": []
+}
