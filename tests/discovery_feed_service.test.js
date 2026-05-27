@@ -3397,6 +3397,105 @@ describe('discovery feed service', () => {
     }
   });
 
+  test('commerce-index brand reader SQL pulls first-party catalog row via dedicated LATERAL JOIN', async () => {
+    // The legacy mapper hardcoded merchant_id='external_seed', which mangled
+    // first-party brands like MOYU/GR/PawStyle that the c1.v0.3 policy now
+    // serves. The SQL must surface first_party_merchant_id alongside the
+    // external_seed LATERAL.
+    jest.resetModules();
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = 'postgres://commerce-index-brand-reader-first-party-sql';
+    let capturedSql = null;
+    const dbQueryMock = jest.fn(async (sql) => {
+      capturedSql = sql;
+      return { rows: [] };
+    });
+    jest.doMock('../src/db', () => ({ query: dbQueryMock }));
+    try {
+      const fresh = require('../src/services/discoveryFeed');
+      await fresh._internals.fetchBrandScopedCanonicalCandidates({
+        brandAliases: ['MOYU'],
+        limit: 12,
+      });
+      expect(dbQueryMock).toHaveBeenCalledTimes(1);
+      expect(capturedSql).toMatch(/first_party\.merchant_id\s+AS\s+first_party_merchant_id/i);
+      expect(capturedSql).toMatch(/LEFT\s+JOIN\s+LATERAL\s*\([^)]*cp\.merchant_id\s*<>\s*'external_seed'/is);
+      // External_seed LATERAL must filter out tombstoned rows so the post-PR-2
+      // cleanup leaves no ghosts in the join.
+      expect(capturedSql).toMatch(/cp\.merchant_id\s*=\s*'external_seed'[\s\S]{0,200}?cp\.suppression_reason\s+IS\s+NULL/i);
+    } finally {
+      jest.dontMock('../src/db');
+      if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = prevDatabaseUrl;
+    }
+  });
+
+  test('commerce-index brand reader maps first-party rows to real merchant/platform/source_product_id', async () => {
+    // Reproduces the MOYU/GR/PawStyle case: catalog_row_trust says public via
+    // IDENTITY_NOT_APPLICABLE_FIRST_PARTY (c1.v0.3), the row has a first-party
+    // catalog_products entry, and we must NOT ship it as merchant_id=external_seed.
+    jest.resetModules();
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = 'postgres://commerce-index-brand-reader-first-party-map';
+    const dbQueryMock = jest.fn(async () => ({
+      rows: [
+        {
+          content_key: 'ck_moyu_contour_brush',
+          pivota_signature_id: 'sig_moyu_contour_brush',
+          first_party_merchant_id: 'merch_efbc46b4619cfbdf',
+          first_party_platform: 'shopify',
+          first_party_source_product_id: '7654321',
+          first_party_product_key: 'prod::merch_efbc46b4619cfbdf::shopify::7654321',
+          external_product_id: null,
+          external_product_key: null,
+          brand: 'MOYU',
+          title: 'Contour Brush — Natural Shadow',
+          description: '',
+          image_url: null,
+          image_urls: [],
+          currency: 'USD',
+          price_min: 13.09,
+          price_max: 13.09,
+          offer_count: 1,
+          offers: [],
+          category_path: ['beauty', 'tools', 'brushes'],
+        },
+      ],
+    }));
+    jest.doMock('../src/db', () => ({ query: dbQueryMock }));
+    try {
+      const fresh = require('../src/services/discoveryFeed');
+      const candidates = await fresh._internals.fetchBrandScopedCanonicalCandidates({
+        brandAliases: ['MOYU'],
+        limit: 12,
+      });
+      expect(candidates).toHaveLength(1);
+      expect(candidates[0]).toEqual(
+        expect.objectContaining({
+          merchant_id: 'merch_efbc46b4619cfbdf',
+          platform: 'shopify',
+          product_id: 'sig_moyu_contour_brush',
+          pivota_signature_id: 'sig_moyu_contour_brush',
+          source_product_id: '7654321',
+          product_key: 'prod::merch_efbc46b4619cfbdf::shopify::7654321',
+          source: 'commerce_index',
+        }),
+      );
+      // First-party candidates must NOT carry external_product_id /
+      // external_product_key (downstream code uses those to short-circuit to
+      // the external_seed hydration path).
+      expect(candidates[0]).not.toHaveProperty('external_product_id');
+      expect(candidates[0]).not.toHaveProperty('external_product_key');
+      expect(fresh._internals.buildProductKey(candidates[0].merchant_id, candidates[0].product_id)).toBe(
+        'merch_efbc46b4619cfbdf::sig_moyu_contour_brush',
+      );
+    } finally {
+      jest.dontMock('../src/db');
+      if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = prevDatabaseUrl;
+    }
+  });
+
   test('commerce-index brand reader fails open when catalog_row_trust table is missing', async () => {
     jest.resetModules();
     const prevDatabaseUrl = process.env.DATABASE_URL;
