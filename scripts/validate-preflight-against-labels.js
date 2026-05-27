@@ -23,7 +23,7 @@ const { query } = require('../src/db');
 const { lookupBeautyAttributesBatch, normalizeKey } = require('../src/auroraBff/productBeautyAttributes');
 const {
   applyAllGates,
-  gateProductFormMismatch,
+  gateCategoryLeafMismatch,
   gateTargetAreaMismatch,
   gateSpfOtcMismatch,
 } = require('../src/auroraBff/productRelationshipGraphPreflight');
@@ -40,7 +40,7 @@ function hasFlag(name) {
 }
 
 const PER_GATE_FNS = {
-  product_form: gateProductFormMismatch,
+  category_leaf: gateCategoryLeafMismatch,
   target_area: gateTargetAreaMismatch,
   spf_or_otc: gateSpfOtcMismatch,
 };
@@ -81,7 +81,7 @@ async function runValidation({ queryFn = query, limit = null, verbose = false } 
     by_relation_type: {},
     confusion: { TP: 0, FP: 0, TN: 0, FN: 0, skipped: 0 },
     gate_impact: {
-      product_form: { fires_on_approved: 0, fires_on_rejected: 0 },
+      category_leaf: { fires_on_approved: 0, fires_on_rejected: 0 },
       target_area: { fires_on_approved: 0, fires_on_rejected: 0 },
       spf_or_otc: { fires_on_approved: 0, fires_on_rejected: 0 },
     },
@@ -128,8 +128,8 @@ async function runValidation({ queryFn = query, limit = null, verbose = false } 
             relation_type: row.relation_type,
             anchor_ref: row.anchor_ref,
             candidate_product_ref: row.candidate_product_ref,
-            anchor_attrs: anchorAttrs ? { product_form: anchorAttrs.product_form, target_area: anchorAttrs.target_area, spf_or_otc_flag: anchorAttrs.spf_or_otc_flag } : null,
-            candidate_attrs: candidateAttrs ? { product_form: candidateAttrs.product_form, target_area: candidateAttrs.target_area, spf_or_otc_flag: candidateAttrs.spf_or_otc_flag } : null,
+            anchor_attrs: anchorAttrs ? { product_form: anchorAttrs.product_form, category_leaf: anchorAttrs.category_leaf, target_area: anchorAttrs.target_area, spf_or_otc_flag: anchorAttrs.spf_or_otc_flag } : null,
+            candidate_attrs: candidateAttrs ? { product_form: candidateAttrs.product_form, category_leaf: candidateAttrs.category_leaf, target_area: candidateAttrs.target_area, spf_or_otc_flag: candidateAttrs.spf_or_otc_flag } : null,
             prefilter_reasons: combined.prefilter_reasons,
           });
         }
@@ -141,8 +141,8 @@ async function runValidation({ queryFn = query, limit = null, verbose = false } 
           samples.true_positive.push({
             id: row.id,
             relation_type: row.relation_type,
-            anchor_attrs: anchorAttrs ? { product_form: anchorAttrs.product_form, target_area: anchorAttrs.target_area, spf_or_otc_flag: anchorAttrs.spf_or_otc_flag } : null,
-            candidate_attrs: candidateAttrs ? { product_form: candidateAttrs.product_form, target_area: candidateAttrs.target_area, spf_or_otc_flag: candidateAttrs.spf_or_otc_flag } : null,
+            anchor_attrs: anchorAttrs ? { product_form: anchorAttrs.product_form, category_leaf: anchorAttrs.category_leaf, target_area: anchorAttrs.target_area, spf_or_otc_flag: anchorAttrs.spf_or_otc_flag } : null,
+            candidate_attrs: candidateAttrs ? { product_form: candidateAttrs.product_form, category_leaf: candidateAttrs.category_leaf, target_area: candidateAttrs.target_area, spf_or_otc_flag: candidateAttrs.spf_or_otc_flag } : null,
             prefilter_reasons: combined.prefilter_reasons,
           });
         }
@@ -156,8 +156,8 @@ async function runValidation({ queryFn = query, limit = null, verbose = false } 
           samples.false_negative.push({
             id: row.id,
             relation_type: row.relation_type,
-            anchor_attrs: anchorAttrs ? { product_form: anchorAttrs.product_form, target_area: anchorAttrs.target_area, spf_or_otc_flag: anchorAttrs.spf_or_otc_flag } : null,
-            candidate_attrs: candidateAttrs ? { product_form: candidateAttrs.product_form, target_area: candidateAttrs.target_area, spf_or_otc_flag: candidateAttrs.spf_or_otc_flag } : null,
+            anchor_attrs: anchorAttrs ? { product_form: anchorAttrs.product_form, category_leaf: anchorAttrs.category_leaf, target_area: anchorAttrs.target_area, spf_or_otc_flag: anchorAttrs.spf_or_otc_flag } : null,
+            candidate_attrs: candidateAttrs ? { product_form: candidateAttrs.product_form, category_leaf: candidateAttrs.category_leaf, target_area: candidateAttrs.target_area, spf_or_otc_flag: candidateAttrs.spf_or_otc_flag } : null,
           });
         }
       }
