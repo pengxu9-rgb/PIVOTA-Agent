@@ -71,6 +71,7 @@ const {
 } = require('./services/catalogRelatedServicesNearby');
 const {
   searchServices,
+  getProviderById,
   normalizeServicesSearchParams,
 } = require('./services/servicesSearch');
 const bookingsApi = require('./services/bookings/api');
@@ -28815,6 +28816,21 @@ app.get('/api/services', async (req, res) => {
       { error_name: err?.name, error_code: err?.code, query_keys: Object.keys(req.query || {}) },
       'Failed to search services',
     );
+    return res.status(500).json({ error: 'INTERNAL_ERROR' });
+  }
+});
+
+app.get('/api/services/providers/:provider_id', async (req, res) => {
+  const { provider_id } = req.params;
+  if (!provider_id || typeof provider_id !== 'string' || !provider_id.trim()) {
+    return res.status(400).json({ error: 'provider_id is required' });
+  }
+  try {
+    const provider = await getProviderById(provider_id.trim());
+    if (!provider) return res.status(404).json({ error: 'NOT_FOUND' });
+    return res.json({ provider });
+  } catch (err) {
+    logger.warn({ error_name: err?.name, provider_id }, 'Failed to fetch provider by id');
     return res.status(500).json({ error: 'INTERNAL_ERROR' });
   }
 });
