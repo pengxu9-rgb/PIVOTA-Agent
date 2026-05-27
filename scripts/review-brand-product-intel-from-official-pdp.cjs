@@ -30,7 +30,11 @@ const SUPPORTED_BRANDS = new Set([
   'joocyee',
   'judydoll',
   'kylie cosmetics',
+  'baie botanique',
   'beekman 1802',
+  'into you',
+  'intoyou',
+  'intoyou cosmetics',
   'rare',
   'rare beauty',
   'rms',
@@ -40,6 +44,8 @@ const SUPPORTED_BRANDS = new Set([
   'innbeauty project',
   'inn beauty',
   'inn beauty project',
+  'linhart',
+  'linhart smile care',
   'lizush',
   'murad',
   'naturium',
@@ -48,6 +54,8 @@ const SUPPORTED_BRANDS = new Set([
   'ole henriksen',
   'pixi',
   'pixi beauty',
+  'tirtir',
+  'tirtir global',
   'tom ford',
   'tom ford beauty',
   'upcircle',
@@ -307,10 +315,13 @@ function displayBrand(raw) {
   if (/^tom\s*ford/i.test(brand)) return 'Tom Ford Beauty';
   if (/^guerlain/i.test(brand)) return 'Guerlain';
   if (/^kylie/i.test(brand)) return 'Kylie Cosmetics';
+  if (/^baie\s+botanique/i.test(brand)) return 'Baie Botanique';
   if (/^beekman\s*1802/i.test(brand)) return 'Beekman 1802';
   if (/^catkin/i.test(brand)) return 'Catkin';
   if (/^flower\s+knows/i.test(brand)) return 'Flower Knows';
   if (/^inn\s*beauty|^innbeauty/i.test(brand)) return 'INNBeauty Project';
+  if (/^into\s*you|^intoyou/i.test(brand)) return 'INTO YOU';
+  if (/^linhart/i.test(brand)) return 'Linhart Smile Care';
   if (/^lizush/i.test(brand)) return 'Lizush';
   if (/^murad/i.test(brand)) return 'Murad';
   if (/^naturium/i.test(brand)) return 'Naturium';
@@ -318,6 +329,7 @@ function displayBrand(raw) {
   if (/^ole\s*henriksen|^olehenriksen/i.test(brand)) return 'Ole Henriksen';
   if (/^pixi/i.test(brand)) return 'Pixi';
   if (/^rms\b/i.test(brand)) return 'RMS Beauty';
+  if (/^tirtir/i.test(brand)) return 'TIRTIR Global';
   if (/^up\s*circle|^upcircle/i.test(brand)) return 'UpCircle Beauty';
   return brand || 'the brand';
 }
@@ -465,7 +477,7 @@ function inferRole(facts) {
   if (/\b(?:puff|sponge|applicator)\b/.test(titleText)) return { label: 'Makeup applicator', step: 'application tool', amPm: ['as_needed'] };
   if (/\bbrush\b/.test(titleText)) return { label: 'Makeup brush', step: 'application tool', amPm: ['as_needed'] };
   const accessoryCue = /\b(?:stickers?|decals?|claw clip|head\s*band|headband|pouch|bag|organizer|mirror|sharpener|tool|tray|keychain|key chain|tote|clutch|backpack|wash\s*cloth|washcloth|cuffs?|scrunchie|sleeve|case)\b/.test(titleText);
-  const formulaCue = /\b(?:spf|sunscreen|moisturizer|serum|cream|lotion|body milk|lipstick|lip gloss|lip glaze|lip ink|lip luminizer|lip liner|mascara|eyeshadow|eye shadow|eye brightener|palette|makeup remover|remover wipe|eyeliner|foundation|concealer|bronzer|blush|highlighter|toner)\b/.test(titleText);
+  const formulaCue = /\b(?:spf|sunscreen|moisturizer|serum|cream|lotion|body milk|lipstick|lip gloss|lip glaze|lip ink|lip luminizer|lip liner|mascara|eyeshadow|eye shadow|eye brightener|palette|makeup remover|remover wipe|eyeliner|foundation|concealer|cushion|bronzer|blush|highlighter|toner)\b/.test(titleText);
   if (accessoryCue && !formulaCue) {
     return { label: 'Beauty accessory', step: 'beauty routine', amPm: ['as_needed'] };
   }
@@ -530,7 +542,7 @@ function inferRole(facts) {
   if (/\b(?:retinol|retinal|tranexamic|azelaic|peptide)\b/.test(titleText)) {
     return { label: 'Treatment serum', step: 'serum', amPm: ['pm'] };
   }
-  if (/\bfoundation|concealer|skin tint|complexion|tinted moisturizer\b/.test(titleText)) return { label: 'Complexion makeup', step: 'complexion', amPm: ['as_needed'] };
+  if (/\bfoundation|concealer|skin tint|complexion|tinted moisturizer|cream cushion|cushion foundation|cushion\b/.test(titleText)) return { label: 'Complexion makeup', step: 'complexion', amPm: ['as_needed'] };
   if (/\b(?:setting spray|4-in-1 mist|4 in 1 mist|face mist)\b/.test(titleText)) return { label: 'Setting mist', step: 'complexion', amPm: ['as_needed'] };
   if (/\b(?:setting powder|finishing powder|powder|bronzer|blush|highlighter|luminizer)\b/.test(titleText)) return { label: 'Face color makeup', step: 'face color', amPm: ['as_needed'] };
   if (/\bprimer|base perfecting|pore prep\b/.test(titleText)) return { label: 'Makeup primer', step: 'primer', amPm: ['as_needed'] };
@@ -1148,7 +1160,7 @@ function buildEvidenceAnchoredWhatItIs(facts, role) {
 
   if (role.step === 'lip color' || role.step === 'lip treatment') {
     const format = role.step === 'lip treatment'
-      ? (/\bbalm\b/i.test(text) ? 'tinted lip balm' : 'lip treatment')
+      ? (/\bbalm\b/i.test(text) ? (/\btint(?:ed)?|shade|color|colour\b/i.test(text) ? 'tinted lip balm' : 'lip balm') : 'lip treatment')
       : (/\bgloss|glaze\b/i.test(text) ? 'lip gloss' : /\blink\b/i.test(text) ? 'lip ink' : 'lip color');
     const claims = joinClaims([
       /\bshine|gloss|glossy|glaze\b/i.test(text) ? 'shine finish' : '',
