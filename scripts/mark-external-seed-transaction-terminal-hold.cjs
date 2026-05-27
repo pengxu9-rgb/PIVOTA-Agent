@@ -184,8 +184,8 @@ async function fetchRows(ids, market) {
 }
 
 async function countCatalogRows(ids) {
-  if (!ids.length) return { products: 0, skus: 0, offers: 0 };
-  const [products, skus, offers] = await Promise.all([
+  if (!ids.length) return { products: 0, skus: 0, offers: 0, index_rows: 0 };
+  const [products, skus, offers, indexRows] = await Promise.all([
     query(`SELECT count(*)::int AS count FROM catalog_products WHERE source_product_id = ANY($1::text[])`, [ids]),
     query(`SELECT count(*)::int AS count FROM catalog_skus WHERE source_product_id = ANY($1::text[])`, [ids]),
     query(
@@ -198,20 +198,33 @@ async function countCatalogRows(ids) {
       `,
       [ids],
     ),
+    query(
+      `
+        SELECT count(*)::int AS count
+        FROM index_pipeline_state ips
+        JOIN catalog_products cp ON cp.content_key = ips.content_key
+        WHERE cp.source_product_id = ANY($1::text[])
+      `,
+      [ids],
+    ),
   ]);
   return {
     products: Number(products.rows?.[0]?.count || 0),
     skus: Number(skus.rows?.[0]?.count || 0),
     offers: Number(offers.rows?.[0]?.count || 0),
+    index_rows: Number(indexRows.rows?.[0]?.count || 0),
   };
 }
 
 async function applyRows(rows, contracts, { write }) {
-  if (!write) return { external_product_seeds: 0, catalog_products: 0, catalog_skus: 0, catalog_offers: 0 };
+  if (!write) {
+    return { external_product_seeds: 0, catalog_products: 0, catalog_skus: 0, catalog_offers: 0, index_pipeline_state: 0 };
+  }
   let seedUpdates = 0;
   let productUpdates = 0;
   let skuUpdates = 0;
   let offerUpdates = 0;
+  let indexUpdates = 0;
   const payload = {
     transaction_ready: false,
     source_identity_drift_v1: contracts.drift,
@@ -283,6 +296,22 @@ async function applyRows(rows, contracts, { write }) {
           [externalProductId, JSON.stringify(payload)],
         );
         offerUpdates += Number(offerResult.rowCount || 0);
+
+        const indexResult = await client.query(
+          `
+            UPDATE index_pipeline_state ips
+            SET serving_eligible = false,
+                pipeline_stage = 'extracted',
+                blocker_code = 'transaction_readiness_blocker',
+                blocker_detail = $2,
+                quality_scored_at = coalesce(quality_scored_at, now())
+            FROM catalog_products cp
+            WHERE cp.content_key = ips.content_key
+              AND cp.source_product_id = $1
+          `,
+          [externalProductId, contracts.blocker.reason],
+        );
+        indexUpdates += Number(indexResult.rowCount || 0);
       }
       await client.query('COMMIT');
     } catch (error) {
@@ -295,6 +324,7 @@ async function applyRows(rows, contracts, { write }) {
     catalog_products: productUpdates,
     catalog_skus: skuUpdates,
     catalog_offers: offerUpdates,
+    index_pipeline_state: indexUpdates,
   };
 }
 
