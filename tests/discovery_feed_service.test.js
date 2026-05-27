@@ -3333,6 +3333,98 @@ describe('discovery feed service', () => {
     }
   });
 
+  test('commerce-index brand reader gates on index_pipeline_state when catalog_row_trust flag is off', async () => {
+    jest.resetModules();
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    const prevTrustFlag = process.env.DISCOVERY_USES_CATALOG_ROW_TRUST;
+    process.env.DATABASE_URL = 'postgres://commerce-index-brand-reader-flag-off';
+    delete process.env.DISCOVERY_USES_CATALOG_ROW_TRUST;
+    let capturedSql = null;
+    const dbQueryMock = jest.fn(async (sql) => {
+      capturedSql = sql;
+      return { rows: [] };
+    });
+    jest.doMock('../src/db', () => ({ query: dbQueryMock }));
+    try {
+      const fresh = require('../src/services/discoveryFeed');
+      await fresh._internals.fetchBrandScopedCanonicalCandidates({
+        brandAliases: ['COSRX'],
+        limit: 12,
+      });
+      expect(dbQueryMock).toHaveBeenCalledTimes(1);
+      expect(capturedSql).toMatch(/JOIN\s+index_pipeline_state\s+ips/i);
+      expect(capturedSql).toMatch(/ips\.serving_eligible\s*=\s*TRUE/i);
+      expect(capturedSql).not.toMatch(/catalog_row_trust/i);
+    } finally {
+      jest.dontMock('../src/db');
+      if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = prevDatabaseUrl;
+      if (prevTrustFlag === undefined) delete process.env.DISCOVERY_USES_CATALOG_ROW_TRUST;
+      else process.env.DISCOVERY_USES_CATALOG_ROW_TRUST = prevTrustFlag;
+    }
+  });
+
+  test('commerce-index brand reader gates on catalog_row_trust when flag is on', async () => {
+    jest.resetModules();
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    const prevTrustFlag = process.env.DISCOVERY_USES_CATALOG_ROW_TRUST;
+    process.env.DATABASE_URL = 'postgres://commerce-index-brand-reader-flag-on';
+    process.env.DISCOVERY_USES_CATALOG_ROW_TRUST = 'true';
+    let capturedSql = null;
+    const dbQueryMock = jest.fn(async (sql) => {
+      capturedSql = sql;
+      return { rows: [] };
+    });
+    jest.doMock('../src/db', () => ({ query: dbQueryMock }));
+    try {
+      const fresh = require('../src/services/discoveryFeed');
+      await fresh._internals.fetchBrandScopedCanonicalCandidates({
+        brandAliases: ['COSRX'],
+        limit: 12,
+      });
+      expect(dbQueryMock).toHaveBeenCalledTimes(1);
+      expect(capturedSql).toMatch(/catalog_row_trust\s+crt/i);
+      expect(capturedSql).toMatch(/crt\.serving_decision\s*=\s*'public'/i);
+      expect(capturedSql).toMatch(/crt\.subject_type\s*=\s*'product'/i);
+      expect(capturedSql).not.toMatch(/JOIN\s+index_pipeline_state\s+ips/i);
+      expect(capturedSql).not.toMatch(/ips\.serving_eligible/i);
+    } finally {
+      jest.dontMock('../src/db');
+      if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = prevDatabaseUrl;
+      if (prevTrustFlag === undefined) delete process.env.DISCOVERY_USES_CATALOG_ROW_TRUST;
+      else process.env.DISCOVERY_USES_CATALOG_ROW_TRUST = prevTrustFlag;
+    }
+  });
+
+  test('commerce-index brand reader fails open when catalog_row_trust table is missing', async () => {
+    jest.resetModules();
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    const prevTrustFlag = process.env.DISCOVERY_USES_CATALOG_ROW_TRUST;
+    process.env.DATABASE_URL = 'postgres://commerce-index-brand-reader-trust-missing';
+    process.env.DISCOVERY_USES_CATALOG_ROW_TRUST = 'true';
+    const dbQueryMock = jest.fn(async () => {
+      const err = new Error('relation "catalog_row_trust" does not exist');
+      err.code = '42P01';
+      throw err;
+    });
+    jest.doMock('../src/db', () => ({ query: dbQueryMock }));
+    try {
+      const fresh = require('../src/services/discoveryFeed');
+      const candidates = await fresh._internals.fetchBrandScopedCanonicalCandidates({
+        brandAliases: ['COSRX'],
+        limit: 12,
+      });
+      expect(candidates).toEqual([]);
+    } finally {
+      jest.dontMock('../src/db');
+      if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = prevDatabaseUrl;
+      if (prevTrustFlag === undefined) delete process.env.DISCOVERY_USES_CATALOG_ROW_TRUST;
+      else process.env.DISCOVERY_USES_CATALOG_ROW_TRUST = prevTrustFlag;
+    }
+  });
+
   test('browse_products default response still hydrates reviewed card fields from product intel KB', async () => {
     const kbStore = require('../src/auroraBff/productIntelKbStore');
     const kbEntry = {

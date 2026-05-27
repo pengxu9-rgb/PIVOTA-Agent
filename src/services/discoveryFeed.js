@@ -8537,6 +8537,11 @@ async function fetchBrandScopedInternalCatalogCandidates({ brandAliases = [], li
 // `index_pipeline_state.serving_eligible=TRUE` is enforced via inner JOIN so we
 // only surface products that the pipeline has marked ready for serving. The query
 // fails open (logged warn + returns []) if the pipeline tables aren't present yet.
+function discoveryUsesCatalogRowTrust() {
+  const flag = String(process.env.DISCOVERY_USES_CATALOG_ROW_TRUST || '').trim().toLowerCase();
+  return flag === '1' || flag === 'true' || flag === 'yes' || flag === 'on';
+}
+
 async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 120 } = {}) {
   if (!process.env.DATABASE_URL) return [];
   const normalizedAliases = uniqStrings(
@@ -8550,12 +8555,20 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
   );
 
   const safeLimit = clampInt(limit, Math.max(limit, 120), 24, 400);
+  const useTrustContract = discoveryUsesCatalogRowTrust();
+  const gateJoinSql = useTrustContract
+    ? ''
+    : 'JOIN index_pipeline_state ips ON ips.content_key = apv.content_key';
+  const gateWhereSql = useTrustContract
+    ? `AND EXISTS (
+            SELECT 1 FROM catalog_products cp_trust
+            JOIN catalog_row_trust crt
+              ON crt.subject_type = 'product' AND crt.subject_key = cp_trust.product_key
+            WHERE cp_trust.content_key = apv.content_key
+              AND crt.serving_decision = 'public'
+          )`
+    : 'AND ips.serving_eligible = TRUE';
   try {
-    // agent_pdp_view aggregates offers and pricing per content_key.
-    // catalog_products provides the brand column (agent_pdp_view's brand reflects
-    // the canonical title's brand; catalog_products may carry per-merchant aliases).
-    // We match brand on EITHER apv.brand OR any catalog_products.brand attached to
-    // the same content_key, so brand search picks up variants.
     const res = await query(
       `
         WITH brand_match AS (
@@ -8586,7 +8599,7 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
           apv.category_path
         FROM agent_pdp_view apv
         JOIN brand_match bm ON bm.content_key = apv.content_key
-        JOIN index_pipeline_state ips ON ips.content_key = apv.content_key
+        ${gateJoinSql}
         LEFT JOIN LATERAL (
           SELECT cp.source_product_id, cp.product_key
           FROM catalog_products cp
@@ -8598,7 +8611,7 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
           LIMIT 1
         ) ext_seed ON TRUE
         WHERE apv.pivota_signature_id IS NOT NULL
-          AND ips.serving_eligible = TRUE
+          ${gateWhereSql}
         ORDER BY apv.refreshed_at DESC NULLS LAST
         LIMIT $3
       `,
@@ -8641,7 +8654,8 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
     if (
       err?.code === 'NO_DATABASE' ||
       (message.includes('agent_pdp_view') && message.includes('does not exist')) ||
-      (message.includes('index_pipeline_state') && message.includes('does not exist'))
+      (message.includes('index_pipeline_state') && message.includes('does not exist')) ||
+      (message.includes('catalog_row_trust') && message.includes('does not exist'))
     ) {
       // Migrations not applied yet — fail open, caller falls back to legacy path.
       return [];
