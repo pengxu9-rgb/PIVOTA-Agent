@@ -81,6 +81,50 @@ describe('sync-external-seeds-to-catalog category inference', () => {
     });
   });
 
+  test('uses high-confidence eye treatment title over stale makeup metadata', () => {
+    const category = inferCatalogMirrorCategory({
+      title: 'Regenerating Eye Cream',
+      domain: 'baiebotanique.com',
+      seed_data: {
+        product_type: 'Bronzer',
+        category: 'Bronzer',
+        category_path: 'beauty/makeup/face/bronzer',
+        description: 'A skincare eye cream with source-backed use directions.',
+        snapshot: {
+          product_type: 'Bronzer',
+          category_path: 'beauty/makeup/face/bronzer',
+        },
+      },
+    });
+
+    expect(category).toEqual({
+      productType: 'Eye Treatment',
+      category: 'Eye Treatment',
+      categoryPath: 'beauty/skincare/eye-care',
+    });
+  });
+
+  test('uses high-confidence eye treatment title over stale makeup product type', () => {
+    const category = inferCatalogMirrorCategory({
+      title: 'Regenerating Eye Cream',
+      domain: 'baiebotanique.com',
+      seed_data: {
+        product_type: 'Bronzer',
+        category: 'Bronzer',
+        description: 'A skincare eye cream with source-backed use directions.',
+        snapshot: {
+          product_type: 'Bronzer',
+        },
+      },
+    });
+
+    expect(category).toEqual({
+      productType: 'Eye Treatment',
+      category: 'Eye Treatment',
+      categoryPath: 'beauty/skincare/eye-care',
+    });
+  });
+
   test('keeps skincare bundles out of single-formula skincare categories', () => {
     const category = inferCatalogMirrorCategory({
       title: 'The Daily Duo: Foaming Face Wash + Moisturiser',

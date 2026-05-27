@@ -1,0 +1,499 @@
+{
+  "generated_at": "2026-05-27T13:48:24.494Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": null,
+    "externalProductIds": [
+      "ext_684249c7a94a1a6f43fdbd77",
+      "ext_f11383c339335d64f05a964e",
+      "ext_fda8be630c6dc79ef599df3c"
+    ],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave32_aetas_baie_coconut_serving_sync_20260527/readiness_before_serving_sync/pdp_readiness_checkpoint",
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json"
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 3,
+    "by_market": {
+      "US": 3
+    },
+    "by_domain": [
+      {
+        "key": "aetasofficial.com",
+        "count": 1
+      },
+      {
+        "key": "baiebotanique.com",
+        "count": 1
+      },
+      {
+        "key": "coconutmatter.com",
+        "count": 1
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 3
+      }
+    ],
+    "coverage": {
+      "missing_inci": 0,
+      "missing_active_raw": 3,
+      "missing_details": 1,
+      "missing_how_to": 0,
+      "missing_faq": 3
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 3,
+        "high_quality_ready": 3,
+        "missing_kb": 0,
+        "not_displayable": 0
+      },
+      "effective": {
+        "displayable": 3,
+        "high_quality_ready": 3,
+        "missing_kb": 0,
+        "not_displayable": 0,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [],
+      "effective_issue_domains": [],
+      "quality_state": [
+        {
+          "key": "reviewed",
+          "count": 3
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "seller_plus_formula",
+          "count": 3
+        }
+      ],
+      "samples": {}
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 2,
+      "any_active_items": 0,
+      "status": [
+        {
+          "key": "missing_hero",
+          "count": 2
+        },
+        {
+          "key": "not_expected_missing",
+          "count": 1
+        }
+      ],
+      "issues": [
+        {
+          "key": "missing_hero",
+          "count": 2
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "aetasofficial.com::missing_hero",
+          "count": 1
+        },
+        {
+          "key": "baiebotanique.com::missing_hero",
+          "count": 1
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "pdp_section",
+          "count": 3
+        }
+      ],
+      "samples": {
+        "missing_hero": [
+          {
+            "external_product_id": "ext_f11383c339335d64f05a964e",
+            "domain": "baiebotanique.com",
+            "title": "Regenerating Eye Cream",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_684249c7a94a1a6f43fdbd77",
+            "domain": "aetasofficial.com",
+            "title": "The Serum",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 2
+        },
+        {
+          "key": "flagged",
+          "count": 1
+        }
+      ],
+      "issues": [
+        {
+          "key": "wrong_axis_for_category",
+          "count": 1
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "aetasofficial.com::wrong_axis_for_category",
+          "count": 1
+        }
+      ],
+      "samples": {
+        "wrong_axis_for_category": [
+          {
+            "external_product_id": "ext_684249c7a94a1a6f43fdbd77",
+            "domain": "aetasofficial.com",
+            "title": "The Serum",
+            "status": "flagged",
+            "examples": [
+              {
+                "axis_name": "shade",
+                "axis_kind": "shade",
+                "value": "β (cool)",
+                "visual": true
+              },
+              {
+                "axis_name": "shade",
+                "axis_kind": "shade",
+                "value": "γ (warm)",
+                "visual": true
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_5de59eb0b35b9735762c5e8d",
+      "external_product_id": "ext_fda8be630c6dc79ef599df3c",
+      "market": "US",
+      "domain": "coconutmatter.com",
+      "title": "NOURISHING HAND BALM",
+      "canonical_url": "https://coconutmatter.com/products/nourishing-hand-balm",
+      "product_family": "single_formula",
+      "product_line_id": "pl_4272654ccd247748c8497e05",
+      "identity_variant_axes": {
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_fda8be630c6dc79ef599df3c",
+          "kb_key": "product:ext_fda8be630c6dc79ef599df3c",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_fda8be630c6dc79ef599df3c",
+          "kb_key": "product:ext_fda8be630c6dc79ef599df3c",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_4272654ccd247748c8497e05",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 244,
+          "inci_chars": 262,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 262,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 3,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 244,
+        "inci_chars": 262,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 262,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_53a02baae8cea980284fd65c",
+      "external_product_id": "ext_f11383c339335d64f05a964e",
+      "market": "US",
+      "domain": "baiebotanique.com",
+      "title": "Regenerating Eye Cream",
+      "canonical_url": "https://www.baiebotanique.com/products/regenerating-eye-cream-sns",
+      "product_family": "single_formula",
+      "product_line_id": "pl_7622b320fb727b55f96fea80",
+      "identity_variant_axes": {
+        "volume": "15ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_f11383c339335d64f05a964e",
+          "kb_key": "product:ext_f11383c339335d64f05a964e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_f11383c339335d64f05a964e",
+          "kb_key": "product:ext_f11383c339335d64f05a964e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_7622b320fb727b55f96fea80",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 0,
+          "how_to_chars": 396,
+          "inci_chars": 1212,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1212,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 0,
+        "how_to_chars": 396,
+        "inci_chars": 1212,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1212,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_d7930d2d33ac3613ed8648b1",
+      "external_product_id": "ext_684249c7a94a1a6f43fdbd77",
+      "market": "US",
+      "domain": "aetasofficial.com",
+      "title": "The Serum",
+      "canonical_url": "https://aetasofficial.com/en/products/serum?country=US",
+      "product_family": "single_formula",
+      "product_line_id": "pl_356cf89eddfbeb69c878321e",
+      "identity_variant_axes": {
+        "shade": "β cool",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_684249c7a94a1a6f43fdbd77",
+          "kb_key": "product:ext_684249c7a94a1a6f43fdbd77",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_684249c7a94a1a6f43fdbd77",
+          "kb_key": "product:ext_684249c7a94a1a6f43fdbd77",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_356cf89eddfbeb69c878321e",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 144,
+          "inci_chars": 682,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 682,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "flagged",
+        "issues": [
+          "wrong_axis_for_category"
+        ],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [
+            {
+              "axis_name": "shade",
+              "axis_kind": "shade",
+              "value": "β (cool)",
+              "visual": true
+            },
+            {
+              "axis_name": "shade",
+              "axis_kind": "shade",
+              "value": "γ (warm)",
+              "visual": true
+            }
+          ],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 144,
+        "inci_chars": 682,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 682,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

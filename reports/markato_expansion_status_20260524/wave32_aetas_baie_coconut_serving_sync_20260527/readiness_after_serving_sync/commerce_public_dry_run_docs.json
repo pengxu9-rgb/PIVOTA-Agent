@@ -1,0 +1,182 @@
+{
+  "generated_at": "2026-05-27T13:58:58.820Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 3,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_5d8d07b8dea0c405f7a34d56e5301278",
+      "sellable_item_group_id": "sig_5d8d07b8dea0c405f7a34d56e5301278",
+      "product_line_id": "pl_4272654ccd247748c8497e05",
+      "review_family_id": "rf_4272654ccd247748c8497e05",
+      "brand_name": "COCONUT MATTER",
+      "category_paths": [
+        "Hand Balm"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "NOURISHING HAND BALM",
+      "subtitle": "Crafted with a deeply moisturising blend of plant-based ingredients like jojoba oil and our signature WILD virgin coconut oil, it absorbs immediately into the skin and nourishes without leaving a greasy feel. Choose from scents infused by Bulgaria Rose, Bulgaria Lavender or Egypt Jasmine. Feel the balm on your hands as it works wonders on dry, irritated, or cracked skin.",
+      "variant_axes": {
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/products/NoMoreBluesLavenderHandBalm_aac94b81-cae7-4f38-b6d9-2e826e975e2e.png?v=1653378699",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/products/NoMoreBluesLavenderHandBalm_aac94b81-cae7-4f38-b6d9-2e826e975e2e.png?v=1653378699",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/products/JoyofLoveRoseHandBalm_2760207f-63aa-403e-ae7b-ced6368b0944.webp?v=1653378699",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/products/OnCloudNineJasmineHandBalm_16eb3434-b67c-4297-b9cc-3928b2c94840.webp?v=1653378699"
+      ],
+      "price_min": 12,
+      "price_max": 12,
+      "default_offer_id": "external_seed:ext_fda8be630c6dc79ef599df3c",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A COCONUT MATTER hand balm listed on the brand source page as NOURISHING HAND BALM.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "COCONUT MATTER",
+        "Hand Balm"
+      ],
+      "sort_keys": {
+        "price_min": 12,
+        "price_max": 12,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_fda8be630c6dc79ef599df3c"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_f5a4d54a743f913ebfbff3b2",
+      "sellable_item_group_id": "sig_f5a4d54a743f913ebfbff3b2",
+      "product_line_id": "pl_7622b320fb727b55f96fea80",
+      "review_family_id": "rf_7622b320fb727b55f96fea80",
+      "brand_name": "Baie Botanique",
+      "category_paths": [
+        "Eye Cream"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Regenerating Eye Cream",
+      "subtitle": "An award-winning eye cream designed to hydrate, smooth, and support the delicate eye area. Formulated with hyaluronic acid, botanical extracts, and antioxidant-rich oils, it helps soften the appearance of fine lines and reduce visible signs of fatigue. The silky, fast-absorbing texture melts into the skin, leaving the eye area feeling comfortable, nourished, and refreshed. With regular use, eyes appear brighter, smoother, and more awake. Suitable for morning and evening use.\n\nKey Benefits\n\nSmooths the appearance of fine lines - Hydrating actives and botanical extracts help soften and refine the look of the delicate eye area.\n\nDeeply hydrates & plumps - Hyaluronic acid helps attract and retain moisture for a smoother, more supple appearance.\n\nSupports firmness & elasticity - Sea fennel extract and red algae help support skin resilience and a more toned-looking eye contour.\n\nBrightens & refreshes tired eyes - Antioxidant-rich ingredients help reduce the look of fatigue for a brighter, more awake appearance.\n\nLightweight, fast-absorbing texture - Silky and comfortable for daily use, morning and night, and suitable under makeup.",
+      "variant_axes": {
+        "volume": "15ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://www.baiebotanique.com/cdn/shop/files/Eyecreambottlewithbox.webp?v=1768984547",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://www.baiebotanique.com/cdn/shop/files/Eyecreambottlewithbox.webp?v=1768984547",
+        "https://www.baiebotanique.com/cdn/shop/files/EyeCream.webp?v=1768984635",
+        "https://www.baiebotanique.com/cdn/shop/files/EyeCream-Benefits.webp?v=1768984635",
+        "https://www.baiebotanique.com/cdn/shop/files/10_1.webp?v=1769068125",
+        "https://www.baiebotanique.com/cdn/shop/files/EyeCream_2.webp?v=1769068125",
+        "https://www.baiebotanique.com/cdn/shop/files/EyeCream-Review.webp?v=1769068125",
+        "https://www.baiebotanique.com/cdn/shop/files/EyeCream-UGCSocialProof.webp?v=1769068125",
+        "https://www.baiebotanique.com/cdn/shop/files/EyeCream-HowtoLayer.webp?v=1769068125"
+      ],
+      "price_min": 44,
+      "price_max": 44,
+      "default_offer_id": "external_seed:ext_f11383c339335d64f05a964e",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Baie Botanique eye treatment listed on the official source page as Regenerating Eye Cream. The official description identifies: An eye cream designed to hydrate, smooth, and support the delicate eye area.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Baie Botanique",
+        "Eye Cream"
+      ],
+      "sort_keys": {
+        "price_min": 44,
+        "price_max": 44,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_f11383c339335d64f05a964e"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_bcb7a39b781c257319850000",
+      "sellable_item_group_id": "sig_bcb7a39b781c257319850000",
+      "product_line_id": "pl_356cf89eddfbeb69c878321e",
+      "review_family_id": "rf_356cf89eddfbeb69c878321e",
+      "brand_name": "Aetās",
+      "category_paths": [
+        "Skincare",
+        "Face Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "The Serum",
+      "subtitle": "The Serum is an Aetās face serum with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Butylene Glycol, Pentylene Glycol, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate.",
+      "variant_axes": {
+        "shade": "β cool",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://aetasofficial.com/cdn/shop/files/SerumyB__2048px_2048.jpg?v=1751105329",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://aetasofficial.com/cdn/shop/files/SerumyB__2048px_2048.jpg?v=1751105329",
+        "http://aetasofficial.com/cdn/shop/files/SerumyB__2048px_2048.jpg?v=1751105329",
+        "https://aetasofficial.com/cdn/shop/files/2604_serumB_fd14afbd-3c5c-4c9a-a7f5-270868d884d3.png?v=1779693433&width=1920",
+        "https://aetasofficial.com/cdn/shop/files/2604_serumY_f7f27cb0-6145-4206-a182-4707ef18455e.png?v=1779693473",
+        "https://aetasofficial.com/cdn/shop/files/2604_serumB_fd14afbd-3c5c-4c9a-a7f5-270868d884d3.png?v=1779693433&amp;width=1946",
+        "https://aetasofficial.com/cdn/shop/files/SerumyB__2048px_2048.jpg?v=1751105329&amp;width=1946",
+        "https://aetasofficial.com/cdn/shop/files/7IV09579_Large_48161306-3df3-45a5-910c-cb5ec6c37f5d.jpg?v=1751105329&amp;width=1946",
+        "https://aetasofficial.com/cdn/shop/files/7IV09377.jpg?v=1751105329&amp;width=1946"
+      ],
+      "price_min": 60,
+      "price_max": 60,
+      "default_offer_id": "external_seed:ext_684249c7a94a1a6f43fdbd77",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "An Aetās serum listed on the brand source page as The Serum.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Aetās",
+        "Skincare",
+        "Face Serum"
+      ],
+      "sort_keys": {
+        "price_min": 60,
+        "price_max": 60,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_684249c7a94a1a6f43fdbd77"
+      ]
+    }
+  ]
+}

@@ -416,6 +416,51 @@ function explicitCategoryShape(row) {
   };
 }
 
+function titleOnlyCategoryText(row) {
+  const seedData = pickSeedData(row);
+  const snapshot = pickSnapshot(row);
+  return [
+    row.title,
+    seedData.title,
+    seedData.product_name,
+    snapshot.title,
+    snapshot.product_name,
+  ]
+    .map(asString)
+    .join(' ')
+    .toLowerCase();
+}
+
+function inferTitleCorrectionCategoryShape(row, explicitShape) {
+  if (!explicitShape) return null;
+  const explicitText = [
+    explicitShape.productType,
+    explicitShape.category,
+    explicitShape.categoryPath,
+  ]
+    .map(asString)
+    .join(' ')
+    .toLowerCase();
+  const explicitLooksMakeup = /\b(?:makeup|bronzer|blush|foundation|concealer|lip|eye-makeup|eyeshadow|mascara)\b/.test(
+    explicitText,
+  );
+  if (!explicitLooksMakeup) return null;
+
+  const titleText = titleOnlyCategoryText(row);
+  if (/\b(?:eye\s+cream|eye\s+serum|eye\s+oil|eye\s+treatment|eye\s+balm)\b/.test(titleText)) {
+    return { productType: 'Eye Treatment', category: 'Eye Treatment', categoryPath: 'beauty/skincare/eye-care' };
+  }
+  return null;
+}
+
+function inferHighConfidenceTitleCategoryShape(row) {
+  const titleText = titleOnlyCategoryText(row);
+  if (/\b(?:eye\s+cream|eye\s+serum|eye\s+oil|eye\s+treatment|eye\s+balm)\b/.test(titleText)) {
+    return { productType: 'Eye Treatment', category: 'Eye Treatment', categoryPath: 'beauty/skincare/eye-care' };
+  }
+  return null;
+}
+
 function seedLooksSetOrBundle(row) {
   const seedData = pickSeedData(row);
   const snapshot = pickSnapshot(row);
@@ -480,8 +525,6 @@ function inferCatalogMirrorCategory(row) {
   if (setOrBundleShape) return setOrBundleShape;
 
   const explicitShape = explicitCategoryShape(row);
-  if (explicitShape) return explicitShape;
-
   const seedData = pickSeedData(row);
   const snapshot = pickSnapshot(row);
   const explicitCategory = normalizeCategoryToken(
@@ -492,7 +535,24 @@ function inferCatalogMirrorCategory(row) {
       snapshot.product_type ||
       snapshot.category,
   );
+  const titleCorrectionShape = inferTitleCorrectionCategoryShape(
+    row,
+    explicitShape || {
+      productType: explicitCategory,
+      category: explicitCategory,
+      categoryPath: normalizeCategoryPath(seedData.category_path || snapshot.category_path),
+    },
+  );
+  if (titleCorrectionShape) return titleCorrectionShape;
+  if (explicitShape) return explicitShape;
+
   const haystack = `${explicitCategory} ${titleCategoryText(row)}`;
+
+  if (/\b(?:sunscreen|sun\s*screen|spf\s*\d+|sun\s+stick|sun\s+cream)\b/.test(haystack)) {
+    return { productType: 'Sunscreen', category: 'Sunscreen', categoryPath: 'beauty/skincare/sunscreen' };
+  }
+  const highConfidenceTitleShape = inferHighConfidenceTitleCategoryShape(row);
+  if (highConfidenceTitleShape) return highConfidenceTitleShape;
 
   if (/\b(?:highlighter|illuminator|luminizer|luminiser)\b/.test(haystack)) {
     return { productType: 'Highlighter', category: 'Highlighter', categoryPath: 'beauty/makeup/cheek/highlighter' };
@@ -520,9 +580,6 @@ function inferCatalogMirrorCategory(row) {
   }
   if (/\b(?:primer|pore prep)\b/.test(haystack)) {
     return { productType: 'Primer', category: 'Primer', categoryPath: 'beauty/makeup/face/primer' };
-  }
-  if (/\b(?:sunscreen|sun\s*screen|spf\s*\d+|sun\s+stick|sun\s+cream)\b/.test(haystack)) {
-    return { productType: 'Sunscreen', category: 'Sunscreen', categoryPath: 'beauty/skincare/sunscreen' };
   }
   if (/\b(?:toner|tonic|tonik|toning mist|face mist|rose water)\b/.test(haystack) && !/\bscalp tonic\b/.test(haystack)) {
     return { productType: 'Toner', category: 'Toner', categoryPath: 'beauty/skincare/toner' };

@@ -1,0 +1,743 @@
+{
+  "generated_at": "2026-05-27T13:57:02.423Z",
+  "mode": "dry_run",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": true,
+  "requested_ids": 3,
+  "fetched_rows": 3,
+  "mirror_rows": 3,
+  "planned_sku_rows": 6,
+  "planned_offer_rows": 6,
+  "planned_index_state_rows": 3,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "dry_run",
+    "existing_before": {
+      "catalog_products": 3,
+      "catalog_skus": 6,
+      "catalog_offers": 6,
+      "product_group_members": 3
+    },
+    "stale_delete_preview": {
+      "current_sku_rows": 8,
+      "current_offer_rows": 8,
+      "planned_stale_sku_deletes": 2,
+      "planned_stale_offer_deletes": 2,
+      "sample_stale_skus": [
+        {
+          "title": "The Serum",
+          "sku_key": "prod::external_seed::external_seed::ext_684249c7a94a1a6f43fdbd77::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_684249c7a94a1a6f43fdbd77",
+          "source_variant_id": "prod::external_seed::external_seed::ext_684249c7a94a1a6f43fdbd77",
+          "visible_attributes": {}
+        },
+        {
+          "title": "NOURISHING HAND BALM",
+          "sku_key": "prod::external_seed::external_seed::ext_fda8be630c6dc79ef599df3c::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_fda8be630c6dc79ef599df3c",
+          "source_variant_id": "prod::external_seed::external_seed::ext_fda8be630c6dc79ef599df3c",
+          "visible_attributes": {}
+        }
+      ],
+      "sample_stale_offers": [
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_684249c7a94a1a6f43fdbd77::canonical",
+          "offer_id": "offer:external_seed:fd063c9db0b4add0692557212cab4823",
+          "list_price": 60,
+          "product_key": "prod::external_seed::external_seed::ext_684249c7a94a1a6f43fdbd77",
+          "merchant_effective_price": 60
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_fda8be630c6dc79ef599df3c::canonical",
+          "offer_id": "offer:external_seed:dbc9db645360e79f47de31c83c806b17",
+          "list_price": 12,
+          "product_key": "prod::external_seed::external_seed::ext_fda8be630c6dc79ef599df3c",
+          "merchant_effective_price": 12
+        }
+      ]
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 6
+    },
+    "product_upserts": 0,
+    "sku_upserts": 0,
+    "offer_upserts": 0,
+    "group_member_upserts": 0,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 0,
+    "identity_live_read_updates": 0,
+    "catalog_row_trust_upserts": 0,
+    "stale_offer_deletes": 0,
+    "stale_sku_deletes": 0
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_684249c7a94a1a6f43fdbd77",
+      "product_key": "prod::external_seed::external_seed::ext_684249c7a94a1a6f43fdbd77",
+      "product_group_id": "sig_bcb7a39b781c257319850000",
+      "title": "The Serum",
+      "brand": "Aetās",
+      "product_type": "Face Serum",
+      "category": "Face Serum",
+      "category_path": "beauty/skincare/treat/serum",
+      "canonical_url": "https://aetasofficial.com/en/products/serum?country=US",
+      "pivota_signature_id": "sig_7f13d7ed708f4585f93f8935168ac9b8",
+      "sku_rows": 2,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_684249c7a94a1a6f43fdbd77::sku_25a47f243271c1809703",
+        "product_key": "prod::external_seed::external_seed::ext_684249c7a94a1a6f43fdbd77",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_684249c7a94a1a6f43fdbd77",
+        "source_variant_id": "ext_684249c7a94a1a6f43fdbd77:46009531236507",
+        "source_domain": "aetasofficial.com",
+        "sku": "400",
+        "barcode": null,
+        "title": "The Serum",
+        "currency": "USD",
+        "image_url": "https://aetasofficial.com/cdn/shop/files/2604_serumB_fd14afbd-3c5c-4c9a-a7f5-270868d884d3.png?v=1779693433",
+        "visible_attributes": {
+          "Shade": "β (Cool)"
+        },
+        "visible_option_labels": {
+          "Shade": "β (Cool)"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_684249c7a94a1a6f43fdbd77",
+          "raw_variant_id": "46009531236507",
+          "source_variant_id": "ext_684249c7a94a1a6f43fdbd77:46009531236507",
+          "variant_sku": "400",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://aetasofficial.com/en/products/serum?country=US",
+          "external_redirect_url": "https://aetasofficial.com/en/products/serum?country=US",
+          "price": "60",
+          "price_amount": 60,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://aetasofficial.com/cdn/shop/files/2604_serumB_fd14afbd-3c5c-4c9a-a7f5-270868d884d3.png?v=1779693433",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Shade": "β (Cool)"
+          },
+          "raw_variant": {
+            "sku": "400",
+            "url": "https://aetasofficial.com/en/products/serum?variant=46009531236507&country=US",
+            "price": "60",
+            "stock": "In Stock",
+            "images": [
+              "https://aetasofficial.com/cdn/shop/files/2604_serumB_fd14afbd-3c5c-4c9a-a7f5-270868d884d3.png?v=1779693433"
+            ],
+            "currency": "USD",
+            "axis_kind": "shade",
+            "image_url": "https://aetasofficial.com/cdn/shop/files/2604_serumB_fd14afbd-3c5c-4c9a-a7f5-270868d884d3.png?v=1779693433",
+            "image_urls": [
+              "https://aetasofficial.com/cdn/shop/files/2604_serumB_fd14afbd-3c5c-4c9a-a7f5-270868d884d3.png?v=1779693433"
+            ],
+            "variant_id": "46009531236507",
+            "description": "The Serum is an Aetās face serum with source-backed use directions and a complete ingredient list. Key listed ingredients include Water, Butylene Glycol, Pentylene Glycol, Potassium Ascorbyl Tocopheryl Phosphate, Dipotassium Glycyrrhizate.",
+            "option_name": "Skin Undertone",
+            "option_value": "β (Cool)"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:3ba99fc76a70d269e648bc24a639b6d1",
+        "sku_key": "prod::external_seed::external_seed::ext_684249c7a94a1a6f43fdbd77::sku_25a47f243271c1809703",
+        "product_key": "prod::external_seed::external_seed::ext_684249c7a94a1a6f43fdbd77",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 60,
+        "merchant_effective_price": 60,
+        "estimated_best_price": 60,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_d7930d2d33ac3613ed8648b1",
+        "source_domain": "aetasofficial.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_d7930d2d33ac3613ed8648b1",
+          "external_product_id": "ext_684249c7a94a1a6f43fdbd77",
+          "domain": "aetasofficial.com",
+          "market": "US",
+          "product_title": "The Serum",
+          "variant_title": "The Serum",
+          "variant_sku": "400",
+          "raw_variant_id": "46009531236507",
+          "url": "https://aetasofficial.com/en/products/serum?country=US",
+          "offer_url": "https://aetasofficial.com/en/products/serum?country=US",
+          "canonical_url": "https://aetasofficial.com/en/products/serum?country=US",
+          "destination_url": "https://aetasofficial.com/en/products/serum?country=US",
+          "external_redirect_url": "https://aetasofficial.com/en/products/serum?country=US",
+          "merchant_display_name": "Aetās",
+          "price": "60",
+          "price_amount": 60,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "official_aetas_shopify_country_us_pdp_html",
+            "captured_at": "2026-05-25T16:53:34.528Z",
+            "evidence_url": "https://aetasofficial.com/en/products/serum?country=US",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "official_aetas_shopify_country_us_pdp_html",
+              "confidence": "unknown",
+              "checked_at": "2026-05-25T16:53:34.528Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://aetasofficial.com/en/products/serum?country=US"
+            },
+            "regional_price": {
+              "amount": 60,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://aetasofficial.com/en/products/serum?country=US",
+              "captured_at": "2026-05-25T16:53:34.528Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_aetas_shopify_country_us_pdp_html",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T16:53:34.528Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "official_aetas_shopify_country_us_pdp_html",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T16:53:34.528Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "official_aetas_shopify_country_us_pdp_html",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T16:53:34.528Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 60,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://aetasofficial.com/en/products/serum?country=US",
+              "captured_at": "2026-05-25T16:53:34.528Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_aetas_shopify_country_us_pdp_html",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T16:53:34.528Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 239
+      }
+    },
+    {
+      "external_product_id": "ext_f11383c339335d64f05a964e",
+      "product_key": "prod::external_seed::external_seed::ext_f11383c339335d64f05a964e",
+      "product_group_id": "sig_f5a4d54a743f913ebfbff3b2",
+      "title": "Regenerating Eye Cream",
+      "brand": "Baie Botanique",
+      "product_type": "Eye Treatment",
+      "category": "Eye Treatment",
+      "category_path": "beauty/skincare/eye-care",
+      "canonical_url": "https://www.baiebotanique.com/products/regenerating-eye-cream-sns",
+      "pivota_signature_id": "sig_f5a4d54a743f913ebfbff3b2",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_f11383c339335d64f05a964e::sku_ef422298e9db1d8f88fc",
+        "product_key": "prod::external_seed::external_seed::ext_f11383c339335d64f05a964e",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_f11383c339335d64f05a964e",
+        "source_variant_id": "ext_f11383c339335d64f05a964e:56653287293303",
+        "source_domain": "baiebotanique.com",
+        "sku": "RREC1015RUN",
+        "barcode": null,
+        "title": "15ml",
+        "currency": "USD",
+        "image_url": "https://www.baiebotanique.com/cdn/shop/files/Eyecreambottlewithbox.webp?v=1768984547",
+        "visible_attributes": {
+          "Size": "15ml"
+        },
+        "visible_option_labels": {
+          "Size": "15ml"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_f11383c339335d64f05a964e",
+          "raw_variant_id": "56653287293303",
+          "source_variant_id": "ext_f11383c339335d64f05a964e:56653287293303",
+          "variant_sku": "RREC1015RUN",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://www.baiebotanique.com/products/regenerating-eye-cream-sns",
+          "external_redirect_url": "https://www.baiebotanique.com/products/regenerating-eye-cream-sns",
+          "price": "44",
+          "price_amount": 44,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://www.baiebotanique.com/cdn/shop/files/Eyecreambottlewithbox.webp?v=1768984547",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "15ml"
+          },
+          "raw_variant": {
+            "sku": "RREC1015RUN",
+            "url": "https://www.baiebotanique.com/products/regenerating-eye-cream-sns?variant=56653287293303&utm_source=pivota&utm_medium=affiliate",
+            "price": "44.00",
+            "stock": "In Stock",
+            "title": "15ml",
+            "options": [
+              {
+                "name": "Size",
+                "value": "15ml"
+              }
+            ],
+            "currency": "USD",
+            "deep_link": "https://www.baiebotanique.com/products/regenerating-eye-cream-sns?variant=56653287293303&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://www.baiebotanique.com/cdn/shop/files/Eyecreambottlewithbox.webp?v=1768984547",
+            "image_urls": [
+              "https://www.baiebotanique.com/cdn/shop/files/Eyecreambottlewithbox.webp?v=1768984547",
+              "https://www.baiebotanique.com/cdn/shop/files/EyeCream.webp?v=1768984635",
+              "https://www.baiebotanique.com/cdn/shop/files/EyeCream-Benefits.webp?v=1768984635",
+              "https://www.baiebotanique.com/cdn/shop/files/10_1.webp?v=1769068125",
+              "https://www.baiebotanique.com/cdn/shop/files/EyeCream_2.webp?v=1769068125",
+              "https://www.baiebotanique.com/cdn/shop/files/EyeCream-Review.webp?v=1769068125",
+              "https://www.baiebotanique.com/cdn/shop/files/EyeCream-UGCSocialProof.webp?v=1769068125",
+              "https://www.baiebotanique.com/cdn/shop/files/EyeCream-HowtoLayer.webp?v=1769068125",
+              "https://www.baiebotanique.com/cdn/shop/files/EyeCream-Smears.webp?v=1769068125",
+              "https://www.baiebotanique.com/cdn/shop/files/EyeCream3g.webp?v=1769068125",
+              "https://www.baiebotanique.com/cdn/shop/files/EyeCream-KeyIngredients.webp?v=1768984635"
+            ],
+            "variant_id": "56653287293303",
+            "option_name": "Size",
+            "product_url": "https://www.baiebotanique.com/products/regenerating-eye-cream-sns",
+            "option_value": "15ml",
+            "source_origin": "shopify_json",
+            "source_quality_status": "high"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:754dcb8ddfecc1f04f83f950d89da168",
+        "sku_key": "prod::external_seed::external_seed::ext_f11383c339335d64f05a964e::sku_ef422298e9db1d8f88fc",
+        "product_key": "prod::external_seed::external_seed::ext_f11383c339335d64f05a964e",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 44,
+        "merchant_effective_price": 44,
+        "estimated_best_price": 44,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_53a02baae8cea980284fd65c",
+        "source_domain": "baiebotanique.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_53a02baae8cea980284fd65c",
+          "external_product_id": "ext_f11383c339335d64f05a964e",
+          "domain": "baiebotanique.com",
+          "market": "US",
+          "product_title": "Regenerating Eye Cream",
+          "variant_title": "15ml",
+          "variant_sku": "RREC1015RUN",
+          "raw_variant_id": "56653287293303",
+          "url": "https://www.baiebotanique.com/products/regenerating-eye-cream-sns",
+          "offer_url": "https://www.baiebotanique.com/products/regenerating-eye-cream-sns",
+          "canonical_url": "https://www.baiebotanique.com/products/regenerating-eye-cream-sns",
+          "destination_url": "https://www.baiebotanique.com/products/regenerating-eye-cream-sns",
+          "external_redirect_url": "https://www.baiebotanique.com/products/regenerating-eye-cream-sns",
+          "merchant_display_name": "Baie Botanique",
+          "price": "44",
+          "price_amount": 44,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T14:21:05.473Z",
+            "evidence_url": "https://www.baiebotanique.com/products/regenerating-eye-cream-sns",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T14:21:05.473Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://www.baiebotanique.com/products/regenerating-eye-cream-sns"
+            },
+            "regional_price": {
+              "amount": 44,
+              "currency": "USD",
+              "display_raw": "44.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.baiebotanique.com/products/regenerating-eye-cream-sns",
+              "captured_at": "2026-05-23T14:21:05.473Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T14:21:05.473Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T14:21:05.473Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T14:21:05.473Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 44,
+              "currency": "USD",
+              "display_raw": "44.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.baiebotanique.com/products/regenerating-eye-cream-sns",
+              "captured_at": "2026-05-23T14:21:05.473Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T14:21:05.473Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 1142
+      }
+    },
+    {
+      "external_product_id": "ext_fda8be630c6dc79ef599df3c",
+      "product_key": "prod::external_seed::external_seed::ext_fda8be630c6dc79ef599df3c",
+      "product_group_id": "sig_5d8d07b8dea0c405f7a34d56e5301278",
+      "title": "NOURISHING HAND BALM",
+      "brand": "COCONUT MATTER",
+      "product_type": "Hand Balm",
+      "category": "Hand Balm",
+      "category_path": "beauty/body/hand-care",
+      "canonical_url": "https://coconutmatter.com/products/nourishing-hand-balm",
+      "pivota_signature_id": "sig_5d8d07b8dea0c405f7a34d56e5301278",
+      "sku_rows": 3,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_fda8be630c6dc79ef599df3c::sku_6c0ab410b57c89798e81",
+        "product_key": "prod::external_seed::external_seed::ext_fda8be630c6dc79ef599df3c",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_fda8be630c6dc79ef599df3c",
+        "source_variant_id": "ext_fda8be630c6dc79ef599df3c:39951549431890",
+        "source_domain": "coconutmatter.com",
+        "sku": "CM14-BLUES",
+        "barcode": null,
+        "title": "NOURISHING HAND BALM",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/products/NoMoreBluesLavenderHandBalm_aac94b81-cae7-4f38-b6d9-2e826e975e2e.png?v=1653378699",
+        "visible_attributes": {
+          "Scents": "Lavender"
+        },
+        "visible_option_labels": {
+          "Scents": "Lavender"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_fda8be630c6dc79ef599df3c",
+          "raw_variant_id": "39951549431890",
+          "source_variant_id": "ext_fda8be630c6dc79ef599df3c:39951549431890",
+          "variant_sku": "CM14-BLUES",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://coconutmatter.com/products/nourishing-hand-balm",
+          "external_redirect_url": "https://coconutmatter.com/products/nourishing-hand-balm",
+          "price": "12",
+          "price_amount": 12,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/products/NoMoreBluesLavenderHandBalm_aac94b81-cae7-4f38-b6d9-2e826e975e2e.png?v=1653378699",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Scents": "Lavender"
+          },
+          "raw_variant": {
+            "sku": "CM14-BLUES",
+            "url": "https://coconutmatter.com/products/nourishing-hand-balm",
+            "price": "12",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/products/NoMoreBluesLavenderHandBalm_aac94b81-cae7-4f38-b6d9-2e826e975e2e.png?v=1653378699",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/products/NoMoreBluesLavenderHandBalm_aac94b81-cae7-4f38-b6d9-2e826e975e2e.png?v=1653378699",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/products/JoyofLoveRoseHandBalm_2760207f-63aa-403e-ae7b-ced6368b0944.webp?v=1653378699",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/products/OnCloudNineJasmineHandBalm_16eb3434-b67c-4297-b9cc-3928b2c94840.webp?v=1653378699"
+            ],
+            "variant_id": "39951549431890",
+            "description": "Crafted with a deeply moisturising blend of plant-based ingredients like jojoba oil and our signature WILD virgin coconut oil, it absorbs immediately into the skin and nourishes without leaving a greasy feel. Choose from scents infused by Bulgaria Rose, Bulgaria Lavender or Egypt Jasmine. Feel the balm on your hands as it works wonders on dry, irritated, or cracked skin.",
+            "option_name": "Scents",
+            "option_value": "Lavender"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:8324d3b9cc26bfc16c5f9bef23a0b568",
+        "sku_key": "prod::external_seed::external_seed::ext_fda8be630c6dc79ef599df3c::sku_6c0ab410b57c89798e81",
+        "product_key": "prod::external_seed::external_seed::ext_fda8be630c6dc79ef599df3c",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 12,
+        "merchant_effective_price": 12,
+        "estimated_best_price": 12,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_5de59eb0b35b9735762c5e8d",
+        "source_domain": "coconutmatter.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_5de59eb0b35b9735762c5e8d",
+          "external_product_id": "ext_fda8be630c6dc79ef599df3c",
+          "domain": "coconutmatter.com",
+          "market": "US",
+          "product_title": "NOURISHING HAND BALM",
+          "variant_title": "NOURISHING HAND BALM",
+          "variant_sku": "CM14-BLUES",
+          "raw_variant_id": "39951549431890",
+          "url": "https://coconutmatter.com/products/nourishing-hand-balm",
+          "offer_url": "https://coconutmatter.com/products/nourishing-hand-balm",
+          "canonical_url": "https://coconutmatter.com/products/nourishing-hand-balm",
+          "destination_url": "https://coconutmatter.com/products/nourishing-hand-balm",
+          "external_redirect_url": "https://coconutmatter.com/products/nourishing-hand-balm",
+          "merchant_display_name": "COCONUT MATTER",
+          "price": "12",
+          "price_amount": 12,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T01:06:29.717Z",
+            "evidence_url": "https://coconutmatter.com/products/nourishing-hand-balm",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "low",
+              "checked_at": "2026-05-24T01:06:29.717Z",
+              "reason_codes": [
+                "market_currency_not_verified",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://coconutmatter.com/products/nourishing-hand-balm"
+            },
+            "regional_price": {
+              "amount": 12,
+              "currency": "USD",
+              "display_raw": "12.00",
+              "price_type": "list",
+              "compare_at_amount": 12,
+              "compare_at_currency": null,
+              "compare_at_display_raw": "12.00",
+              "tax_included": "unknown",
+              "confidence": "low",
+              "market_switch_status": "unknown",
+              "observed_currency": "USD",
+              "source_url": "https://coconutmatter.com/products/nourishing-hand-balm",
+              "captured_at": "2026-05-24T01:06:29.717Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:06:29.717Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T01:06:29.717Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T01:06:29.717Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "status": "unverified",
+              "reason": "low_confidence_or_market_mismatch"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:06:29.717Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 373
+      }
+    }
+  ]
+}
