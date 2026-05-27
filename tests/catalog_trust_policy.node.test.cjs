@@ -78,6 +78,23 @@ function activeExternalSeed(overrides = {}) {
   };
 }
 
+function externalSeedProduct(overrides = {}) {
+  // Catalog row that mirrors an external_seed source (third-party scrape).
+  // Identity gates apply to these because the merchant is NOT the source of
+  // truth — see c1.v0.3 first-party carve-out for the contrast.
+  return activeMerchantProduct({
+    product_key: 'pk_seed_1',
+    content_key: 'ck_seed_1',
+    merchant_id: 'external_seed',
+    platform: 'external_seed',
+    source_system: 'external_product_seeds',
+    source_ref: 'ext_4242',
+    source_product_id: 'ext_4242',
+    source_domain: 'theordinary.com',
+    ...overrides,
+  });
+}
+
 function call(overrides = {}) {
   return deriveTrust({
     subject_type: 'product',
@@ -86,6 +103,19 @@ function call(overrides = {}) {
     identity: approvedIdentity(),
     ips: eligibleIps(),
     merchant_store: activeMerchantStore(),
+    now: NOW,
+    ...overrides,
+  });
+}
+
+function callExternalSeed(overrides = {}) {
+  return deriveTrust({
+    subject_type: 'product',
+    subject_key: 'pk_seed_1',
+    product: externalSeedProduct(),
+    identity: approvedIdentity({ source_listing_ref: 'external_seed:ext_4242' }),
+    ips: eligibleIps(),
+    external_seed: activeExternalSeed(),
     now: NOW,
     ...overrides,
   });
@@ -195,19 +225,20 @@ test('suppressed offer blocks', () => {
   assert.ok(trust.serving_reason_codes.includes(REASON_CODES.OFFER_SUPPRESSED));
 });
 
-// ---- SHADOW (the 580-violation gate) ----------------------------------------
+// ---- SHADOW (the 580-violation gate, external_seed cohort) ------------------
 
-test('no identity row → shadow with IDENTITY_CONFIDENCE_NULL', () => {
+test('external_seed: no identity row → shadow with IDENTITY_CONFIDENCE_NULL', () => {
   // 504 of audit's 580 — IPS-eligible external mirror rows without identity row.
-  const trust = call({ identity: null });
+  const trust = callExternalSeed({ identity: null });
   assert.equal(trust.serving_decision, 'shadow');
   assert.equal(trust.identity_status, 'unknown');
   assert.ok(trust.serving_reason_codes.includes(REASON_CODES.IDENTITY_CONFIDENCE_NULL));
 });
 
-test('review_required with live_read_enabled → shadow (audit\'s 60 cases)', () => {
-  const trust = call({
+test('external_seed: review_required with live_read_enabled → shadow (audit\'s 60 cases)', () => {
+  const trust = callExternalSeed({
     identity: approvedIdentity({
+      source_listing_ref: 'external_seed:ext_4242',
       identity_status: 'review_required',
       live_read_enabled: true,
       review_required: true,
@@ -218,30 +249,107 @@ test('review_required with live_read_enabled → shadow (audit\'s 60 cases)', ()
   assert.ok(trust.serving_reason_codes.includes(REASON_CODES.IDENTITY_REVIEW_REQUIRED_LIVE_READ));
 });
 
-test('approved + live_read disabled → shadow', () => {
-  const trust = call({
-    identity: approvedIdentity({ live_read_enabled: false }),
+test('external_seed: approved + live_read disabled → shadow', () => {
+  const trust = callExternalSeed({
+    identity: approvedIdentity({ source_listing_ref: 'external_seed:ext_4242', live_read_enabled: false }),
   });
   assert.equal(trust.serving_decision, 'shadow');
   assert.ok(trust.serving_reason_codes.includes(REASON_CODES.IDENTITY_LIVE_READ_DISABLED));
 });
 
-test('approved + null confidence → shadow', () => {
-  const trust = call({
-    identity: approvedIdentity({ identity_confidence: null }),
+test('external_seed: approved + null confidence → shadow', () => {
+  const trust = callExternalSeed({
+    identity: approvedIdentity({ source_listing_ref: 'external_seed:ext_4242', identity_confidence: null }),
   });
   assert.equal(trust.serving_decision, 'shadow');
   assert.ok(trust.serving_reason_codes.includes(REASON_CODES.IDENTITY_CONFIDENCE_NULL));
 });
 
-test('approved + review_required flag set → degrades to shadow', () => {
+test('external_seed: approved + review_required flag set → degrades to shadow', () => {
   // catches the case where status=approved but review_required=true was set
   // by a later signal — the audit cited readers that ignore review_required.
-  const trust = call({
-    identity: approvedIdentity({ review_required: true }),
+  const trust = callExternalSeed({
+    identity: approvedIdentity({ source_listing_ref: 'external_seed:ext_4242', review_required: true }),
   });
   assert.equal(trust.serving_decision, 'shadow');
   assert.equal(trust.identity_status, 'review_required');
+});
+
+// ---- FIRST-PARTY CARVE-OUT (c1.v0.3) ----------------------------------------
+//
+// Internal merchants (anything that's not external_seed) are the source of
+// truth for their own products. The identity pipeline exists to verify scraped
+// third-party content; first-party merchants get a separate, looser gate.
+
+test('first-party: no identity row → public with IDENTITY_NOT_APPLICABLE_FIRST_PARTY', () => {
+  // Reproduces the MOYU/GR test-merchant case: no pdp_identity_listing row,
+  // IPS eligible, sync_status=live. Legacy gates shadowed these; c1.v0.3
+  // serves them.
+  const trust = call({ identity: null });
+  assert.equal(trust.serving_decision, 'public');
+  assert.equal(trust.identity_status, 'unknown');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.IDENTITY_NOT_APPLICABLE_FIRST_PARTY));
+  assert.ok(!trust.serving_reason_codes.includes(REASON_CODES.IDENTITY_CONFIDENCE_NULL));
+});
+
+test('first-party: approved identity but null confidence → public (first-party exempt)', () => {
+  const trust = call({
+    identity: approvedIdentity({ identity_confidence: null }),
+  });
+  assert.equal(trust.serving_decision, 'public');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.IDENTITY_NOT_APPLICABLE_FIRST_PARTY));
+  assert.ok(!trust.serving_reason_codes.includes(REASON_CODES.IDENTITY_CONFIDENCE_NULL));
+});
+
+test('first-party: approved + live_read disabled → public (live_read is for external content)', () => {
+  const trust = call({
+    identity: approvedIdentity({ live_read_enabled: false }),
+  });
+  assert.equal(trust.serving_decision, 'public');
+  assert.ok(!trust.serving_reason_codes.includes(REASON_CODES.IDENTITY_LIVE_READ_DISABLED));
+});
+
+test('first-party: review_required STILL gates to shadow (moderation signal, not identity gap)', () => {
+  const trust = call({
+    identity: approvedIdentity({
+      identity_status: 'review_required',
+      live_read_enabled: true,
+      review_required: true,
+    }),
+  });
+  assert.equal(trust.serving_decision, 'shadow');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.IDENTITY_REVIEW_REQUIRED_LIVE_READ));
+});
+
+test('first-party: identity_status=conflict STILL blocks (data quality issue)', () => {
+  const trust = call({
+    identity: approvedIdentity({ identity_status: 'conflict' }),
+  });
+  assert.equal(trust.serving_decision, 'blocked');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.IDENTITY_CONFLICT));
+});
+
+test('first-party: hard gates (suppression, IPS, sync_status) STILL block regardless of identity', () => {
+  const tombstoned = call({
+    product: activeMerchantProduct({ suppression_reason: 'manual_takedown' }),
+    identity: null,
+  });
+  assert.equal(tombstoned.serving_decision, 'blocked');
+  assert.ok(tombstoned.serving_reason_codes.includes(REASON_CODES.ROW_TOMBSTONED));
+
+  const ipsBlocked = call({
+    identity: null,
+    ips: eligibleIps({ serving_eligible: false }),
+  });
+  assert.equal(ipsBlocked.serving_decision, 'blocked');
+  assert.ok(ipsBlocked.serving_reason_codes.includes(REASON_CODES.INDEX_NOT_SERVING_ELIGIBLE));
+
+  const archived = call({
+    product: activeMerchantProduct({ sync_status: 'archived' }),
+    identity: null,
+  });
+  assert.equal(archived.serving_decision, 'blocked');
+  assert.ok(archived.serving_reason_codes.includes(REASON_CODES.PUBLISH_STATE_NOT_PUBLIC));
 });
 
 // ---- OVERRIDES --------------------------------------------------------------
