@@ -339,8 +339,11 @@ function detectPublicCategoryMismatch(bundle) {
     ].join(' '),
   );
   if (!title || !categoryText) return false;
+  const lipLikeTitle =
+    /\b(?:lip|gloss|pout|plumping\s+gloss|lip\s+kit|lip\s+set|lip\s+bundle|lip\s+duo)\b/.test(title) ||
+    (/\bglaze\b/.test(title) && /\b(?:lip|gloss|oil|pout|treatment)\b/.test(title));
   if (
-    /\b(?:lip|gloss|glaze|pout|plumping\s+gloss|lip\s+kit|lip\s+set|lip\s+bundle|lip\s+duo)\b/.test(title) &&
+    lipLikeTitle &&
     /\bskincare\b/.test(categoryText) &&
     !/\b(?:lip|makeup|cheek|gloss)\b/.test(categoryText)
   ) {

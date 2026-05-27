@@ -1,6 +1,7 @@
 const {
   buildContentRepairReport,
   buildContentRepairRow,
+  classifyTitle,
   cleanSourceText,
   isMultiItemText,
 } = require('../../scripts/build_protected_insight_content_repair_report');
@@ -147,6 +148,13 @@ describe('protected insight content repair report', () => {
     expect(isMultiItemText('Cleanser 15ml - Cleanser. Milky Tonic 40ml - Tonic. Lotion 15ml - Lotion.')).toBe(
       true,
     );
+  });
+
+  test('classifies targeted wrinkle treatments without resurfacing fallback', () => {
+    expect(classifyTitle('Targeted Wrinkle Corrector')).toMatchObject({
+      headline: 'Wrinkle treatment',
+      highlight: 'Targeted wrinkle treatment',
+    });
   });
 
   test('builds a public-quality protected repair without downgrading community evidence', () => {
@@ -296,6 +304,268 @@ describe('protected insight content repair report', () => {
       },
       { productId: 'ext_fenty_water_boi' },
     ).blocking_issues).toEqual([]);
+  });
+
+  test('repairs Murad cleanser rows with non-generic card copy', () => {
+    const row = buildContentRepairRow(
+      seedRow({
+        external_product_id: 'ext_murad_cleanser',
+        title: 'Renewing Cleansing Cream Travel Size',
+        canonical_url: 'https://www.murad.com/products/renewing-cleansing-cream-travel-size',
+        destination_url: 'https://www.murad.com/products/renewing-cleansing-cream-travel-size',
+        seed_data: {
+          brand: 'Murad',
+          description:
+            'Creamy cleanser removes impurities and gently exfoliates without over-drying skin.',
+          snapshot: {
+            review_summary: {
+              rating: 4.8,
+              scale: 5,
+              review_count: 126,
+            },
+            raw_ingredient_text_clean:
+              'Water, Glycerin, Glycolic Acid, Jojoba Esters, Tocopherol.',
+          },
+        },
+      }),
+      {
+        ...kbRow(
+          protectedBundle({
+            canonical_product_ref: {
+              merchant_id: 'external_seed',
+              product_id: 'ext_murad_cleanser',
+            },
+            shopping_card: {
+              contract_version: 'pivota.shopping_card.v1',
+              subtitle: 'Product identity',
+              highlight: 'Official product detail',
+              intro: 'Official product detail.',
+              evidence_profile: 'community_supported',
+            },
+            search_card: {
+              compact_candidate: 'Product identity',
+              highlight_candidate: 'Official product detail',
+              intro_candidate: 'Official product detail.',
+            },
+          }),
+        ),
+        kb_key: 'product:ext_murad_cleanser',
+      },
+      {
+        reviewer: 'codex_quality_reviewer',
+        reviewedAt: '2026-05-27T00:00:00.000Z',
+      },
+    );
+
+    expect(row.skipped).toBeUndefined();
+    const bundle = row.selected.bundle;
+    expect(bundle.shopping_card.title).toBe('Murad Renewing Cleansing Cream Travel Size');
+    expect(bundle.shopping_card.subtitle).toBe('Face cleanser');
+    expect(bundle.shopping_card.highlight).toBe('Cream cleanser');
+    expect(bundle.search_card.highlight_candidate).toBe('Cream cleanser');
+    expect(bundle.product_intel_core.what_it_is.body).toContain('A Murad face cleanser');
+    expect(bundle.product_intel_core.what_it_is.body).not.toMatch(/beauty product listed/i);
+    expect(bundle.product_intel_core.why_it_stands_out[0].headline).toBe('Face cleanser positioning');
+    expect(classifyProductIntelKbRow(
+      {
+        kb_key: 'product:ext_murad_cleanser',
+        analysis: { product_intel_v1: bundle },
+      },
+      { productId: 'ext_murad_cleanser' },
+    ).blocking_issues).toEqual([]);
+  });
+
+  test('repairs Murad larger-size retinol rows without cult-favorite value copy', () => {
+    const row = buildContentRepairRow(
+      seedRow({
+        external_product_id: 'ext_murad_retinol_larger',
+        title: 'Retinol Youth Renewal Serum Larger Size',
+        canonical_url: 'https://www.murad.com/products/retinol-youth-renewal-serum-larger-size',
+        destination_url: 'https://www.murad.com/products/retinol-youth-renewal-serum-larger-size',
+        seed_data: {
+          brand: 'Murad',
+          description:
+            'Bigger = definitely better. Our cult-favorite, clinically-proven retinol serum is now available in a larger size ($156.00 value).',
+          snapshot: {
+            review_summary: {
+              rating: 4.7,
+              scale: 5,
+              review_count: 312,
+            },
+            raw_ingredient_text_clean:
+              'Water, Glycerin, Retinol, Hydroxypinacolone Retinoate, Niacinamide.',
+          },
+        },
+      }),
+      {
+        ...kbRow(
+          protectedBundle({
+            canonical_product_ref: {
+              merchant_id: 'external_seed',
+              product_id: 'ext_murad_retinol_larger',
+            },
+            shopping_card: {
+              contract_version: 'pivota.shopping_card.v1',
+              title: 'Murad Retinol Youth Renewal Serum Larger Size',
+              subtitle: 'Treatment serum',
+              intro: 'Retinol serum details.',
+              evidence_profile: 'community_supported',
+            },
+            search_card: {
+              title_candidate: 'Murad Retinol Youth Renewal Serum Larger Size',
+              compact_candidate: 'Treatment serum',
+              intro_candidate: 'Retinol serum details.',
+            },
+          }),
+        ),
+        kb_key: 'product:ext_murad_retinol_larger',
+      },
+      {
+        reviewer: 'codex_quality_reviewer',
+        reviewedAt: '2026-05-27T00:00:00.000Z',
+      },
+    );
+
+    expect(row.skipped).toBeUndefined();
+    const bundle = row.selected.bundle;
+    expect(bundle.shopping_card.highlight).toBe('Retinoid serum');
+    expect(bundle.product_intel_core.what_it_is.body).toContain('larger-size format');
+    expect(JSON.stringify(bundle).toLowerCase()).not.toMatch(/cult-favorite|clinically-proven|\\$156|definitely better/);
+    expect(classifyProductIntelKbRow(
+      {
+        kb_key: 'product:ext_murad_retinol_larger',
+        analysis: { product_intel_v1: bundle },
+      },
+      { productId: 'ext_murad_retinol_larger' },
+    ).blocking_issues).toEqual([]);
+  });
+
+  test('repairs Ole Henriksen sunscreen rows with SPF-specific card copy', () => {
+    const row = buildContentRepairRow(
+      seedRow({
+        external_product_id: 'ext_ole_spf',
+        title: 'Banana Bright Mineral Sunscreen SPF 30',
+        canonical_url: 'https://olehenriksen.com/products/banana-bright-mineral-sunscreen-spf-30',
+        destination_url: 'https://olehenriksen.com/products/banana-bright-mineral-sunscreen-spf-30',
+        seed_data: {
+          brand: 'Ole Henriksen',
+          description:
+            'A mineral sunscreen with SPF 30 for a bright-looking daily morning skincare routine.',
+          snapshot: {
+            review_summary: {
+              rating: 4.5,
+              scale: 5,
+              review_count: 241,
+            },
+          },
+        },
+      }),
+      {
+        ...kbRow(
+          protectedBundle({
+            canonical_product_ref: {
+              merchant_id: 'external_seed',
+              product_id: 'ext_ole_spf',
+            },
+          }),
+        ),
+        kb_key: 'product:ext_ole_spf',
+      },
+      {
+        reviewedAt: '2026-05-27T00:00:00.000Z',
+      },
+    );
+
+    expect(row.skipped).toBeUndefined();
+    expect(row.selected.bundle.shopping_card.subtitle).toBe('Daily sunscreen');
+    expect(row.selected.bundle.shopping_card.highlight).toBe('Daily SPF 30');
+    expect(row.selected.bundle.product_intel_core.what_it_is.body).toContain(
+      'An Ole Henriksen daily sunscreen',
+    );
+  });
+
+  test('repairs named INNBeauty serum rows without generic serum highlight fallback', () => {
+    const row = buildContentRepairRow(
+      seedRow({
+        external_product_id: 'ext_innbeauty_green_machine',
+        title: 'Green Machine Serum',
+        canonical_url: 'https://www.innbeautyproject.com/products/green-machine-serum',
+        destination_url: 'https://www.innbeautyproject.com/products/green-machine-serum',
+        seed_data: {
+          brand: 'INNBeauty Project',
+          description:
+            'An oil-jelly serum built around stable vitamin C and azelaic-acid positioning for brighter-looking, smoother-feeling skin.',
+          snapshot: {
+            review_summary: {
+              rating: 4.6,
+              scale: 5,
+              review_count: 83,
+            },
+          },
+        },
+      }),
+      {
+        ...kbRow(
+          protectedBundle({
+            canonical_product_ref: {
+              merchant_id: 'external_seed',
+              product_id: 'ext_innbeauty_green_machine',
+            },
+          }),
+        ),
+        kb_key: 'product:ext_innbeauty_green_machine',
+      },
+      {
+        reviewedAt: '2026-05-27T00:00:00.000Z',
+      },
+    );
+
+    expect(row.skipped).toBeUndefined();
+    expect(row.selected.bundle.shopping_card.subtitle).toBe('Treatment serum');
+    expect(row.selected.bundle.shopping_card.highlight).toBe('Oil-jelly serum');
+    expect(row.selected.bundle.product_intel_core.what_it_is.body).toContain(
+      'An INNBeauty Project treatment serum',
+    );
+  });
+
+  test('skips unsupported generic protected rows instead of publishing fallback card copy', () => {
+    const row = buildContentRepairRow(
+      seedRow({
+        external_product_id: 'ext_unknown_generic',
+        title: 'Mystery Product 1',
+        seed_data: {
+          brand: 'Murad',
+          description: 'A product page description with enough official text to build a sentence.',
+          snapshot: {
+            review_summary: {
+              rating: 4.2,
+              scale: 5,
+              review_count: 40,
+            },
+          },
+        },
+      }),
+      {
+        ...kbRow(
+          protectedBundle({
+            canonical_product_ref: {
+              merchant_id: 'external_seed',
+              product_id: 'ext_unknown_generic',
+            },
+          }),
+        ),
+        kb_key: 'product:ext_unknown_generic',
+      },
+      {
+        reviewedAt: '2026-05-27T00:00:00.000Z',
+      },
+    );
+
+    expect(row).toMatchObject({
+      skipped: true,
+      case_id: 'ext_unknown_generic',
+      reason: 'candidate_unavailable',
+    });
   });
 
   test('skips non-protected seller-only rows and separates skipped rows in the report', () => {
