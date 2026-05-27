@@ -1,0 +1,2650 @@
+{
+  "generated_at": "2026-05-27T07:11:02.707Z",
+  "source": "external_seed_live_pdp_modules_audit",
+  "query": {
+    "market": "US",
+    "domain": null,
+    "brand": null,
+    "external_product_id": null,
+    "external_product_ids": [
+      "ext_1e7b8274600d0395757a3b60",
+      "ext_299e2dc017565ab3081f8c26",
+      "ext_2da51d2f8d19211c89fb2a30",
+      "ext_718736656c3aa82e74546c28",
+      "ext_d55c93a9feb384ac9e0bde40",
+      "ext_3916e5e378df1e75041a1b68",
+      "ext_443039d2322b0af440c1ce9a",
+      "ext_6cb55d2964fca74dbcade8e7",
+      "ext_ac6c6e795d7f3efe5cc22f7c",
+      "ext_d8737399fc72ef06c147bd0c",
+      "ext_1e27467ab07ddb83ad74c213",
+      "ext_4e95b920b4c6a5295d55aa46",
+      "ext_c0e5209513c083e2c649c1a1",
+      "ext_d17dfc05f98d0400d5129f1c",
+      "ext_d3d708f481903ba2a6f9b732",
+      "ext_290f05b3b8bfbfdb4e079d09",
+      "ext_4dace0e8a2fe70b378b91c2c",
+      "ext_6ae70ce8a0cf2d0f8615d4dc",
+      "ext_f27f918bac908cf6ba236b83",
+      "ext_f86a3606bf6dc20fc810f99d",
+      "ext_3f98c2d64d8e5f0c183261a1",
+      "ext_44acbd72aedbea7735234e44",
+      "ext_5a82b869bc04dc2a7dac84af",
+      "ext_d15df7e8e28d8f5a9aa9a170",
+      "ext_dc5435087d1453b6958f9ec9"
+    ],
+    "include_attached": true,
+    "limit": 50,
+    "offset": 0,
+    "include_similar": true,
+    "use_sig": false
+  },
+  "summary": {
+    "scanned": 25,
+    "ready": 25,
+    "thin": 0,
+    "not_conversion_ready": 0,
+    "by_domain": [
+      {
+        "key": "7journeys.com",
+        "count": 5
+      },
+      {
+        "key": "abyssianhaircare.com",
+        "count": 5
+      },
+      {
+        "key": "apiceuticals.com",
+        "count": 5
+      },
+      {
+        "key": "khus-khus.com",
+        "count": 5
+      },
+      {
+        "key": "lhamour.com",
+        "count": 5
+      }
+    ],
+    "blocker_counts": [],
+    "weak_insights_ids": [],
+    "seller_only_insights_ids": [],
+    "force_filled_ids": [],
+    "content_gap_ids": []
+  },
+  "rows": [
+    {
+      "external_product_id": "ext_d8737399fc72ef06c147bd0c",
+      "pivota_signature_id": "sig_3aab8f2b9cc42c0a22886fa598146cbb",
+      "probed_product_id": "ext_d8737399fc72ef06c147bd0c",
+      "probed_id_type": "ext",
+      "seed_id": "eps_a2f89fc0d4698f67fd370992",
+      "market": "US",
+      "domain": "abyssianhaircare.com",
+      "title": "Protein Shake Hair Mask",
+      "canonical_url": "https://www.abyssianhaircare.com/products/protein-shake-hair-mask",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "9e9c7ee01ce5",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 4,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "www.abyssianhaircare.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 2,
+        "label_count": 4,
+        "labels": [
+          "Size: 8.45 fl oz / 250 mL",
+          "Size: 2.71 fl oz / 80 mL",
+          "8.45 fl oz / 250 mL",
+          "2.71 fl oz / 80 mL"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Hair mask identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 34,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 7,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 16
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_ac6c6e795d7f3efe5cc22f7c",
+      "pivota_signature_id": "sig_f1a11b1a9f03a9a24b170eb9736d3439",
+      "probed_product_id": "ext_ac6c6e795d7f3efe5cc22f7c",
+      "probed_id_type": "ext",
+      "seed_id": "eps_60516da07ba1a46eeeabe0ea",
+      "market": "US",
+      "domain": "abyssianhaircare.com",
+      "title": "Youth Bloom Hair Mist",
+      "canonical_url": "https://www.abyssianhaircare.com/products/revitalizing-rinsing-mist",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "9e9c7ee01ce5",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 1,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "www.abyssianhaircare.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 2,
+        "label_count": 4,
+        "labels": [
+          "Size: 7.61 fl oz / 225 mL",
+          "Size: 1.69 fl oz / 50 mL",
+          "7.61 fl oz / 225 mL",
+          "1.69 fl oz / 50 mL"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Skincare product identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 34,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 9,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 17
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_443039d2322b0af440c1ce9a",
+      "pivota_signature_id": "sig_634c3aad8f9a6fd01b9fea92fad9ab56",
+      "probed_product_id": "ext_443039d2322b0af440c1ce9a",
+      "probed_id_type": "ext",
+      "seed_id": "eps_6634928446a0a781f3c52c7e",
+      "market": "US",
+      "domain": "abyssianhaircare.com",
+      "title": "Solar Glow Dry Shampoo",
+      "canonical_url": "https://www.abyssianhaircare.com/products/solar-glow-dry-shampoo",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "9e9c7ee01ce5",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 4,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "www.abyssianhaircare.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 28 g",
+          "28 g"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Dry shampoo identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 17,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 6,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 17
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_6cb55d2964fca74dbcade8e7",
+      "pivota_signature_id": "sig_ccc880427eff8c04a11f3b07d7502488",
+      "probed_product_id": "ext_6cb55d2964fca74dbcade8e7",
+      "probed_id_type": "ext",
+      "seed_id": "eps_e883a2903c27afee30ec84c9",
+      "market": "US",
+      "domain": "abyssianhaircare.com",
+      "title": "Nano Repair Shampoo",
+      "canonical_url": "https://www.abyssianhaircare.com/products/nano-repair-shampoo",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "9e9c7ee01ce5",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 2,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "www.abyssianhaircare.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 2,
+        "label_count": 4,
+        "labels": [
+          "Size: 11.50 fl oz / 340 mL",
+          "Size: 33.81 fl oz / 1000 mL",
+          "11.50 fl oz / 340 mL",
+          "33.81 fl oz / 1000 mL"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Shampoo identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 38,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 9,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 17
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_3916e5e378df1e75041a1b68",
+      "pivota_signature_id": "sig_a3ce87e8437b7828b5e2b0fbb9ab88b6",
+      "probed_product_id": "ext_3916e5e378df1e75041a1b68",
+      "probed_id_type": "ext",
+      "seed_id": "eps_71f0c0e031d8efe4d72e4f24",
+      "market": "US",
+      "domain": "abyssianhaircare.com",
+      "title": "Daily Shield Superfood Conditioner",
+      "canonical_url": "https://www.abyssianhaircare.com/products/daily-shield-superfood-conditioner",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "9e9c7ee01ce5",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 5,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "www.abyssianhaircare.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 2,
+        "label_count": 4,
+        "labels": [
+          "Size: 8.45 fl oz / 250 mL",
+          "Size: 16.91 fl oz / 500 mL",
+          "8.45 fl oz / 250 mL",
+          "16.91 fl oz / 500 mL"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Hair conditioner identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 43,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 7,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 16
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_d15df7e8e28d8f5a9aa9a170",
+      "pivota_signature_id": "sig_b6934c5f11f1738a2408587d",
+      "probed_product_id": "ext_d15df7e8e28d8f5a9aa9a170",
+      "probed_id_type": "ext",
+      "seed_id": "eps_a53220631581db0ae2ac24b5",
+      "market": "US",
+      "domain": "lhamour.com",
+      "title": "Natural Face Moisturizer for Dry Skin | Organic Face Cream | Lhamour",
+      "canonical_url": "https://www.lhamour.com/products/natural-hydrating-facial-cream",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "9e9c7ee01ce5",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 4,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Moisturizer identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 14,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 7,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 16
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_3f98c2d64d8e5f0c183261a1",
+      "pivota_signature_id": "sig_80fbcfb336e9e7dc5fdfd47e",
+      "probed_product_id": "ext_3f98c2d64d8e5f0c183261a1",
+      "probed_id_type": "ext",
+      "seed_id": "eps_ca09f88d044f3b1d8f797031",
+      "market": "US",
+      "domain": "lhamour.com",
+      "title": "Natural Revitalizing Body Oil for Dry Skin | Moisturizing Body Oil | Lhamour",
+      "canonical_url": "https://www.lhamour.com/products/natural-revitalizing-body-oil",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "9e9c7ee01ce5",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 2,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Body oil identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 10,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 8,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 16
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_44acbd72aedbea7735234e44",
+      "pivota_signature_id": "sig_16daa81783efc0642b746c31",
+      "probed_product_id": "ext_44acbd72aedbea7735234e44",
+      "probed_id_type": "ext",
+      "seed_id": "eps_c49287f8ca5097e5e5f1fab0",
+      "market": "US",
+      "domain": "lhamour.com",
+      "title": "Sea buckthorn Foot Cream for Cracked Heels | Natural Foot Salve | Lhamour",
+      "canonical_url": "https://www.lhamour.com/products/natural-sea-buckthorn-oil-foot-salve",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "9e9c7ee01ce5",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 3,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Skincare product identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 10,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 8,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 16
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_5a82b869bc04dc2a7dac84af",
+      "pivota_signature_id": "sig_e982409798ce6faab135f36d",
+      "probed_product_id": "ext_5a82b869bc04dc2a7dac84af",
+      "probed_id_type": "ext",
+      "seed_id": "eps_ae8713b49a692f5bbdbe9842",
+      "market": "US",
+      "domain": "lhamour.com",
+      "title": "Sea Buckthorn Body Butter for Dry Skin | Natural Moisturizer | Lhamour",
+      "canonical_url": "https://www.lhamour.com/products/natural-sea-buckthorn-oil-body-butter",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "9e9c7ee01ce5",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 11,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Moisturizer identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 14,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 7,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 16
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_dc5435087d1453b6958f9ec9",
+      "pivota_signature_id": "sig_053b8f326d53ab0675ed93ec",
+      "probed_product_id": "ext_dc5435087d1453b6958f9ec9",
+      "probed_id_type": "ext",
+      "seed_id": "eps_c87a8cf6b908cb56c2b7daa2",
+      "market": "US",
+      "domain": "lhamour.com",
+      "title": "Sea buckthorn Hand Cream for Dry Hands | Natural Hand Butter | Lhamour",
+      "canonical_url": "https://www.lhamour.com/products/natural-sea-buckthorn-hand-butter",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "9e9c7ee01ce5",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 6,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Hand cream identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 13,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 7,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 16
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_2da51d2f8d19211c89fb2a30",
+      "pivota_signature_id": "sig_a7ccb1334eb133e537242dde2157f01e",
+      "probed_product_id": "ext_2da51d2f8d19211c89fb2a30",
+      "probed_id_type": "ext",
+      "seed_id": "eps_b36b9b1d2fb28c5e39090157",
+      "market": "US",
+      "domain": "7journeys.com",
+      "title": "7 Journeys Miracle Glow Serum Mask 25ml (10 Sheets)",
+      "canonical_url": "https://7journeys.com/en-inteuusuk/products/7journeys-miracle-glow-serum-mask-10-sheets",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "9e9c7ee01ce5",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 12,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 25 mL",
+          "25 mL"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Skincare product identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 43,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 10,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 22
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_718736656c3aa82e74546c28",
+      "pivota_signature_id": "sig_f4691b7294254687ef551a1498dc224f",
+      "probed_product_id": "ext_718736656c3aa82e74546c28",
+      "probed_id_type": "ext",
+      "seed_id": "eps_89843fb919f2738541f26848",
+      "market": "US",
+      "domain": "7journeys.com",
+      "title": "7 Journeys Glow Renewal Serum 45ml (Hydrated & Glowing Skin)",
+      "canonical_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-glow-renewal-serum-45ml",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "9e9c7ee01ce5",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 10,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 45 mL",
+          "45 mL"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Skincare treatment identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 46,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 7,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 22
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_d55c93a9feb384ac9e0bde40",
+      "pivota_signature_id": "sig_6f258acef923637ae7567600408ce2cf",
+      "probed_product_id": "ext_d55c93a9feb384ac9e0bde40",
+      "probed_id_type": "ext",
+      "seed_id": "eps_83b371c333c20799ce91f673",
+      "market": "US",
+      "domain": "7journeys.com",
+      "title": "7 Journeys Antarctic Timeless Serum 45ml (Hydration & Anti-aging)",
+      "canonical_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-anatctic-timeless-serum-45ml",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "9e9c7ee01ce5",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 9,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 45 mL",
+          "45 mL"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Skincare treatment identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 27,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 7,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 22
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_1e7b8274600d0395757a3b60",
+      "pivota_signature_id": "sig_59ab25c132c5bae86ddf7f5a42d62975",
+      "probed_product_id": "ext_1e7b8274600d0395757a3b60",
+      "probed_id_type": "ext",
+      "seed_id": "eps_8d72d961893897d8fbd67cb5",
+      "market": "US",
+      "domain": "7journeys.com",
+      "title": "7 Journeys Miracle Timeless Eye Cream 30g (Hydrating & Glowing)",
+      "canonical_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-miracle-timeless-eye-cream-30g",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "9e9c7ee01ce5",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 11,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 30 g",
+          "30 g"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Eye treatment identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 47,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 6,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 22
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_299e2dc017565ab3081f8c26",
+      "pivota_signature_id": "sig_38d4b7f594967e94089acfd726cce621",
+      "probed_product_id": "ext_299e2dc017565ab3081f8c26",
+      "probed_id_type": "ext",
+      "seed_id": "eps_e7510a7aa0b66fced38cbc06",
+      "market": "US",
+      "domain": "7journeys.com",
+      "title": "7 Journeys Extra Soft Glow Renewal Moisturizer 50g - Hydrating & Firming",
+      "canonical_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-extra-soft-glow-renewal-moisturizer-50g",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "9e9c7ee01ce5",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 11,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 50 g",
+          "50 g"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Moisturizer identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 38,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 7,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 22
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_6ae70ce8a0cf2d0f8615d4dc",
+      "pivota_signature_id": "sig_2afbc56f52ac6b1c99659ab3",
+      "probed_product_id": "ext_6ae70ce8a0cf2d0f8615d4dc",
+      "probed_id_type": "ext",
+      "seed_id": "eps_748df00d5321e2c0ad141e80",
+      "market": "US",
+      "domain": "khus-khus.com",
+      "title": "SURYA body elixir",
+      "canonical_url": "https://khus-khus.com/products/surya-body-elixir/",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "9e9c7ee01ce5",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 4,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "khus-khus.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 3.4 oz / 100 mL",
+          "3.4 oz / 100 mL"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Body oil identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 15,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 7,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 22
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_4dace0e8a2fe70b378b91c2c",
+      "pivota_signature_id": "sig_5c7196c7dcb74ada1236c84f",
+      "probed_product_id": "ext_4dace0e8a2fe70b378b91c2c",
+      "probed_id_type": "ext",
+      "seed_id": "eps_8e5c2bf3f271e93346944053",
+      "market": "US",
+      "domain": "khus-khus.com",
+      "title": "BLEU body serum",
+      "canonical_url": "https://khus-khus.com/products/bleu-body-serum/",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "9e9c7ee01ce5",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 3,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "khus-khus.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 6.7 oz / 200 mL",
+          "6.7 oz / 200 mL"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Body oil identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 11,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 5,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 22
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_f86a3606bf6dc20fc810f99d",
+      "pivota_signature_id": "sig_6e14d673e184819055e0122a",
+      "probed_product_id": "ext_f86a3606bf6dc20fc810f99d",
+      "probed_id_type": "ext",
+      "seed_id": "eps_8c19c7a89115389494403344",
+      "market": "US",
+      "domain": "khus-khus.com",
+      "title": "SANS AGE face serum",
+      "canonical_url": "https://khus-khus.com/products/sans-anti-wrinkle-face-serum/",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "9e9c7ee01ce5",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 3,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "khus-khus.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 1.7 oz / 50 mL",
+          "1.7 oz / 50 mL"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Serum identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 15,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 5,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 23
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_f27f918bac908cf6ba236b83",
+      "pivota_signature_id": "sig_cd2abc5dfc8c8ccbebdc0719",
+      "probed_product_id": "ext_f27f918bac908cf6ba236b83",
+      "probed_id_type": "ext",
+      "seed_id": "eps_8416ab9521044f35a34e47aa",
+      "market": "US",
+      "domain": "khus-khus.com",
+      "title": "KAI repair balm",
+      "canonical_url": "https://khus-khus.com/products/kai-repair-balm/",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "9e9c7ee01ce5",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 3,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "khus-khus.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 1 oz / 30 mL",
+          "1 oz / 30 mL"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Face balm identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 12,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 6,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 23
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_290f05b3b8bfbfdb4e079d09",
+      "pivota_signature_id": "sig_8645b51f78b6e7c77e64d6c3",
+      "probed_product_id": "ext_290f05b3b8bfbfdb4e079d09",
+      "probed_id_type": "ext",
+      "seed_id": "eps_048bcb3392fc3c2dcdca5538",
+      "market": "US",
+      "domain": "khus-khus.com",
+      "title": "D DROP humectant factor",
+      "canonical_url": "https://khus-khus.com/products/d-drop-humectant-factor/",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "9e9c7ee01ce5",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 3,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "khus-khus.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 1 oz / 30 mL",
+          "1 oz / 30 mL"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Toner identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 9,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 7,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 23
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_d17dfc05f98d0400d5129f1c",
+      "pivota_signature_id": "sig_9d47a2dd2caf5d7bbe4e9bbd",
+      "probed_product_id": "ext_d17dfc05f98d0400d5129f1c",
+      "probed_id_type": "ext",
+      "seed_id": "eps_233fb6937fe8094b020b5a16",
+      "market": "US",
+      "domain": "apiceuticals.com",
+      "title": "PROPOWAX™ Antioxidant Shower Gel 300ml",
+      "canonical_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-shower-gel/",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "9e9c7ee01ce5",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 12,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "www.apiceuticals.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 300 mL",
+          "300 mL"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Body wash identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 20,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 8,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 16
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_c0e5209513c083e2c649c1a1",
+      "pivota_signature_id": "sig_1587d8b1843fa059eb641ef4",
+      "probed_product_id": "ext_c0e5209513c083e2c649c1a1",
+      "probed_id_type": "ext",
+      "seed_id": "eps_a1dfe4e0954933aef1121656",
+      "market": "US",
+      "domain": "apiceuticals.com",
+      "title": "PROPOWAX™ Antioxidant Body Lotion 300ml",
+      "canonical_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-body-lotion/",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "9e9c7ee01ce5",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 12,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "www.apiceuticals.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 300 mL",
+          "300 mL"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Moisturizer identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 41,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 7,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 16
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_4e95b920b4c6a5295d55aa46",
+      "pivota_signature_id": "sig_745fb0840bc78619eb4bca2b",
+      "probed_product_id": "ext_4e95b920b4c6a5295d55aa46",
+      "probed_id_type": "ext",
+      "seed_id": "eps_392eec0063f18198755a2dc6",
+      "market": "US",
+      "domain": "apiceuticals.com",
+      "title": "PROPOWAX™ Antioxidant Conditioner 300ml",
+      "canonical_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-conditioner/",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "9e9c7ee01ce5",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 12,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "www.apiceuticals.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 300 mL",
+          "300 mL"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Hair conditioner identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 29,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 10,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 16
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_d3d708f481903ba2a6f9b732",
+      "pivota_signature_id": "sig_c5c41c0851763b2481798bcf",
+      "probed_product_id": "ext_d3d708f481903ba2a6f9b732",
+      "probed_id_type": "ext",
+      "seed_id": "eps_8b28f12a815d856a4c1c81e7",
+      "market": "US",
+      "domain": "apiceuticals.com",
+      "title": "PROPOWAX™ Antioxidant Dry Oil 100ml",
+      "canonical_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-dry-oil/",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "9e9c7ee01ce5",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 12,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "www.apiceuticals.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 100 mL",
+          "100 mL"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Body oil identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 20,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 10,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 16
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_1e27467ab07ddb83ad74c213",
+      "pivota_signature_id": "sig_ccd26fbd0425a9591fbe7a981b2cec97",
+      "probed_product_id": "ext_1e27467ab07ddb83ad74c213",
+      "probed_id_type": "ext",
+      "seed_id": "eps_d7bbe1c523ff1a28e9fc0feb",
+      "market": "US",
+      "domain": "apiceuticals.com",
+      "title": "PROPOWAX™ Antioxidant Shampoo 300ml",
+      "canonical_url": "https://www.apiceuticals.com/shop/propowax-antioxidant-shampoo/",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "9e9c7ee01ce5",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 12,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "www.apiceuticals.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 300 mL",
+          "300 mL"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Shampoo identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 27,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 8,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 25
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    }
+  ]
+}
