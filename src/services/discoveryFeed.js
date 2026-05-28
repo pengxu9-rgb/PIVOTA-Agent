@@ -9104,6 +9104,10 @@ function getColdStartHomeBrandCap(candidate) {
   return isExternalSeedMerchantCandidate(candidate) && candidate?.domain === 'beauty' ? 8 : 2;
 }
 
+function getHomeRecentViewBackfillFloor(limit) {
+  return Math.min(Math.max(1, Number(limit || 0) || 1), 4);
+}
+
 function compareBrowseEntries(a, b) {
   if (b.scores.finalScore !== a.scores.finalScore) return b.scores.finalScore - a.scores.finalScore;
   if (b.scores.browseBase !== a.scores.browseBase) return b.scores.browseBase - a.scores.browseBase;
@@ -9223,8 +9227,10 @@ function selectHomeProducts(scoredCandidates, viewedKeys, limit, options = {}) {
     if (decisions) decisions.set(entry.candidate.key, 'selected_cold_start_backfill');
   }
 
+  const recentViewBackfillFloor = getHomeRecentViewBackfillFloor(limit);
   for (const entry of recentViewDeferred) {
     if (selected.length >= limit) break;
+    if (selected.length >= recentViewBackfillFloor) break;
     if (selected.some((picked) => picked.candidate.key === entry.candidate.key)) continue;
     selected.push(entry);
     if (decisions) decisions.set(entry.candidate.key, 'selected_recent_view_backfill');

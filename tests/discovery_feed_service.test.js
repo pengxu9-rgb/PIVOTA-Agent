@@ -4058,6 +4058,91 @@ describe('discovery feed service', () => {
     expect(alphaCount).toBeLessThanOrEqual(2);
   });
 
+  test('home_hot_deals does not backfill recent views just to fill display slots', async () => {
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'home_hot_deals',
+        limit: 6,
+        debug: true,
+        context: {
+          auth_state: 'authenticated',
+          locale: 'en-US',
+          recent_views: [
+            {
+              merchant_id: 'external_seed',
+              product_id: 'recent_seed',
+              title: 'Recently Viewed Sunscreen',
+              brand: 'Recent Brand',
+              category: 'Skincare',
+              product_type: 'Sunscreen',
+              viewed_at: '2026-04-04T10:00:00Z',
+            },
+          ],
+          recent_queries: ['sunscreen'],
+        },
+      },
+      {
+        candidateProducts: [
+          makeProduct({
+            merchant_id: 'external_seed',
+            product_id: 'recent_seed',
+            title: 'Recently Viewed Sunscreen',
+            brand: 'Recent Brand',
+            category: 'Skincare',
+            product_type: 'Sunscreen',
+          }),
+          makeProduct({
+            merchant_id: 'external_seed',
+            product_id: 'fresh_seed_1',
+            title: 'Fresh Sunscreen 1',
+            brand: 'Fresh One',
+            category: 'Skincare',
+            product_type: 'Sunscreen',
+          }),
+          makeProduct({
+            merchant_id: 'external_seed',
+            product_id: 'fresh_seed_2',
+            title: 'Fresh Sunscreen 2',
+            brand: 'Fresh Two',
+            category: 'Skincare',
+            product_type: 'Sunscreen',
+          }),
+          makeProduct({
+            merchant_id: 'external_seed',
+            product_id: 'fresh_seed_3',
+            title: 'Fresh Sunscreen 3',
+            brand: 'Fresh Three',
+            category: 'Skincare',
+            product_type: 'Sunscreen',
+          }),
+          makeProduct({
+            merchant_id: 'external_seed',
+            product_id: 'fresh_seed_4',
+            title: 'Fresh Sunscreen 4',
+            brand: 'Fresh Four',
+            category: 'Skincare',
+            product_type: 'Sunscreen',
+          }),
+        ],
+      },
+    );
+
+    expect(response.products.map((product) => product.product_id)).toEqual([
+      'fresh_seed_1',
+      'fresh_seed_2',
+      'fresh_seed_3',
+      'fresh_seed_4',
+    ]);
+    expect(response.metadata.rank_debug.top_candidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          product_id: 'recent_seed',
+          decision: 'filtered_recent_view',
+        }),
+      ]),
+    );
+  });
+
   test('home_hot_deals exposes sig product ids when catalog signatures are present', async () => {
     const response = await getDiscoveryFeed(
       {
