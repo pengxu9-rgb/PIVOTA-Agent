@@ -1,0 +1,80 @@
+{
+  "market": "US",
+  "reviewed_by": "codex_review",
+  "reason": "reviewed_missnella_nail_polish_source_gap_recovery_category_patch",
+  "source_kind": "official_pdp_title_url_review",
+  "evidence": "Official Miss Nella PDP titles and canonical URLs reviewed on 2026-05-28 identify these rows as peel-off nail polish products.",
+  "confidence": 0.95,
+  "entries": [
+    {
+      "external_product_id": "ext_4126c4bf9bd13a864334128d",
+      "title": "Cosmic Cutie: Chrome Bronze Peel Off Nail Polish",
+      "canonical_url": "https://www.missnella.com/products/cosmic-cutie-4ml-peel-off-kids-nail-polish",
+      "source_url": "https://www.missnella.com/products/cosmic-cutie-4ml-peel-off-kids-nail-polish",
+      "category": "Nail Polish",
+      "product_type": "Nail Polish",
+      "category_path": "beauty/makeup/nails/nail-polish",
+      "catalog_category_path": "beauty/makeup/nails/nail-polish"
+    },
+    {
+      "external_product_id": "ext_8c9db1e831c4be15a42fc407",
+      "title": "Croco Dazzle: Sparkly Red Peel Off Nail Polish",
+      "canonical_url": "https://www.missnella.com/products/croco-dazzle-4ml-peel-off-kids-nail-polish",
+      "source_url": "https://www.missnella.com/products/croco-dazzle-4ml-peel-off-kids-nail-polish",
+      "category": "Nail Polish",
+      "product_type": "Nail Polish",
+      "category_path": "beauty/makeup/nails/nail-polish",
+      "catalog_category_path": "beauty/makeup/nails/nail-polish"
+    },
+    {
+      "external_product_id": "ext_a9609ad67d8dec79dd0596a1",
+      "title": "Dino-Rific: Metallic Green Peel Off Nail Polish",
+      "canonical_url": "https://www.missnella.com/products/dino-rific-4ml-peel-off-kids-nail-polish",
+      "source_url": "https://www.missnella.com/products/dino-rific-4ml-peel-off-kids-nail-polish",
+      "category": "Nail Polish",
+      "product_type": "Nail Polish",
+      "category_path": "beauty/makeup/nails/nail-polish",
+      "catalog_category_path": "beauty/makeup/nails/nail-polish"
+    },
+    {
+      "external_product_id": "ext_234ad22c62387afe966d0832",
+      "title": "Diplodo-Kiss: Metallic Pink Peel Off Nail Polish",
+      "canonical_url": "https://www.missnella.com/products/diplodo-kiss-4ml-peel-off-kids-nail-polish",
+      "source_url": "https://www.missnella.com/products/diplodo-kiss-4ml-peel-off-kids-nail-polish",
+      "category": "Nail Polish",
+      "product_type": "Nail Polish",
+      "category_path": "beauty/makeup/nails/nail-polish",
+      "catalog_category_path": "beauty/makeup/nails/nail-polish"
+    },
+    {
+      "external_product_id": "ext_ff5b7bfbff65eed0ceb7e3df",
+      "title": "Elephunky: Sparkly Blue Peel Off Nail Polish",
+      "canonical_url": "https://www.missnella.com/products/elephunky-4ml-peel-off-kids-nail-polish",
+      "source_url": "https://www.missnella.com/products/elephunky-4ml-peel-off-kids-nail-polish",
+      "category": "Nail Polish",
+      "product_type": "Nail Polish",
+      "category_path": "beauty/makeup/nails/nail-polish",
+      "catalog_category_path": "beauty/makeup/nails/nail-polish"
+    },
+    {
+      "external_product_id": "ext_3efab0751a9f85bbdcb72388",
+      "title": "Galactic Unicorn: Chrome Purple Peel Off Nail Polish",
+      "canonical_url": "https://www.missnella.com/products/galactic-unicorn-4ml-peel-off-kids-nail-polish",
+      "source_url": "https://www.missnella.com/products/galactic-unicorn-4ml-peel-off-kids-nail-polish",
+      "category": "Nail Polish",
+      "product_type": "Nail Polish",
+      "category_path": "beauty/makeup/nails/nail-polish",
+      "catalog_category_path": "beauty/makeup/nails/nail-polish"
+    },
+    {
+      "external_product_id": "ext_428194a391e38b8c6c5c5a1b",
+      "title": "If The Shoe Fits: Gold Fine Glitter Peel Off Nail Polish",
+      "canonical_url": "https://www.missnella.com/products/if-the-shoe-fits-4ml-peel-off-kids-nail-polish",
+      "source_url": "https://www.missnella.com/products/if-the-shoe-fits-4ml-peel-off-kids-nail-polish",
+      "category": "Nail Polish",
+      "product_type": "Nail Polish",
+      "category_path": "beauty/makeup/nails/nail-polish",
+      "catalog_category_path": "beauty/makeup/nails/nail-polish"
+    }
+  ]
+}

@@ -1,0 +1,740 @@
+{
+  "generated_at": "2026-05-27T15:40:27.590Z",
+  "mode": "apply",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": true,
+  "requested_ids": 3,
+  "fetched_rows": 3,
+  "mirror_rows": 3,
+  "planned_sku_rows": 3,
+  "planned_offer_rows": 3,
+  "planned_index_state_rows": 3,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "apply",
+    "existing_before": {
+      "catalog_products": 3,
+      "catalog_skus": 3,
+      "catalog_offers": 3,
+      "product_group_members": 3
+    },
+    "stale_delete_preview": {
+      "current_sku_rows": 4,
+      "current_offer_rows": 4,
+      "planned_stale_sku_deletes": 1,
+      "planned_stale_offer_deletes": 1,
+      "sample_stale_skus": [
+        {
+          "title": "Mekabu Hydrating Shine Serum",
+          "sku_key": "prod::external_seed::external_seed::ext_53cf4f0ee46873d280f632db::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_53cf4f0ee46873d280f632db",
+          "source_variant_id": "prod::external_seed::external_seed::ext_53cf4f0ee46873d280f632db",
+          "visible_attributes": {}
+        }
+      ],
+      "sample_stale_offers": [
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_53cf4f0ee46873d280f632db::canonical",
+          "offer_id": "offer:external_seed:2844a9937a0282f6dbabda3c3282fe65",
+          "list_price": 34,
+          "product_key": "prod::external_seed::external_seed::ext_53cf4f0ee46873d280f632db",
+          "merchant_effective_price": 34
+        }
+      ]
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 3
+    },
+    "product_upserts": 3,
+    "sku_upserts": 3,
+    "offer_upserts": 3,
+    "group_member_upserts": 3,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 3,
+    "identity_live_read_updates": 0,
+    "catalog_row_trust_upserts": 3,
+    "stale_offer_deletes": 1,
+    "stale_sku_deletes": 1
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_83ec9657a96effaf0923f850",
+      "product_key": "prod::external_seed::external_seed::ext_83ec9657a96effaf0923f850",
+      "product_group_id": "sig_e7fc20f5e7780ea4a1607f27",
+      "title": "APHRODITE Body Oil",
+      "brand": "JouJou",
+      "product_type": "Body Oil",
+      "category": "Body Oil",
+      "category_path": "beauty/body/body-oil",
+      "canonical_url": "https://joujoubotanicals.com/products/aphrodite-body-oil",
+      "pivota_signature_id": "sig_e7fc20f5e7780ea4a1607f27",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_83ec9657a96effaf0923f850::sku_31dd681aae2439a677ec",
+        "product_key": "prod::external_seed::external_seed::ext_83ec9657a96effaf0923f850",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_83ec9657a96effaf0923f850",
+        "source_variant_id": "ext_83ec9657a96effaf0923f850:45473797308681",
+        "source_domain": "joujoubotanicals.com",
+        "sku": "BODYOIL2",
+        "barcode": null,
+        "title": "APHRODITE Body Oil",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/Aphrodite_PNG.png?v=1739691001",
+        "visible_attributes": {
+          "Size": "100ml"
+        },
+        "visible_option_labels": {
+          "Size": "100ml"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_83ec9657a96effaf0923f850",
+          "raw_variant_id": "45473797308681",
+          "source_variant_id": "ext_83ec9657a96effaf0923f850:45473797308681",
+          "variant_sku": "BODYOIL2",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://joujoubotanicals.com/products/aphrodite-body-oil",
+          "external_redirect_url": "https://joujoubotanicals.com/products/aphrodite-body-oil",
+          "price": "91",
+          "price_amount": 91,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/Aphrodite_PNG.png?v=1739691001",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "100ml"
+          },
+          "raw_variant": {
+            "sku": "BODYOIL2",
+            "url": "https://joujoubotanicals.com/products/aphrodite-body-oil",
+            "price": "91",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/Aphrodite_PNG.png?v=1739691001",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/Aphrodite_PNG.png?v=1739691001",
+              "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/swatches_WEBFOTKE_8.jpg?v=1769791134",
+              "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/Aphrodite_3_cecc1713-35b6-472a-82fa-bf54ca8066a4.jpg?v=1769791134",
+              "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/Aphrodite_4_75f1ab3b-f6b2-49c0-b637-c0160b57b7de.jpg?v=1769791134",
+              "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/Aphrodite_2_fe130b1a-7473-4654-9ce7-2a7eaff46449.jpg?v=1769791134"
+            ],
+            "variant_id": "45473797308681",
+            "description": "A bodycare masterpiece designed to elevate your beauty and well-being. This face-grade non-greasy formula enriched with Schisandra and Bakuchi promotes skin tonning offering more supple, silky and radiant skin with longlasting intoxicating scent. \n\nIlluminate your inner goddess with every drop. \n\n100 ml / 3.38 fl oz",
+            "option_name": "Size",
+            "option_value": "100ml"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:224afe0e53b9bb70cc66591e83ed5ff3",
+        "sku_key": "prod::external_seed::external_seed::ext_83ec9657a96effaf0923f850::sku_31dd681aae2439a677ec",
+        "product_key": "prod::external_seed::external_seed::ext_83ec9657a96effaf0923f850",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 91,
+        "merchant_effective_price": 91,
+        "estimated_best_price": 91,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_f37eaf3e2d509880ff61c157",
+        "source_domain": "joujoubotanicals.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_f37eaf3e2d509880ff61c157",
+          "external_product_id": "ext_83ec9657a96effaf0923f850",
+          "domain": "joujoubotanicals.com",
+          "market": "US",
+          "product_title": "APHRODITE Body Oil",
+          "variant_title": "APHRODITE Body Oil",
+          "variant_sku": "BODYOIL2",
+          "raw_variant_id": "45473797308681",
+          "url": "https://joujoubotanicals.com/products/aphrodite-body-oil",
+          "offer_url": "https://joujoubotanicals.com/products/aphrodite-body-oil",
+          "canonical_url": "https://joujoubotanicals.com/products/aphrodite-body-oil",
+          "destination_url": "https://joujoubotanicals.com/products/aphrodite-body-oil",
+          "external_redirect_url": "https://joujoubotanicals.com/products/aphrodite-body-oil",
+          "merchant_display_name": "JouJou",
+          "price": "91",
+          "price_amount": 91,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T00:58:39.301Z",
+            "evidence_url": "https://joujoubotanicals.com/products/aphrodite-body-oil",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-24T00:58:39.301Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://joujoubotanicals.com/products/aphrodite-body-oil"
+            },
+            "regional_price": {
+              "amount": 91,
+              "currency": "USD",
+              "display_raw": "91.00",
+              "price_type": "sale",
+              "compare_at_amount": 114,
+              "compare_at_currency": "USD",
+              "compare_at_display_raw": "114.00",
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://joujoubotanicals.com/products/aphrodite-body-oil",
+              "captured_at": "2026-05-24T00:58:39.301Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T00:58:39.301Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T00:58:39.301Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T00:58:39.301Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 91,
+              "currency": "USD",
+              "display_raw": "91.00",
+              "price_type": "sale",
+              "compare_at_amount": 114,
+              "compare_at_currency": "USD",
+              "compare_at_display_raw": "114.00",
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://joujoubotanicals.com/products/aphrodite-body-oil",
+              "captured_at": "2026-05-24T00:58:39.301Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T00:58:39.301Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 317
+      }
+    },
+    {
+      "external_product_id": "ext_de5c3d5849b1256eca4a7566",
+      "product_key": "prod::external_seed::external_seed::ext_de5c3d5849b1256eca4a7566",
+      "product_group_id": "sig_6dbce8838001ffed8105fe24",
+      "title": "FLORAL FILTER Face Mask",
+      "brand": "JouJou",
+      "product_type": "Face Mask",
+      "category": "Face Mask",
+      "category_path": "beauty/skincare/mask",
+      "canonical_url": "https://joujoubotanicals.com/products/floral-filter-face-mask",
+      "pivota_signature_id": "sig_6dbce8838001ffed8105fe24",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_de5c3d5849b1256eca4a7566::sku_c1408ca1d808e5960f11",
+        "product_key": "prod::external_seed::external_seed::ext_de5c3d5849b1256eca4a7566",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_de5c3d5849b1256eca4a7566",
+        "source_variant_id": "ext_de5c3d5849b1256eca4a7566:45473768046857",
+        "source_domain": "joujoubotanicals.com",
+        "sku": "MASK1",
+        "barcode": null,
+        "title": "FLORAL FILTER Face Mask",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/Floral_PNG.png?v=1739691024",
+        "visible_attributes": {
+          "Size": "50ml"
+        },
+        "visible_option_labels": {
+          "Size": "50ml"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_de5c3d5849b1256eca4a7566",
+          "raw_variant_id": "45473768046857",
+          "source_variant_id": "ext_de5c3d5849b1256eca4a7566:45473768046857",
+          "variant_sku": "MASK1",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://joujoubotanicals.com/products/floral-filter-face-mask",
+          "external_redirect_url": "https://joujoubotanicals.com/products/floral-filter-face-mask",
+          "price": "101",
+          "price_amount": 101,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/Floral_PNG.png?v=1739691024",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "50ml"
+          },
+          "raw_variant": {
+            "sku": "MASK1",
+            "url": "https://joujoubotanicals.com/products/floral-filter-face-mask",
+            "price": "101",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/Floral_PNG.png?v=1739691024",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/Floral_PNG.png?v=1739691024",
+              "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/swatches_WEBFOTKE_5.jpg?v=1769790309",
+              "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/FLORALFILTER_eng_e86fcbbe-a71e-4d70-9648-e04b55d1e22b.jpg?v=1769790309",
+              "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/floral-filter.jpg?v=1769790309",
+              "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/Floral_filter_2.jpg?v=1769790309",
+              "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/floral_filter_3_097d2eae-86c3-47b7-b0e4-1284efa4bb54.jpg?v=1769790309",
+              "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/Yourskinritual_4.jpg?v=1777494858",
+              "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/CactusNectar_WEBFOTKE_10.jpg?v=1777401593"
+            ],
+            "variant_id": "45473768046857",
+            "description": "An instant glow-giving face mask that restores radiance and transforms a dull complexion into a vibrant and glowing one. Featuring a new generation of Flower Acids (Keto Acids - AKA) giving it higher properties of skin renewal but without irritation making this rinse-off mask perfect for all skin types, including sensitive skin.\n\n50 ml / 1.69 fl.oz.",
+            "option_name": "Size",
+            "option_value": "50ml"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:d0c5962cf6cf95e7ad9e1ca73dfd2901",
+        "sku_key": "prod::external_seed::external_seed::ext_de5c3d5849b1256eca4a7566::sku_c1408ca1d808e5960f11",
+        "product_key": "prod::external_seed::external_seed::ext_de5c3d5849b1256eca4a7566",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 101,
+        "merchant_effective_price": 101,
+        "estimated_best_price": 101,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_fe2ef343ab0fa7f9a90b43d1",
+        "source_domain": "joujoubotanicals.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_fe2ef343ab0fa7f9a90b43d1",
+          "external_product_id": "ext_de5c3d5849b1256eca4a7566",
+          "domain": "joujoubotanicals.com",
+          "market": "US",
+          "product_title": "FLORAL FILTER Face Mask",
+          "variant_title": "FLORAL FILTER Face Mask",
+          "variant_sku": "MASK1",
+          "raw_variant_id": "45473768046857",
+          "url": "https://joujoubotanicals.com/products/floral-filter-face-mask",
+          "offer_url": "https://joujoubotanicals.com/products/floral-filter-face-mask",
+          "canonical_url": "https://joujoubotanicals.com/products/floral-filter-face-mask",
+          "destination_url": "https://joujoubotanicals.com/products/floral-filter-face-mask",
+          "external_redirect_url": "https://joujoubotanicals.com/products/floral-filter-face-mask",
+          "merchant_display_name": "JouJou",
+          "price": "101",
+          "price_amount": 101,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T00:58:39.301Z",
+            "evidence_url": "https://joujoubotanicals.com/products/floral-filter-face-mask",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-24T00:58:39.301Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://joujoubotanicals.com/products/floral-filter-face-mask"
+            },
+            "regional_price": {
+              "amount": 101,
+              "currency": "USD",
+              "display_raw": "101.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://joujoubotanicals.com/products/floral-filter-face-mask",
+              "captured_at": "2026-05-24T00:58:39.301Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T00:58:39.301Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T00:58:39.301Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T00:58:39.301Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 101,
+              "currency": "USD",
+              "display_raw": "101.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://joujoubotanicals.com/products/floral-filter-face-mask",
+              "captured_at": "2026-05-24T00:58:39.301Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T00:58:39.301Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 351
+      }
+    },
+    {
+      "external_product_id": "ext_53cf4f0ee46873d280f632db",
+      "product_key": "prod::external_seed::external_seed::ext_53cf4f0ee46873d280f632db",
+      "product_group_id": "sig_2b5d9b4dc9941fef121d2f6a",
+      "title": "Mekabu Hydrating Shine Serum",
+      "brand": "MASAMI",
+      "product_type": "Hair Serum",
+      "category": "Hair Serum",
+      "category_path": "beauty/haircare/hair-serum",
+      "canonical_url": "https://lovemasami.com/products/mekabu-serum",
+      "pivota_signature_id": "sig_2b5d9b4dc9941fef121d2f6a",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_53cf4f0ee46873d280f632db::sku_74186d9c777bd59b9793",
+        "product_key": "prod::external_seed::external_seed::ext_53cf4f0ee46873d280f632db",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_53cf4f0ee46873d280f632db",
+        "source_variant_id": "ext_53cf4f0ee46873d280f632db:19939773513792",
+        "source_domain": "lovemasami.com",
+        "sku": "18600012765341",
+        "barcode": null,
+        "title": "Mekabu Hydrating Shine Serum",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-serum-mekabu-hydrating-shine-serum-18600012765341-23627648893084.jpg?v=1756936109",
+        "visible_attributes": {
+          "Size": "1.7oz"
+        },
+        "visible_option_labels": {
+          "Size": "1.7oz"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_53cf4f0ee46873d280f632db",
+          "raw_variant_id": "19939773513792",
+          "source_variant_id": "ext_53cf4f0ee46873d280f632db:19939773513792",
+          "variant_sku": "18600012765341",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://lovemasami.com/products/mekabu-serum",
+          "external_redirect_url": "https://lovemasami.com/products/mekabu-serum",
+          "price": "34",
+          "price_amount": 34,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-serum-mekabu-hydrating-shine-serum-18600012765341-23627648893084.jpg?v=1756936109",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "1.7oz"
+          },
+          "raw_variant": {
+            "sku": "18600012765341",
+            "url": "https://lovemasami.com/products/mekabu-serum",
+            "price": "34.00",
+            "stock": "In Stock",
+            "images": [
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_girl_applying_shine_serum.png?v=1756936109",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Shine_Serum_straight_hair.jpg?v=1756936109",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-serum-mekabu-hydrating-shine-serum-18600012765341-23627648893084.jpg?v=1756936109",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Shine_Serum_Natural_Curls.jpg?v=1756936109",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Shine_Serum_Blonde.jpg?v=1756936109",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/Mekabu_ingredient.jpg?v=1756936109"
+            ],
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-serum-mekabu-hydrating-shine-serum-18600012765341-23627648893084.jpg?v=1756936109",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_girl_applying_shine_serum.png?v=1756936109",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Shine_Serum_straight_hair.jpg?v=1756936109",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-serum-mekabu-hydrating-shine-serum-18600012765341-23627648893084.jpg?v=1756936109",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Shine_Serum_Natural_Curls.jpg?v=1756936109",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Shine_Serum_Blonde.jpg?v=1756936109",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/Mekabu_ingredient.jpg?v=1756936109"
+            ],
+            "variant_id": "19939773513792",
+            "description": "MASAMI Shine Serum, enriched with the Japanese ocean botanical Mekabu, gives even unruly, dull, lifeless, over-processed hair a hydrated, smoothed and nourished look. Our Shine Serum works on virtually every hair type and texture to enhance shine while leaving hair soft and silky. It adds vibrancy to hair color while providing the nutrients necessary for long term nourishment and care. Great for any hair type and texture - anyone who wants salon hair every day. \n\nSize: 1.7oz, now in a glass bottle",
+            "option_name": "Size",
+            "option_value": "1.7oz"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:c0d80643c865dff22e3ed1cafccfd44a",
+        "sku_key": "prod::external_seed::external_seed::ext_53cf4f0ee46873d280f632db::sku_74186d9c777bd59b9793",
+        "product_key": "prod::external_seed::external_seed::ext_53cf4f0ee46873d280f632db",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 34,
+        "merchant_effective_price": 34,
+        "estimated_best_price": 34,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_07f3261f7a8de9fe306209a1",
+        "source_domain": "lovemasami.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_07f3261f7a8de9fe306209a1",
+          "external_product_id": "ext_53cf4f0ee46873d280f632db",
+          "domain": "lovemasami.com",
+          "market": "US",
+          "product_title": "Mekabu Hydrating Shine Serum",
+          "variant_title": "Mekabu Hydrating Shine Serum",
+          "variant_sku": "18600012765341",
+          "raw_variant_id": "19939773513792",
+          "url": "https://lovemasami.com/products/mekabu-serum",
+          "offer_url": "https://lovemasami.com/products/mekabu-serum",
+          "canonical_url": "https://lovemasami.com/products/mekabu-serum",
+          "destination_url": "https://lovemasami.com/products/mekabu-serum",
+          "external_redirect_url": "https://lovemasami.com/products/mekabu-serum",
+          "merchant_display_name": "MASAMI",
+          "price": "34",
+          "price_amount": 34,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-25T05:05:27.684Z",
+            "evidence_url": "https://lovemasami.com/products/mekabu-serum",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-25T05:05:27.684Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://lovemasami.com/products/mekabu-serum"
+            },
+            "regional_price": {
+              "amount": 34,
+              "currency": "USD",
+              "display_raw": "34.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://lovemasami.com/products/mekabu-serum",
+              "captured_at": "2026-05-25T05:05:27.684Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T05:05:27.684Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T05:05:27.684Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T05:05:27.684Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 34,
+              "currency": "USD",
+              "display_raw": "34.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://lovemasami.com/products/mekabu-serum",
+              "captured_at": "2026-05-25T05:05:27.684Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T05:05:27.684Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 502
+      }
+    }
+  ]
+}

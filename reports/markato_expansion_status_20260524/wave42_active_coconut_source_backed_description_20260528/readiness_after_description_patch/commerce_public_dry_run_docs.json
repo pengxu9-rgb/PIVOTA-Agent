@@ -1,0 +1,181 @@
+{
+  "generated_at": "2026-05-28T03:22:37.519Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 3,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_836b576047d491db3b856375",
+      "sellable_item_group_id": "sig_836b576047d491db3b856375",
+      "product_line_id": "pl_fc8ad53d0f7c035398bf1af6",
+      "review_family_id": "rf_fc8ad53d0f7c035398bf1af6",
+      "brand_name": "Active Drip",
+      "category_paths": [
+        "Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "KOJIC DRIP",
+      "subtitle": "KOJIC DRIP is a fragrance-free niacinamide and kojic acid serum for uneven tone, dark spots, post-acne marks, and dullness, pairing barrier-conscious brightening support with daily AM/PM serum use.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-kojic-drip-niacinamide-serum-bottle.png?v=1778767043",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-kojic-drip-niacinamide-serum-bottle.png?v=1778767043",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/kojic-drip-niacinamide-serum-bottle-dropper.png?v=1778767200",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/kojic-drip-benefits-fades-acne-marks-hyperpigmentation.jpg?v=1778767306",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/kojic-drip-clinically-proven-fade-brighten-even-skin-tone.jpg?v=1778767350",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/how-to-layer-skincare-routine-with-kojic-drip-serum.jpg?v=1778767393",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/kojic-drip-clinical-study-results-after-4-weeks.jpg?v=1778767469",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/kojic-drip-niacinamide-5-kojic-acid-0-3-ingredients.jpg?v=1778767515",
+        "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/how-to-use-kojic-drip-niacinamide-serum-am-pm.jpg?v=1778767558"
+      ],
+      "price_min": 59.9,
+      "price_max": 59.9,
+      "default_offer_id": "external_seed:ext_11509e4feaf83a2419d8c77d",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Active Drip KOJIC DRIP is an official-source serum attached to a niacinamide and kojic-acid glow-and-corrective PDP, with source copy referencing Japanese fermentation inspiration.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Active Drip",
+        "Serum"
+      ],
+      "sort_keys": {
+        "price_min": 59.9,
+        "price_max": 59.9,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_11509e4feaf83a2419d8c77d"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_2d065c767b6e18a4d7f4a660",
+      "sellable_item_group_id": "sig_2d065c767b6e18a4d7f4a660",
+      "product_line_id": "pl_7f52f3cb18dea57eab9a16cd",
+      "review_family_id": "rf_7f52f3cb18dea57eab9a16cd",
+      "brand_name": "COCONUT MATTER",
+      "category_paths": [
+        "Shampoo"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Matcha Shake Shampoo Concentrate | For All Hair Types",
+      "subtitle": "Matcha Shake is a sulfate-free powder shampoo concentrate made with plants and minerals to gently cleanse without stripping, add volume, support a calmer scalp, and help hair feel softer and shinier.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/1_f9e1fb1d-a484-4b41-b3b4-70ff8dcda8db.png?v=1763292731",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/1_f9e1fb1d-a484-4b41-b3b4-70ff8dcda8db.png?v=1763292731",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/3_e19226d6-86b1-4d9c-a977-5f0bdcc54cdb.png?v=1763292731",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/5_4bfd3984-bd4e-4283-b8aa-4e4d28f10f24.png?v=1763292850",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/liquidshampoovspowder_88a67b62-b3a6-405c-b15d-712b049e04e6.png?v=1763292850",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-matcha-shake-shampoo-natural-vegan-beforeafter2.png?v=1763292850",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-matcha-shake-shampoo-natural-vegan-beforeafter3.png?v=1763292850",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-matcha-shake-shampoo-natural-vegan-features.png?v=1763292850",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-matcha-shake-shampoo-natural-vegan-reviews.png?v=1763292850"
+      ],
+      "price_min": 25,
+      "price_max": 25,
+      "default_offer_id": "external_seed:ext_9518e81076efc5c5138214ee",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "COCONUT MATTER Matcha Shake is a shampoo concentrate for all hair types, based on the official PDP title and reviewed shampoo category.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "COCONUT MATTER",
+        "Shampoo"
+      ],
+      "sort_keys": {
+        "price_min": 25,
+        "price_max": 25,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_9518e81076efc5c5138214ee"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_cd6ca146b0bc7efe26834866",
+      "sellable_item_group_id": "sig_cd6ca146b0bc7efe26834866",
+      "product_line_id": "pl_6029041f7f356100d8858990",
+      "review_family_id": "rf_6029041f7f356100d8858990",
+      "brand_name": "COCONUT MATTER",
+      "category_paths": [
+        "Body Cleanser"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Oaty Shake Body Wash Concentrate",
+      "subtitle": "Oaty Shake is a vegan powder body wash concentrate with oat powder, citrus peel, aloe, rice protein, and coconut oil, designed to cleanse without stripping while calming dry, dull, irritated, or flaky skin.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/20.png?v=1763371394",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/20.png?v=1763371394",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/21.png?v=1763371394",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/22.png?v=1763371394",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/5_a9dfa538-4bb1-422b-8dfe-966bc461fbde.png?v=1763371394",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-all-natural-body-wash-concentrate-oaty-shake-reviews.png?v=1763371394",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/23.png?v=1763371394"
+      ],
+      "price_min": 25,
+      "price_max": 25,
+      "default_offer_id": "external_seed:ext_57fe66e03e7b47b972b78c30",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "COCONUT MATTER Oaty Shake is a body wash concentrate; the official-source description is thin, so the KB keeps the product as a body-cleanse concentrate without adding benefit claims.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "COCONUT MATTER",
+        "Body Cleanser"
+      ],
+      "sort_keys": {
+        "price_min": 25,
+        "price_max": 25,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_57fe66e03e7b47b972b78c30"
+      ]
+    }
+  ]
+}

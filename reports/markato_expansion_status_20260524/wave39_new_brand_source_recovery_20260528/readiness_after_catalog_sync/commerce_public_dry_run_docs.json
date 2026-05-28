@@ -1,0 +1,269 @@
+{
+  "generated_at": "2026-05-28T02:14:27.931Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 5,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_ee97839e413a3173f2dcc09f",
+      "sellable_item_group_id": "sig_ee97839e413a3173f2dcc09f",
+      "product_line_id": "pl_b6086ae4fc35953e5c4314a0",
+      "review_family_id": "rf_b6086ae4fc35953e5c4314a0",
+      "brand_name": "OILUJ",
+      "category_paths": [
+        "Body Oil"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "OILÙJ, Life Oil: Organic Moringa/Sandalwood Blend",
+      "subtitle": "OILUJ presents this face, body, and hair oil as an organic moringa oil and sandalwood essential-oil blend in a 2 fl oz / 60 ml format, with vegan, gluten-free, paraben-free, and fragrance-free positioning.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640",
+        "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640"
+      ],
+      "price_min": 65,
+      "price_max": 65,
+      "default_offer_id": "external_seed:ext_07cfaab25950196c3ec1b5f3",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "OILUJ",
+        "Body Oil"
+      ],
+      "sort_keys": {
+        "price_min": 65,
+        "price_max": 65,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_07cfaab25950196c3ec1b5f3"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_a926cea3453218463535a2f7",
+      "sellable_item_group_id": "sig_a926cea3453218463535a2f7",
+      "product_line_id": "pl_c3cd9be5f24342212c10f7d7",
+      "review_family_id": "rf_c3cd9be5f24342212c10f7d7",
+      "brand_name": "OILUJ",
+      "category_paths": [
+        "Body Oil"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "OILÙJ, Life Oil: Organic Moringa/ French Lavender Blend",
+      "subtitle": "OILUJ presents this face, body, and hair oil as an organic moringa oil and French lavender essential-oil blend, positioned for hydration, aromatic comfort, and multipurpose use.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p12_i2_w1776.jpeg?width=640",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p12_i2_w1776.jpeg?width=640",
+        "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p12_i2_w1776.jpeg?width=640"
+      ],
+      "price_min": 65,
+      "price_max": 65,
+      "default_offer_id": "external_seed:ext_1493a61baf165a6c00e4977b",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "OILUJ",
+        "Body Oil"
+      ],
+      "sort_keys": {
+        "price_min": 65,
+        "price_max": 65,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_1493a61baf165a6c00e4977b"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_6dc678aa5047edb9ec081365",
+      "sellable_item_group_id": "sig_6dc678aa5047edb9ec081365",
+      "product_line_id": "pl_c9ee429c5029b2ddc7e6f0ed",
+      "review_family_id": "rf_c9ee429c5029b2ddc7e6f0ed",
+      "brand_name": "OILUJ",
+      "category_paths": [
+        "Eye Treatment"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "OILÙJ, \"Eye Live\"",
+      "subtitle": "OILUJ presents Eye Live as an eye-contour treatment built around evening primrose, jojoba oil, moringa oil, and vitamin E for the delicate eye area.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p15_i2_w1776.jpeg?width=640",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p15_i2_w1776.jpeg?width=640",
+        "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p15_i2_w1776.jpeg?width=640"
+      ],
+      "price_min": 35,
+      "price_max": 35,
+      "default_offer_id": "external_seed:ext_3a16e6a6300af832ae3ccdb7",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "OILUJ",
+        "Eye Treatment"
+      ],
+      "sort_keys": {
+        "price_min": 35,
+        "price_max": 35,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_3a16e6a6300af832ae3ccdb7"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_73cf65503f5b81bd97e9dd2a",
+      "sellable_item_group_id": "sig_73cf65503f5b81bd97e9dd2a",
+      "product_line_id": "pl_da45d4385834fef08bb8e8dc",
+      "review_family_id": "rf_da45d4385834fef08bb8e8dc",
+      "brand_name": "OILUJ",
+      "category_paths": [
+        "Lip Balm"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "OILÙJ, \"Lip Life\"",
+      "subtitle": "OILUJ presents Lip Life as an organic lip balm made with virgin coconut oil, organic beeswax, moringa oil, and vitamin E for daily lip moisture.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p17_i2_w1776.jpeg?width=640",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p17_i2_w1776.jpeg?width=640",
+        "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p17_i2_w1776.jpeg?width=640"
+      ],
+      "price_min": 15,
+      "price_max": 15,
+      "default_offer_id": "external_seed:ext_79fc9f55f8b092590e168c8d",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "OILUJ",
+        "Lip Balm"
+      ],
+      "sort_keys": {
+        "price_min": 15,
+        "price_max": 15,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_79fc9f55f8b092590e168c8d"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_e67ca56467dcfed9b5ac5841",
+      "sellable_item_group_id": "sig_e67ca56467dcfed9b5ac5841",
+      "product_line_id": "pl_b2cbc104212ad5980a14da7b",
+      "review_family_id": "rf_b2cbc104212ad5980a14da7b",
+      "brand_name": "OILUJ",
+      "category_paths": [
+        "Body Oil"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "OILÙJ, Life Oil",
+      "subtitle": "OILUJ presents Life Oil as cold-pressed moringa oil sourced from Nicaragua, with a first-pressed golden oil format for skin and hair.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p5_i5_w1776.jpeg?width=640",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p5_i5_w1776.jpeg?width=640",
+        "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p5_i5_w1776.jpeg?width=640"
+      ],
+      "price_min": 65,
+      "price_max": 65,
+      "default_offer_id": "external_seed:ext_ab35eb07e8635bb1e1be3ebf",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "OILUJ",
+        "Body Oil"
+      ],
+      "sort_keys": {
+        "price_min": 65,
+        "price_max": 65,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_ab35eb07e8635bb1e1be3ebf"
+      ]
+    }
+  ]
+}

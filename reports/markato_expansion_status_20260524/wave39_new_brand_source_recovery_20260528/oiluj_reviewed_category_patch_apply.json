@@ -1,0 +1,189 @@
+{
+  "generated_at": "2026-05-28T02:08:25.660Z",
+  "dry_run": false,
+  "manifest": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave39_new_brand_source_recovery_20260528/oiluj_reviewed_category_patch_manifest.json",
+  "market": "US",
+  "allow_overwrite": false,
+  "overwrite_confirmed": false,
+  "summary": {
+    "scanned": 5,
+    "planned": 5,
+    "unchanged": 0,
+    "blocked": 0,
+    "missing": 0,
+    "updated": 5,
+    "catalog_product_updates": 5,
+    "identity_updates": 0,
+    "by_patch_key": {
+      "category": 5,
+      "product_type": 5,
+      "category_path": 5,
+      "catalog_category_path": 5
+    },
+    "blocking_reasons": {}
+  },
+  "apply_results": [
+    {
+      "external_product_id": "ext_07cfaab25950196c3ec1b5f3",
+      "seed_updates": 1,
+      "catalog_product_updates": 1,
+      "identity_updates": 0
+    },
+    {
+      "external_product_id": "ext_1493a61baf165a6c00e4977b",
+      "seed_updates": 1,
+      "catalog_product_updates": 1,
+      "identity_updates": 0
+    },
+    {
+      "external_product_id": "ext_3a16e6a6300af832ae3ccdb7",
+      "seed_updates": 1,
+      "catalog_product_updates": 1,
+      "identity_updates": 0
+    },
+    {
+      "external_product_id": "ext_79fc9f55f8b092590e168c8d",
+      "seed_updates": 1,
+      "catalog_product_updates": 1,
+      "identity_updates": 0
+    },
+    {
+      "external_product_id": "ext_ab35eb07e8635bb1e1be3ebf",
+      "seed_updates": 1,
+      "catalog_product_updates": 1,
+      "identity_updates": 0
+    }
+  ],
+  "plans": [
+    {
+      "id": "eps_dc72b5d18cbbbffe502bfa20",
+      "external_product_id": "ext_07cfaab25950196c3ec1b5f3",
+      "title": "OILÙJ, Life Oil: Organic Moringa/Sandalwood Blend",
+      "canonical_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+      "status": "planned",
+      "changed": true,
+      "patch_keys": [
+        "category",
+        "product_type",
+        "category_path",
+        "catalog_category_path"
+      ],
+      "before": {
+        "category": "",
+        "category_path": "",
+        "catalog_category_path": "",
+        "product_type": ""
+      },
+      "after": {
+        "category": "Body Oil",
+        "category_path": "beauty/skincare/body/body-oil",
+        "catalog_category_path": "beauty/skincare/body/body-oil",
+        "product_type": "Body Oil"
+      }
+    },
+    {
+      "id": "eps_788807b1346798f50430e971",
+      "external_product_id": "ext_1493a61baf165a6c00e4977b",
+      "title": "OILÙJ, Life Oil: Organic Moringa/ French Lavender Blend",
+      "canonical_url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+      "status": "planned",
+      "changed": true,
+      "patch_keys": [
+        "category",
+        "product_type",
+        "category_path",
+        "catalog_category_path"
+      ],
+      "before": {
+        "category": "",
+        "category_path": "",
+        "catalog_category_path": "",
+        "product_type": ""
+      },
+      "after": {
+        "category": "Body Oil",
+        "category_path": "beauty/skincare/body/body-oil",
+        "catalog_category_path": "beauty/skincare/body/body-oil",
+        "product_type": "Body Oil"
+      }
+    },
+    {
+      "id": "eps_f44441b9491577f7041972cc",
+      "external_product_id": "ext_3a16e6a6300af832ae3ccdb7",
+      "title": "OILÙJ, \"Eye Live\"",
+      "canonical_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+      "status": "planned",
+      "changed": true,
+      "patch_keys": [
+        "category",
+        "product_type",
+        "category_path",
+        "catalog_category_path"
+      ],
+      "before": {
+        "category": "",
+        "category_path": "",
+        "catalog_category_path": "",
+        "product_type": ""
+      },
+      "after": {
+        "category": "Eye Treatment",
+        "category_path": "beauty/skincare/eye/treatment",
+        "catalog_category_path": "beauty/skincare/eye/treatment",
+        "product_type": "Eye Treatment"
+      }
+    },
+    {
+      "id": "eps_c7fd84cd5bb7e47f0d2eb06f",
+      "external_product_id": "ext_79fc9f55f8b092590e168c8d",
+      "title": "OILÙJ, \"Lip Life\"",
+      "canonical_url": "http://www.oiluj.com/store/p17/OIL%C3%99J%2C_%22Lip_Life%22.html",
+      "status": "planned",
+      "changed": true,
+      "patch_keys": [
+        "category",
+        "product_type",
+        "category_path",
+        "catalog_category_path"
+      ],
+      "before": {
+        "category": "",
+        "category_path": "",
+        "catalog_category_path": "",
+        "product_type": ""
+      },
+      "after": {
+        "category": "Lip Balm",
+        "category_path": "beauty/makeup/lip/balm",
+        "catalog_category_path": "beauty/makeup/lip/balm",
+        "product_type": "Lip Balm"
+      }
+    },
+    {
+      "id": "eps_b7a050ba2f78906f4c033659",
+      "external_product_id": "ext_ab35eb07e8635bb1e1be3ebf",
+      "title": "OILÙJ, Life Oil",
+      "canonical_url": "http://www.oiluj.com/store/p5/OIL%C3%99J%2C_Life_Oil.html",
+      "status": "planned",
+      "changed": true,
+      "patch_keys": [
+        "category",
+        "product_type",
+        "category_path",
+        "catalog_category_path"
+      ],
+      "before": {
+        "category": "",
+        "category_path": "",
+        "catalog_category_path": "",
+        "product_type": ""
+      },
+      "after": {
+        "category": "Body Oil",
+        "category_path": "beauty/skincare/body/body-oil",
+        "catalog_category_path": "beauty/skincare/body/body-oil",
+        "product_type": "Body Oil"
+      }
+    }
+  ]
+}

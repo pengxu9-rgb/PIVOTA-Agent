@@ -1,0 +1,46 @@
+{
+  "market": "US",
+  "reviewed_by": "codex_wave42_quality_reviewer",
+  "reason": "Markato Wave42 reviewed official-source description patch for full-INCI/how-to SKUs still held by short description",
+  "entries": [
+    {
+      "external_product_id": "ext_11509e4feaf83a2419d8c77d",
+      "market": "US",
+      "canonical_url": "https://activedrip.com/products/niacinamide-kojic-acid-glow-and-corrective-serum",
+      "source_url": "https://activedrip.com/products/niacinamide-kojic-acid-glow-and-corrective-serum",
+      "source_kind": "official_pdp_reviewed_description",
+      "description_source_kind": "official_pdp_product_benefits_and_routine",
+      "reviewed_by": "codex_wave42_quality_reviewer",
+      "reason": "Markato Wave42 reviewed official-source description patch for full-INCI/how-to SKU still held by short description",
+      "evidence": "Official Active Drip PDP for KOJIC DRIP lists product type, skin fit, benefits, key ingredients, all ingredients, and how-to directions.",
+      "description": "KOJIC DRIP is a fragrance-free niacinamide and kojic acid serum for uneven tone, dark spots, post-acne marks, and dullness, pairing barrier-conscious brightening support with daily AM/PM serum use.",
+      "allow_overwrite_high_quality": true
+    },
+    {
+      "external_product_id": "ext_9518e81076efc5c5138214ee",
+      "market": "US",
+      "canonical_url": "https://coconutmatter.com/products/matcha-shake-shampoo-concentrate",
+      "source_url": "https://coconutmatter.com/products/matcha-shake-shampoo-concentrate",
+      "source_kind": "official_pdp_reviewed_description",
+      "description_source_kind": "official_pdp_product_benefits_and_formula_context",
+      "reviewed_by": "codex_wave42_quality_reviewer",
+      "reason": "Markato Wave42 reviewed official-source description patch for full-INCI/how-to SKU still held by short description",
+      "evidence": "Official Coconut Matter PDP for Matcha Shake lists hair concerns, benefits, full ingredient list, and powder shampoo usage instructions.",
+      "description": "Matcha Shake is a sulfate-free powder shampoo concentrate made with plants and minerals to gently cleanse without stripping, add volume, support a calmer scalp, and help hair feel softer and shinier.",
+      "allow_overwrite_high_quality": true
+    },
+    {
+      "external_product_id": "ext_57fe66e03e7b47b972b78c30",
+      "market": "US",
+      "canonical_url": "https://coconutmatter.com/products/oaty-shake-body-wash-concentrate",
+      "source_url": "https://coconutmatter.com/products/oaty-shake-body-wash-concentrate",
+      "source_kind": "official_pdp_reviewed_description",
+      "description_source_kind": "official_pdp_product_benefits_and_formula_context",
+      "reviewed_by": "codex_wave42_quality_reviewer",
+      "reason": "Markato Wave42 reviewed official-source description patch for full-INCI/how-to SKU still held by short description",
+      "evidence": "Official Coconut Matter PDP for Oaty Shake lists body wash benefits, full ingredient list, and powder body wash usage instructions.",
+      "description": "Oaty Shake is a vegan powder body wash concentrate with oat powder, citrus peel, aloe, rice protein, and coconut oil, designed to cleanse without stripping while calming dry, dull, irritated, or flaky skin.",
+      "allow_overwrite_high_quality": true
+    }
+  ]
+}

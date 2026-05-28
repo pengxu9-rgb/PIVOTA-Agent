@@ -1,0 +1,69 @@
+{
+  "generated_at": "2026-05-28T01:40:28.094Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 1,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_de2c100382224878790af271",
+      "sellable_item_group_id": "sig_de2c100382224878790af271",
+      "product_line_id": "pl_b135453a63032cf132dc4c3d",
+      "review_family_id": "rf_b135453a63032cf132dc4c3d",
+      "brand_name": "Joocyee",
+      "category_paths": [
+        "Primer"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Color-correcting Primer",
+      "subtitle": "Naturally translucent, no chalky white cast\n\nBlends seamlessly in 3 seconds with bare hand.\n\nFormulated with cactus flower extract to deliver long-lasting hydration and moisture.\n\nExclusive pigment grinding technology blends perfectly with multiple skin types.\n\n0.25μm covering particles refined through 6 grinding processes for a non-caky, undetectable finish.\n\nShade Options:\n\nSoft Light Green\nNeutralizes redness and blemishes to restore a clear, even complexion.\n\nSoft Light Purple\nBrightens dull, sallow skin for a translucent, radiant glow.\n\nNET WT.: 1.01oz / 30g",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://joocyee.com/cdn/shop/files/01_2f246575-5c52-40b0-b6a5-5a408d7bdb52.jpg?v=1777277719",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://joocyee.com/cdn/shop/files/01_2f246575-5c52-40b0-b6a5-5a408d7bdb52.jpg?v=1777277719",
+        "https://joocyee.com/cdn/shop/files/02-id.jpg?v=1777277736",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/b29a020a8b854e14e37563ac56c10b27.jpg?v=1777277765",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/9ae9a560a9e3371478e67f927b81bc89.jpg?v=1777277765",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/0c70a81518926b795fbb78c8b50c785b_a1b00473-fdae-48b5-a1ae-77652c5fede0.jpg?v=1777277765",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/b29a020a8b854e14e37563ac56c10b27_985d8f0f-bc52-49a6-ad77-4f3b30ab3871.jpg?v=1777355163",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/02_f2736478-dcc0-41e3-b415-c9189693db2e.jpg?v=1777277736",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/02_3e08a805-a6d2-43fa-9609-d26c504eef66.jpg?v=1777277736"
+      ],
+      "price_min": 18.9,
+      "price_max": 18.9,
+      "default_offer_id": "external_seed:ext_8bced3f34a8100c3cfa62377",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Color-correcting Primer is a makeup primer from Joocyee, with source-backed cues around hydrating prep.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Joocyee",
+        "Primer"
+      ],
+      "sort_keys": {
+        "price_min": 18.9,
+        "price_max": 18.9,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_8bced3f34a8100c3cfa62377",
+        "external_seed:ext_3ca7c85748b01b4bc8e2f3bb",
+        "external_seed:ext_794deab047eb4a75225329df"
+      ]
+    }
+  ]
+}

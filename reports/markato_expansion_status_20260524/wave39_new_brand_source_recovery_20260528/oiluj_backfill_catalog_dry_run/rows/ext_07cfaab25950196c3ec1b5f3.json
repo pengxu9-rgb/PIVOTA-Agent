@@ -1,0 +1,881 @@
+{
+  "status": "dry_run",
+  "reason": "",
+  "target_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+  "row": {
+    "id": "eps_dc72b5d18cbbbffe502bfa20",
+    "external_product_id": "ext_07cfaab25950196c3ec1b5f3",
+    "title": "OILÙJ, Life Oil: Organic Moringa/Sandalwood Blend",
+    "brand": "",
+    "domain": "oiluj.com",
+    "canonical_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+    "destination_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+    "seed_snapshot_contract": {
+      "source": "reviewed_source_backed_pdp_content_patch",
+      "updated_at": "2026-05-28T02:03:23.435Z",
+      "authoritative": true,
+      "contract_version": "external_seed.snapshot_contract.v1",
+      "replace_strategy": "replace_not_merge",
+      "legacy_fields_quarantined": true,
+      "structured_fields_authoritative": true
+    }
+  },
+  "payload": {
+    "changed": true,
+    "next_row": {
+      "title": "OILÙJ, Life Oil: Organic Moringa/Sandalwood Blend",
+      "canonical_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+      "destination_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+      "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640",
+      "price_amount": 65,
+      "price_currency": "USD",
+      "availability": "unknown",
+      "seed_data": {
+        "brand": "OILUJ",
+        "title": "OILÙJ, Life Oil: Organic Moringa/Sandalwood Blend",
+        "images": [
+          "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640",
+          "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640"
+        ],
+        "snapshot": {
+          "title": "OILÙJ, Life Oil: Organic Moringa/Sandalwood Blend",
+          "images": [
+            "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640",
+            "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640"
+          ],
+          "source": "catalog_intelligence",
+          "variants": [
+            {
+              "sku": "AUTO-da04d4a8",
+              "url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+              "price": "65",
+              "stock": "In Stock",
+              "currency": "USD",
+              "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640",
+              "image_urls": [
+                "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640",
+                "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640"
+              ],
+              "variant_id": "da04d4a8c80e",
+              "description": "Botanical skincare products specializing in the benefits of Moringa oil.",
+              "option_name": "Offer",
+              "option_value": "Default"
+            }
+          ],
+          "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640",
+          "image_urls": [
+            "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640",
+            "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640"
+          ],
+          "description": "Botanical skincare products specializing in the benefits of Moringa oil.",
+          "diagnostics": {
+            "requested_domain": "www.oiluj.com",
+            "resolved_base_url": "http://www.oiluj.com",
+            "discovery_strategy": "seed_page",
+            "failure_category": null,
+            "block_provider": null,
+            "http_trace": [
+              {
+                "url": "https://www.oiluj.com/products.json?limit=1",
+                "status": 404
+              },
+              {
+                "url": "https://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+                "status": 200
+              },
+              {
+                "url": "https://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+                "status": 200
+              },
+              {
+                "url": "https://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+                "status": 200
+              }
+            ]
+          },
+          "extracted_at": "2026-05-28T02:05:15.440Z",
+          "canonical_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+          "search_aliases": [
+            "OILÙJ, Life Oil: Organic Moringa/Sandalwood Blend"
+          ],
+          "destination_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+          "authority_source": {
+            "source_url": "https://www.oiluj.com",
+            "source_role": "primary",
+            "matched_preferred_titles": []
+          },
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-28T02:05:10.815Z",
+            "evidence_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "low",
+              "checked_at": "2026-05-28T02:05:10.815Z",
+              "reason_codes": [
+                "market_currency_not_verified",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html"
+            },
+            "regional_price": {
+              "amount": 65,
+              "currency": "USD",
+              "display_raw": "65",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "low",
+              "market_switch_status": "unknown",
+              "observed_currency": "USD",
+              "source_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+              "captured_at": "2026-05-28T02:05:10.815Z"
+            },
+            "availability": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "captured_at": "2026-05-28T02:05:10.815Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-28T02:05:10.815Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-28T02:05:10.815Z"
+            }
+          },
+          "source_validation": {
+            "source_host": "oiluj.com",
+            "source_type": "brand_owned",
+            "requires_multi_offer_merge_validation": false
+          },
+          "commerce_facts_gate": {
+            "status": "pass",
+            "market_id": "US",
+            "expected_currency": "USD",
+            "observed_currency": "USD",
+            "market_switch_status": "unknown",
+            "sellable_region_status": "unknown",
+            "shipping_status": "unknown",
+            "promotions_status": "unknown",
+            "availability_status": "unknown",
+            "problems": []
+          },
+          "pdp_description_raw": "OILUJ presents this face, body, and hair oil as an organic moringa oil and sandalwood essential-oil blend in a 2 fl oz / 60 ml format, with vegan, gluten-free, paraben-free, and fragrance-free positioning.",
+          "pdp_details_sections": [
+            {
+              "heading": "PDP Focus",
+              "body": "The page frames the blend around nourishment, moisture, soothing feel, hair shine, and multipurpose use across face, body, and hair.",
+              "source_kind": "unknown"
+            },
+            {
+              "heading": "Format",
+              "body": "Listed as Net 2 fl oz / 60 ml on the product page.",
+              "source_kind": "unknown"
+            }
+          ],
+          "seed_description_origin": "pdp_variant_description",
+          "pdp_field_quality_summary": {
+            "description_raw": {
+              "source_origin": "shopify_json",
+              "source_quality_status": "high",
+              "source_kinds": [
+                "structured_overview"
+              ],
+              "reason_codes": []
+            },
+            "details_sections": {
+              "source_origin": "reviewed_source_backed_pdp_content_patch",
+              "source_quality_status": "high",
+              "source_kinds": [
+                "official_pdp_structured_section"
+              ],
+              "reason_codes": []
+            },
+            "ingredients_raw": {
+              "source_origin": "unknown",
+              "source_quality_status": "low",
+              "source_kinds": [],
+              "reason_codes": [
+                "missing_source_kind"
+              ]
+            },
+            "active_ingredients_raw": {
+              "source_origin": "unknown",
+              "source_quality_status": "low",
+              "source_kinds": [],
+              "reason_codes": [
+                "missing_source_kind"
+              ]
+            },
+            "how_to_use_raw": {
+              "source_origin": "unknown",
+              "source_quality_status": "low",
+              "source_kinds": [],
+              "reason_codes": [
+                "missing_source_kind"
+              ]
+            },
+            "faq_items": {
+              "source_origin": "unknown",
+              "source_quality_status": "low",
+              "source_kinds": [],
+              "reason_codes": [
+                "missing_source_kind"
+              ]
+            }
+          },
+          "reviewed_pdp_content_patch_v1": {
+            "reason": "reviewed_source_backed_official_oiluj_pdp_description_patch",
+            "evidence": "Official OILUJ PDP HTML was fetched on 2026-05-28 and reviewed from the wsite-com-product-short-description block. No complete INCI or step-by-step use directions were found, so this patch only updates description and details.",
+            "source_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+            "reviewed_at": "2026-05-28T02:03:23.435Z",
+            "reviewed_by": "codex_review",
+            "source_kind": "official_pdp_structured_section",
+            "review_state": "assistant_reviewed",
+            "patched_fields": [
+              "description",
+              "pdp_description_raw",
+              "pdp_details_sections"
+            ],
+            "contract_version": "external_seed.reviewed_pdp_content_patch.v1"
+          },
+          "external_seed_snapshot_contract": {
+            "contract_version": "external_seed.snapshot_contract.v1",
+            "source": "catalog_intelligence",
+            "authoritative": true,
+            "structured_fields_authoritative": true,
+            "legacy_fields_quarantined": true,
+            "replace_strategy": "replace_not_merge",
+            "updated_at": "2026-05-28T02:05:15.440Z"
+          },
+          "product_kind": "single_formula",
+          "pdp_field_capture_status": {
+            "description_raw": "present",
+            "details_sections": "present",
+            "ingredients_raw": "missing",
+            "active_ingredients_raw": "missing",
+            "how_to_use_raw": "missing",
+            "faq_items": "missing"
+          },
+          "pdp_content_asset_v1": {
+            "contract_version": "pivota.pdp_content_asset.v1",
+            "owner": "pivota",
+            "fields": {
+              "description": {
+                "review_state": "unreviewed",
+                "overwrite_policy": "preserve_best_available",
+                "source_quality_status": "high",
+                "source_origin": "shopify_json",
+                "content_hash": "1deb1f21ce402e3d",
+                "updated_at": "2026-05-28T02:05:15.439Z"
+              },
+              "description_raw": {
+                "review_state": "unreviewed",
+                "overwrite_policy": "preserve_best_available",
+                "source_quality_status": "high",
+                "source_origin": "shopify_json",
+                "content_hash": "1deb1f21ce402e3d",
+                "updated_at": "2026-05-28T02:05:15.439Z"
+              },
+              "details_sections": {
+                "review_state": "unreviewed",
+                "overwrite_policy": "preserve_best_available",
+                "source_quality_status": "high",
+                "source_origin": "reviewed_source_backed_pdp_content_patch",
+                "content_hash": "127743df21b2bcae",
+                "updated_at": "2026-05-28T02:05:15.440Z"
+              }
+            }
+          },
+          "variant_skus": [
+            "AUTO-da04d4a8"
+          ],
+          "brand_origin": {
+            "country": null,
+            "home_market": null,
+            "source": null
+          },
+          "market_availability": {
+            "available_markets": [
+              "US"
+            ],
+            "local_purchase_markets": [
+              "US"
+            ],
+            "source_market": "US",
+            "retail_channel_markets": [],
+            "availability_status": "in_stock"
+          },
+          "available_markets": [
+            "US"
+          ],
+          "local_purchase_markets": [
+            "US"
+          ],
+          "locality_facts_v1": {
+            "contract_version": "external_seed.locality_facts.v1",
+            "brand": "OILUJ",
+            "brand_origin": {
+              "country": null,
+              "home_market": null,
+              "source": null
+            },
+            "brand_origin_country": null,
+            "brand_home_market": null,
+            "market_availability": {
+              "available_markets": [
+                "US"
+              ],
+              "local_purchase_markets": [
+                "US"
+              ],
+              "source_market": "US",
+              "retail_channel_markets": [],
+              "availability_status": "in_stock"
+            },
+            "available_markets": [
+              "US"
+            ],
+            "local_purchase_markets": [
+              "US"
+            ],
+            "local_retail_channels": [],
+            "travel_size": null,
+            "travel_size_evidence": null,
+            "creator_local_reason": null,
+            "local_authority_level": "product_market",
+            "sources": [
+              "existing_seed_data",
+              "seed_row_market"
+            ]
+          },
+          "price_amount": 65,
+          "availability": "unknown"
+        },
+        "variants": [
+          {
+            "sku": "AUTO-da04d4a8",
+            "url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+            "price": "65",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640",
+            "image_urls": [
+              "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640",
+              "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640"
+            ],
+            "variant_id": "da04d4a8c80e",
+            "description": "Botanical skincare products specializing in the benefits of Moringa oil.",
+            "option_name": "Offer",
+            "option_value": "Default"
+          }
+        ],
+        "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640",
+        "image_urls": [
+          "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640",
+          "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640"
+        ],
+        "description": "OILUJ presents this face, body, and hair oil as an organic moringa oil and sandalwood essential-oil blend in a 2 fl oz / 60 ml format, with vegan, gluten-free, paraben-free, and fragrance-free positioning.",
+        "availability": "unknown",
+        "price_amount": 65,
+        "canonical_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+        "price_currency": "USD",
+        "search_aliases": [
+          "OILÙJ, Life Oil: Organic Moringa/Sandalwood Blend"
+        ],
+        "destination_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+        "authority_source": {
+          "source_url": "https://www.oiluj.com",
+          "source_role": "primary",
+          "matched_preferred_titles": []
+        },
+        "commerce_facts_v1": {
+          "contract_version": "commerce_facts.v1",
+          "market_id": "US",
+          "country": "US",
+          "currency_target": "USD",
+          "source_authority": "catalog_extract_v2",
+          "captured_at": "2026-05-28T02:05:10.815Z",
+          "evidence_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+          "sellable_region": {
+            "status": "unknown",
+            "countries": [],
+            "evidence_source": "catalog_extract_v2",
+            "confidence": "low",
+            "checked_at": "2026-05-28T02:05:10.815Z",
+            "reason_codes": [
+              "market_currency_not_verified",
+              "shipping_destination_not_verified",
+              "external_checkout_not_queried"
+            ],
+            "evidence_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html"
+          },
+          "regional_price": {
+            "amount": 65,
+            "currency": "USD",
+            "display_raw": "65",
+            "price_type": "list",
+            "compare_at_amount": null,
+            "compare_at_currency": null,
+            "compare_at_display_raw": null,
+            "tax_included": "unknown",
+            "confidence": "low",
+            "market_switch_status": "unknown",
+            "observed_currency": "USD",
+            "source_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+            "captured_at": "2026-05-28T02:05:10.815Z"
+          },
+          "availability": {
+            "status": "unknown",
+            "source": "catalog_extract_v2",
+            "confidence": "unknown",
+            "captured_at": "2026-05-28T02:05:10.815Z"
+          },
+          "shipping": {
+            "status": "unknown",
+            "source": "catalog_extract_v2",
+            "confidence": "unknown",
+            "reason_codes": [
+              "external_checkout_not_queried"
+            ],
+            "checked_at": "2026-05-28T02:05:10.815Z"
+          },
+          "promotions": [],
+          "returns": {
+            "status": "unknown",
+            "source": "catalog_extract_v2",
+            "confidence": "unknown",
+            "reason_codes": [
+              "external_returns_not_extracted"
+            ],
+            "checked_at": "2026-05-28T02:05:10.815Z"
+          }
+        },
+        "source_validation": {
+          "source_host": "oiluj.com",
+          "source_type": "brand_owned",
+          "requires_multi_offer_merge_validation": false
+        },
+        "commerce_facts_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "unknown",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "promotions_status": "unknown",
+          "availability_status": "unknown",
+          "problems": []
+        },
+        "external_product_id": "ext_07cfaab25950196c3ec1b5f3",
+        "pdp_description_raw": "OILUJ presents this face, body, and hair oil as an organic moringa oil and sandalwood essential-oil blend in a 2 fl oz / 60 ml format, with vegan, gluten-free, paraben-free, and fragrance-free positioning.",
+        "pdp_details_sections": [
+          {
+            "heading": "PDP Focus",
+            "body": "The page frames the blend around nourishment, moisture, soothing feel, hair shine, and multipurpose use across face, body, and hair.",
+            "source_kind": "unknown"
+          },
+          {
+            "heading": "Format",
+            "body": "Listed as Net 2 fl oz / 60 ml on the product page.",
+            "source_kind": "unknown"
+          }
+        ],
+        "seed_description_origin": "pdp_variant_description",
+        "pdp_field_quality_summary": {
+          "description_raw": {
+            "source_origin": "shopify_json",
+            "source_quality_status": "high",
+            "source_kinds": [
+              "structured_overview"
+            ],
+            "reason_codes": []
+          },
+          "details_sections": {
+            "source_origin": "reviewed_source_backed_pdp_content_patch",
+            "source_quality_status": "high",
+            "source_kinds": [
+              "official_pdp_structured_section"
+            ],
+            "reason_codes": []
+          },
+          "ingredients_raw": {
+            "source_origin": "unknown",
+            "source_quality_status": "low",
+            "source_kinds": [],
+            "reason_codes": [
+              "missing_source_kind"
+            ]
+          },
+          "active_ingredients_raw": {
+            "source_origin": "unknown",
+            "source_quality_status": "low",
+            "source_kinds": [],
+            "reason_codes": [
+              "missing_source_kind"
+            ]
+          },
+          "how_to_use_raw": {
+            "source_origin": "unknown",
+            "source_quality_status": "low",
+            "source_kinds": [],
+            "reason_codes": [
+              "missing_source_kind"
+            ]
+          },
+          "faq_items": {
+            "source_origin": "unknown",
+            "source_quality_status": "low",
+            "source_kinds": [],
+            "reason_codes": [
+              "missing_source_kind"
+            ]
+          }
+        },
+        "reviewed_pdp_content_patch_v1": {
+          "reason": "reviewed_source_backed_official_oiluj_pdp_description_patch",
+          "evidence": "Official OILUJ PDP HTML was fetched on 2026-05-28 and reviewed from the wsite-com-product-short-description block. No complete INCI or step-by-step use directions were found, so this patch only updates description and details.",
+          "source_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+          "reviewed_at": "2026-05-28T02:03:23.435Z",
+          "reviewed_by": "codex_review",
+          "source_kind": "official_pdp_structured_section",
+          "review_state": "assistant_reviewed",
+          "patched_fields": [
+            "description",
+            "pdp_description_raw",
+            "pdp_details_sections"
+          ],
+          "contract_version": "external_seed.reviewed_pdp_content_patch.v1"
+        },
+        "external_seed_snapshot_contract": {
+          "contract_version": "external_seed.snapshot_contract.v1",
+          "source": "catalog_intelligence",
+          "authoritative": true,
+          "structured_fields_authoritative": true,
+          "legacy_fields_quarantined": true,
+          "replace_strategy": "replace_not_merge",
+          "updated_at": "2026-05-28T02:05:15.440Z"
+        },
+        "product_kind": "single_formula",
+        "pdp_field_capture_status": {
+          "description_raw": "present",
+          "details_sections": "present",
+          "ingredients_raw": "missing",
+          "active_ingredients_raw": "missing",
+          "how_to_use_raw": "missing",
+          "faq_items": "missing"
+        },
+        "pdp_content_asset_v1": {
+          "contract_version": "pivota.pdp_content_asset.v1",
+          "owner": "pivota",
+          "fields": {
+            "description": {
+              "review_state": "unreviewed",
+              "overwrite_policy": "preserve_best_available",
+              "source_quality_status": "high",
+              "source_origin": "shopify_json",
+              "content_hash": "1deb1f21ce402e3d",
+              "updated_at": "2026-05-28T02:05:15.439Z"
+            },
+            "description_raw": {
+              "review_state": "unreviewed",
+              "overwrite_policy": "preserve_best_available",
+              "source_quality_status": "high",
+              "source_origin": "shopify_json",
+              "content_hash": "1deb1f21ce402e3d",
+              "updated_at": "2026-05-28T02:05:15.439Z"
+            },
+            "details_sections": {
+              "review_state": "unreviewed",
+              "overwrite_policy": "preserve_best_available",
+              "source_quality_status": "high",
+              "source_origin": "reviewed_source_backed_pdp_content_patch",
+              "content_hash": "127743df21b2bcae",
+              "updated_at": "2026-05-28T02:05:15.440Z"
+            }
+          }
+        },
+        "snapshot_quarantine": {
+          "contract_version": "external_seed.snapshot_quarantine.v1",
+          "source": "catalog_intelligence",
+          "extractor_mode": "puppeteer",
+          "updated_at": "2026-05-28T02:05:15.439Z",
+          "preserved_candidates": {
+            "description_raw": {
+              "value": "Botanical skincare products specializing in the benefits of Moringa oil.",
+              "reason_code": "preserve_reviewed_pivota_asset",
+              "reason_codes": [
+                "preserve_reviewed_pivota_asset"
+              ],
+              "source_quality_status": "high",
+              "source_origin": "shopify_json"
+            },
+            "description": {
+              "value": "Botanical skincare products specializing in the benefits of Moringa oil.",
+              "reason_code": "preserve_reviewed_pivota_asset",
+              "reason_codes": [
+                "preserve_reviewed_pivota_asset"
+              ],
+              "source_quality_status": "high",
+              "source_origin": "shopify_json"
+            }
+          }
+        },
+        "brand_origin": {
+          "country": null,
+          "home_market": null,
+          "source": null
+        },
+        "market_availability": {
+          "available_markets": [
+            "US"
+          ],
+          "local_purchase_markets": [
+            "US"
+          ],
+          "source_market": "US",
+          "retail_channel_markets": [],
+          "availability_status": "in_stock"
+        },
+        "available_markets": [
+          "US"
+        ],
+        "local_purchase_markets": [
+          "US"
+        ],
+        "locality_facts_v1": {
+          "contract_version": "external_seed.locality_facts.v1",
+          "brand": "OILUJ",
+          "brand_origin": {
+            "country": null,
+            "home_market": null,
+            "source": null
+          },
+          "brand_origin_country": null,
+          "brand_home_market": null,
+          "market_availability": {
+            "available_markets": [
+              "US"
+            ],
+            "local_purchase_markets": [
+              "US"
+            ],
+            "source_market": "US",
+            "retail_channel_markets": [],
+            "availability_status": "in_stock"
+          },
+          "available_markets": [
+            "US"
+          ],
+          "local_purchase_markets": [
+            "US"
+          ],
+          "local_retail_channels": [],
+          "travel_size": null,
+          "travel_size_evidence": null,
+          "creator_local_reason": null,
+          "local_authority_level": "product_market",
+          "sources": [
+            "existing_seed_data",
+            "seed_row_market"
+          ]
+        },
+        "derived": {
+          "recall": {
+            "retrieval_title": "OILÙJ, Life Oil: Organic Moringa/Sandalwood Blend",
+            "retrieval_summary": "OILUJ presents this face, body, and hair oil as an organic moringa oil and sandalwood essential-oil blend in a 2 fl oz / 60 ml format, with vegan, gluten-free, paraben-free, and fragrance-free positioning. Botanical skincare products specializing in the benefits of Moringa oil.",
+            "retrieval_body": "OILUJ presents this face, body, and hair oil as an organic moringa oil and sandalwood essential-oil blend in a 2 fl oz / 60 ml format, with vegan, gluten-free, paraben-free, and fragrance-free positioning.\n\nBotanical skincare products specializing in the benefits of Moringa oil.\n\nPDP Focus: The page frames the blend around nourishment, moisture, soothing feel, hair shine, and multipurpose use across face, body, and hair.\n\nFormat: Listed as Net 2 fl oz / 60 ml on the product page.",
+            "brand": "OILUJ",
+            "category": "Hair Oil",
+            "vertical": "haircare",
+            "ingredient_tokens": [],
+            "locality_tokens": [
+              "available market US",
+              "local purchase US"
+            ],
+            "alias_tokens": [
+              "OILÙJ, Life Oil: Organic Moringa/Sandalwood Blend",
+              "oiluj life oil organic moringa sandalwood blend",
+              "oilujlifeoilorganicmoringasandalwoodblend",
+              "life oil organic moringa sandalwood blend",
+              "oil organic moringa sandalwood blend",
+              "organic moringa sandalwood blend",
+              "moringa sandalwood blend",
+              "oiluj life",
+              "life oil",
+              "oil organic",
+              "organic moringa",
+              "moringa sandalwood",
+              "sandalwood blend",
+              "Hair Oil",
+              "hairoil",
+              "available market US",
+              "availablemarketus",
+              "market us",
+              "available market",
+              "local purchase US",
+              "localpurchaseus",
+              "purchase us",
+              "local purchase",
+              "life",
+              "oil",
+              "organic",
+              "moringa",
+              "sandalwood",
+              "blend",
+              "hair",
+              "available",
+              "market"
+            ],
+            "locality_facts_v1": {
+              "contract_version": "external_seed.locality_facts.v1",
+              "brand": "OILUJ",
+              "brand_origin": {
+                "country": null,
+                "home_market": null,
+                "source": null
+              },
+              "brand_origin_country": null,
+              "brand_home_market": null,
+              "market_availability": {
+                "available_markets": [
+                  "US"
+                ],
+                "local_purchase_markets": [
+                  "US"
+                ],
+                "source_market": "US",
+                "retail_channel_markets": [],
+                "availability_status": "in_stock"
+              },
+              "available_markets": [
+                "US"
+              ],
+              "local_purchase_markets": [
+                "US"
+              ],
+              "local_retail_channels": [],
+              "travel_size": null,
+              "travel_size_evidence": null,
+              "creator_local_reason": null,
+              "local_authority_level": "product_market",
+              "sources": [
+                "existing_seed_data",
+                "seed_row_market"
+              ]
+            },
+            "exclusion_flags": {
+              "gift_card": false,
+              "donation_bundle": false,
+              "non_merchandise": false
+            },
+            "quality_signals": {
+              "template_polluted": false,
+              "synthetic_summary": false,
+              "extractor_description_present": true
+            },
+            "quality_state": "eligible",
+            "suppression_flags": {
+              "exclude_from_recall": false,
+              "exclude_from_similar": false,
+              "suppress_ingredients": false,
+              "suppress_active_ingredients": false,
+              "suppress_facts": false
+            },
+            "version": "v1"
+          },
+          "backfill_guardrails_v1": {
+            "commerce_preserved": true,
+            "media_preserved": true,
+            "mode": "preserve_selected_fields",
+            "updated_at": "2026-05-28T02:05:15.442Z"
+          }
+        },
+        "variant_skus": [
+          "AUTO-da04d4a8"
+        ]
+      }
+    },
+    "next_row_summary": {
+      "external_product_id": "",
+      "title": "OILÙJ, Life Oil: Organic Moringa/Sandalwood Blend",
+      "canonical_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+      "destination_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+      "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640",
+      "image_count": 2,
+      "variant_count": 1,
+      "details_section_count": 2,
+      "faq_count": 0,
+      "how_to_use_present": false,
+      "ingredients_present": false,
+      "active_ingredients_present": false,
+      "seed_snapshot_contract": {
+        "contract_version": "external_seed.snapshot_contract.v1",
+        "source": "catalog_intelligence",
+        "authoritative": true,
+        "structured_fields_authoritative": true,
+        "legacy_fields_quarantined": true,
+        "replace_strategy": "replace_not_merge",
+        "updated_at": "2026-05-28T02:05:15.440Z"
+      },
+      "content_image_count": 0,
+      "section_media_count": 0
+    },
+    "variant_seed_rows": [],
+    "identity_listing_refresh": null,
+    "image_health_validation": null,
+    "diagnostics": null,
+    "commerce_facts_v2": {
+      "requested": true,
+      "matched": true,
+      "gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "unknown",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "promotions_status": "unknown",
+        "availability_status": "unknown",
+        "problems": []
+      },
+      "counters_by_site_market": [
+        {
+          "source_site": "www.oiluj.com",
+          "market_id": "US",
+          "total_offers": 1,
+          "native_currency_hit_rate": 0,
+          "price_parse_success_rate": 1,
+          "currency_confidence_low_rate": 1,
+          "market_switch_fail_rate": 0
+        }
+      ]
+    }
+  },
+  "error": null
+}

@@ -1,0 +1,357 @@
+{
+  "generated_at": "2026-05-28T04:07:00.129Z",
+  "dry_run": true,
+  "market": "US",
+  "summary": {
+    "scanned": 13,
+    "dry_run": 9,
+    "updated": 0,
+    "skipped": 4,
+    "failed": 0,
+    "by_field": {
+      "pdp_how_to_use_raw": 9,
+      "pdp_details_sections": 9,
+      "pdp_ingredients_raw": 7
+    }
+  },
+  "results": [
+    {
+      "external_product_id": "ext_cfbb0ca2b9d0c7b411793b0b",
+      "title": "‘Cool Like Me’ Roll On Perfume",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/cool-like-me-roll-on-oil-perfume",
+      "host": "missnella.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/cool-like-me-roll-on-oil-perfume",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 97,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    },
+    {
+      "external_product_id": "ext_6f491538dbf9a790b66cf269",
+      "title": "‘Sweet Like Me’ Roll On Perfume",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/sweet-like-me-roll-on-oil-perfume",
+      "host": "missnella.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/sweet-like-me-roll-on-oil-perfume",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 97,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    },
+    {
+      "external_product_id": "ext_4126c4bf9bd13a864334128d",
+      "title": "Cosmic Cutie: Chrome Bronze Peel Off Nail Polish",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/cosmic-cutie-4ml-peel-off-kids-nail-polish",
+      "host": "missnella.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/cosmic-cutie-4ml-peel-off-kids-nail-polish",
+      "extracted_summary": {
+        "ingredients_chars": 467,
+        "how_to_chars": 168,
+        "details_sections_count": 4,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    },
+    {
+      "external_product_id": "ext_8c9db1e831c4be15a42fc407",
+      "title": "Croco Dazzle: Sparkly Red Peel Off Nail Polish",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/croco-dazzle-4ml-peel-off-kids-nail-polish",
+      "host": "missnella.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/croco-dazzle-4ml-peel-off-kids-nail-polish",
+      "extracted_summary": {
+        "ingredients_chars": 467,
+        "how_to_chars": 168,
+        "details_sections_count": 4,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    },
+    {
+      "external_product_id": "ext_a9609ad67d8dec79dd0596a1",
+      "title": "Dino-Rific: Metallic Green Peel Off Nail Polish",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/dino-rific-4ml-peel-off-kids-nail-polish",
+      "host": "missnella.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/dino-rific-4ml-peel-off-kids-nail-polish",
+      "extracted_summary": {
+        "ingredients_chars": 467,
+        "how_to_chars": 168,
+        "details_sections_count": 4,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    },
+    {
+      "external_product_id": "ext_234ad22c62387afe966d0832",
+      "title": "Diplodo-Kiss: Metallic Pink Peel Off Nail Polish",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/diplodo-kiss-4ml-peel-off-kids-nail-polish",
+      "host": "missnella.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/diplodo-kiss-4ml-peel-off-kids-nail-polish",
+      "extracted_summary": {
+        "ingredients_chars": 467,
+        "how_to_chars": 168,
+        "details_sections_count": 4,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    },
+    {
+      "external_product_id": "ext_ff5b7bfbff65eed0ceb7e3df",
+      "title": "Elephunky: Sparkly Blue Peel Off Nail Polish",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/elephunky-4ml-peel-off-kids-nail-polish",
+      "host": "missnella.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/elephunky-4ml-peel-off-kids-nail-polish",
+      "extracted_summary": {
+        "ingredients_chars": 467,
+        "how_to_chars": 168,
+        "details_sections_count": 4,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    },
+    {
+      "external_product_id": "ext_3efab0751a9f85bbdcb72388",
+      "title": "Galactic Unicorn: Chrome Purple Peel Off Nail Polish",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/galactic-unicorn-4ml-peel-off-kids-nail-polish",
+      "host": "missnella.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/galactic-unicorn-4ml-peel-off-kids-nail-polish",
+      "extracted_summary": {
+        "ingredients_chars": 467,
+        "how_to_chars": 168,
+        "details_sections_count": 4,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    },
+    {
+      "external_product_id": "ext_428194a391e38b8c6c5c5a1b",
+      "title": "If The Shoe Fits: Gold Fine Glitter Peel Off Nail Polish",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/if-the-shoe-fits-4ml-peel-off-kids-nail-polish",
+      "host": "missnella.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/if-the-shoe-fits-4ml-peel-off-kids-nail-polish",
+      "extracted_summary": {
+        "ingredients_chars": 410,
+        "how_to_chars": 168,
+        "details_sections_count": 4,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    },
+    {
+      "external_product_id": "ext_0389cd34ac2b199ed7d155fd",
+      "title": "Lav Kids Skincare by Miss Nella Facial Foaming Cleanser 100ml",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/lavkids-skincare-by-miss-nella-facial-foaming-cleanser-100ml",
+      "host": "missnella.com",
+      "status": "skipped",
+      "patch_keys": [],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/lavkids-skincare-by-miss-nella-facial-foaming-cleanser-100ml",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 0,
+        "details_sections_count": 0,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "reason": "no_official_html_fields"
+    },
+    {
+      "external_product_id": "ext_c954d06d813f8162e2f104c7",
+      "title": "Lav Kids Skincare by Miss Nella Foaming Shower Gel 200ml",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/lavkids-skincare-by-miss-nella-foaming-shower-gel-200ml",
+      "host": "missnella.com",
+      "status": "skipped",
+      "patch_keys": [],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/lavkids-skincare-by-miss-nella-foaming-shower-gel-200ml",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 0,
+        "details_sections_count": 0,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "reason": "no_official_html_fields"
+    },
+    {
+      "external_product_id": "ext_d4cd4e83ffea1be996dc5655",
+      "title": "Lav Kids Skincare by Miss Nella Gentle Care Conditioner 200ml",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/lavkids-skincare-by-miss-nella-gentle-care-conditioner-200ml",
+      "host": "missnella.com",
+      "status": "skipped",
+      "patch_keys": [],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/lavkids-skincare-by-miss-nella-gentle-care-conditioner-200ml",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 0,
+        "details_sections_count": 0,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "reason": "no_official_html_fields"
+    },
+    {
+      "external_product_id": "ext_18c788834195be4e0022a2c3",
+      "title": "Lav Kids Skincare by Miss Nella Gentle Care Shampoo 215ml",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/lavkids-skincare-by-miss-nella-gentle-care-shampoo-200ml",
+      "host": "missnella.com",
+      "status": "skipped",
+      "patch_keys": [],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/lavkids-skincare-by-miss-nella-gentle-care-shampoo-200ml",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 0,
+        "details_sections_count": 0,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "reason": "no_official_html_fields"
+    }
+  ]
+}

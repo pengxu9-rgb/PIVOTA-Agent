@@ -1,0 +1,84 @@
+{
+  "market": "US",
+  "reviewed_by": "codex_review",
+  "reason": "reviewed_source_backed_official_oiluj_pdp_description_patch",
+  "source_kind": "official_pdp_structured_section",
+  "evidence": "Official OILUJ PDP HTML was fetched on 2026-05-28 and reviewed from the wsite-com-product-short-description block. No complete INCI or step-by-step use directions were found, so this patch only updates description and details.",
+  "entries": [
+    {
+      "external_product_id": "ext_07cfaab25950196c3ec1b5f3",
+      "source_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+      "description": "OILUJ presents this face, body, and hair oil as an organic moringa oil and sandalwood essential-oil blend in a 2 fl oz / 60 ml format, with vegan, gluten-free, paraben-free, and fragrance-free positioning.",
+      "pdp_details_sections": [
+        {
+          "heading": "PDP Focus",
+          "body": "The page frames the blend around nourishment, moisture, soothing feel, hair shine, and multipurpose use across face, body, and hair."
+        },
+        {
+          "heading": "Format",
+          "body": "Listed as Net 2 fl oz / 60 ml on the product page."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_1493a61baf165a6c00e4977b",
+      "source_url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+      "description": "OILUJ presents this face, body, and hair oil as an organic moringa oil and French lavender essential-oil blend, positioned for hydration, aromatic comfort, and multipurpose use.",
+      "pdp_details_sections": [
+        {
+          "heading": "PDP Focus",
+          "body": "The page highlights organic moringa oil and French lavender essential oil, with use contexts for skin, hair, and aroma-led care."
+        },
+        {
+          "heading": "Use Context",
+          "body": "The page describes a multipurpose oil for face, body, and hair."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_3a16e6a6300af832ae3ccdb7",
+      "source_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+      "description": "OILUJ presents Eye Live as an eye-contour treatment built around evening primrose, jojoba oil, moringa oil, and vitamin E for the delicate eye area.",
+      "pdp_details_sections": [
+        {
+          "heading": "PDP Focus",
+          "body": "The page frames the treatment around moisture, antioxidant-rich botanical oils, and gentle care for the eye area."
+        },
+        {
+          "heading": "Use Context",
+          "body": "The product page describes targeted care for the delicate eye area and says it can be incorporated into a day or night skincare routine."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_79fc9f55f8b092590e168c8d",
+      "source_url": "http://www.oiluj.com/store/p17/OIL%C3%99J%2C_%22Lip_Life%22.html",
+      "description": "OILUJ presents Lip Life as an organic lip balm made with virgin coconut oil, organic beeswax, moringa oil, and vitamin E for daily lip moisture.",
+      "pdp_details_sections": [
+        {
+          "heading": "PDP Focus",
+          "body": "The page frames the balm around moisture, a protective lip feel, antioxidant-rich oils, and everyday lip comfort."
+        },
+        {
+          "heading": "Use Context",
+          "body": "The product page says the balm can be used as a daily lip moisturizer and as a base for lipstick or lip gloss."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_ab35eb07e8635bb1e1be3ebf",
+      "source_url": "http://www.oiluj.com/store/p5/OIL%C3%99J%2C_Life_Oil.html",
+      "description": "OILUJ presents Life Oil as cold-pressed moringa oil sourced from Nicaragua, with a first-pressed golden oil format for skin and hair.",
+      "pdp_details_sections": [
+        {
+          "heading": "PDP Focus",
+          "body": "The page notes cold pressing, Nicaraguan sourcing, a golden oil color, and first-pressed residue that can dissolve with warming or application."
+        },
+        {
+          "heading": "Format",
+          "body": "Listed as Net 2 fl oz / 60 ml with vegan, gluten-free, paraben-free, and fragrance-free positioning on the product page."
+        }
+      ]
+    }
+  ]
+}

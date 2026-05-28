@@ -1,0 +1,52 @@
+{
+  "generated_at": "2026-05-28T02:58:35.386Z",
+  "options": {
+    "market": "US",
+    "dry_run": true,
+    "content_only": true,
+    "preserve_commerce": true,
+    "preserve_media": true,
+    "include_commerce_facts": false,
+    "skip_insights": true,
+    "expand_variants": false,
+    "limit": 50,
+    "offset": 0,
+    "concurrency": 3,
+    "external_product_ids": [
+      "ext_09f3ad39bdfe1ea4a957c45f",
+      "ext_cd1678cacc37126a9d483888",
+      "ext_478c309275606a587d949541",
+      "ext_152e5d39e5ef4ee3a67894b7",
+      "ext_09bd1a60af24d620706724ee",
+      "ext_f37bb5bc53c4764bc5de8e9c",
+      "ext_96324332335f327e15bbd1a3",
+      "ext_c6ce33a7e9e59a7c8c24fc36",
+      "ext_a5d2bdb05f2216a85764454f",
+      "ext_afb163014d0bffd3a6493c05",
+      "ext_45293e532ad5a5f33438d38f",
+      "ext_9a469b8f450d59f67ae21f6d",
+      "ext_1a3dc4611dcd01447437ed9c",
+      "ext_799b3d12caaa6ad1842840dd",
+      "ext_2d506dd9dc7428de2d3d0cc8",
+      "ext_7bac80d00f1f149743824dee"
+    ],
+    "external_product_id": "",
+    "seed_id": "",
+    "domain": "",
+    "brand": ""
+  },
+  "rows_fetched": 16,
+  "summary": {
+    "scanned": 16,
+    "updated": 0,
+    "dry_run": 16,
+    "skipped": 0,
+    "failed": 0,
+    "variant_seed_rows": 0,
+    "commerce_facts_hold": 0
+  },
+  "pivota_insights": {
+    "status": "skipped",
+    "reason": "dry_run"
+  }
+}

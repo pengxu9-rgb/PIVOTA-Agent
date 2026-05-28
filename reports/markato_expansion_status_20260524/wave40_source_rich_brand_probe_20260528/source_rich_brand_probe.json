@@ -1,0 +1,1456 @@
+{
+  "generated_at": "2026-05-28T02:42:16.137Z",
+  "base_url": "https://pivota-catalog-intelligence-production.up.railway.app",
+  "limit": 16,
+  "results": [
+    {
+      "brand": "Vegan Fox",
+      "domain": "https://veganfox.com",
+      "status": 200,
+      "mode": "puppeteer",
+      "diagnostics": {
+        "requested_domain": "veganfox.com",
+        "resolved_base_url": "https://veganfox.com",
+        "discovery_strategy": "browser_discovery",
+        "failure_category": "dead_sitemap",
+        "block_provider": null,
+        "http_trace": [
+          {
+            "url": "https://veganfox.com/",
+            "status": 200
+          },
+          {
+            "url": "https://veganfox.com/products.json?limit=1",
+            "status": 200
+          },
+          {
+            "url": "https://veganfox.com/",
+            "status": 200
+          },
+          {
+            "url": "https://veganfox.com/robots.txt",
+            "status": 200
+          },
+          {
+            "url": "/sitemap.xml",
+            "status": null
+          },
+          {
+            "url": "https://veganfox.com/sitemap.xml",
+            "status": 200
+          },
+          {
+            "url": "https://veganfox.com/sitemap_index.xml",
+            "status": 200
+          },
+          {
+            "url": "https://veganfox.com/lander",
+            "status": 200
+          },
+          {
+            "url": "https://veganfox.com/lander",
+            "status": 200
+          }
+        ]
+      },
+      "product_count": 0,
+      "ready_product_count": 0,
+      "ready_products": [],
+      "product_summaries": []
+    },
+    {
+      "brand": "Youth Lab",
+      "domain": "https://youthlab.com",
+      "status": 200,
+      "mode": "puppeteer",
+      "diagnostics": {
+        "requested_domain": "youthlab.com",
+        "resolved_base_url": "https://youthlab.com",
+        "discovery_strategy": "seed_page",
+        "failure_category": null,
+        "block_provider": null,
+        "http_trace": [
+          {
+            "url": "https://youthlab.com/",
+            "status": 200
+          },
+          {
+            "url": "https://youthlab.com/products.json?limit=1",
+            "status": 404
+          },
+          {
+            "url": "https://youthlab.com/",
+            "status": 200
+          },
+          {
+            "url": "https://youthlab.com/seires/bath-and-body",
+            "status": 200
+          },
+          {
+            "url": "https://youthlab.com/soma/anti-stress-body-scrub-blooming-garden-lab1385-p",
+            "status": 200
+          },
+          {
+            "url": "https://youthlab.com/seires/bath-and-body",
+            "status": 200
+          },
+          {
+            "url": "https://youthlab.com/soma/anti-stress-body-scrub-blooming-garden-lab1385-p",
+            "status": 200
+          }
+        ]
+      },
+      "product_count": 2,
+      "ready_product_count": 0,
+      "ready_products": [],
+      "product_summaries": [
+        {
+          "title": "BATH & BODY",
+          "url": "https://youthlab.com/seires/bath-and-body",
+          "price": "",
+          "currency": "",
+          "image": "https://youthlab.com/filemanager/products/Body/5200142102760_2.jpg?width=400",
+          "has_ingredients": false,
+          "has_how_to": false,
+          "ingredient_candidates": [
+            {
+              "path": "field_quality_summary.ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            },
+            {
+              "path": "field_quality_summary.active_ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "how_to_candidates": [
+            {
+              "path": "field_quality_summary.how_to_use_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "section_candidates": []
+        },
+        {
+          "title": "Anti - Stress Body Scrub - Blooming Garden",
+          "url": "https://youthlab.com/soma/anti-stress-body-scrub-blooming-garden-lab1385-p",
+          "price": "",
+          "currency": "",
+          "image": "https://youthlab.com/filemanager/products/Body/scrub_blooming_award.png",
+          "has_ingredients": false,
+          "has_how_to": false,
+          "ingredient_candidates": [
+            {
+              "path": "field_quality_summary.ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            },
+            {
+              "path": "field_quality_summary.active_ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "how_to_candidates": [
+            {
+              "path": "field_quality_summary.how_to_use_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "section_candidates": []
+        }
+      ]
+    },
+    {
+      "brand": "Merindah Botanicals",
+      "domain": "https://merindahbotanicals.com",
+      "status": 200,
+      "mode": "puppeteer",
+      "diagnostics": {
+        "requested_domain": "merindahbotanicals.com",
+        "resolved_base_url": "https://merindahbotanicals.com",
+        "discovery_strategy": null,
+        "failure_category": "no_product_urls",
+        "block_provider": null,
+        "http_trace": [
+          {
+            "url": "https://merindahbotanicals.com",
+            "status": null
+          },
+          {
+            "url": "https://merindahbotanicals.com/products.json?limit=1",
+            "status": null
+          },
+          {
+            "url": "https://merindahbotanicals.com/products.json?limit=1",
+            "status": null
+          },
+          {
+            "url": "https://merindahbotanicals.com/products.json?limit=1",
+            "status": null
+          },
+          {
+            "url": "https://merindahbotanicals.com",
+            "status": null
+          },
+          {
+            "url": "https://merindahbotanicals.com/robots.txt",
+            "status": null
+          },
+          {
+            "url": "https://merindahbotanicals.com/sitemap.xml",
+            "status": null
+          },
+          {
+            "url": "https://merindahbotanicals.com/sitemap_index.xml",
+            "status": null
+          }
+        ]
+      },
+      "product_count": 0,
+      "ready_product_count": 0,
+      "ready_products": [],
+      "product_summaries": []
+    },
+    {
+      "brand": "Bonjour La Vie",
+      "domain": "https://bonjourlavie.com",
+      "status": 200,
+      "mode": "puppeteer",
+      "diagnostics": {
+        "requested_domain": "bonjourlavie.com",
+        "resolved_base_url": "https://bonjourlavie.com",
+        "discovery_strategy": null,
+        "failure_category": "no_product_urls",
+        "block_provider": null,
+        "http_trace": [
+          {
+            "url": "https://bonjourlavie.com",
+            "status": null
+          },
+          {
+            "url": "https://bonjourlavie.com/products.json?limit=1",
+            "status": null
+          },
+          {
+            "url": "https://bonjourlavie.com/products.json?limit=1",
+            "status": null
+          },
+          {
+            "url": "https://bonjourlavie.com/products.json?limit=1",
+            "status": null
+          },
+          {
+            "url": "https://bonjourlavie.com",
+            "status": null
+          },
+          {
+            "url": "https://bonjourlavie.com/robots.txt",
+            "status": null
+          },
+          {
+            "url": "https://bonjourlavie.com/sitemap.xml",
+            "status": null
+          },
+          {
+            "url": "https://bonjourlavie.com/sitemap_index.xml",
+            "status": null
+          }
+        ]
+      },
+      "product_count": 0,
+      "ready_product_count": 0,
+      "ready_products": [],
+      "product_summaries": []
+    },
+    {
+      "brand": "Cosmydor",
+      "domain": "https://cosmydor.com",
+      "status": 200,
+      "mode": "puppeteer",
+      "diagnostics": {
+        "requested_domain": "cosmydor.com",
+        "resolved_base_url": "https://cosmydor.com",
+        "discovery_strategy": null,
+        "failure_category": "no_product_urls",
+        "block_provider": null,
+        "http_trace": [
+          {
+            "url": "https://cosmydor.com",
+            "status": null
+          },
+          {
+            "url": "https://cosmydor.com/products.json?limit=1",
+            "status": null
+          },
+          {
+            "url": "https://cosmydor.com/products.json?limit=1",
+            "status": null
+          },
+          {
+            "url": "https://cosmydor.com/products.json?limit=1",
+            "status": null
+          },
+          {
+            "url": "https://cosmydor.com",
+            "status": null
+          },
+          {
+            "url": "https://cosmydor.com/robots.txt",
+            "status": null
+          },
+          {
+            "url": "https://cosmydor.com/sitemap.xml",
+            "status": null
+          },
+          {
+            "url": "https://cosmydor.com/sitemap_index.xml",
+            "status": null
+          }
+        ]
+      },
+      "product_count": 0,
+      "ready_product_count": 0,
+      "ready_products": [],
+      "product_summaries": []
+    },
+    {
+      "brand": "Born to Bio",
+      "domain": "https://borntobio.fr",
+      "status": 200,
+      "mode": "puppeteer",
+      "diagnostics": {
+        "requested_domain": "borntobio.fr",
+        "resolved_base_url": "https://borntobio.fr",
+        "discovery_strategy": null,
+        "failure_category": "no_product_urls",
+        "block_provider": null,
+        "http_trace": [
+          {
+            "url": "https://borntobio.fr",
+            "status": null
+          },
+          {
+            "url": "https://borntobio.fr/products.json?limit=1",
+            "status": null
+          },
+          {
+            "url": "https://borntobio.fr/products.json?limit=1",
+            "status": null
+          },
+          {
+            "url": "https://borntobio.fr/products.json?limit=1",
+            "status": null
+          },
+          {
+            "url": "https://borntobio.fr",
+            "status": null
+          },
+          {
+            "url": "https://borntobio.fr/robots.txt",
+            "status": null
+          },
+          {
+            "url": "https://borntobio.fr/sitemap.xml",
+            "status": null
+          },
+          {
+            "url": "https://borntobio.fr/sitemap_index.xml",
+            "status": null
+          }
+        ]
+      },
+      "product_count": 0,
+      "ready_product_count": 0,
+      "ready_products": [],
+      "product_summaries": []
+    },
+    {
+      "brand": "Afrakari",
+      "domain": "https://afrakari.com",
+      "status": 200,
+      "mode": "puppeteer",
+      "diagnostics": {
+        "requested_domain": "afrakari.com",
+        "resolved_base_url": "https://afrakari.com",
+        "discovery_strategy": "shopify_json",
+        "failure_category": null,
+        "block_provider": null,
+        "http_trace": [
+          {
+            "url": "https://afrakari.com/",
+            "status": 200
+          },
+          {
+            "url": "https://afrakari.com/products.json?limit=1",
+            "status": 200
+          },
+          {
+            "url": "https://afrakari.com/",
+            "status": 200
+          },
+          {
+            "url": "https://afrakari.com/products.json?limit=250&page=1",
+            "status": 200
+          }
+        ]
+      },
+      "product_count": 16,
+      "ready_product_count": 0,
+      "ready_products": [],
+      "product_summaries": [
+        {
+          "title": "Radiance Elixir",
+          "url": "https://afrakari.com/products/radiance-elixir",
+          "price": "",
+          "currency": "",
+          "image": "https://cdn.shopify.com/s/files/1/0365/6941/5820/files/AFRAKARI_Radiance_Elixir_1_Ed_sq_red.jpg?v=1774361664",
+          "has_ingredients": false,
+          "has_how_to": false,
+          "ingredient_candidates": [
+            {
+              "path": "field_quality_summary.ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            },
+            {
+              "path": "field_quality_summary.active_ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "how_to_candidates": [
+            {
+              "path": "field_quality_summary.how_to_use_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "section_candidates": []
+        },
+        {
+          "title": "Prickly Pear Elixir",
+          "url": "https://afrakari.com/products/prickly-pear-elixir",
+          "price": "",
+          "currency": "",
+          "image": "https://cdn.shopify.com/s/files/1/0365/6941/5820/files/AFRAKARI_Prickly_Pear_Elixir_1_Ed_sq_red.jpg?v=1774361552",
+          "has_ingredients": true,
+          "has_how_to": false,
+          "ingredient_candidates": [
+            {
+              "path": "field_quality_summary.ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            },
+            {
+              "path": "field_quality_summary.active_ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "how_to_candidates": [
+            {
+              "path": "field_quality_summary.how_to_use_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "section_candidates": [
+            {
+              "path": "variants.0.description",
+              "value": "The Most Exclusive Pure Face Oil in the AFRAKARI Collection 100% Single Origin • Certified Organic AFRAKARI Prickly Pear Elixir is a rare, pure botanical oil, sustainably sourced and hand-harvested in South Africa. Recognised as one of the most precious facial oils in the world, Prickly Pear Seed Oil is valued for its exceptional concentration of naturally occurring vitamins, antioxidants, and essential fatty acids that support skin radiance, elasticity, and overall skin health. Cold pressed from the seeds of Opuntia ficus-indica , this certified organic oil is exceptionally rich in Vitamins E and K, known for their role in antioxidant protection and visible skin brightening. Its lightweight, fast-absorbing texture penetrates quickly without residue, making it suitable for daily use across all climates , including humid environments. Formulated as a single-ingredient oil with no fragranc"
+            },
+            {
+              "path": "description_raw",
+              "value": "The Most Exclusive Pure Face Oil in the AFRAKARI Collection 100% Single Origin • Certified Organic AFRAKARI Prickly Pear Elixir is a rare, pure botanical oil, sustainably sourced and hand-harvested in South Africa. Recognised as one of the most precious facial oils in the world, Prickly Pear Seed Oil is valued for its exceptional concentration of naturally occurring vitamins, antioxidants, and essential fatty acids that support skin radiance, elasticity, and overall skin health. Cold pressed from the seeds of Opuntia ficus-indica , this certified organic oil is exceptionally rich in Vitamins E and K, known for their role in antioxidant protection and visible skin brightening. Its lightweight, fast-absorbing texture penetrates quickly without residue, making it suitable for daily use across all climates , including humid environments. Formulated as a single-ingredient oil with no fragranc"
+            }
+          ]
+        },
+        {
+          "title": "Travel Pouch",
+          "url": "https://afrakari.com/products/pouch",
+          "price": "",
+          "currency": "",
+          "image": "https://cdn.shopify.com/s/files/1/0365/6941/5820/files/AFRAKARIPouch.jpg?v=1696776813",
+          "has_ingredients": false,
+          "has_how_to": false,
+          "ingredient_candidates": [
+            {
+              "path": "field_quality_summary.ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            },
+            {
+              "path": "field_quality_summary.active_ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "how_to_candidates": [
+            {
+              "path": "field_quality_summary.how_to_use_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "section_candidates": []
+        },
+        {
+          "title": "Recovery Cream",
+          "url": "https://afrakari.com/products/recovery-cream",
+          "price": "",
+          "currency": "",
+          "image": "https://cdn.shopify.com/s/files/1/0365/6941/5820/files/RecoveryCream1copy.jpg?v=1695241765",
+          "has_ingredients": false,
+          "has_how_to": false,
+          "ingredient_candidates": [
+            {
+              "path": "field_quality_summary.ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            },
+            {
+              "path": "field_quality_summary.active_ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "how_to_candidates": [
+            {
+              "path": "field_quality_summary.how_to_use_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "section_candidates": []
+        },
+        {
+          "title": "Recovery Serum",
+          "url": "https://afrakari.com/products/recovery-serum",
+          "price": "",
+          "currency": "",
+          "image": "https://cdn.shopify.com/s/files/1/0365/6941/5820/files/RecoverySerum1copy.jpg?v=1695242129",
+          "has_ingredients": false,
+          "has_how_to": false,
+          "ingredient_candidates": [
+            {
+              "path": "field_quality_summary.ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            },
+            {
+              "path": "field_quality_summary.active_ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "how_to_candidates": [
+            {
+              "path": "field_quality_summary.how_to_use_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "section_candidates": []
+        },
+        {
+          "title": "Recovery Collection Set",
+          "url": "https://afrakari.com/products/recovery-set",
+          "price": "",
+          "currency": "",
+          "image": "https://cdn.shopify.com/s/files/1/0365/6941/5820/files/RecoverySet4copy.jpg?v=1695330398",
+          "has_ingredients": false,
+          "has_how_to": false,
+          "ingredient_candidates": [
+            {
+              "path": "field_quality_summary.ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            },
+            {
+              "path": "field_quality_summary.active_ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "how_to_candidates": [
+            {
+              "path": "field_quality_summary.how_to_use_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "section_candidates": []
+        },
+        {
+          "title": "Gentle Cleansing Milk",
+          "url": "https://afrakari.com/products/gentle-cleansing-milk",
+          "price": "",
+          "currency": "",
+          "image": "https://cdn.shopify.com/s/files/1/0365/6941/5820/files/AFRAKARI_Gentle_Cleansing_Milk_1_new.jpg?v=1763484460",
+          "has_ingredients": false,
+          "has_how_to": false,
+          "ingredient_candidates": [
+            {
+              "path": "field_quality_summary.ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            },
+            {
+              "path": "field_quality_summary.active_ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "how_to_candidates": [
+            {
+              "path": "field_quality_summary.how_to_use_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "section_candidates": []
+        },
+        {
+          "title": "Lesotho Rosehip Oil",
+          "url": "https://afrakari.com/products/lesotho-rosehip-oil",
+          "price": "",
+          "currency": "",
+          "image": "https://cdn.shopify.com/s/files/1/0365/6941/5820/files/AFRAKARI_Lesotho_Rosehip_Oil_1_new.jpg?v=1763484880",
+          "has_ingredients": false,
+          "has_how_to": false,
+          "ingredient_candidates": [
+            {
+              "path": "field_quality_summary.ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            },
+            {
+              "path": "field_quality_summary.active_ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "how_to_candidates": [
+            {
+              "path": "field_quality_summary.how_to_use_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "section_candidates": []
+        },
+        {
+          "title": "Kalahari Melon Seed Oil",
+          "url": "https://afrakari.com/products/kalahari-melon-seed-oil",
+          "price": "",
+          "currency": "",
+          "image": "https://cdn.shopify.com/s/files/1/0365/6941/5820/files/AFRAKARI_Kalahari_Melon_Oil_1_new.jpg?v=1763485043",
+          "has_ingredients": false,
+          "has_how_to": false,
+          "ingredient_candidates": [
+            {
+              "path": "field_quality_summary.ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            },
+            {
+              "path": "field_quality_summary.active_ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "how_to_candidates": [
+            {
+              "path": "field_quality_summary.how_to_use_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "section_candidates": []
+        },
+        {
+          "title": "Soothing Marula CBD Elixir",
+          "url": "https://afrakari.com/products/soothing-marula-cbd-elixir",
+          "price": "",
+          "currency": "",
+          "image": "https://cdn.shopify.com/s/files/1/0365/6941/5820/files/AFRAKARI_Soothing_Marula_CBD_Elixir_1_new.jpg?v=1763485304",
+          "has_ingredients": false,
+          "has_how_to": false,
+          "ingredient_candidates": [
+            {
+              "path": "field_quality_summary.ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            },
+            {
+              "path": "field_quality_summary.active_ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "how_to_candidates": [
+            {
+              "path": "field_quality_summary.how_to_use_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "section_candidates": []
+        },
+        {
+          "title": "Marula Hydrating Elixir",
+          "url": "https://afrakari.com/products/marula-hydrating-elixir",
+          "price": "",
+          "currency": "",
+          "image": "https://cdn.shopify.com/s/files/1/0365/6941/5820/files/AFRAKARI_Marula_Hydrating_Elixir_1_new.jpg?v=1763485179",
+          "has_ingredients": false,
+          "has_how_to": false,
+          "ingredient_candidates": [
+            {
+              "path": "field_quality_summary.ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            },
+            {
+              "path": "field_quality_summary.active_ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "how_to_candidates": [
+            {
+              "path": "field_quality_summary.how_to_use_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "section_candidates": []
+        },
+        {
+          "title": "Pure Marula Oil + Cape Chamomile",
+          "url": "https://afrakari.com/products/pure-marula-oil-cape-chamomile",
+          "price": "",
+          "currency": "",
+          "image": "https://cdn.shopify.com/s/files/1/0365/6941/5820/files/AFRAKARI_Pure_Marula_Oil_Cape_Cham_1_new.jpg?v=1763485571",
+          "has_ingredients": false,
+          "has_how_to": false,
+          "ingredient_candidates": [
+            {
+              "path": "field_quality_summary.ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            },
+            {
+              "path": "field_quality_summary.active_ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "how_to_candidates": [
+            {
+              "path": "field_quality_summary.how_to_use_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "section_candidates": []
+        },
+        {
+          "title": "Pure Marula Oil",
+          "url": "https://afrakari.com/products/pure-marula-oil",
+          "price": "",
+          "currency": "",
+          "image": "https://cdn.shopify.com/s/files/1/0365/6941/5820/files/AFRAKARI_Pure_Marula_Oil_1_new.jpg?v=1763485418",
+          "has_ingredients": false,
+          "has_how_to": false,
+          "ingredient_candidates": [
+            {
+              "path": "field_quality_summary.ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            },
+            {
+              "path": "field_quality_summary.active_ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "how_to_candidates": [
+            {
+              "path": "field_quality_summary.how_to_use_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "section_candidates": []
+        },
+        {
+          "title": "Resurface + Restore Night Cream",
+          "url": "https://afrakari.com/products/resurface-restore-night-cream",
+          "price": "",
+          "currency": "",
+          "image": "https://cdn.shopify.com/s/files/1/0365/6941/5820/files/AFRAKARI_Resurface_Night_Cream_1_new_ed.jpg?v=1763484754",
+          "has_ingredients": false,
+          "has_how_to": false,
+          "ingredient_candidates": [
+            {
+              "path": "field_quality_summary.ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            },
+            {
+              "path": "field_quality_summary.active_ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "how_to_candidates": [
+            {
+              "path": "field_quality_summary.how_to_use_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "section_candidates": []
+        },
+        {
+          "title": "Renewal Facial Oil",
+          "url": "https://afrakari.com/products/renewal-facial-oil",
+          "price": "",
+          "currency": "",
+          "image": "https://cdn.shopify.com/s/files/1/0365/6941/5820/files/AFRAKARI_Renewal_Facial_Oil_1_new.jpg?v=1763484843",
+          "has_ingredients": false,
+          "has_how_to": false,
+          "ingredient_candidates": [
+            {
+              "path": "field_quality_summary.ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            },
+            {
+              "path": "field_quality_summary.active_ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "how_to_candidates": [
+            {
+              "path": "field_quality_summary.how_to_use_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "section_candidates": []
+        },
+        {
+          "title": "Moisture + Protect Day Cream",
+          "url": "https://afrakari.com/products/moisture-protect-day-cream",
+          "price": "",
+          "currency": "",
+          "image": "https://cdn.shopify.com/s/files/1/0365/6941/5820/files/AFRAKARI_Moisture_Protect_Day_Cream_1_new.jpg?v=1763484785",
+          "has_ingredients": false,
+          "has_how_to": false,
+          "ingredient_candidates": [
+            {
+              "path": "field_quality_summary.ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            },
+            {
+              "path": "field_quality_summary.active_ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "how_to_candidates": [
+            {
+              "path": "field_quality_summary.how_to_use_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "section_candidates": []
+        }
+      ]
+    },
+    {
+      "brand": "Anaya",
+      "domain": "https://anaya.com",
+      "status": 200,
+      "mode": "puppeteer",
+      "diagnostics": {
+        "requested_domain": "anaya.com",
+        "resolved_base_url": "https://anaya.com",
+        "discovery_strategy": null,
+        "failure_category": "no_product_urls",
+        "block_provider": null,
+        "http_trace": [
+          {
+            "url": "https://anaya.com",
+            "status": null
+          },
+          {
+            "url": "https://anaya.com/products.json?limit=1",
+            "status": null
+          },
+          {
+            "url": "https://anaya.com/products.json?limit=1",
+            "status": null
+          },
+          {
+            "url": "https://anaya.com/products.json?limit=1",
+            "status": null
+          },
+          {
+            "url": "https://anaya.com",
+            "status": null
+          },
+          {
+            "url": "https://anaya.com/robots.txt",
+            "status": null
+          },
+          {
+            "url": "https://anaya.com/sitemap.xml",
+            "status": null
+          },
+          {
+            "url": "https://anaya.com/sitemap_index.xml",
+            "status": null
+          }
+        ]
+      },
+      "product_count": 0,
+      "ready_product_count": 0,
+      "ready_products": [],
+      "product_summaries": []
+    },
+    {
+      "brand": "Scented Life",
+      "domain": "https://scentedlife.com",
+      "status": 200,
+      "mode": "puppeteer",
+      "diagnostics": {
+        "requested_domain": "scentedlife.com",
+        "resolved_base_url": "https://scentedlife.com",
+        "discovery_strategy": "seed_page",
+        "failure_category": "bot_challenge",
+        "block_provider": "cloudflare",
+        "http_trace": [
+          {
+            "url": "https://domains.atom.com/lpd/name/ScentedLife.com",
+            "status": 200
+          },
+          {
+            "url": "https://scentedlife.com/products.json?limit=1",
+            "status": 404
+          },
+          {
+            "url": "https://domains.atom.com/lpd/name/ScentedLife.com",
+            "status": 200
+          },
+          {
+            "url": "https://domains.atom.com/lpd/name/ScentedLife.com",
+            "status": 200
+          },
+          {
+            "url": "https://domains.atom.com/lpd/name/ScentedLife.com",
+            "status": 200
+          }
+        ]
+      },
+      "product_count": 0,
+      "ready_product_count": 0,
+      "ready_products": [],
+      "product_summaries": []
+    },
+    {
+      "brand": "Serich",
+      "domain": "https://serich.com",
+      "status": 200,
+      "mode": "puppeteer",
+      "diagnostics": {
+        "requested_domain": "serich.com",
+        "resolved_base_url": "https://serich.com",
+        "discovery_strategy": "browser_discovery",
+        "failure_category": "non_storefront_root",
+        "block_provider": null,
+        "http_trace": [
+          {
+            "url": "https://serich.com/",
+            "status": 200
+          },
+          {
+            "url": "https://serich.com/products.json?limit=1",
+            "status": 404
+          },
+          {
+            "url": "https://serich.com/",
+            "status": 200
+          },
+          {
+            "url": "https://serich.com/robots.txt",
+            "status": 200
+          },
+          {
+            "url": "https://serich.com/sitemap_index.xml",
+            "status": 200
+          },
+          {
+            "url": "https://serich.com/sitemap_index.xml",
+            "status": 200
+          },
+          {
+            "url": "https://serich.com/page-sitemap.xml",
+            "status": 200
+          },
+          {
+            "url": "https://serich.com/fusion_tb_category-sitemap.xml",
+            "status": 200
+          },
+          {
+            "url": "https://serich.com/",
+            "status": 200
+          },
+          {
+            "url": "https://serich.com/author/admin/",
+            "status": 200
+          },
+          {
+            "url": "https://serich.com/politica-de-privacidad/",
+            "status": 200
+          }
+        ]
+      },
+      "product_count": 0,
+      "ready_product_count": 0,
+      "ready_products": [],
+      "product_summaries": []
+    },
+    {
+      "brand": "Orora",
+      "domain": "https://orora.co",
+      "status": 200,
+      "mode": "puppeteer",
+      "diagnostics": {
+        "requested_domain": "orora.co",
+        "resolved_base_url": "https://orora.co",
+        "discovery_strategy": "browser_discovery",
+        "failure_category": "dead_sitemap",
+        "block_provider": null,
+        "http_trace": [
+          {
+            "url": "https://orora.co/",
+            "status": 200
+          },
+          {
+            "url": "https://orora.co/products.json?limit=1",
+            "status": 200
+          },
+          {
+            "url": "https://orora.co/",
+            "status": 200
+          },
+          {
+            "url": "https://orora.co/robots.txt",
+            "status": 200
+          },
+          {
+            "url": "/sitemap.xml",
+            "status": null
+          },
+          {
+            "url": "https://orora.co/sitemap.xml",
+            "status": 200
+          },
+          {
+            "url": "https://orora.co/sitemap_index.xml",
+            "status": 200
+          },
+          {
+            "url": "https://forsale.godaddy.com/forsale/orora.co?utm_source=TDFS_BINNS2&utm_medium=parkedpages&utm_campaign=x_corp_tdfs-binns2_base&traffic_type=TDFS_BINNS2&traffic_id=binns2&",
+            "status": 200
+          }
+        ]
+      },
+      "product_count": 0,
+      "ready_product_count": 0,
+      "ready_products": [],
+      "product_summaries": []
+    },
+    {
+      "brand": "Advanced Cosmetica",
+      "domain": "https://advancedcosmetica.com",
+      "status": 200,
+      "mode": "puppeteer",
+      "diagnostics": {
+        "requested_domain": "advancedcosmetica.com",
+        "resolved_base_url": "https://advancedcosmetica.com",
+        "discovery_strategy": "sitemap",
+        "failure_category": "timeout",
+        "block_provider": null,
+        "http_trace": [
+          {
+            "url": "https://advancedcosmetica.com/product/3-in-one-shampoo-conditioner-and-wash/",
+            "status": 200
+          },
+          {
+            "url": "https://advancedcosmetica.com/product/kids-3-in-1-botanical-body-lotion/",
+            "status": 200
+          },
+          {
+            "url": "https://advancedcosmetica.com/product/six-star-series-volumising-shampoo-conditioner/",
+            "status": 200
+          },
+          {
+            "url": "https://advancedcosmetica.com/product/kids-3-in-1-botanical-body-lotion/",
+            "status": 200
+          },
+          {
+            "url": "https://advancedcosmetica.com/product/3-in-one-shampoo-conditioner-and-wash/",
+            "status": 200
+          },
+          {
+            "url": "https://advancedcosmetica.com/product/six-star-series-volumising-shampoo-conditioner/",
+            "status": 200
+          },
+          {
+            "url": "https://advancedcosmetica.com/product/six-star-series-hand-body-wash-lotion-bundle/",
+            "status": 200
+          },
+          {
+            "url": "https://advancedcosmetica.com/product/hand-body-wash-and-hand-body-lotion-rose-macadamia/",
+            "status": 200
+          },
+          {
+            "url": "https://advancedcosmetica.com/product/hand-body-wash-and-hand-body-lotion-lemon-olive/",
+            "status": 200
+          },
+          {
+            "url": "https://advancedcosmetica.com/product/moisture-therapy-shampoo-conditioner/",
+            "status": 200
+          },
+          {
+            "url": "https://advancedcosmetica.com/product/hand-body-wash-and-hand-body-lotion-lemon-olive/",
+            "status": 200
+          },
+          {
+            "url": "https://advancedcosmetica.com/product/hand-body-wash-and-hand-body-lotion-rose-macadamia/",
+            "status": 200
+          },
+          {
+            "url": "https://advancedcosmetica.com/product/acne-relief-natural-calming-face-serum/",
+            "status": 200
+          },
+          {
+            "url": "https://advancedcosmetica.com/product/acne-relief-natural-calming-face-serum/",
+            "status": 200
+          },
+          {
+            "url": "https://advancedcosmetica.com/product/acne-relief-natural-cleansing-face-wash/",
+            "status": 200
+          },
+          {
+            "url": "https://advancedcosmetica.com/product/acne-relief-natural-cleansing-face-wash-calming-face-serum-pack/",
+            "status": 200
+          },
+          {
+            "url": "https://advancedcosmetica.com/product/hand-and-body-wash-lemon-myrtle/",
+            "status": 200
+          },
+          {
+            "url": "https://advancedcosmetica.com/product/acne-relief-natural-cleansing-face-wash/",
+            "status": 200
+          },
+          {
+            "url": "https://advancedcosmetica.com/product/acne-relief-natural-cleansing-face-wash-calming-face-serum-pack/",
+            "status": 200
+          },
+          {
+            "url": "https://advancedcosmetica.com/product/hand-and-body-wash-lemon-myrtle/",
+            "status": 200
+          },
+          {
+            "url": "https://advancedcosmetica.com/product/hand-and-body-wash-rose-geranium/",
+            "status": 200
+          },
+          {
+            "url": "https://advancedcosmetica.com/product/hand-and-body-lotion-lemon-myrtle/",
+            "status": 200
+          },
+          {
+            "url": "https://advancedcosmetica.com/product/hand-and-body-lotion-rose-geranium/",
+            "status": 200
+          },
+          {
+            "url": "https://advancedcosmetica.com/product/hand-and-body-lotion-lemon-myrtle/",
+            "status": 200
+          },
+          {
+            "url": "https://advancedcosmetica.com/product/hand-and-body-wash-rose-geranium/",
+            "status": 200
+          }
+        ]
+      },
+      "product_count": 0,
+      "ready_product_count": 0,
+      "ready_products": [],
+      "product_summaries": []
+    },
+    {
+      "brand": "Rutines",
+      "domain": "https://rutines.com",
+      "status": 200,
+      "mode": "puppeteer",
+      "diagnostics": {
+        "requested_domain": "rutines.com",
+        "resolved_base_url": "https://rutines.com",
+        "discovery_strategy": "shopify_json",
+        "failure_category": null,
+        "block_provider": null,
+        "http_trace": [
+          {
+            "url": "https://rutines.com/en-nl",
+            "status": 200
+          },
+          {
+            "url": "https://rutines.com/products.json?limit=1",
+            "status": 200
+          },
+          {
+            "url": "https://rutines.com/en-nl/pages/become-a-retailer",
+            "status": 200
+          },
+          {
+            "url": "https://rutines.com/products.json?limit=250&page=1",
+            "status": 200
+          }
+        ]
+      },
+      "product_count": 8,
+      "ready_product_count": 0,
+      "ready_products": [],
+      "product_summaries": [
+        {
+          "title": "Kids toothbrush - White - SOFT",
+          "url": "https://rutines.com/products/kids-toothbrush-white",
+          "price": "",
+          "currency": "",
+          "image": "https://cdn.shopify.com/s/files/1/0566/5485/6352/files/kids-toothbrush-white-soft-781977.jpg?v=1746451467",
+          "has_ingredients": false,
+          "has_how_to": false,
+          "ingredient_candidates": [
+            {
+              "path": "field_quality_summary.ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            },
+            {
+              "path": "field_quality_summary.active_ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "how_to_candidates": [
+            {
+              "path": "field_quality_summary.how_to_use_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "section_candidates": []
+        },
+        {
+          "title": "Kids toothbrush - Natural - SOFT",
+          "url": "https://rutines.com/products/kids-toothbrush-natural",
+          "price": "",
+          "currency": "",
+          "image": "https://cdn.shopify.com/s/files/1/0566/5485/6352/files/kids-toothbrush-natural-soft-410084.jpg?v=1746451467",
+          "has_ingredients": false,
+          "has_how_to": false,
+          "ingredient_candidates": [
+            {
+              "path": "field_quality_summary.ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            },
+            {
+              "path": "field_quality_summary.active_ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "how_to_candidates": [
+            {
+              "path": "field_quality_summary.how_to_use_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "section_candidates": []
+        },
+        {
+          "title": "Kids toothbrush - Mint green - SOFT",
+          "url": "https://rutines.com/products/kids-toothbrush-mint-green",
+          "price": "",
+          "currency": "",
+          "image": "https://cdn.shopify.com/s/files/1/0566/5485/6352/files/kids-toothbrush-mint-green-soft-908688.jpg?v=1746451468",
+          "has_ingredients": false,
+          "has_how_to": false,
+          "ingredient_candidates": [
+            {
+              "path": "field_quality_summary.ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            },
+            {
+              "path": "field_quality_summary.active_ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "how_to_candidates": [
+            {
+              "path": "field_quality_summary.how_to_use_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "section_candidates": []
+        },
+        {
+          "title": "Heavy weight cotton tote bag",
+          "url": "https://rutines.com/products/cotton-canvas-bag",
+          "price": "",
+          "currency": "",
+          "image": "https://cdn.shopify.com/s/files/1/0566/5485/6352/products/heavy-weight-cotton-tote-bag-707656.jpg?v=1746451470",
+          "has_ingredients": false,
+          "has_how_to": false,
+          "ingredient_candidates": [
+            {
+              "path": "field_quality_summary.ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            },
+            {
+              "path": "field_quality_summary.active_ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "how_to_candidates": [
+            {
+              "path": "field_quality_summary.how_to_use_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "section_candidates": []
+        },
+        {
+          "title": "Bamboo toothbrush travel case",
+          "url": "https://rutines.com/products/toothbrush-case-in-bamboo",
+          "price": "",
+          "currency": "",
+          "image": "https://cdn.shopify.com/s/files/1/0566/5485/6352/products/bamboo-toothbrush-travel-case-132916.jpg?v=1746451468",
+          "has_ingredients": false,
+          "has_how_to": false,
+          "ingredient_candidates": [
+            {
+              "path": "field_quality_summary.ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            },
+            {
+              "path": "field_quality_summary.active_ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "how_to_candidates": [
+            {
+              "path": "field_quality_summary.how_to_use_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "section_candidates": []
+        },
+        {
+          "title": "Rutines Slim Comfort toothbrush - Natural - SOFT",
+          "url": "https://rutines.com/products/bamboo-toothbrush-natural",
+          "price": "",
+          "currency": "",
+          "image": "https://cdn.shopify.com/s/files/1/0566/5485/6352/products/rutines-slim-comfort-toothbrush-natural-soft-151953.jpg?v=1746451474",
+          "has_ingredients": false,
+          "has_how_to": false,
+          "ingredient_candidates": [
+            {
+              "path": "field_quality_summary.ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            },
+            {
+              "path": "field_quality_summary.active_ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "how_to_candidates": [
+            {
+              "path": "field_quality_summary.how_to_use_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "section_candidates": []
+        },
+        {
+          "title": "Bamboo toothbrush holder",
+          "url": "https://rutines.com/products/toothbrush-holder-in-bamboo",
+          "price": "",
+          "currency": "",
+          "image": "https://cdn.shopify.com/s/files/1/0566/5485/6352/products/bamboo-toothbrush-holder-685583.jpg?v=1746451471",
+          "has_ingredients": false,
+          "has_how_to": false,
+          "ingredient_candidates": [
+            {
+              "path": "field_quality_summary.ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            },
+            {
+              "path": "field_quality_summary.active_ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "how_to_candidates": [
+            {
+              "path": "field_quality_summary.how_to_use_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "section_candidates": []
+        },
+        {
+          "title": "Rutines Slim Comfort toothbrush - White - SOFT",
+          "url": "https://rutines.com/products/bamboo-toothbrush-white",
+          "price": "",
+          "currency": "",
+          "image": "https://cdn.shopify.com/s/files/1/0566/5485/6352/products/rutines-slim-comfort-toothbrush-white-soft-794432.jpg?v=1746451473",
+          "has_ingredients": false,
+          "has_how_to": false,
+          "ingredient_candidates": [
+            {
+              "path": "field_quality_summary.ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            },
+            {
+              "path": "field_quality_summary.active_ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "how_to_candidates": [
+            {
+              "path": "field_quality_summary.how_to_use_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "section_candidates": []
+        }
+      ]
+    },
+    {
+      "brand": "Nimbus Co",
+      "domain": "https://nimbusco.com",
+      "status": 200,
+      "mode": "puppeteer",
+      "diagnostics": {
+        "requested_domain": "nimbusco.com",
+        "resolved_base_url": "https://nimbusco.com",
+        "discovery_strategy": "seed_page",
+        "failure_category": null,
+        "block_provider": "cloudflare",
+        "http_trace": [
+          {
+            "url": "https://www.atom.com/name/NimbusCo",
+            "status": 200
+          },
+          {
+            "url": "https://nimbusco.com/products.json?limit=1",
+            "status": 404
+          },
+          {
+            "url": "https://www.atom.com/name/NimbusCo",
+            "status": 200
+          },
+          {
+            "url": "https://www.atom.com/name/NimbusCo",
+            "status": 200
+          }
+        ]
+      },
+      "product_count": 1,
+      "ready_product_count": 0,
+      "ready_products": [],
+      "product_summaries": [
+        {
+          "title": "NimbusCo.com",
+          "url": "https://www.atom.com/name/NimbusCo",
+          "price": "",
+          "currency": "",
+          "image": "https://www.atom.com/assets/imgs/onenamingplatform.jpg",
+          "has_ingredients": false,
+          "has_how_to": false,
+          "ingredient_candidates": [
+            {
+              "path": "field_quality_summary.ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            },
+            {
+              "path": "field_quality_summary.active_ingredients_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "how_to_candidates": [
+            {
+              "path": "field_quality_summary.how_to_use_raw.reason_codes.0",
+              "value": "missing_source_kind"
+            }
+          ],
+          "section_candidates": []
+        }
+      ]
+    }
+  ]
+}

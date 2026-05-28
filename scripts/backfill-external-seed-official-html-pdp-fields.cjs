@@ -23,9 +23,15 @@ const REVIEW_SUMMARY_ONLY_OKENDO_HOSTS = new Set(['beautyofjoseon.com', 'kravebe
 const REVIEW_SUMMARY_ONLY_GENERIC_HOSTS = new Set([...REVIEW_SUMMARY_ONLY_OKENDO_HOSTS, 'roundlab.com']);
 const GENERIC_OFFICIAL_SHOPIFY_FIELD_HOSTS = new Set([
   '786cosmetics.com',
+  'baiebotanique.com',
+  'byrabeauty.com',
+  'delicatedaisys.com',
   'lucamarskincare.com',
+  'missnella.com',
   'rohrremedy.com',
   'seresilk.com.au',
+  'upcirclebeauty.com',
+  'www.missnella.com',
   'www.rohrremedy.com',
 ]);
 
@@ -363,11 +369,25 @@ function looksLikeShortOfficialInci(value) {
   return /\b(?:polyisobutene|cellulose gum|pectin|copolymer|hydrocolloid|glycerin|water|aqua|sodium|acid|lanolin|vitellaria|shea butter|hemp|cera alba|bees\s*wax|beeswax|tocopherol|vitamin|frankincense|oil|methyl esters?|glutamate|adipate|oleate|palmitate|linoleate|trideceth)\b/i.test(text);
 }
 
+function looksLikeSingleOfficialBotanicalInci(value) {
+  const text = normalizeText(value);
+  if (text.length < 20 || text.length > 180) return false;
+  if ((text.match(/,/g) || []).length > 0) return false;
+  if (
+    /\b(?:cart|checkout|shipping|customer service|menu|ambassador|swiper|document\.addEventListener|directions?|apply|use|spray|caution|warning|external use|keep out|avoid)\b/i.test(
+      text,
+    )
+  ) {
+    return false;
+  }
+  return /\b(?:rosa\s+damascena|flower water|floral water|hydrosol|aloe barbadensis|simmondsia chinensis|argania spinosa|cocos nucifera|helianthus annuus|butyrospermum parkii|vitellaria paradoxa|vitis vinifera|prunus amygdalus|olea europaea|seed oil|fruit oil|kernel oil|leaf juice|leaf extract)\b/i.test(text);
+}
+
 function looksLikeHowToUse(value) {
   const text = normalizeText(value);
   if (text.length < 45 || text.length > 1600) return false;
   if (/\b(?:checkout|shop all|ambassador|find your routine|mega menu|header menu)\b/i.test(text)) return false;
-  return /\b(?:apply|use|massage|rinse|spray|sweep|wipe|shake|dispense|pull|brush|after cleansing|after completing|before|daily|morning|evening|night|leave on|pat)\b/i.test(text);
+  return /\b(?:apply|use|massage|rinse|spray|sweep|wipe|shake|dispense|pull|brush|after cleansing|after completing|before|daily|morning|evening|night|leave on|pat|dab)\b/i.test(text);
 }
 
 function looksLikeActiveIngredientList(value) {
@@ -2532,10 +2552,23 @@ function extractGenericShopifyProductJsonScripts(html) {
   return products;
 }
 
+function extractGenericShopifyInlineProductObjects(html) {
+  const source = String(html || '');
+  const products = [];
+  for (const match of source.matchAll(/\bproduct\s*:\s*\{/gi)) {
+    const parsed = normalizeGenericProductObject(extractBalancedJsonObject(source.slice(match.index), 'product'));
+    if (!parsed) continue;
+    if (normalizeText(parsed.description).length < 40 && asArray(parsed.variants).length === 0) continue;
+    products.push(parsed);
+  }
+  return products;
+}
+
 function extractGenericOfficialProduct(html, options = {}) {
   const productTitle = normalizeText(options.productTitle);
   const candidates = [
     ...extractGenericShopifyProductJsonScripts(html),
+    ...extractGenericShopifyInlineProductObjects(html),
     normalizeGenericProductObject(findJsonLdProduct(html, options)),
   ].filter(Boolean);
   if (!candidates.length) return null;
@@ -2568,7 +2601,7 @@ function genericOfficialProductMatches(html, product, options = {}) {
 function normalizeSectionHeading(value) {
   return cleanSectionText(value)
     .replace(/\s*\+\s*$/g, '')
-    .replace(/:$/, '')
+    .replace(/[?:]+$/, '')
     .trim();
 }
 
@@ -2622,6 +2655,38 @@ function extractAccordionItemSections(html) {
   return sections;
 }
 
+function extractDetailsAccordionSections(html) {
+  const sections = [];
+  for (const match of String(html || '').matchAll(/<details\b[^>]*class=["'][^"']*\bcc-accordion-item\b[^"']*["'][^>]*>([\s\S]*?)<\/details>/gi)) {
+    const block = match[1];
+    const headingMatch = block.match(/<summary\b[^>]*>[\s\S]*?<h[1-6]\b[^>]*>([\s\S]*?)<\/h[1-6]>[\s\S]*?<\/summary>/i);
+    const heading = normalizeSectionHeading(headingMatch?.[1]);
+    if (!heading || !isGenericProductContentHeading(heading)) continue;
+    const panelMatch = block.match(/<div\b[^>]*class=["'][^"']*\bcc-accordion-item__panel\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/i);
+    const body = cleanSectionText(panelMatch?.[1] || block.slice((headingMatch?.index || 0) + (headingMatch?.[0]?.length || 0)));
+    if (body.length >= 20) sections.push({ heading, body, source_origin: 'official_details_accordion' });
+  }
+  return sections;
+}
+
+function extractUpcircleQaGroupSections(html) {
+  const source = String(html || '');
+  const starts = Array.from(source.matchAll(/<div\b[^>]*class=["'][^"']*\bs_qa_group\b[^"']*["'][^>]*>/gi));
+  const sections = [];
+  for (let index = 0; index < starts.length; index += 1) {
+    const start = starts[index].index;
+    const end = index + 1 < starts.length ? starts[index + 1].index : start + 9000;
+    const block = source.slice(start, end);
+    const headingMatch = block.match(/<h[1-6]\b[^>]*class=["'][^"']*\bqa_group_title\b[^"']*["'][^>]*>([\s\S]*?)<\/h[1-6]>/i);
+    const heading = normalizeSectionHeading(headingMatch?.[1]);
+    if (!heading || !isGenericProductContentHeading(heading)) continue;
+    const contentMatch = block.match(/<div\b[^>]*class=["'][^"']*\bupcircle_content\b[^"']*["'][^>]*>([\s\S]*?)(?:<div\b[^>]*class=["'][^"']*\bs_qa_group\b|<\/section>|<\/main>|<script\b|$)/i);
+    const body = cleanSectionText(contentMatch?.[1] || block.slice((headingMatch?.index || 0) + (headingMatch?.[0]?.length || 0)));
+    if (body.length >= 20) sections.push({ heading, body, source_origin: 'official_upcircle_qa' });
+  }
+  return sections;
+}
+
 const GENERIC_DESCRIPTION_LABELS = [
   { heading: 'Ingredients', pattern: /^(?:full\s+ingredients?|ingredients?|inci)\s*:?\s*(.*)$/i },
   { heading: 'How To Use', pattern: /^(?:how\s+to\s+use|directions?|usage|daily\s+ritual|ritual)\s*:?\s*(.*)$/i },
@@ -2646,6 +2711,17 @@ function paragraphLabelMatch(text) {
   return GENERIC_DESCRIPTION_LABELS.find((label) => label.pattern.test(text));
 }
 
+function cleanGenericProductDescriptionOverview(htmlFragment) {
+  const paragraphs = extractDescriptionParagraphs(htmlFragment);
+  const overview = [];
+  for (const paragraph of paragraphs) {
+    if (paragraphLabelMatch(paragraph)) break;
+    if (/^(?:caution|warning)\s*:|\bfor external use only\b/i.test(paragraph)) break;
+    overview.push(paragraph);
+  }
+  return normalizeText(overview.join('\n\n'));
+}
+
 function extractDescriptionLabeledSections(htmlFragment) {
   const paragraphs = extractDescriptionParagraphs(htmlFragment);
   const sections = [];
@@ -2659,6 +2735,7 @@ function extractDescriptionLabeledSections(htmlFragment) {
     for (let inner = index + 1; inner < paragraphs.length; inner += 1) {
       const next = paragraphs[inner];
       if (paragraphLabelMatch(next)) break;
+      if (/^(?:caution|warning)\s*:|\bfor external use only\b/i.test(next)) break;
       if (/^(?:proudly\s+made|cruelty\s+free|made\s+in|shop\s+now)\b/i.test(next)) break;
       bodyParts.push(next);
       if (bodyParts.join(' ').length > 1400) break;
@@ -2672,6 +2749,7 @@ function extractDescriptionLabeledSections(htmlFragment) {
 function cleanOfficialIngredientCandidate(value) {
   return normalizeText(value)
     .replace(/^(?:full\s+ingredients?|ingredients?|inci)\s*:?\s*/i, '')
+    .replace(/^\d+%\s+natural\s+ingredients?\s*:?\s*/i, '')
     .replace(/\bIngredients explained\s*:?\s*[\s\S]*$/i, '')
     .replace(/\bNo\s+parab[eé]ns\b[\s\S]*$/i, '')
     .replace(/\bProudly\s+Made\b[\s\S]*$/i, '')
@@ -2769,7 +2847,7 @@ function extractGenericOfficialShopifyFields(html, options = {}) {
 
   const productDescriptionHtml = normalizeText(product?.description);
   const productDescription = normalizeText(
-    cleanSectionText(productDescriptionHtml) ||
+    cleanGenericProductDescriptionOverview(productDescriptionHtml) ||
     cleanSectionText(findJsonLdProduct(html, options)?.description) ||
     cleanSectionText(extractMetaContent(html, 'description')),
   )
@@ -2783,6 +2861,8 @@ function extractGenericOfficialShopifyFields(html, options = {}) {
     [
       ...extractProductTabSections(html),
       ...extractAccordionItemSections(html),
+      ...extractDetailsAccordionSections(html),
+      ...extractUpcircleQaGroupSections(html),
       ...extractDescriptionLabeledSections(productDescriptionHtml),
     ],
   );
@@ -2796,7 +2876,7 @@ function extractGenericOfficialShopifyFields(html, options = {}) {
   });
   if (
     !hasUnscentedIngredientConflict(options.productTitle || product?.title, ingredients) &&
-    (looksLikeFullInci(ingredients) || looksLikeShortOfficialInci(ingredients))
+    (looksLikeFullInci(ingredients) || looksLikeShortOfficialInci(ingredients) || looksLikeSingleOfficialBotanicalInci(ingredients))
   ) {
     fields.pdp_ingredients_raw = ingredients;
   }
@@ -3100,7 +3180,12 @@ function buildSeedDataPatch(row, extracted, options = {}) {
     }
     if (fieldKey === 'pdp_ingredients_raw') {
       if (isForceFilledExisting('ingredients_raw')) return false;
-      return looksLikeFullInci(seedData.pdp_ingredients_raw || snapshot.pdp_ingredients_raw);
+      const existingIngredients = seedData.pdp_ingredients_raw || snapshot.pdp_ingredients_raw;
+      return (
+        looksLikeFullInci(existingIngredients) ||
+        looksLikeShortOfficialInci(existingIngredients) ||
+        looksLikeSingleOfficialBotanicalInci(existingIngredients)
+      );
     }
     if (fieldKey === 'pdp_active_ingredients_raw') {
       if (isForceFilledExisting('active_ingredients_raw')) return false;

@@ -1,0 +1,1069 @@
+{
+  "status": "dry_run",
+  "reason": "",
+  "target_url": "https://786cosmetics.com/products/nizwa-breathable-nail-polish",
+  "row": {
+    "id": "eps_73c2e2f453cb14ba3c006f6e",
+    "external_product_id": "ext_45293e532ad5a5f33438d38f",
+    "title": "Nizwa - Breathable Nail Polish",
+    "brand": "",
+    "domain": "786cosmetics.com",
+    "canonical_url": "https://786cosmetics.com/products/nizwa-breathable-nail-polish",
+    "destination_url": "https://786cosmetics.com/products/nizwa-breathable-nail-polish",
+    "seed_snapshot_contract": {
+      "source": "official_pdp",
+      "updated_at": "2026-05-28T02:34:15.339Z",
+      "authoritative": true,
+      "contract_version": "external_seed.snapshot_contract.v1",
+      "replace_strategy": "replace_force_or_weak_variant_only",
+      "legacy_fields_quarantined": true,
+      "structured_fields_authoritative": true
+    }
+  },
+  "payload": {
+    "changed": true,
+    "next_row": {
+      "title": "Nizwa - Breathable Nail Polish",
+      "canonical_url": "https://786cosmetics.com/products/nizwa-breathable-nail-polish",
+      "destination_url": "https://786cosmetics.com/products/nizwa-breathable-nail-polish",
+      "image_url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Nizwa.jpg?v=1762525826",
+      "price_amount": 13.99,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "seed_data": {
+        "brand": "786 Cosmetics",
+        "title": "Nizwa - Breathable Nail Polish",
+        "images": [
+          "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Nizwa.jpg?v=1762525826",
+          "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Nizwa_3.png?v=1737676293",
+          "https://cdn.shopify.com/s/files/1/0413/6229/2900/products/786cosmetics-default-title-nizwa-breathable-nail-polish-17529549553828.jpg?v=1737676293",
+          "https://cdn.shopify.com/s/files/1/0413/6229/2900/products/786cosmetics-default-title-nizwa-breathable-nail-polish-17529550471332.jpg?v=1737676293"
+        ],
+        "volume": "Shade: Nizwa",
+        "snapshot": {
+          "title": "Nizwa - Breathable Nail Polish",
+          "images": [
+            "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Nizwa.jpg?v=1762525826",
+            "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Nizwa_3.png?v=1737676293",
+            "https://cdn.shopify.com/s/files/1/0413/6229/2900/products/786cosmetics-default-title-nizwa-breathable-nail-polish-17529549553828.jpg?v=1737676293",
+            "https://cdn.shopify.com/s/files/1/0413/6229/2900/products/786cosmetics-default-title-nizwa-breathable-nail-polish-17529550471332.jpg?v=1737676293"
+          ],
+          "source": "catalog_intelligence",
+          "volume": "Shade: Nizwa",
+          "variants": [
+            {
+              "id": "34780888531108",
+              "sku": "34780888531108",
+              "price": 13.99,
+              "title": "Shade: Nizwa",
+              "sku_id": "34780888531108",
+              "options": [
+                {
+                  "name": "Shade",
+                  "value": "Nizwa",
+                  "axis_kind": "shade"
+                }
+              ],
+              "currency": "USD",
+              "in_stock": true,
+              "available": true,
+              "axis_kind": "shade",
+              "deep_link": "https://786cosmetics.com/products/nizwa-breathable-nail-polish",
+              "image_urls": [],
+              "source_url": "https://786cosmetics.com/products/nizwa-breathable-nail-polish",
+              "variant_id": "34780888531108",
+              "option_name": "Shade",
+              "product_url": "https://786cosmetics.com/products/nizwa-breathable-nail-polish",
+              "option_value": "Nizwa",
+              "price_amount": 13.99,
+              "display_label": "Shade: Nizwa",
+              "source_origin": "official_pdp",
+              "source_quality_status": "high"
+            }
+          ],
+          "image_url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Nizwa.jpg?v=1762525826",
+          "image_urls": [
+            "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Nizwa.jpg?v=1762525826",
+            "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Nizwa_3.png?v=1737676293",
+            "https://cdn.shopify.com/s/files/1/0413/6229/2900/products/786cosmetics-default-title-nizwa-breathable-nail-polish-17529549553828.jpg?v=1737676293",
+            "https://cdn.shopify.com/s/files/1/0413/6229/2900/products/786cosmetics-default-title-nizwa-breathable-nail-polish-17529550471332.jpg?v=1737676293"
+          ],
+          "description": "Nizwa is inspired by the beautifully fragrant rose gardens of Oman's Jebel Akhdar, or \"green mountain\" which is located in the city of Nizwa. Every spring, these gardens are filled with vibrant pink roses that are transformed into the famous Omani rose water. This rose water is used for celebratory, culinary or medicinal purposes.\n\nNizwa (niz-wah) is best described as a bold, bubblegum pink shade.",
+          "diagnostics": {
+            "requested_domain": "786cosmetics.com",
+            "resolved_base_url": "https://786cosmetics.com",
+            "discovery_strategy": "shopify_json",
+            "failure_category": null,
+            "block_provider": null,
+            "http_trace": [
+              {
+                "url": "https://786cosmetics.com/products/nizwa-breathable-nail-polish.js",
+                "status": 200
+              },
+              {
+                "url": "https://786cosmetics.com/products/nizwa-breathable-nail-polish",
+                "status": 200
+              },
+              {
+                "url": "https://786cosmetics.com/products/nizwa-breathable-nail-polish",
+                "status": 200
+              },
+              {
+                "url": "https://786cosmetics.com/products/nizwa-breathable-nail-polish",
+                "status": 200
+              }
+            ]
+          },
+          "extracted_at": "2026-05-28T02:58:28.525Z",
+          "canonical_url": "https://786cosmetics.com/products/nizwa-breathable-nail-polish",
+          "variant_title": "Shade: Nizwa",
+          "search_aliases": [
+            "Nizwa - Breathable Nail Polish"
+          ],
+          "destination_url": "https://786cosmetics.com/products/nizwa-breathable-nail-polish",
+          "authority_source": {
+            "source_url": "https://786cosmetics.com",
+            "source_role": "primary",
+            "matched_preferred_titles": []
+          },
+          "commerce_facts_v1": {
+            "country": "US",
+            "returns": {
+              "source": "catalog_extract_v2",
+              "status": "unknown",
+              "checked_at": "2026-05-18T04:43:40.318Z",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ]
+            },
+            "shipping": {
+              "source": "catalog_extract_v2",
+              "status": "unknown",
+              "checked_at": "2026-05-18T04:43:40.318Z",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ]
+            },
+            "market_id": "US",
+            "promotions": [],
+            "captured_at": "2026-05-18T04:43:40.318Z",
+            "availability": {
+              "source": "catalog_extract_v2",
+              "status": "in_stock",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:43:40.318Z"
+            },
+            "evidence_url": "https://786cosmetics.com/products/nizwa-breathable-nail-polish",
+            "regional_price": {
+              "amount": 13.99,
+              "currency": "USD",
+              "confidence": "medium",
+              "price_type": "unknown",
+              "source_url": "https://786cosmetics.com/products/nizwa-breathable-nail-polish",
+              "captured_at": "2026-05-18T04:43:40.318Z",
+              "display_raw": null,
+              "tax_included": "unknown",
+              "compare_at_amount": null,
+              "observed_currency": "USD",
+              "compare_at_currency": null,
+              "market_switch_status": "ok",
+              "compare_at_display_raw": null
+            },
+            "currency_target": "USD",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "checked_at": "2026-05-18T04:43:40.318Z",
+              "confidence": "unknown",
+              "evidence_url": "https://786cosmetics.com/products/nizwa-breathable-nail-polish",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_source": "catalog_extract_v2"
+            },
+            "contract_version": "commerce_facts.v1",
+            "source_authority": "catalog_extract_v2"
+          },
+          "size_detail_label": "Shade: Nizwa",
+          "source_validation": {
+            "source_host": "786cosmetics.com",
+            "source_type": "brand_owned",
+            "requires_multi_offer_merge_validation": false
+          },
+          "pdp_how_to_use_raw": "For water permeability, apply 1-2 thin coats. To extend polish longevity, prep the nail by shaping and buffing before application. Enhance nail health by finishing with our Almond & Ginseng Cuticle Oil .",
+          "commerce_facts_gate": {
+            "status": "pass",
+            "problems": [],
+            "market_id": "US",
+            "shipping_status": "unknown",
+            "expected_currency": "USD",
+            "observed_currency": "USD",
+            "promotions_status": "unknown",
+            "availability_status": "in_stock",
+            "market_switch_status": "ok",
+            "sellable_region_status": "unknown"
+          },
+          "pdp_ingredients_raw": "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid, May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850",
+          "pdp_content_asset_v1": {
+            "contract_version": "pivota.pdp_content_asset.v1",
+            "owner": "pivota",
+            "fields": {
+              "description": {
+                "review_state": "unreviewed",
+                "overwrite_policy": "preserve_best_available",
+                "source_quality_status": "high",
+                "source_origin": "shopify_json",
+                "content_hash": "0e715d3514ba29ee",
+                "updated_at": "2026-05-28T02:58:28.524Z"
+              },
+              "description_raw": {
+                "review_state": "assistant_reviewed",
+                "overwrite_policy": "preserve_best_available",
+                "source_quality_status": "high",
+                "source_origin": "shopify_json",
+                "content_hash": "0e715d3514ba29ee",
+                "updated_at": "2026-05-28T02:58:28.524Z"
+              },
+              "details_sections": {
+                "review_state": "assistant_reviewed",
+                "overwrite_policy": "preserve_best_available",
+                "source_quality_status": "high",
+                "source_origin": "shopify_json",
+                "content_hash": "485fd04382216484",
+                "updated_at": "2026-05-28T02:58:28.525Z"
+              },
+              "ingredients_raw": {
+                "review_state": "assistant_reviewed",
+                "overwrite_policy": "preserve_best_available",
+                "source_quality_status": "high",
+                "source_origin": "shopify_json",
+                "content_hash": "eb3ef63a470d1f99",
+                "updated_at": "2026-05-28T02:58:28.525Z"
+              },
+              "how_to_use_raw": {
+                "review_state": "assistant_reviewed",
+                "overwrite_policy": "preserve_best_available",
+                "source_quality_status": "medium",
+                "source_origin": "retail_pdp",
+                "content_hash": "ccacf13eccbed3d2",
+                "updated_at": "2026-05-28T02:58:28.525Z"
+              },
+              "faq_items": {
+                "review_state": "unreviewed",
+                "overwrite_policy": "preserve_best_available",
+                "source_quality_status": "medium",
+                "source_origin": "retail_pdp",
+                "content_hash": "a4443ff97f6cedc7",
+                "updated_at": "2026-05-28T02:58:28.525Z"
+              }
+            }
+          },
+          "pdp_details_sections": [
+            {
+              "heading": "Overview",
+              "body": "Nizwa is inspired by the beautifully fragrant rose gardens of Oman's Jebel Akhdar, or \"green mountain\" which is located in the city of Nizwa. Every spring, these gardens are filled with vibrant pink roses that are transformed into the famous Omani rose water. This rose water is used for celebratory, culinary or medicinal purposes.\n\nNizwa (niz-wah) is best described as a bold, bubblegum pink shade.",
+              "source_kind": "unknown"
+            },
+            {
+              "heading": "How to Use",
+              "body": "For water permeability, apply 1-2 thin coats. To extend polish longevity, prep the nail by shaping and buffing before application. Enhance nail health by finishing with our Almond & Ginseng Cuticle Oil .",
+              "source_kind": "unknown"
+            },
+            {
+              "heading": "Details",
+              "body": "Halal certified and wudu-friendly , our innovative formula allows water permeation, providing a solution for those seeking breathable nail products.\nOur nail polishes boast a 21-free, non-toxic, plant-based formula, ensuring a safe and eco-friendly beauty experience\nExpress yourself freely with our nail polish, crafted to be inclusive and welcoming to individuals of all ethical and spiritual backgrounds",
+              "source_kind": "unknown"
+            }
+          ],
+          "variant_detail_label": "Shade: Nizwa",
+          "source_variant_fields_v1": {
+            "fields": [
+              "variants"
+            ],
+            "source_url": "https://786cosmetics.com/products/nizwa-breathable-nail-polish",
+            "updated_at": "2026-05-28T02:34:15.339Z",
+            "source_origin": "official_pdp",
+            "authority_scope": "source_backed_variant_axes_exact_product_match",
+            "contract_version": "external_seed.source_variant_fields.v1"
+          },
+          "pdp_field_quality_summary": {
+            "description_raw": {
+              "source_origin": "shopify_json",
+              "source_quality_status": "high",
+              "source_kinds": [
+                "shopify_description"
+              ],
+              "reason_codes": []
+            },
+            "details_sections": {
+              "source_origin": "shopify_json",
+              "source_quality_status": "high",
+              "source_kinds": [
+                "shopify_body_html_labeled_section",
+                "accordion_how_to_use",
+                "accordion_ingredients",
+                "heading_sibling"
+              ],
+              "reason_codes": []
+            },
+            "ingredients_raw": {
+              "source_origin": "shopify_json",
+              "source_quality_status": "high",
+              "source_kinds": [
+                "shopify_direct_pdp_html_labeled_ingredients"
+              ],
+              "reason_codes": []
+            },
+            "active_ingredients_raw": {
+              "source_origin": "unknown",
+              "source_quality_status": "low",
+              "source_kinds": [],
+              "reason_codes": [
+                "missing_source_kind"
+              ]
+            },
+            "how_to_use_raw": {
+              "source_origin": "retail_pdp",
+              "source_quality_status": "medium",
+              "source_kinds": [
+                "page_how_to_use_section"
+              ],
+              "reason_codes": []
+            },
+            "faq_items": {
+              "source_origin": "retail_pdp",
+              "source_quality_status": "medium",
+              "source_kinds": [
+                "faq_section"
+              ],
+              "reason_codes": []
+            }
+          },
+          "raw_ingredient_text_clean": "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid, May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850",
+          "official_html_pdp_fields_v1": {
+            "fields": [
+              "pdp_ingredients_raw",
+              "pdp_how_to_use_raw",
+              "pdp_details_sections"
+            ],
+            "updated_at": "2026-05-28T02:28:30.120Z",
+            "source_origin": "official_html",
+            "contract_version": "external_seed.official_html_pdp_fields.v1"
+          },
+          "external_seed_snapshot_contract": {
+            "contract_version": "external_seed.snapshot_contract.v1",
+            "source": "catalog_intelligence",
+            "authoritative": true,
+            "structured_fields_authoritative": true,
+            "legacy_fields_quarantined": true,
+            "replace_strategy": "replace_not_merge",
+            "updated_at": "2026-05-28T02:58:28.525Z"
+          },
+          "category": "Nail Polishes",
+          "shopify_product_json_metadata_v1": {
+            "source_kind": "shopify_product_json_metadata",
+            "source_url": "https://786cosmetics.com/products/nizwa-breathable-nail-polish.js",
+            "fields": [
+              "product_type"
+            ]
+          },
+          "pdp_description_raw": "Nizwa is inspired by the beautifully fragrant rose gardens of Oman's Jebel Akhdar, or \"green mountain\" which is located in the city of Nizwa. Every spring, these gardens are filled with vibrant pink roses that are transformed into the famous Omani rose water. This rose water is used for celebratory, culinary or medicinal purposes.\n\nNizwa (niz-wah) is best described as a bold, bubblegum pink shade.",
+          "pdp_faq_items": [
+            {
+              "question": "How long before I get my order?",
+              "answer": "You can expect to have your package in 4-7 business days once shipped in the United States & Canada.",
+              "source_kind": "faq_section",
+              "source_title": "FAQ"
+            },
+            {
+              "question": "Where are 786 polishes made?",
+              "answer": "786 Cosmetics nail polishes are manufactured and produced in the United States.",
+              "source_kind": "faq_section",
+              "source_title": "FAQ"
+            },
+            {
+              "question": "How can I ensure water permeability?",
+              "answer": "To ensure water permeability, we suggest using no more than two thin coats of 786 Cosmetics nail polish. This can be one coat of color and one coat of a top coat, or two coats of color. We make our halal nail polishes highly pigmented so you won't need to apply more than one coat of nail polish for most of our colors.",
+              "source_kind": "faq_section",
+              "source_title": "FAQ"
+            },
+            {
+              "question": "How are 786 polishes Halal?",
+              "answer": "786 Cosmetics has worked with Islamic scholars to understand the requirements for halal nail polish. For more information please visit the How It Works page. There are two qualities that make 786 Cosmetics halal. 786 Cosmetics products contain no animal products or byproducts and no prohibited alcohol. 786 Cosmetics nail polishes are water permeable – this means it can be worn during wudu. When the nails are rubbed, water permeates the nail polish making your wudu valid.",
+              "source_kind": "faq_section",
+              "source_title": "FAQ"
+            }
+          ],
+          "seed_description_origin": "pdp_variant_description",
+          "pdp_field_capture_status": {
+            "description_raw": "present",
+            "details_sections": "present",
+            "ingredients_raw": "present",
+            "active_ingredients_raw": "missing",
+            "how_to_use_raw": "present",
+            "faq_items": "present"
+          },
+          "variant_skus": [
+            "34780888531108"
+          ],
+          "inci_list": "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid, May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850",
+          "ingredient_intel": {
+            "raw_ingredient_text_clean": "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid, May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850",
+            "inci_list": "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid, May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850",
+            "inci_raw": "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid, May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850"
+          },
+          "brand_origin": {
+            "country": null,
+            "home_market": null,
+            "source": null
+          },
+          "market_availability": {
+            "available_markets": [
+              "US"
+            ],
+            "local_purchase_markets": [
+              "US"
+            ],
+            "source_market": "US",
+            "retail_channel_markets": [],
+            "availability_status": "in_stock"
+          },
+          "available_markets": [
+            "US"
+          ],
+          "local_purchase_markets": [
+            "US"
+          ],
+          "locality_facts_v1": {
+            "contract_version": "external_seed.locality_facts.v1",
+            "brand": "786 Cosmetics",
+            "brand_origin": {
+              "country": null,
+              "home_market": null,
+              "source": null
+            },
+            "brand_origin_country": null,
+            "brand_home_market": null,
+            "market_availability": {
+              "available_markets": [
+                "US"
+              ],
+              "local_purchase_markets": [
+                "US"
+              ],
+              "source_market": "US",
+              "retail_channel_markets": [],
+              "availability_status": "in_stock"
+            },
+            "available_markets": [
+              "US"
+            ],
+            "local_purchase_markets": [
+              "US"
+            ],
+            "local_retail_channels": [],
+            "travel_size": null,
+            "travel_size_evidence": null,
+            "creator_local_reason": null,
+            "local_authority_level": "product_market",
+            "sources": [
+              "existing_seed_data",
+              "seed_row_market"
+            ]
+          }
+        },
+        "variants": [
+          {
+            "id": "34780888531108",
+            "sku": "34780888531108",
+            "price": 13.99,
+            "title": "Shade: Nizwa",
+            "sku_id": "34780888531108",
+            "options": [
+              {
+                "name": "Shade",
+                "value": "Nizwa",
+                "axis_kind": "shade"
+              }
+            ],
+            "currency": "USD",
+            "in_stock": true,
+            "available": true,
+            "axis_kind": "shade",
+            "deep_link": "https://786cosmetics.com/products/nizwa-breathable-nail-polish",
+            "image_urls": [],
+            "source_url": "https://786cosmetics.com/products/nizwa-breathable-nail-polish",
+            "variant_id": "34780888531108",
+            "option_name": "Shade",
+            "product_url": "https://786cosmetics.com/products/nizwa-breathable-nail-polish",
+            "option_value": "Nizwa",
+            "price_amount": 13.99,
+            "display_label": "Shade: Nizwa",
+            "source_origin": "official_pdp",
+            "source_quality_status": "high"
+          }
+        ],
+        "image_url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Nizwa.jpg?v=1762525826",
+        "image_urls": [
+          "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Nizwa.jpg?v=1762525826",
+          "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Nizwa_3.png?v=1737676293",
+          "https://cdn.shopify.com/s/files/1/0413/6229/2900/products/786cosmetics-default-title-nizwa-breathable-nail-polish-17529549553828.jpg?v=1737676293",
+          "https://cdn.shopify.com/s/files/1/0413/6229/2900/products/786cosmetics-default-title-nizwa-breathable-nail-polish-17529550471332.jpg?v=1737676293"
+        ],
+        "description": "Nizwa is inspired by the beautifully fragrant rose gardens of Oman's Jebel Akhdar, or \"green mountain\" which is located in the city of Nizwa. Every spring, these gardens are filled with vibrant pink roses that are transformed into the famous Omani rose water. This rose water is used for celebratory, culinary or medicinal purposes.\n\nNizwa (niz-wah) is best described as a bold, bubblegum pink shade.",
+        "availability": "in_stock",
+        "price_amount": 13.99,
+        "canonical_url": "https://786cosmetics.com/products/nizwa-breathable-nail-polish",
+        "variant_title": "Shade: Nizwa",
+        "price_currency": "USD",
+        "search_aliases": [
+          "Nizwa - Breathable Nail Polish"
+        ],
+        "destination_url": "https://786cosmetics.com/products/nizwa-breathable-nail-polish",
+        "authority_source": {
+          "source_url": "https://786cosmetics.com",
+          "source_role": "primary",
+          "matched_preferred_titles": []
+        },
+        "commerce_facts_v1": {
+          "country": "US",
+          "returns": {
+            "source": "catalog_extract_v2",
+            "status": "unknown",
+            "checked_at": "2026-05-18T04:43:40.318Z",
+            "confidence": "unknown",
+            "reason_codes": [
+              "external_returns_not_extracted"
+            ]
+          },
+          "shipping": {
+            "source": "catalog_extract_v2",
+            "status": "unknown",
+            "checked_at": "2026-05-18T04:43:40.318Z",
+            "confidence": "unknown",
+            "reason_codes": [
+              "external_checkout_not_queried"
+            ]
+          },
+          "market_id": "US",
+          "promotions": [],
+          "captured_at": "2026-05-18T04:43:40.318Z",
+          "availability": {
+            "source": "catalog_extract_v2",
+            "status": "in_stock",
+            "confidence": "medium",
+            "captured_at": "2026-05-18T04:43:40.318Z"
+          },
+          "evidence_url": "https://786cosmetics.com/products/nizwa-breathable-nail-polish",
+          "regional_price": {
+            "amount": 13.99,
+            "currency": "USD",
+            "confidence": "medium",
+            "price_type": "unknown",
+            "source_url": "https://786cosmetics.com/products/nizwa-breathable-nail-polish",
+            "captured_at": "2026-05-18T04:43:40.318Z",
+            "display_raw": null,
+            "tax_included": "unknown",
+            "compare_at_amount": null,
+            "observed_currency": "USD",
+            "compare_at_currency": null,
+            "market_switch_status": "ok",
+            "compare_at_display_raw": null
+          },
+          "currency_target": "USD",
+          "sellable_region": {
+            "status": "unknown",
+            "countries": [],
+            "checked_at": "2026-05-18T04:43:40.318Z",
+            "confidence": "unknown",
+            "evidence_url": "https://786cosmetics.com/products/nizwa-breathable-nail-polish",
+            "reason_codes": [
+              "shipping_destination_not_verified"
+            ],
+            "evidence_source": "catalog_extract_v2"
+          },
+          "contract_version": "commerce_facts.v1",
+          "source_authority": "catalog_extract_v2"
+        },
+        "size_detail_label": "Shade: Nizwa",
+        "source_validation": {
+          "source_host": "786cosmetics.com",
+          "source_type": "brand_owned",
+          "requires_multi_offer_merge_validation": false
+        },
+        "pdp_how_to_use_raw": "For water permeability, apply 1-2 thin coats. To extend polish longevity, prep the nail by shaping and buffing before application. Enhance nail health by finishing with our Almond & Ginseng Cuticle Oil .",
+        "commerce_facts_gate": {
+          "status": "pass",
+          "problems": [],
+          "market_id": "US",
+          "shipping_status": "unknown",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "promotions_status": "unknown",
+          "availability_status": "in_stock",
+          "market_switch_status": "ok",
+          "sellable_region_status": "unknown"
+        },
+        "external_product_id": "ext_45293e532ad5a5f33438d38f",
+        "pdp_ingredients_raw": "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid, May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850",
+        "pdp_content_asset_v1": {
+          "contract_version": "pivota.pdp_content_asset.v1",
+          "owner": "pivota",
+          "fields": {
+            "description": {
+              "review_state": "unreviewed",
+              "overwrite_policy": "preserve_best_available",
+              "source_quality_status": "high",
+              "source_origin": "shopify_json",
+              "content_hash": "0e715d3514ba29ee",
+              "updated_at": "2026-05-28T02:58:28.524Z"
+            },
+            "description_raw": {
+              "review_state": "assistant_reviewed",
+              "overwrite_policy": "preserve_best_available",
+              "source_quality_status": "high",
+              "source_origin": "shopify_json",
+              "content_hash": "0e715d3514ba29ee",
+              "updated_at": "2026-05-28T02:58:28.524Z"
+            },
+            "details_sections": {
+              "review_state": "assistant_reviewed",
+              "overwrite_policy": "preserve_best_available",
+              "source_quality_status": "high",
+              "source_origin": "shopify_json",
+              "content_hash": "485fd04382216484",
+              "updated_at": "2026-05-28T02:58:28.525Z"
+            },
+            "ingredients_raw": {
+              "review_state": "assistant_reviewed",
+              "overwrite_policy": "preserve_best_available",
+              "source_quality_status": "high",
+              "source_origin": "shopify_json",
+              "content_hash": "eb3ef63a470d1f99",
+              "updated_at": "2026-05-28T02:58:28.525Z"
+            },
+            "how_to_use_raw": {
+              "review_state": "assistant_reviewed",
+              "overwrite_policy": "preserve_best_available",
+              "source_quality_status": "medium",
+              "source_origin": "retail_pdp",
+              "content_hash": "ccacf13eccbed3d2",
+              "updated_at": "2026-05-28T02:58:28.525Z"
+            },
+            "faq_items": {
+              "review_state": "unreviewed",
+              "overwrite_policy": "preserve_best_available",
+              "source_quality_status": "medium",
+              "source_origin": "retail_pdp",
+              "content_hash": "a4443ff97f6cedc7",
+              "updated_at": "2026-05-28T02:58:28.525Z"
+            }
+          }
+        },
+        "pdp_details_sections": [
+          {
+            "heading": "Overview",
+            "body": "Nizwa is inspired by the beautifully fragrant rose gardens of Oman's Jebel Akhdar, or \"green mountain\" which is located in the city of Nizwa. Every spring, these gardens are filled with vibrant pink roses that are transformed into the famous Omani rose water. This rose water is used for celebratory, culinary or medicinal purposes.\n\nNizwa (niz-wah) is best described as a bold, bubblegum pink shade.",
+            "source_kind": "unknown"
+          },
+          {
+            "heading": "How to Use",
+            "body": "For water permeability, apply 1-2 thin coats. To extend polish longevity, prep the nail by shaping and buffing before application. Enhance nail health by finishing with our Almond & Ginseng Cuticle Oil .",
+            "source_kind": "unknown"
+          },
+          {
+            "heading": "Details",
+            "body": "Halal certified and wudu-friendly , our innovative formula allows water permeation, providing a solution for those seeking breathable nail products.\nOur nail polishes boast a 21-free, non-toxic, plant-based formula, ensuring a safe and eco-friendly beauty experience\nExpress yourself freely with our nail polish, crafted to be inclusive and welcoming to individuals of all ethical and spiritual backgrounds",
+            "source_kind": "unknown"
+          }
+        ],
+        "variant_detail_label": "Shade: Nizwa",
+        "source_variant_fields_v1": {
+          "fields": [
+            "variants"
+          ],
+          "source_url": "https://786cosmetics.com/products/nizwa-breathable-nail-polish",
+          "updated_at": "2026-05-28T02:34:15.339Z",
+          "source_origin": "official_pdp",
+          "authority_scope": "source_backed_variant_axes_exact_product_match",
+          "contract_version": "external_seed.source_variant_fields.v1"
+        },
+        "pdp_field_quality_summary": {
+          "description_raw": {
+            "source_origin": "shopify_json",
+            "source_quality_status": "high",
+            "source_kinds": [
+              "shopify_description"
+            ],
+            "reason_codes": []
+          },
+          "details_sections": {
+            "source_origin": "shopify_json",
+            "source_quality_status": "high",
+            "source_kinds": [
+              "shopify_body_html_labeled_section",
+              "accordion_how_to_use",
+              "accordion_ingredients",
+              "heading_sibling"
+            ],
+            "reason_codes": []
+          },
+          "ingredients_raw": {
+            "source_origin": "shopify_json",
+            "source_quality_status": "high",
+            "source_kinds": [
+              "shopify_direct_pdp_html_labeled_ingredients"
+            ],
+            "reason_codes": []
+          },
+          "active_ingredients_raw": {
+            "source_origin": "unknown",
+            "source_quality_status": "low",
+            "source_kinds": [],
+            "reason_codes": [
+              "missing_source_kind"
+            ]
+          },
+          "how_to_use_raw": {
+            "source_origin": "retail_pdp",
+            "source_quality_status": "medium",
+            "source_kinds": [
+              "page_how_to_use_section"
+            ],
+            "reason_codes": []
+          },
+          "faq_items": {
+            "source_origin": "retail_pdp",
+            "source_quality_status": "medium",
+            "source_kinds": [
+              "faq_section"
+            ],
+            "reason_codes": []
+          }
+        },
+        "raw_ingredient_text_clean": "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid, May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850",
+        "official_html_pdp_fields_v1": {
+          "fields": [
+            "pdp_ingredients_raw",
+            "pdp_how_to_use_raw",
+            "pdp_details_sections"
+          ],
+          "updated_at": "2026-05-28T02:28:30.120Z",
+          "source_origin": "official_html",
+          "contract_version": "external_seed.official_html_pdp_fields.v1"
+        },
+        "external_seed_snapshot_contract": {
+          "contract_version": "external_seed.snapshot_contract.v1",
+          "source": "catalog_intelligence",
+          "authoritative": true,
+          "structured_fields_authoritative": true,
+          "legacy_fields_quarantined": true,
+          "replace_strategy": "replace_not_merge",
+          "updated_at": "2026-05-28T02:58:28.525Z"
+        },
+        "category": "Nail Polishes",
+        "shopify_product_json_metadata_v1": {
+          "source_kind": "shopify_product_json_metadata",
+          "source_url": "https://786cosmetics.com/products/nizwa-breathable-nail-polish.js",
+          "fields": [
+            "product_type"
+          ]
+        },
+        "pdp_description_raw": "Nizwa is inspired by the beautifully fragrant rose gardens of Oman's Jebel Akhdar, or \"green mountain\" which is located in the city of Nizwa. Every spring, these gardens are filled with vibrant pink roses that are transformed into the famous Omani rose water. This rose water is used for celebratory, culinary or medicinal purposes.\n\nNizwa (niz-wah) is best described as a bold, bubblegum pink shade.",
+        "pdp_faq_items": [
+          {
+            "question": "How long before I get my order?",
+            "answer": "You can expect to have your package in 4-7 business days once shipped in the United States & Canada.",
+            "source_kind": "faq_section",
+            "source_title": "FAQ"
+          },
+          {
+            "question": "Where are 786 polishes made?",
+            "answer": "786 Cosmetics nail polishes are manufactured and produced in the United States.",
+            "source_kind": "faq_section",
+            "source_title": "FAQ"
+          },
+          {
+            "question": "How can I ensure water permeability?",
+            "answer": "To ensure water permeability, we suggest using no more than two thin coats of 786 Cosmetics nail polish. This can be one coat of color and one coat of a top coat, or two coats of color. We make our halal nail polishes highly pigmented so you won't need to apply more than one coat of nail polish for most of our colors.",
+            "source_kind": "faq_section",
+            "source_title": "FAQ"
+          },
+          {
+            "question": "How are 786 polishes Halal?",
+            "answer": "786 Cosmetics has worked with Islamic scholars to understand the requirements for halal nail polish. For more information please visit the How It Works page. There are two qualities that make 786 Cosmetics halal. 786 Cosmetics products contain no animal products or byproducts and no prohibited alcohol. 786 Cosmetics nail polishes are water permeable – this means it can be worn during wudu. When the nails are rubbed, water permeates the nail polish making your wudu valid.",
+            "source_kind": "faq_section",
+            "source_title": "FAQ"
+          }
+        ],
+        "seed_description_origin": "pdp_variant_description",
+        "pdp_field_capture_status": {
+          "description_raw": "present",
+          "details_sections": "present",
+          "ingredients_raw": "present",
+          "active_ingredients_raw": "missing",
+          "how_to_use_raw": "present",
+          "faq_items": "present"
+        },
+        "snapshot_quarantine": {
+          "contract_version": "external_seed.snapshot_quarantine.v1",
+          "source": "catalog_intelligence",
+          "extractor_mode": "puppeteer",
+          "updated_at": "2026-05-28T02:58:28.523Z",
+          "preserved_candidates": {
+            "details_sections": {
+              "value": [
+                {
+                  "heading": "Benefits",
+                  "body": "Certifications\n\nBlog\n\nShop Our IG\n\nCustomer Care\n\nCustomer Care",
+                  "source_kind": "shopify_body_html_labeled_section"
+                },
+                {
+                  "heading": "How to Use",
+                  "body": "For water permeability, apply 1-2 thin coats. To extend polish longevity, prep the nail by shaping and buffing before application. Enhance nail health by finishing with our Almond & Ginseng Cuticle Oil.",
+                  "source_kind": "accordion_how_to_use"
+                },
+                {
+                  "heading": "Ingredients",
+                  "body": "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid,May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850",
+                  "source_kind": "accordion_ingredients"
+                }
+              ],
+              "reason_code": "preserve_reviewed_pivota_asset",
+              "reason_codes": [
+                "preserve_reviewed_pivota_asset"
+              ],
+              "source_quality_status": "high",
+              "source_origin": "shopify_json"
+            },
+            "ingredients_raw": {
+              "value": "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid, May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850 #shopify-block-Ac1NaSCtIaW90Y0tBU__b0c1f276-a03b-4abd-9f1d-6a1b2a9d0bd0 .r-wapper-widget{display:block!important}\n#shopify-block-Ac1NaSCtIaW90Y0tBU__b0c1f276-a03b-4abd-9f1d-6a1b2a9d0bd0 .product-widget__ryviu{display:inline-flex!important} #shopify-block-Ac1NaSCtIaW90Y0tBU__b0c1f276-a03b-4abd-9f1d-6a1b2a9d0bd0 .trw-avg{display:block!important} Sale Almost Gone Nizwa - Breathable Nail Polish",
+              "reason_code": "preserve_reviewed_pivota_asset",
+              "reason_codes": [
+                "preserve_reviewed_pivota_asset"
+              ],
+              "source_quality_status": "high",
+              "source_origin": "shopify_json"
+            },
+            "how_to_use_raw": {
+              "value": "For water permeability, apply 1-2 thin coats. To extend polish longevity, prep the nail by shaping and buffing before application. Enhance nail health by finishing with our Almond & Ginseng Cuticle Oil.",
+              "reason_code": "preserve_reviewed_pivota_asset",
+              "reason_codes": [
+                "preserve_reviewed_pivota_asset"
+              ],
+              "source_quality_status": "medium",
+              "source_origin": "retail_pdp"
+            }
+          }
+        },
+        "inci_list": "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid, May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850",
+        "ingredient_intel": {
+          "raw_ingredient_text_clean": "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid, May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850",
+          "inci_list": "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid, May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850",
+          "inci_raw": "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid, May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850"
+        },
+        "brand_origin": {
+          "country": null,
+          "home_market": null,
+          "source": null
+        },
+        "market_availability": {
+          "available_markets": [
+            "US"
+          ],
+          "local_purchase_markets": [
+            "US"
+          ],
+          "source_market": "US",
+          "retail_channel_markets": [],
+          "availability_status": "in_stock"
+        },
+        "available_markets": [
+          "US"
+        ],
+        "local_purchase_markets": [
+          "US"
+        ],
+        "locality_facts_v1": {
+          "contract_version": "external_seed.locality_facts.v1",
+          "brand": "786 Cosmetics",
+          "brand_origin": {
+            "country": null,
+            "home_market": null,
+            "source": null
+          },
+          "brand_origin_country": null,
+          "brand_home_market": null,
+          "market_availability": {
+            "available_markets": [
+              "US"
+            ],
+            "local_purchase_markets": [
+              "US"
+            ],
+            "source_market": "US",
+            "retail_channel_markets": [],
+            "availability_status": "in_stock"
+          },
+          "available_markets": [
+            "US"
+          ],
+          "local_purchase_markets": [
+            "US"
+          ],
+          "local_retail_channels": [],
+          "travel_size": null,
+          "travel_size_evidence": null,
+          "creator_local_reason": null,
+          "local_authority_level": "product_market",
+          "sources": [
+            "existing_seed_data",
+            "seed_row_market"
+          ]
+        },
+        "derived": {
+          "recall": {
+            "retrieval_title": "Nizwa - Breathable Nail Polish",
+            "retrieval_summary": "Nizwa is inspired by the beautifully fragrant rose gardens of Oman's Jebel Akhdar, or \"green mountain\" which is located in the city of Nizwa. Every spring, these gardens are filled with vibrant pink roses that are transformed into the famous Omani rose water.",
+            "retrieval_body": "Nizwa is inspired by the beautifully fragrant rose gardens of Oman's Jebel Akhdar, or \"green mountain\" which is located in the city of Nizwa. Every spring, these gardens are filled with vibrant pink roses that are transformed into the famous Omani rose water. This rose water is used for celebratory, culinary or medicinal purposes. Nizwa (niz-wah) is best described as a bold, bubblegum pink shade.\n\nHow long before I get my order? You can expect to have your package in 4-7 business days once shipped in the United States & Canada.\n\nYou can expect to have your package in 4-7 business days once shipped in the United States & Canada.\n\nWhere are 786 polishes made? 786 Cosmetics nail polishes are manufactured and produced in the United States.\n\n786 Cosmetics nail polishes are manufactured and produced in the United States.\n\nHow can I ensure water permeability? To ensure water permeability, we suggest using no more than two thin coats of 786 Cosmetics nail polish. This can be one coat of color and one coat of a top coat, or two coats of color. We make our halal nail polishes highly pigmented so you won't need to apply more than one coat of nail polish for most of our colors.\n\nTo ensure water permeability, we suggest using no more than two thin coats of 786 Cosmetics nail polish. This can be one coat of color and one coat of a top coat, or two coats of color. We make our halal nail polishes highly pigmented so you won't need to apply more than one coat of nail polish for most of our colors.\n\nHow are 786 polishes Halal? 786 Cosmetics has worked with Islamic scholars to understand the requirements for halal nail polish. For more information please visit the How It Works page. There are two qualities that make 786 Cosmetics halal. 786 Cosmetics products contain no animal products or byproducts and no prohibited alcohol. 786 Cosmetics nail polishes are water permeable – this means it can be worn during wudu. When the nails are rubbed, water permeates the nail polish making your wudu valid.\n\n786 Cosmetics has worked with Islamic scholars to understand the requirements for halal nail polish. For more information please visit the How It Works page. There are two qualities that make 786 Cosmetics halal. 786 Cosmetics products contain no animal products or byproducts and no prohibited alcohol. 786 Cosmetics nail polishes are water permeable – this means it can be worn during wudu. When the nails are rubbed, water permeates the nail polish making your wudu valid.\n\nOverview: Nizwa is inspired by the beautifully fragrant rose gardens of Oman's Jebel Akhdar, or \"green mountain\" which is located in the city of Nizwa. Every spring, these gardens are filled with vibrant pink roses that are transformed into the famous Omani rose water. This rose water is used for celebratory, culinary or medicinal purposes. Nizwa (niz-wah) is best described as a bold, bubblegum pink shade.\n\nHalal certified and wudu-friendly , our innovative formula allows water permeation, providing a sol…",
+            "brand": "786 Cosmetics",
+            "category": "Nail Polishes",
+            "vertical": "beauty",
+            "ingredient_tokens": [],
+            "locality_tokens": [
+              "available market US",
+              "local purchase US"
+            ],
+            "alias_tokens": [
+              "Nizwa - Breathable Nail Polish",
+              "nizwa breathable nail polish",
+              "nizwabreathablenailpolish",
+              "breathable nail polish",
+              "nail polish",
+              "nizwa breathable",
+              "breathable nail",
+              "Nail Polishes",
+              "nailpolishes",
+              "available market US",
+              "availablemarketus",
+              "market us",
+              "available market",
+              "local purchase US",
+              "localpurchaseus",
+              "purchase us",
+              "local purchase",
+              "nizwa",
+              "breathable",
+              "nail",
+              "polish",
+              "polishes",
+              "available",
+              "market",
+              "us",
+              "local",
+              "purchase"
+            ],
+            "locality_facts_v1": {
+              "contract_version": "external_seed.locality_facts.v1",
+              "brand": "786 Cosmetics",
+              "brand_origin": {
+                "country": null,
+                "home_market": null,
+                "source": null
+              },
+              "brand_origin_country": null,
+              "brand_home_market": null,
+              "market_availability": {
+                "available_markets": [
+                  "US"
+                ],
+                "local_purchase_markets": [
+                  "US"
+                ],
+                "source_market": "US",
+                "retail_channel_markets": [],
+                "availability_status": "in_stock"
+              },
+              "available_markets": [
+                "US"
+              ],
+              "local_purchase_markets": [
+                "US"
+              ],
+              "local_retail_channels": [],
+              "travel_size": null,
+              "travel_size_evidence": null,
+              "creator_local_reason": null,
+              "local_authority_level": "product_market",
+              "sources": [
+                "existing_seed_data",
+                "seed_row_market"
+              ]
+            },
+            "exclusion_flags": {
+              "gift_card": false,
+              "donation_bundle": false,
+              "non_merchandise": false
+            },
+            "quality_signals": {
+              "template_polluted": false,
+              "synthetic_summary": false,
+              "extractor_description_present": true
+            },
+            "quality_state": "eligible",
+            "suppression_flags": {
+              "exclude_from_recall": false,
+              "exclude_from_similar": false,
+              "suppress_ingredients": false,
+              "suppress_active_ingredients": false,
+              "suppress_facts": false
+            },
+            "version": "v1"
+          },
+          "backfill_guardrails_v1": {
+            "commerce_preserved": true,
+            "media_preserved": true,
+            "mode": "content_only",
+            "updated_at": "2026-05-28T02:58:28.555Z"
+          }
+        },
+        "variant_skus": [
+          "34780888531108"
+        ]
+      }
+    },
+    "next_row_summary": {
+      "external_product_id": "",
+      "title": "Nizwa - Breathable Nail Polish",
+      "canonical_url": "https://786cosmetics.com/products/nizwa-breathable-nail-polish",
+      "destination_url": "https://786cosmetics.com/products/nizwa-breathable-nail-polish",
+      "image_url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Nizwa.jpg?v=1762525826",
+      "image_count": 4,
+      "variant_count": 1,
+      "details_section_count": 3,
+      "faq_count": 4,
+      "how_to_use_present": true,
+      "ingredients_present": true,
+      "active_ingredients_present": false,
+      "seed_snapshot_contract": {
+        "contract_version": "external_seed.snapshot_contract.v1",
+        "source": "catalog_intelligence",
+        "authoritative": true,
+        "structured_fields_authoritative": true,
+        "legacy_fields_quarantined": true,
+        "replace_strategy": "replace_not_merge",
+        "updated_at": "2026-05-28T02:58:28.525Z"
+      },
+      "content_image_count": 0,
+      "section_media_count": 0
+    },
+    "variant_seed_rows": [],
+    "identity_listing_refresh": null,
+    "image_health_validation": null,
+    "diagnostics": null,
+    "commerce_facts_v2": null
+  },
+  "error": null
+}

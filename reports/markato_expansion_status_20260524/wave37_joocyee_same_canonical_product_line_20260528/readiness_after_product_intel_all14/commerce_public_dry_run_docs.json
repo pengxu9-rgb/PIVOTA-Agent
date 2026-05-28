@@ -1,0 +1,610 @@
+{
+  "generated_at": "2026-05-28T01:29:20.062Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 10,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_40f7c9b410f2e1d61e4e00e4",
+      "sellable_item_group_id": "sig_40f7c9b410f2e1d61e4e00e4",
+      "product_line_id": "pl_a9dd2b8037facbb9eac8520c",
+      "review_family_id": "rf_a9dd2b8037facbb9eac8520c",
+      "brand_name": "Joocyee",
+      "category_paths": [
+        "Lip Makeup"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Glazed Lip Gloss",
+      "subtitle": "All-Day Wear, Always Luminous\n\nEvolutionary 「Low Temperature Formulation」 Film-Forming Tech\n\n90% Essence Infusion Creamy-smooth texture on lips\n\nThree trendy shade families Flattering for all skin tones\n\nShade Options:\n\nMuted Pink Tone for Delicate Makeup\n\n22 Rose Glow Sheer Icy Nude Rose\n\n20 Cherry Blossom Glow Fresh Peach Blossom Pink\n\n26 Lilac Glow Low-saturation Grey Pink\n\nVersatile Reddish Shades\n\n66 Oolong Glow Glazed Sienna Red\n\n60 Grape Glow Dewy Plum Glaze\n\n68 Black Tea Glow Intense Brownish Red\n\nStylish Signature Brown Tones\n\n80 Moonlight Glow Sheer Nude Apricot\n\n82 Amber Glow Amber Cashew Yellow Brown\n\n85 Dune Glow Cinnamon Icy Coffee Nude Brown\n\nNet WT.: 0.14oz/4g",
+      "variant_axes": {
+        "color": "20 cherry blossom glow",
+        "shade": "20 cherry blossom glow",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://joocyee.com/cdn/shop/files/20_28b411f6-d59a-4cd6-940f-a17820bf95a8.jpg?v=1778493035",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://joocyee.com/cdn/shop/files/20_28b411f6-d59a-4cd6-940f-a17820bf95a8.jpg?v=1778493035",
+        "https://joocyee.com/cdn/shop/files/20-id.jpg?v=1778493026",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/80_90dfa7f7-370c-4a63-9ff5-cf77a2719972.jpg?v=1778493127",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/9_50a92f5a-9013-49d5-b7fb-89bc8297f58d.jpg?v=1778493175",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/4_7a171235-885b-49b4-aa89-16a8ee24fe53.jpg?v=1778493175",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/1_dccae7a8-5940-458b-963a-e4feb9221013.jpg?v=1778493175",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/0c70a81518926b795fbb78c8b50c785b_28ad2a2f-7e2f-4015-bc23-32da42b37721.jpg?v=1778493175",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/20_3867b598-a665-4ec7-b99f-17f27a82f085.jpg?v=1778493036"
+      ],
+      "price_min": 19.9,
+      "price_max": 19.9,
+      "default_offer_id": "external_seed:ext_52a27acd606756dea463a717",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Joocyee lip product listed on the brand source page as Glazed Lip Gloss.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Joocyee",
+        "Lip Makeup"
+      ],
+      "sort_keys": {
+        "price_min": 19.9,
+        "price_max": 19.9,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_52a27acd606756dea463a717",
+        "external_seed:ext_bb9685457f5a919c945ee9ce"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_1ffa9ef2d2d3e5f9bc92ed9d",
+      "sellable_item_group_id": "sig_1ffa9ef2d2d3e5f9bc92ed9d",
+      "product_line_id": "pl_a9dd2b8037facbb9eac8520c",
+      "review_family_id": "rf_a9dd2b8037facbb9eac8520c",
+      "brand_name": "Joocyee",
+      "category_paths": [
+        "Lip Makeup"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Glazed Lip Gloss",
+      "subtitle": "All-Day Wear, Always Luminous\n\nEvolutionary 「Low Temperature Formulation」 Film-Forming Tech\n\n90% Essence Infusion Creamy-smooth texture on lips\n\nThree trendy shade families Flattering for all skin tones\n\nShade Options:\n\nMuted Pink Tone for Delicate Makeup\n\n22 Rose Glow Sheer Icy Nude Rose\n\n20 Cherry Blossom Glow Fresh Peach Blossom Pink\n\n26 Lilac Glow Low-saturation Grey Pink\n\nVersatile Reddish Shades\n\n66 Oolong Glow Glazed Sienna Red\n\n60 Grape Glow Dewy Plum Glaze\n\n68 Black Tea Glow Intense Brownish Red\n\nStylish Signature Brown Tones\n\n80 Moonlight Glow Sheer Nude Apricot\n\n82 Amber Glow Amber Cashew Yellow Brown\n\n85 Dune Glow Cinnamon Icy Coffee Nude Brown\n\nNet WT.: 0.14oz/4g",
+      "variant_axes": {
+        "color": "66 oolong glow",
+        "shade": "66 oolong glow",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/66.jpg?v=1778493104",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/66.jpg?v=1778493104",
+        "https://joocyee.com/cdn/shop/files/20-id.jpg?v=1778493026",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/80_90dfa7f7-370c-4a63-9ff5-cf77a2719972.jpg?v=1778493127",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/9_50a92f5a-9013-49d5-b7fb-89bc8297f58d.jpg?v=1778493175",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/4_7a171235-885b-49b4-aa89-16a8ee24fe53.jpg?v=1778493175",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/1_dccae7a8-5940-458b-963a-e4feb9221013.jpg?v=1778493175",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/0c70a81518926b795fbb78c8b50c785b_28ad2a2f-7e2f-4015-bc23-32da42b37721.jpg?v=1778493175",
+        "https://joocyee.com/cdn/shop/files/20_28b411f6-d59a-4cd6-940f-a17820bf95a8.jpg?v=1778493035"
+      ],
+      "price_min": 19.9,
+      "price_max": 19.9,
+      "default_offer_id": "external_seed:ext_41c98523b6fc0a8279c3095c",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Joocyee lip product listed on the brand source page as Glazed Lip Gloss.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Joocyee",
+        "Lip Makeup"
+      ],
+      "sort_keys": {
+        "price_min": 19.9,
+        "price_max": 19.9,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_41c98523b6fc0a8279c3095c"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_ce5317a38b3c710f808f6aa3",
+      "sellable_item_group_id": "sig_ce5317a38b3c710f808f6aa3",
+      "product_line_id": "pl_a9dd2b8037facbb9eac8520c",
+      "review_family_id": "rf_a9dd2b8037facbb9eac8520c",
+      "brand_name": "Joocyee",
+      "category_paths": [
+        "Lip Makeup"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Glazed Lip Gloss",
+      "subtitle": "All-Day Wear, Always Luminous\n\nEvolutionary 「Low Temperature Formulation」 Film-Forming Tech\n\n90% Essence Infusion Creamy-smooth texture on lips\n\nThree trendy shade families Flattering for all skin tones\n\nShade Options:\n\nMuted Pink Tone for Delicate Makeup\n\n22 Rose Glow Sheer Icy Nude Rose\n\n20 Cherry Blossom Glow Fresh Peach Blossom Pink\n\n26 Lilac Glow Low-saturation Grey Pink\n\nVersatile Reddish Shades\n\n66 Oolong Glow Glazed Sienna Red\n\n60 Grape Glow Dewy Plum Glaze\n\n68 Black Tea Glow Intense Brownish Red\n\nStylish Signature Brown Tones\n\n80 Moonlight Glow Sheer Nude Apricot\n\n82 Amber Glow Amber Cashew Yellow Brown\n\n85 Dune Glow Cinnamon Icy Coffee Nude Brown\n\nNet WT.: 0.14oz/4g",
+      "variant_axes": {
+        "color": "82 amber glow",
+        "shade": "82 amber glow",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/82.jpg?v=1778493137",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/82.jpg?v=1778493137",
+        "https://joocyee.com/cdn/shop/files/20-id.jpg?v=1778493026",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/80_90dfa7f7-370c-4a63-9ff5-cf77a2719972.jpg?v=1778493127",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/9_50a92f5a-9013-49d5-b7fb-89bc8297f58d.jpg?v=1778493175",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/4_7a171235-885b-49b4-aa89-16a8ee24fe53.jpg?v=1778493175",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/1_dccae7a8-5940-458b-963a-e4feb9221013.jpg?v=1778493175",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/0c70a81518926b795fbb78c8b50c785b_28ad2a2f-7e2f-4015-bc23-32da42b37721.jpg?v=1778493175",
+        "https://joocyee.com/cdn/shop/files/20_28b411f6-d59a-4cd6-940f-a17820bf95a8.jpg?v=1778493035"
+      ],
+      "price_min": 19.9,
+      "price_max": 19.9,
+      "default_offer_id": "external_seed:ext_35ffa71281354a958ef30f7e",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Joocyee lip product listed on the brand source page as Glazed Lip Gloss.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Joocyee",
+        "Lip Makeup"
+      ],
+      "sort_keys": {
+        "price_min": 19.9,
+        "price_max": 19.9,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_35ffa71281354a958ef30f7e"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_bd5ed2292f663109e373a1fa",
+      "sellable_item_group_id": "sig_bd5ed2292f663109e373a1fa",
+      "product_line_id": "pl_a9dd2b8037facbb9eac8520c",
+      "review_family_id": "rf_a9dd2b8037facbb9eac8520c",
+      "brand_name": "Joocyee",
+      "category_paths": [
+        "Lip Makeup"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Glazed Lip Gloss",
+      "subtitle": "All-Day Wear, Always Luminous\n\nEvolutionary 「Low Temperature Formulation」 Film-Forming Tech\n\n90% Essence Infusion Creamy-smooth texture on lips\n\nThree trendy shade families Flattering for all skin tones\n\nShade Options:\n\nMuted Pink Tone for Delicate Makeup\n\n22 Rose Glow Sheer Icy Nude Rose\n\n20 Cherry Blossom Glow Fresh Peach Blossom Pink\n\n26 Lilac Glow Low-saturation Grey Pink\n\nVersatile Reddish Shades\n\n66 Oolong Glow Glazed Sienna Red\n\n60 Grape Glow Dewy Plum Glaze\n\n68 Black Tea Glow Intense Brownish Red\n\nStylish Signature Brown Tones\n\n80 Moonlight Glow Sheer Nude Apricot\n\n82 Amber Glow Amber Cashew Yellow Brown\n\n85 Dune Glow Cinnamon Icy Coffee Nude Brown\n\nNet WT.: 0.14oz/4g",
+      "variant_axes": {
+        "color": "28 strawberry glow",
+        "shade": "28 strawberry glow",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/28.jpg?v=1778493077",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/28.jpg?v=1778493077",
+        "https://joocyee.com/cdn/shop/files/20-id.jpg?v=1778493026",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/80_90dfa7f7-370c-4a63-9ff5-cf77a2719972.jpg?v=1778493127",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/9_50a92f5a-9013-49d5-b7fb-89bc8297f58d.jpg?v=1778493175",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/4_7a171235-885b-49b4-aa89-16a8ee24fe53.jpg?v=1778493175",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/1_dccae7a8-5940-458b-963a-e4feb9221013.jpg?v=1778493175",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/0c70a81518926b795fbb78c8b50c785b_28ad2a2f-7e2f-4015-bc23-32da42b37721.jpg?v=1778493175",
+        "https://joocyee.com/cdn/shop/files/20_28b411f6-d59a-4cd6-940f-a17820bf95a8.jpg?v=1778493035"
+      ],
+      "price_min": 19.9,
+      "price_max": 19.9,
+      "default_offer_id": "external_seed:ext_4888a0d0940daa58fc77af80",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Joocyee lip product listed on the brand source page as Glazed Lip Gloss.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Joocyee",
+        "Lip Makeup"
+      ],
+      "sort_keys": {
+        "price_min": 19.9,
+        "price_max": 19.9,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_4888a0d0940daa58fc77af80"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_6254fb2b854e70ccf86de1ce",
+      "sellable_item_group_id": "sig_6254fb2b854e70ccf86de1ce",
+      "product_line_id": "pl_a9dd2b8037facbb9eac8520c",
+      "review_family_id": "rf_a9dd2b8037facbb9eac8520c",
+      "brand_name": "Joocyee",
+      "category_paths": [
+        "Lip Makeup"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Glazed Lip Gloss",
+      "subtitle": "All-Day Wear, Always Luminous\n\nEvolutionary 「Low Temperature Formulation」 Film-Forming Tech\n\n90% Essence Infusion Creamy-smooth texture on lips\n\nThree trendy shade families Flattering for all skin tones\n\nShade Options:\n\nMuted Pink Tone for Delicate Makeup\n\n22 Rose Glow Sheer Icy Nude Rose\n\n20 Cherry Blossom Glow Fresh Peach Blossom Pink\n\n26 Lilac Glow Low-saturation Grey Pink\n\nVersatile Reddish Shades\n\n66 Oolong Glow Glazed Sienna Red\n\n60 Grape Glow Dewy Plum Glaze\n\n68 Black Tea Glow Intense Brownish Red\n\nStylish Signature Brown Tones\n\n80 Moonlight Glow Sheer Nude Apricot\n\n82 Amber Glow Amber Cashew Yellow Brown\n\n85 Dune Glow Cinnamon Icy Coffee Nude Brown\n\nNet WT.: 0.14oz/4g",
+      "variant_axes": {
+        "color": "22 rose glow",
+        "shade": "22 rose glow",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/22.jpg?v=1778493050",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/22.jpg?v=1778493050",
+        "https://joocyee.com/cdn/shop/files/20-id.jpg?v=1778493026",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/80_90dfa7f7-370c-4a63-9ff5-cf77a2719972.jpg?v=1778493127",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/9_50a92f5a-9013-49d5-b7fb-89bc8297f58d.jpg?v=1778493175",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/4_7a171235-885b-49b4-aa89-16a8ee24fe53.jpg?v=1778493175",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/1_dccae7a8-5940-458b-963a-e4feb9221013.jpg?v=1778493175",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/0c70a81518926b795fbb78c8b50c785b_28ad2a2f-7e2f-4015-bc23-32da42b37721.jpg?v=1778493175",
+        "https://joocyee.com/cdn/shop/files/20_28b411f6-d59a-4cd6-940f-a17820bf95a8.jpg?v=1778493035"
+      ],
+      "price_min": 19.9,
+      "price_max": 19.9,
+      "default_offer_id": "external_seed:ext_a9a9d873995dc784e34cb222",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Joocyee lip product listed on the brand source page as Glazed Lip Gloss.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Joocyee",
+        "Lip Makeup"
+      ],
+      "sort_keys": {
+        "price_min": 19.9,
+        "price_max": 19.9,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_a9a9d873995dc784e34cb222"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_a138447b66b63085f5607f39",
+      "sellable_item_group_id": "sig_a138447b66b63085f5607f39",
+      "product_line_id": "pl_a9dd2b8037facbb9eac8520c",
+      "review_family_id": "rf_a9dd2b8037facbb9eac8520c",
+      "brand_name": "Joocyee",
+      "category_paths": [
+        "Lip Makeup"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Glazed Lip Gloss",
+      "subtitle": "All-Day Wear, Always Luminous\n\nEvolutionary 「Low Temperature Formulation」 Film-Forming Tech\n\n90% Essence Infusion Creamy-smooth texture on lips\n\nThree trendy shade families Flattering for all skin tones\n\nShade Options:\n\nMuted Pink Tone for Delicate Makeup\n\n22 Rose Glow Sheer Icy Nude Rose\n\n20 Cherry Blossom Glow Fresh Peach Blossom Pink\n\n26 Lilac Glow Low-saturation Grey Pink\n\nVersatile Reddish Shades\n\n66 Oolong Glow Glazed Sienna Red\n\n60 Grape Glow Dewy Plum Glaze\n\n68 Black Tea Glow Intense Brownish Red\n\nStylish Signature Brown Tones\n\n80 Moonlight Glow Sheer Nude Apricot\n\n82 Amber Glow Amber Cashew Yellow Brown\n\n85 Dune Glow Cinnamon Icy Coffee Nude Brown\n\nNet WT.: 0.14oz/4g",
+      "variant_axes": {
+        "color": "26 lilac glow",
+        "shade": "26 lilac glow",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/26.jpg?v=1778493060",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/26.jpg?v=1778493060",
+        "https://joocyee.com/cdn/shop/files/20-id.jpg?v=1778493026",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/80_90dfa7f7-370c-4a63-9ff5-cf77a2719972.jpg?v=1778493127",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/9_50a92f5a-9013-49d5-b7fb-89bc8297f58d.jpg?v=1778493175",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/4_7a171235-885b-49b4-aa89-16a8ee24fe53.jpg?v=1778493175",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/1_dccae7a8-5940-458b-963a-e4feb9221013.jpg?v=1778493175",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/0c70a81518926b795fbb78c8b50c785b_28ad2a2f-7e2f-4015-bc23-32da42b37721.jpg?v=1778493175",
+        "https://joocyee.com/cdn/shop/files/20_28b411f6-d59a-4cd6-940f-a17820bf95a8.jpg?v=1778493035"
+      ],
+      "price_min": 19.9,
+      "price_max": 19.9,
+      "default_offer_id": "external_seed:ext_2881559170714581057e21eb",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Joocyee lip product listed on the brand source page as Glazed Lip Gloss.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Joocyee",
+        "Lip Makeup"
+      ],
+      "sort_keys": {
+        "price_min": 19.9,
+        "price_max": 19.9,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_2881559170714581057e21eb"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_269e443984fa3d0ac908c01f",
+      "sellable_item_group_id": "sig_269e443984fa3d0ac908c01f",
+      "product_line_id": "pl_a9dd2b8037facbb9eac8520c",
+      "review_family_id": "rf_a9dd2b8037facbb9eac8520c",
+      "brand_name": "Joocyee",
+      "category_paths": [
+        "Lip Makeup"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Glazed Lip Gloss",
+      "subtitle": "All-Day Wear, Always Luminous\n\nEvolutionary 「Low Temperature Formulation」 Film-Forming Tech\n\n90% Essence Infusion Creamy-smooth texture on lips\n\nThree trendy shade families Flattering for all skin tones\n\nShade Options:\n\nMuted Pink Tone for Delicate Makeup\n\n22 Rose Glow Sheer Icy Nude Rose\n\n20 Cherry Blossom Glow Fresh Peach Blossom Pink\n\n26 Lilac Glow Low-saturation Grey Pink\n\nVersatile Reddish Shades\n\n66 Oolong Glow Glazed Sienna Red\n\n60 Grape Glow Dewy Plum Glaze\n\n68 Black Tea Glow Intense Brownish Red\n\nStylish Signature Brown Tones\n\n80 Moonlight Glow Sheer Nude Apricot\n\n82 Amber Glow Amber Cashew Yellow Brown\n\n85 Dune Glow Cinnamon Icy Coffee Nude Brown\n\nNet WT.: 0.14oz/4g",
+      "variant_axes": {
+        "color": "85 dune glow",
+        "shade": "85 dune glow",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/85.jpg?v=1778493146",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/85.jpg?v=1778493146",
+        "https://joocyee.com/cdn/shop/files/20-id.jpg?v=1778493026",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/80_90dfa7f7-370c-4a63-9ff5-cf77a2719972.jpg?v=1778493127",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/9_50a92f5a-9013-49d5-b7fb-89bc8297f58d.jpg?v=1778493175",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/4_7a171235-885b-49b4-aa89-16a8ee24fe53.jpg?v=1778493175",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/1_dccae7a8-5940-458b-963a-e4feb9221013.jpg?v=1778493175",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/0c70a81518926b795fbb78c8b50c785b_28ad2a2f-7e2f-4015-bc23-32da42b37721.jpg?v=1778493175",
+        "https://joocyee.com/cdn/shop/files/20_28b411f6-d59a-4cd6-940f-a17820bf95a8.jpg?v=1778493035"
+      ],
+      "price_min": 19.9,
+      "price_max": 19.9,
+      "default_offer_id": "external_seed:ext_3c9980e0455d648c3173c14e",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Joocyee lip product listed on the brand source page as Glazed Lip Gloss.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Joocyee",
+        "Lip Makeup"
+      ],
+      "sort_keys": {
+        "price_min": 19.9,
+        "price_max": 19.9,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_3c9980e0455d648c3173c14e"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_54ce4c755ee54ef8d69529ea",
+      "sellable_item_group_id": "sig_54ce4c755ee54ef8d69529ea",
+      "product_line_id": "pl_a9dd2b8037facbb9eac8520c",
+      "review_family_id": "rf_a9dd2b8037facbb9eac8520c",
+      "brand_name": "Joocyee",
+      "category_paths": [
+        "Lip Makeup"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Glazed Lip Gloss",
+      "subtitle": "All-Day Wear, Always Luminous\n\nEvolutionary 「Low Temperature Formulation」 Film-Forming Tech\n\n90% Essence Infusion Creamy-smooth texture on lips\n\nThree trendy shade families Flattering for all skin tones\n\nShade Options:\n\nMuted Pink Tone for Delicate Makeup\n\n22 Rose Glow Sheer Icy Nude Rose\n\n20 Cherry Blossom Glow Fresh Peach Blossom Pink\n\n26 Lilac Glow Low-saturation Grey Pink\n\nVersatile Reddish Shades\n\n66 Oolong Glow Glazed Sienna Red\n\n60 Grape Glow Dewy Plum Glaze\n\n68 Black Tea Glow Intense Brownish Red\n\nStylish Signature Brown Tones\n\n80 Moonlight Glow Sheer Nude Apricot\n\n82 Amber Glow Amber Cashew Yellow Brown\n\n85 Dune Glow Cinnamon Icy Coffee Nude Brown\n\nNet WT.: 0.14oz/4g",
+      "variant_axes": {
+        "color": "80 moonlight glow",
+        "shade": "80 moonlight glow",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/80.jpg?v=1778493127",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/80.jpg?v=1778493127",
+        "https://joocyee.com/cdn/shop/files/20-id.jpg?v=1778493026",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/80_90dfa7f7-370c-4a63-9ff5-cf77a2719972.jpg?v=1778493127",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/9_50a92f5a-9013-49d5-b7fb-89bc8297f58d.jpg?v=1778493175",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/4_7a171235-885b-49b4-aa89-16a8ee24fe53.jpg?v=1778493175",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/1_dccae7a8-5940-458b-963a-e4feb9221013.jpg?v=1778493175",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/0c70a81518926b795fbb78c8b50c785b_28ad2a2f-7e2f-4015-bc23-32da42b37721.jpg?v=1778493175",
+        "https://joocyee.com/cdn/shop/files/20_28b411f6-d59a-4cd6-940f-a17820bf95a8.jpg?v=1778493035"
+      ],
+      "price_min": 19.9,
+      "price_max": 19.9,
+      "default_offer_id": "external_seed:ext_70a0b0b3c68a48630060c7ff",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Joocyee lip product listed on the brand source page as Glazed Lip Gloss.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Joocyee",
+        "Lip Makeup"
+      ],
+      "sort_keys": {
+        "price_min": 19.9,
+        "price_max": 19.9,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_70a0b0b3c68a48630060c7ff"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_71f43f953faef33621ca99cf",
+      "sellable_item_group_id": "sig_71f43f953faef33621ca99cf",
+      "product_line_id": "pl_a9dd2b8037facbb9eac8520c",
+      "review_family_id": "rf_a9dd2b8037facbb9eac8520c",
+      "brand_name": "Joocyee",
+      "category_paths": [
+        "Lip Makeup"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Glazed Lip Gloss",
+      "subtitle": "All-Day Wear, Always Luminous\n\nEvolutionary 「Low Temperature Formulation」 Film-Forming Tech\n\n90% Essence Infusion Creamy-smooth texture on lips\n\nThree trendy shade families Flattering for all skin tones\n\nShade Options:\n\nMuted Pink Tone for Delicate Makeup\n\n22 Rose Glow Sheer Icy Nude Rose\n\n20 Cherry Blossom Glow Fresh Peach Blossom Pink\n\n26 Lilac Glow Low-saturation Grey Pink\n\nVersatile Reddish Shades\n\n66 Oolong Glow Glazed Sienna Red\n\n60 Grape Glow Dewy Plum Glaze\n\n68 Black Tea Glow Intense Brownish Red\n\nStylish Signature Brown Tones\n\n80 Moonlight Glow Sheer Nude Apricot\n\n82 Amber Glow Amber Cashew Yellow Brown\n\n85 Dune Glow Cinnamon Icy Coffee Nude Brown\n\nNet WT.: 0.14oz/4g",
+      "variant_axes": {
+        "color": "68 black tea glow",
+        "shade": "68 black tea glow",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/68.jpg?v=1778493116",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/68.jpg?v=1778493116",
+        "https://joocyee.com/cdn/shop/files/20-id.jpg?v=1778493026",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/80_90dfa7f7-370c-4a63-9ff5-cf77a2719972.jpg?v=1778493127",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/9_50a92f5a-9013-49d5-b7fb-89bc8297f58d.jpg?v=1778493175",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/4_7a171235-885b-49b4-aa89-16a8ee24fe53.jpg?v=1778493175",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/1_dccae7a8-5940-458b-963a-e4feb9221013.jpg?v=1778493175",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/0c70a81518926b795fbb78c8b50c785b_28ad2a2f-7e2f-4015-bc23-32da42b37721.jpg?v=1778493175",
+        "https://joocyee.com/cdn/shop/files/20_28b411f6-d59a-4cd6-940f-a17820bf95a8.jpg?v=1778493035"
+      ],
+      "price_min": 19.9,
+      "price_max": 19.9,
+      "default_offer_id": "external_seed:ext_75c1cd3bbad92bbdbc6ab010",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Joocyee lip product listed on the brand source page as Glazed Lip Gloss.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Joocyee",
+        "Lip Makeup"
+      ],
+      "sort_keys": {
+        "price_min": 19.9,
+        "price_max": 19.9,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_75c1cd3bbad92bbdbc6ab010"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_33fe6dbde945c2735d4f0a33",
+      "sellable_item_group_id": "sig_33fe6dbde945c2735d4f0a33",
+      "product_line_id": "pl_a9dd2b8037facbb9eac8520c",
+      "review_family_id": "rf_a9dd2b8037facbb9eac8520c",
+      "brand_name": "Joocyee",
+      "category_paths": [
+        "Lip Makeup"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Glazed Lip Gloss",
+      "subtitle": "All-Day Wear, Always Luminous\n\nEvolutionary 「Low Temperature Formulation」 Film-Forming Tech\n\n90% Essence Infusion Creamy-smooth texture on lips\n\nThree trendy shade families Flattering for all skin tones\n\nShade Options:\n\nMuted Pink Tone for Delicate Makeup\n\n22 Rose Glow Sheer Icy Nude Rose\n\n20 Cherry Blossom Glow Fresh Peach Blossom Pink\n\n26 Lilac Glow Low-saturation Grey Pink\n\nVersatile Reddish Shades\n\n66 Oolong Glow Glazed Sienna Red\n\n60 Grape Glow Dewy Plum Glaze\n\n68 Black Tea Glow Intense Brownish Red\n\nStylish Signature Brown Tones\n\n80 Moonlight Glow Sheer Nude Apricot\n\n82 Amber Glow Amber Cashew Yellow Brown\n\n85 Dune Glow Cinnamon Icy Coffee Nude Brown\n\nNet WT.: 0.14oz/4g",
+      "variant_axes": {
+        "color": "60 grape glow",
+        "shade": "60 grape glow",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/60.jpg?v=1778493090",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/60.jpg?v=1778493090",
+        "https://joocyee.com/cdn/shop/files/20-id.jpg?v=1778493026",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/80_90dfa7f7-370c-4a63-9ff5-cf77a2719972.jpg?v=1778493127",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/9_50a92f5a-9013-49d5-b7fb-89bc8297f58d.jpg?v=1778493175",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/4_7a171235-885b-49b4-aa89-16a8ee24fe53.jpg?v=1778493175",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/1_dccae7a8-5940-458b-963a-e4feb9221013.jpg?v=1778493175",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/0c70a81518926b795fbb78c8b50c785b_28ad2a2f-7e2f-4015-bc23-32da42b37721.jpg?v=1778493175",
+        "https://joocyee.com/cdn/shop/files/20_28b411f6-d59a-4cd6-940f-a17820bf95a8.jpg?v=1778493035"
+      ],
+      "price_min": 19.9,
+      "price_max": 19.9,
+      "default_offer_id": "external_seed:ext_c037778265747b32fc52a16c",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Joocyee lip product listed on the brand source page as Glazed Lip Gloss.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Joocyee",
+        "Lip Makeup"
+      ],
+      "sort_keys": {
+        "price_min": 19.9,
+        "price_max": 19.9,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_c037778265747b32fc52a16c"
+      ]
+    }
+  ]
+}

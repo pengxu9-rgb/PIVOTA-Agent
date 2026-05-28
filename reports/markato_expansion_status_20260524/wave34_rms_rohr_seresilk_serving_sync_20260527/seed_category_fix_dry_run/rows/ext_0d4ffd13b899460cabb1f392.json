@@ -1,0 +1,963 @@
+{
+  "status": "dry_run",
+  "reason": "",
+  "target_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+  "row": {
+    "id": "eps_5ae568728c95aa19d64a9413",
+    "external_product_id": "ext_0d4ffd13b899460cabb1f392",
+    "title": "Gentle Silk Cleanser",
+    "brand": "",
+    "domain": "seresilk.com.au",
+    "canonical_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+    "destination_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+    "seed_snapshot_contract": {
+      "source": "catalog_intelligence",
+      "updated_at": "2026-05-25T00:48:14.720Z",
+      "authoritative": true,
+      "contract_version": "external_seed.snapshot_contract.v1",
+      "replace_strategy": "replace_not_merge",
+      "legacy_fields_quarantined": true,
+      "structured_fields_authoritative": true
+    }
+  },
+  "payload": {
+    "changed": true,
+    "next_row": {
+      "title": "Gentle Silk Cleanser",
+      "canonical_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+      "destination_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+      "image_url": "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_GentleSilkCleanser.jpg?v=1753242356",
+      "price_amount": 54.52,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "seed_data": {
+        "brand": "Seresilk",
+        "title": "Gentle Silk Cleanser",
+        "images": [
+          "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_GentleSilkCleanser.jpg?v=1753242356",
+          "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/EditorialGentleSilkCleanserSquare.webp?v=1753242356"
+        ],
+        "snapshot": {
+          "title": "Gentle Silk Cleanser",
+          "images": [
+            "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_GentleSilkCleanser.jpg?v=1753242356",
+            "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/EditorialGentleSilkCleanserSquare.webp?v=1753242356"
+          ],
+          "source": "catalog_intelligence",
+          "variants": [
+            {
+              "sku": "7068100687",
+              "url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+              "price": "54.52",
+              "stock": "In Stock",
+              "currency": "USD",
+              "image_url": "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_GentleSilkCleanser.jpg?v=1753242356",
+              "image_urls": [
+                "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_GentleSilkCleanser.jpg?v=1753242356",
+                "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Texture_Square_GentleSilkCleanser.webp?v=1753242356",
+                "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/EditorialGentleSilkCleanserSquare.webp?v=1753242356"
+              ],
+              "variant_id": "40067068100687",
+              "description": "100ml \n\nThe Gentle Silk Cleanser is a daily cleansing formula enriched with the proprietary Hydrolysed Silk Complex HSC01-A™ and glycerin to purify the skin while preserving its essential lipids. Designed to respect the skin’s natural barrier, it removes impurities, environmental residue, and excess oil without disturbing the skin’s optimum hydration equilibrium.\n\nIts lightweight, feather-soft texture transforms on contact with water, emulsifying into a milky fluid that rinses away effortlessly. The result is a complexion that feels clean, comfortable, and prepared for exfoliation.\n\nBENEFITS\nImmediately: Skin is refreshed, softened, and hydrated. With continued use: Skin appears smoother, more balanced, and visibly more radiant.\n\nDermatologically tested and approved. Patch test before application.\nApproved under the Leaping Bunny programme.",
+              "option_name": "Size",
+              "option_value": "100ml"
+            }
+          ],
+          "image_url": "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_GentleSilkCleanser.jpg?v=1753242356",
+          "image_urls": [
+            "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_GentleSilkCleanser.jpg?v=1753242356",
+            "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/EditorialGentleSilkCleanserSquare.webp?v=1753242356"
+          ],
+          "description": "100ml\n\nThe Gentle Silk Cleanser is a daily cleansing formula enriched with the proprietary Hydrolysed Silk Complex HSC01-A™ and glycerin to purify the skin while preserving its essential lipids. Designed to respect the skin's natural barrier, it removes impurities, environmental residue, and excess oil without disturbing the skin's optimum hydration equilibrium.\n\nIts lightweight, feather-soft texture transforms on contact with water, emulsifying into a milky fluid that rinses away effortlessly. The result is a complexion that feels clean, comfortable, and prepared for exfoliation.\n\nBENEFITS\nImmediately: Skin is refreshed, softened, and hydrated. With continued use: Skin appears smoother, more balanced, and visibly more radiant.\n\nDermatologically tested and approved. Patch test before application.\nApproved under the Leaping Bunny programme.",
+          "diagnostics": {
+            "requested_domain": "seresilk.com.au",
+            "resolved_base_url": "https://seresilk.com.au",
+            "discovery_strategy": "shopify_json",
+            "failure_category": null,
+            "block_provider": null,
+            "http_trace": [
+              {
+                "url": "https://seresilk.com.au/products/gentle-silk-cleanser.js",
+                "status": 200
+              },
+              {
+                "url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+                "status": 200
+              },
+              {
+                "url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+                "status": 200
+              },
+              {
+                "url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+                "status": 200
+              }
+            ]
+          },
+          "extracted_at": "2026-05-27T16:00:48.280Z",
+          "canonical_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+          "search_aliases": [
+            "Gentle Silk Cleanser"
+          ],
+          "destination_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+          "authority_source": {
+            "source_url": "https://seresilk.com.au",
+            "source_role": "primary",
+            "matched_preferred_titles": []
+          },
+          "commerce_facts_v1": {
+            "country": "US",
+            "returns": {
+              "source": "catalog_extract_v2",
+              "status": "unknown",
+              "checked_at": "2026-05-24T05:00:18.772Z",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ]
+            },
+            "shipping": {
+              "source": "catalog_extract_v2",
+              "status": "unknown",
+              "checked_at": "2026-05-24T05:00:18.772Z",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ]
+            },
+            "market_id": "US",
+            "promotions": [],
+            "captured_at": "2026-05-24T05:00:18.772Z",
+            "availability": {
+              "source": "catalog_extract_v2",
+              "status": "in_stock",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T05:00:18.772Z"
+            },
+            "evidence_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+            "regional_price": {
+              "amount": 54.52,
+              "currency": "USD",
+              "confidence": "medium",
+              "price_type": "list",
+              "source_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+              "captured_at": "2026-05-24T05:00:18.772Z",
+              "display_raw": "54.52",
+              "tax_included": "unknown",
+              "compare_at_amount": null,
+              "observed_currency": "USD",
+              "compare_at_currency": null,
+              "market_switch_status": "ok",
+              "compare_at_display_raw": null
+            },
+            "currency_target": "USD",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "checked_at": "2026-05-24T05:00:18.772Z",
+              "confidence": "medium",
+              "evidence_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_source": "catalog_extract_v2"
+            },
+            "contract_version": "commerce_facts.v1",
+            "source_authority": "catalog_extract_v2"
+          },
+          "source_validation": {
+            "source_host": "seresilk.com.au",
+            "source_type": "brand_owned",
+            "requires_multi_offer_merge_validation": false
+          },
+          "pdp_how_to_use_raw": "Dampen the skin with lukewarm water.\nUsing fingertips, massage the Gentle Silk Cleanser into the face in circular motions until a creamy texture forms.\nRinse thoroughly to remove impurities and reveal a soft, refreshed complexion.",
+          "commerce_facts_gate": {
+            "status": "pass",
+            "problems": [],
+            "market_id": "US",
+            "shipping_status": "unknown",
+            "expected_currency": "USD",
+            "observed_currency": "USD",
+            "promotions_status": "unknown",
+            "availability_status": "in_stock",
+            "market_switch_status": "ok",
+            "sellable_region_status": "unknown"
+          },
+          "pdp_ingredients_raw": "Water, Caprylic/Capric Triglyceride, Cetearyl Alcohol, Stearic Acid, Lauryl Glucoside, Propanediol, Glycerin, Glyceryl Stearate, Coco-Glucoside, Sodium Stearoyl Glutamate, Hydrolysed Silk Complex HSC01-A™, Sodium Benzoate, Hydroxyacetophenone.",
+          "pdp_content_asset_v1": {
+            "contract_version": "pivota.pdp_content_asset.v1",
+            "owner": "pivota",
+            "fields": {
+              "description": {
+                "review_state": "unreviewed",
+                "overwrite_policy": "preserve_best_available",
+                "source_quality_status": "high",
+                "source_origin": "shopify_json",
+                "content_hash": "9a04465b4716393f",
+                "updated_at": "2026-05-27T16:00:48.276Z"
+              },
+              "description_raw": {
+                "review_state": "assistant_reviewed",
+                "overwrite_policy": "preserve_best_available",
+                "source_quality_status": "high",
+                "source_origin": "shopify_json",
+                "content_hash": "9a04465b4716393f",
+                "updated_at": "2026-05-27T16:00:48.276Z"
+              },
+              "details_sections": {
+                "review_state": "assistant_reviewed",
+                "overwrite_policy": "preserve_best_available",
+                "source_quality_status": "high",
+                "source_origin": "shopify_json",
+                "content_hash": "59be235a734c8ab0",
+                "updated_at": "2026-05-27T16:00:48.278Z"
+              },
+              "ingredients_raw": {
+                "review_state": "assistant_reviewed",
+                "overwrite_policy": "preserve_best_available",
+                "source_quality_status": "high",
+                "source_origin": "shopify_json",
+                "content_hash": "16131de062e1bccb",
+                "updated_at": "2026-05-27T16:00:48.278Z"
+              },
+              "how_to_use_raw": {
+                "review_state": "assistant_reviewed",
+                "overwrite_policy": "preserve_best_available",
+                "source_quality_status": "medium",
+                "source_origin": "retail_pdp",
+                "content_hash": "8cbb4e6882830227",
+                "updated_at": "2026-05-27T16:00:48.278Z"
+              }
+            }
+          },
+          "pdp_details_sections": [
+            {
+              "heading": "Overview",
+              "body": "100ml\n\nThe Gentle Silk Cleanser is a daily cleansing formula enriched with the proprietary Hydrolysed Silk Complex HSC01-A™ and glycerin to purify the skin while preserving its essential lipids. Designed to respect the skin's natural barrier, it removes impurities, environmental residue, and excess oil without disturbing the skin's optimum hydration equilibrium.\n\nIts lightweight, feather-soft texture transforms on contact with water, emulsifying into a milky fluid that rinses away effortlessly. The result is a complexion that feels clean, comfortable, and prepared for exfoliation.\n\nBENEFITS\nImmediately: Skin is refreshed, softened, and hydrated. With continued use: Skin appears smoother, more balanced, and visibly more radiant.\n\nDermatologically tested and approved. Patch test before application.\nApproved under the Leaping Bunny programme.",
+              "source_kind": "unknown"
+            },
+            {
+              "heading": "Details",
+              "body": "100ml\nGentle Silk Cleanser is a daily cleansing formula enriched with the proprietary Hydrolysed Silk Complex HSC01-A™ and glycerin to purify the skin while preserving its essential lipids. Designed to respect the skin's natural barrier, it removes impurities, environmental residue, and excess oil without disturbing the skin's optimum hydration equilibrium.\nIts lightweight, feather-soft texture transforms on contact with water, emulsifying into a milky fluid that rinses away effortlessly. The result is a complexion that feels clean, comfortable, and prepared for exfoliation.\nDermatologically tested and approved across clinical trials.\nBENEFITS\nImmediately: Skin is refreshed, softened, and hydrated.\nWith continued use: Skin appears smoother, more balanced, and visibly more radiant.\nTESTING\n(1) Clinical patch test conducted on 54 healthy volunteers.\n(2) 50% of participants had self-assessed sensitive skin.\n(3) Evaluated over a 6-week period under dermatological supervision.\n(4) No irritation or sensitisation observed throughout the study.\n(5) Proven suitable for sensitive skin and daily use.\nApproved under the Leaping Bunny programme.",
+              "source_kind": "unknown"
+            },
+            {
+              "heading": "How to Use",
+              "body": "Dampen the skin with lukewarm water.\n\nUsing fingertips, massage the Gentle Silk Cleanser into the face in circular motions until a creamy texture forms.\n\nRinse thoroughly to remove impurities and reveal a soft, refreshed complexion.",
+              "source_kind": "unknown"
+            },
+            {
+              "heading": "Hero ingredients",
+              "body": "HSC-01A™ 0.5% & Glycerin 4%\nHSC-01A™ undergoes a precise lab hydrolysis process which unlocks a rare blend of di- and tripeptides alongside silk's native 18 free amino acids. Sharing a 90% rate of affinity with the human skin and echoing its natural-moisturising factors, these amino acids rebuild the intercellular lipid matrix, while bioactive peptides prompt fibroblasts to support elasticity for a renewed and youthful appearance.\nThis process results in an elevated protein content of 2.52% - more than double that of hydrolysed silk alternatives - delivering a significantly higher concentration of glycine, serine, alanine, and other amino acids known to maintain moisture, stimulate collagen synthesis, and support elasticity.\nWithin the HSC-01A™:\nPeptides act as cellular messengers, stimulating collagen production and reinforcing structural integrity.\nFree amino acids such as serine, arginine, and glycine contribute to long-lasting hydration, improved tone, and strengthened skin resilience.\nThe predominance of tripeptides, each with a molecular weight of ~300 Da, ensures excellent skin penetration for targeted regeneration and visible results.\n\nThe HSC-01A™ amino acid profile is optimised for consistency and protein concentration. The result: a refined, performance-focused active that works across all layers of the skin, delivering hydration, structure, and glow - with every...",
+              "source_kind": "unknown"
+            },
+            {
+              "heading": "Benefits",
+              "body": "Immediately: Skin is refreshed, softened, and hydrated. With continued use: Skin appears smoother, more balanced, and visibly more radiant.\nDermatologically tested and approved. Patch test before application.\nApproved under the Leaping Bunny programme.",
+              "source_kind": "unknown"
+            }
+          ],
+          "pdp_field_quality_summary": {
+            "description_raw": {
+              "source_origin": "shopify_json",
+              "source_quality_status": "high",
+              "source_kinds": [
+                "shopify_description"
+              ],
+              "reason_codes": []
+            },
+            "details_sections": {
+              "source_origin": "shopify_json",
+              "source_quality_status": "high",
+              "source_kinds": [
+                "shopify_body_html_labeled_section",
+                "accordion_how_to_use",
+                "accordion_ingredients",
+                "accordion_control"
+              ],
+              "reason_codes": []
+            },
+            "ingredients_raw": {
+              "source_origin": "shopify_json",
+              "source_quality_status": "high",
+              "source_kinds": [
+                "shopify_direct_pdp_html_labeled_ingredients"
+              ],
+              "reason_codes": []
+            },
+            "active_ingredients_raw": {
+              "source_origin": "unknown",
+              "source_quality_status": "low",
+              "source_kinds": [],
+              "reason_codes": [
+                "missing_source_kind"
+              ]
+            },
+            "how_to_use_raw": {
+              "source_origin": "retail_pdp",
+              "source_quality_status": "medium",
+              "source_kinds": [
+                "page_how_to_use_section"
+              ],
+              "reason_codes": []
+            },
+            "faq_items": {
+              "source_origin": "unknown",
+              "source_quality_status": "low",
+              "source_kinds": [],
+              "reason_codes": [
+                "missing_source_kind"
+              ]
+            }
+          },
+          "raw_ingredient_text_clean": "Water, Caprylic/Capric Triglyceride, Cetearyl Alcohol, Stearic Acid, Lauryl Glucoside, Propanediol, Glycerin, Glyceryl Stearate, Coco-Glucoside, Sodium Stearoyl Glutamate, Hydrolysed Silk Complex HSC01-A™, Sodium Benzoate, Hydroxyacetophenone.",
+          "official_html_pdp_fields_v1": {
+            "fields": [
+              "pdp_ingredients_raw",
+              "pdp_how_to_use_raw",
+              "pdp_details_sections"
+            ],
+            "updated_at": "2026-05-25T00:48:14.720Z",
+            "source_origin": "official_html",
+            "contract_version": "external_seed.official_html_pdp_fields.v1"
+          },
+          "external_seed_snapshot_contract": {
+            "contract_version": "external_seed.snapshot_contract.v1",
+            "source": "catalog_intelligence",
+            "authoritative": true,
+            "structured_fields_authoritative": true,
+            "legacy_fields_quarantined": true,
+            "replace_strategy": "replace_not_merge",
+            "updated_at": "2026-05-27T16:00:48.280Z"
+          },
+          "pdp_description_raw": "100ml\n\nThe Gentle Silk Cleanser is a daily cleansing formula enriched with the proprietary Hydrolysed Silk Complex HSC01-A™ and glycerin to purify the skin while preserving its essential lipids. Designed to respect the skin's natural barrier, it removes impurities, environmental residue, and excess oil without disturbing the skin's optimum hydration equilibrium.\n\nIts lightweight, feather-soft texture transforms on contact with water, emulsifying into a milky fluid that rinses away effortlessly. The result is a complexion that feels clean, comfortable, and prepared for exfoliation.\n\nBENEFITS\nImmediately: Skin is refreshed, softened, and hydrated. With continued use: Skin appears smoother, more balanced, and visibly more radiant.\n\nDermatologically tested and approved. Patch test before application.\nApproved under the Leaping Bunny programme.",
+          "product_kind": "single_formula",
+          "volume": "100ml",
+          "size_detail_label": "100 mL",
+          "seed_description_origin": "pdp_variant_description",
+          "pdp_field_capture_status": {
+            "description_raw": "present",
+            "details_sections": "present",
+            "ingredients_raw": "present",
+            "active_ingredients_raw": "missing",
+            "how_to_use_raw": "present",
+            "faq_items": "missing"
+          },
+          "variant_skus": [
+            "7068100687"
+          ],
+          "inci_list": "Water, Caprylic/Capric Triglyceride, Cetearyl Alcohol, Stearic Acid, Lauryl Glucoside, Propanediol, Glycerin, Glyceryl Stearate, Coco-Glucoside, Sodium Stearoyl Glutamate, Hydrolysed Silk Complex HSC01-A™, Sodium Benzoate, Hydroxyacetophenone.",
+          "ingredient_intel": {
+            "raw_ingredient_text_clean": "Water, Caprylic/Capric Triglyceride, Cetearyl Alcohol, Stearic Acid, Lauryl Glucoside, Propanediol, Glycerin, Glyceryl Stearate, Coco-Glucoside, Sodium Stearoyl Glutamate, Hydrolysed Silk Complex HSC01-A™, Sodium Benzoate, Hydroxyacetophenone.",
+            "inci_list": "Water, Caprylic/Capric Triglyceride, Cetearyl Alcohol, Stearic Acid, Lauryl Glucoside, Propanediol, Glycerin, Glyceryl Stearate, Coco-Glucoside, Sodium Stearoyl Glutamate, Hydrolysed Silk Complex HSC01-A™, Sodium Benzoate, Hydroxyacetophenone.",
+            "inci_raw": "Water, Caprylic/Capric Triglyceride, Cetearyl Alcohol, Stearic Acid, Lauryl Glucoside, Propanediol, Glycerin, Glyceryl Stearate, Coco-Glucoside, Sodium Stearoyl Glutamate, Hydrolysed Silk Complex HSC01-A™, Sodium Benzoate, Hydroxyacetophenone."
+          },
+          "brand_origin": {
+            "country": null,
+            "home_market": null,
+            "source": null
+          },
+          "market_availability": {
+            "available_markets": [
+              "US"
+            ],
+            "local_purchase_markets": [
+              "US"
+            ],
+            "source_market": "US",
+            "retail_channel_markets": [],
+            "availability_status": "in_stock"
+          },
+          "available_markets": [
+            "US"
+          ],
+          "local_purchase_markets": [
+            "US"
+          ],
+          "locality_facts_v1": {
+            "contract_version": "external_seed.locality_facts.v1",
+            "brand": "Seresilk",
+            "brand_origin": {
+              "country": null,
+              "home_market": null,
+              "source": null
+            },
+            "brand_origin_country": null,
+            "brand_home_market": null,
+            "market_availability": {
+              "available_markets": [
+                "US"
+              ],
+              "local_purchase_markets": [
+                "US"
+              ],
+              "source_market": "US",
+              "retail_channel_markets": [],
+              "availability_status": "in_stock"
+            },
+            "available_markets": [
+              "US"
+            ],
+            "local_purchase_markets": [
+              "US"
+            ],
+            "local_retail_channels": [],
+            "travel_size": null,
+            "travel_size_evidence": null,
+            "creator_local_reason": null,
+            "local_authority_level": "product_market",
+            "sources": [
+              "existing_seed_data",
+              "seed_row_market"
+            ]
+          }
+        },
+        "variants": [
+          {
+            "sku": "7068100687",
+            "url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+            "price": "54.52",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_GentleSilkCleanser.jpg?v=1753242356",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_GentleSilkCleanser.jpg?v=1753242356",
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Texture_Square_GentleSilkCleanser.webp?v=1753242356",
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/EditorialGentleSilkCleanserSquare.webp?v=1753242356"
+            ],
+            "variant_id": "40067068100687",
+            "description": "100ml \n\nThe Gentle Silk Cleanser is a daily cleansing formula enriched with the proprietary Hydrolysed Silk Complex HSC01-A™ and glycerin to purify the skin while preserving its essential lipids. Designed to respect the skin’s natural barrier, it removes impurities, environmental residue, and excess oil without disturbing the skin’s optimum hydration equilibrium.\n\nIts lightweight, feather-soft texture transforms on contact with water, emulsifying into a milky fluid that rinses away effortlessly. The result is a complexion that feels clean, comfortable, and prepared for exfoliation.\n\nBENEFITS\nImmediately: Skin is refreshed, softened, and hydrated. With continued use: Skin appears smoother, more balanced, and visibly more radiant.\n\nDermatologically tested and approved. Patch test before application.\nApproved under the Leaping Bunny programme.",
+            "option_name": "Size",
+            "option_value": "100ml"
+          }
+        ],
+        "image_url": "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_GentleSilkCleanser.jpg?v=1753242356",
+        "image_urls": [
+          "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_GentleSilkCleanser.jpg?v=1753242356",
+          "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/EditorialGentleSilkCleanserSquare.webp?v=1753242356"
+        ],
+        "description": "100ml\n\nThe Gentle Silk Cleanser is a daily cleansing formula enriched with the proprietary Hydrolysed Silk Complex HSC01-A™ and glycerin to purify the skin while preserving its essential lipids. Designed to respect the skin's natural barrier, it removes impurities, environmental residue, and excess oil without disturbing the skin's optimum hydration equilibrium.\n\nIts lightweight, feather-soft texture transforms on contact with water, emulsifying into a milky fluid that rinses away effortlessly. The result is a complexion that feels clean, comfortable, and prepared for exfoliation.\n\nBENEFITS\nImmediately: Skin is refreshed, softened, and hydrated. With continued use: Skin appears smoother, more balanced, and visibly more radiant.\n\nDermatologically tested and approved. Patch test before application.\nApproved under the Leaping Bunny programme.",
+        "availability": "in_stock",
+        "price_amount": 54.52,
+        "canonical_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+        "price_currency": "USD",
+        "search_aliases": [
+          "Gentle Silk Cleanser"
+        ],
+        "destination_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+        "authority_source": {
+          "source_url": "https://seresilk.com.au",
+          "source_role": "primary",
+          "matched_preferred_titles": []
+        },
+        "commerce_facts_v1": {
+          "country": "US",
+          "returns": {
+            "source": "catalog_extract_v2",
+            "status": "unknown",
+            "checked_at": "2026-05-24T05:00:18.772Z",
+            "confidence": "unknown",
+            "reason_codes": [
+              "external_returns_not_extracted"
+            ]
+          },
+          "shipping": {
+            "source": "catalog_extract_v2",
+            "status": "unknown",
+            "checked_at": "2026-05-24T05:00:18.772Z",
+            "confidence": "unknown",
+            "reason_codes": [
+              "external_checkout_not_queried"
+            ]
+          },
+          "market_id": "US",
+          "promotions": [],
+          "captured_at": "2026-05-24T05:00:18.772Z",
+          "availability": {
+            "source": "catalog_extract_v2",
+            "status": "in_stock",
+            "confidence": "medium",
+            "captured_at": "2026-05-24T05:00:18.772Z"
+          },
+          "evidence_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+          "regional_price": {
+            "amount": 54.52,
+            "currency": "USD",
+            "confidence": "medium",
+            "price_type": "list",
+            "source_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+            "captured_at": "2026-05-24T05:00:18.772Z",
+            "display_raw": "54.52",
+            "tax_included": "unknown",
+            "compare_at_amount": null,
+            "observed_currency": "USD",
+            "compare_at_currency": null,
+            "market_switch_status": "ok",
+            "compare_at_display_raw": null
+          },
+          "currency_target": "USD",
+          "sellable_region": {
+            "status": "unknown",
+            "countries": [],
+            "checked_at": "2026-05-24T05:00:18.772Z",
+            "confidence": "medium",
+            "evidence_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+            "reason_codes": [
+              "market_currency_observed",
+              "shipping_destination_not_verified",
+              "external_checkout_not_queried"
+            ],
+            "evidence_source": "catalog_extract_v2"
+          },
+          "contract_version": "commerce_facts.v1",
+          "source_authority": "catalog_extract_v2"
+        },
+        "source_validation": {
+          "source_host": "seresilk.com.au",
+          "source_type": "brand_owned",
+          "requires_multi_offer_merge_validation": false
+        },
+        "pdp_how_to_use_raw": "Dampen the skin with lukewarm water.\nUsing fingertips, massage the Gentle Silk Cleanser into the face in circular motions until a creamy texture forms.\nRinse thoroughly to remove impurities and reveal a soft, refreshed complexion.",
+        "commerce_facts_gate": {
+          "status": "pass",
+          "problems": [],
+          "market_id": "US",
+          "shipping_status": "unknown",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "promotions_status": "unknown",
+          "availability_status": "in_stock",
+          "market_switch_status": "ok",
+          "sellable_region_status": "unknown"
+        },
+        "external_product_id": "ext_0d4ffd13b899460cabb1f392",
+        "pdp_ingredients_raw": "Water, Caprylic/Capric Triglyceride, Cetearyl Alcohol, Stearic Acid, Lauryl Glucoside, Propanediol, Glycerin, Glyceryl Stearate, Coco-Glucoside, Sodium Stearoyl Glutamate, Hydrolysed Silk Complex HSC01-A™, Sodium Benzoate, Hydroxyacetophenone.",
+        "pdp_content_asset_v1": {
+          "contract_version": "pivota.pdp_content_asset.v1",
+          "owner": "pivota",
+          "fields": {
+            "description": {
+              "review_state": "unreviewed",
+              "overwrite_policy": "preserve_best_available",
+              "source_quality_status": "high",
+              "source_origin": "shopify_json",
+              "content_hash": "9a04465b4716393f",
+              "updated_at": "2026-05-27T16:00:48.276Z"
+            },
+            "description_raw": {
+              "review_state": "assistant_reviewed",
+              "overwrite_policy": "preserve_best_available",
+              "source_quality_status": "high",
+              "source_origin": "shopify_json",
+              "content_hash": "9a04465b4716393f",
+              "updated_at": "2026-05-27T16:00:48.276Z"
+            },
+            "details_sections": {
+              "review_state": "assistant_reviewed",
+              "overwrite_policy": "preserve_best_available",
+              "source_quality_status": "high",
+              "source_origin": "shopify_json",
+              "content_hash": "59be235a734c8ab0",
+              "updated_at": "2026-05-27T16:00:48.278Z"
+            },
+            "ingredients_raw": {
+              "review_state": "assistant_reviewed",
+              "overwrite_policy": "preserve_best_available",
+              "source_quality_status": "high",
+              "source_origin": "shopify_json",
+              "content_hash": "16131de062e1bccb",
+              "updated_at": "2026-05-27T16:00:48.278Z"
+            },
+            "how_to_use_raw": {
+              "review_state": "assistant_reviewed",
+              "overwrite_policy": "preserve_best_available",
+              "source_quality_status": "medium",
+              "source_origin": "retail_pdp",
+              "content_hash": "8cbb4e6882830227",
+              "updated_at": "2026-05-27T16:00:48.278Z"
+            }
+          }
+        },
+        "pdp_details_sections": [
+          {
+            "heading": "Overview",
+            "body": "100ml\n\nThe Gentle Silk Cleanser is a daily cleansing formula enriched with the proprietary Hydrolysed Silk Complex HSC01-A™ and glycerin to purify the skin while preserving its essential lipids. Designed to respect the skin's natural barrier, it removes impurities, environmental residue, and excess oil without disturbing the skin's optimum hydration equilibrium.\n\nIts lightweight, feather-soft texture transforms on contact with water, emulsifying into a milky fluid that rinses away effortlessly. The result is a complexion that feels clean, comfortable, and prepared for exfoliation.\n\nBENEFITS\nImmediately: Skin is refreshed, softened, and hydrated. With continued use: Skin appears smoother, more balanced, and visibly more radiant.\n\nDermatologically tested and approved. Patch test before application.\nApproved under the Leaping Bunny programme.",
+            "source_kind": "unknown"
+          },
+          {
+            "heading": "Details",
+            "body": "100ml\nGentle Silk Cleanser is a daily cleansing formula enriched with the proprietary Hydrolysed Silk Complex HSC01-A™ and glycerin to purify the skin while preserving its essential lipids. Designed to respect the skin's natural barrier, it removes impurities, environmental residue, and excess oil without disturbing the skin's optimum hydration equilibrium.\nIts lightweight, feather-soft texture transforms on contact with water, emulsifying into a milky fluid that rinses away effortlessly. The result is a complexion that feels clean, comfortable, and prepared for exfoliation.\nDermatologically tested and approved across clinical trials.\nBENEFITS\nImmediately: Skin is refreshed, softened, and hydrated.\nWith continued use: Skin appears smoother, more balanced, and visibly more radiant.\nTESTING\n(1) Clinical patch test conducted on 54 healthy volunteers.\n(2) 50% of participants had self-assessed sensitive skin.\n(3) Evaluated over a 6-week period under dermatological supervision.\n(4) No irritation or sensitisation observed throughout the study.\n(5) Proven suitable for sensitive skin and daily use.\nApproved under the Leaping Bunny programme.",
+            "source_kind": "unknown"
+          },
+          {
+            "heading": "How to Use",
+            "body": "Dampen the skin with lukewarm water.\n\nUsing fingertips, massage the Gentle Silk Cleanser into the face in circular motions until a creamy texture forms.\n\nRinse thoroughly to remove impurities and reveal a soft, refreshed complexion.",
+            "source_kind": "unknown"
+          },
+          {
+            "heading": "Hero ingredients",
+            "body": "HSC-01A™ 0.5% & Glycerin 4%\nHSC-01A™ undergoes a precise lab hydrolysis process which unlocks a rare blend of di- and tripeptides alongside silk's native 18 free amino acids. Sharing a 90% rate of affinity with the human skin and echoing its natural-moisturising factors, these amino acids rebuild the intercellular lipid matrix, while bioactive peptides prompt fibroblasts to support elasticity for a renewed and youthful appearance.\nThis process results in an elevated protein content of 2.52% - more than double that of hydrolysed silk alternatives - delivering a significantly higher concentration of glycine, serine, alanine, and other amino acids known to maintain moisture, stimulate collagen synthesis, and support elasticity.\nWithin the HSC-01A™:\nPeptides act as cellular messengers, stimulating collagen production and reinforcing structural integrity.\nFree amino acids such as serine, arginine, and glycine contribute to long-lasting hydration, improved tone, and strengthened skin resilience.\nThe predominance of tripeptides, each with a molecular weight of ~300 Da, ensures excellent skin penetration for targeted regeneration and visible results.\n\nThe HSC-01A™ amino acid profile is optimised for consistency and protein concentration. The result: a refined, performance-focused active that works across all layers of the skin, delivering hydration, structure, and glow - with every...",
+            "source_kind": "unknown"
+          },
+          {
+            "heading": "Benefits",
+            "body": "Immediately: Skin is refreshed, softened, and hydrated. With continued use: Skin appears smoother, more balanced, and visibly more radiant.\nDermatologically tested and approved. Patch test before application.\nApproved under the Leaping Bunny programme.",
+            "source_kind": "unknown"
+          }
+        ],
+        "pdp_field_quality_summary": {
+          "description_raw": {
+            "source_origin": "shopify_json",
+            "source_quality_status": "high",
+            "source_kinds": [
+              "shopify_description"
+            ],
+            "reason_codes": []
+          },
+          "details_sections": {
+            "source_origin": "shopify_json",
+            "source_quality_status": "high",
+            "source_kinds": [
+              "shopify_body_html_labeled_section",
+              "accordion_how_to_use",
+              "accordion_ingredients",
+              "accordion_control"
+            ],
+            "reason_codes": []
+          },
+          "ingredients_raw": {
+            "source_origin": "shopify_json",
+            "source_quality_status": "high",
+            "source_kinds": [
+              "shopify_direct_pdp_html_labeled_ingredients"
+            ],
+            "reason_codes": []
+          },
+          "active_ingredients_raw": {
+            "source_origin": "unknown",
+            "source_quality_status": "low",
+            "source_kinds": [],
+            "reason_codes": [
+              "missing_source_kind"
+            ]
+          },
+          "how_to_use_raw": {
+            "source_origin": "retail_pdp",
+            "source_quality_status": "medium",
+            "source_kinds": [
+              "page_how_to_use_section"
+            ],
+            "reason_codes": []
+          },
+          "faq_items": {
+            "source_origin": "unknown",
+            "source_quality_status": "low",
+            "source_kinds": [],
+            "reason_codes": [
+              "missing_source_kind"
+            ]
+          }
+        },
+        "raw_ingredient_text_clean": "Water, Caprylic/Capric Triglyceride, Cetearyl Alcohol, Stearic Acid, Lauryl Glucoside, Propanediol, Glycerin, Glyceryl Stearate, Coco-Glucoside, Sodium Stearoyl Glutamate, Hydrolysed Silk Complex HSC01-A™, Sodium Benzoate, Hydroxyacetophenone.",
+        "official_html_pdp_fields_v1": {
+          "fields": [
+            "pdp_ingredients_raw",
+            "pdp_how_to_use_raw",
+            "pdp_details_sections"
+          ],
+          "updated_at": "2026-05-25T00:48:14.720Z",
+          "source_origin": "official_html",
+          "contract_version": "external_seed.official_html_pdp_fields.v1"
+        },
+        "external_seed_snapshot_contract": {
+          "contract_version": "external_seed.snapshot_contract.v1",
+          "source": "catalog_intelligence",
+          "authoritative": true,
+          "structured_fields_authoritative": true,
+          "legacy_fields_quarantined": true,
+          "replace_strategy": "replace_not_merge",
+          "updated_at": "2026-05-27T16:00:48.280Z"
+        },
+        "pdp_description_raw": "100ml\n\nThe Gentle Silk Cleanser is a daily cleansing formula enriched with the proprietary Hydrolysed Silk Complex HSC01-A™ and glycerin to purify the skin while preserving its essential lipids. Designed to respect the skin's natural barrier, it removes impurities, environmental residue, and excess oil without disturbing the skin's optimum hydration equilibrium.\n\nIts lightweight, feather-soft texture transforms on contact with water, emulsifying into a milky fluid that rinses away effortlessly. The result is a complexion that feels clean, comfortable, and prepared for exfoliation.\n\nBENEFITS\nImmediately: Skin is refreshed, softened, and hydrated. With continued use: Skin appears smoother, more balanced, and visibly more radiant.\n\nDermatologically tested and approved. Patch test before application.\nApproved under the Leaping Bunny programme.",
+        "product_kind": "single_formula",
+        "volume": "100ml",
+        "size_detail_label": "100 mL",
+        "seed_description_origin": "pdp_variant_description",
+        "pdp_field_capture_status": {
+          "description_raw": "present",
+          "details_sections": "present",
+          "ingredients_raw": "present",
+          "active_ingredients_raw": "missing",
+          "how_to_use_raw": "present",
+          "faq_items": "missing"
+        },
+        "snapshot_quarantine": {
+          "contract_version": "external_seed.snapshot_quarantine.v1",
+          "source": "catalog_intelligence",
+          "extractor_mode": "puppeteer",
+          "updated_at": "2026-05-27T16:00:48.274Z",
+          "preserved_candidates": {
+            "details_sections": {
+              "value": [
+                {
+                  "heading": "Benefits",
+                  "body": "Immediately: Skin is refreshed, softened, and hydrated. With continued use: Skin appears smoother, more balanced, and visibly more radiant.\n\nDermatologically tested and approved. Patch test before application.\nApproved under the Leaping Bunny programme.",
+                  "source_kind": "shopify_body_html_labeled_section"
+                },
+                {
+                  "heading": "Benefits",
+                  "body": "Immediately: Skin is refreshed, softened, and hydrated.\nWith continued use: Skin appears smoother, more balanced, and visibly more radiant.\nTESTING\n(1) Clinical patch test conducted on 54 healthy volunteers.\n(2) 50% of participants had self-assessed sensitive skin.\n(3) Evaluated over a 6-week period under dermatological supervision.\n(4) No irritation or sensitisation observed throughout the study.\n(5) Proven suitable for sensitive skin and daily use.\nApproved under the Leaping Bunny programme.\n\nMorning or Evening.\nSuitable for all skin types.\n\nDampen the skin with lukewarm water.\n\nUsing fingertips, massage the Gentle Silk Cleanser into the face in circular motions until a creamy texture forms.\n\nRinse thoroughly to remove impurities and reveal a soft, refreshed complexion.\n\nHSC-01A™ 0.5% & Glycerin 4%\nHSC-01A™ undergoes a precise lab hydrolysis process which unlocks a rare blend of di- and tripeptides alongside silk's native 18 free amino acids. Sharing a 90% rate of affinity with the human skin and echoing its natural-moisturising factors, these amino acids rebuild the intercellular lipid matrix, while bioactive peptides prompt fibroblasts to support elasticity for a renewed and youthful appearance.\nThis process results in an elevated protein content of 2.52% - more than double that of hydrolysed silk alternatives - delivering a significantly higher concentration of glycine, serine, alanine, and other amino acids known to maintain moisture, stimulate collagen synthesis, and support elasticity.\nWithin the HSC-01A™:\n\nPeptides act as cellular messengers, stimulating collagen production and reinforcing structural integrity.\n\nFree amino acids such as serine, arginine, and glycine contribute to long-lasting hydration, improved tone, and strengthened skin resilience.\n\nThe predominance of tripeptides, each with a molecular weight of ~300 Da, ensures excellent skin penetration for targeted regeneration and visible results.\n\nThe HSC-01A™ amino acid profile is optimised for consistency and protein concentration. The result: a refined, performance-focused active that works across all layers of the skin, delivering hydration, structure, and glow - with every application.\n\nWater, Caprylic/Capric Triglyceride, Cetearyl Alcohol, Stearic Acid, Lauryl Glucoside, Propanediol, Glycerin, Glyceryl Stearate, Coco-Glucoside, Sodium Stearoyl Glutamate, Hydrolysed Silk Complex HSC01-A™, Sodium Benzoate, Hydroxyacetophenone.\nIngredients explained:\n- Hydrolysed Silk Complex HSC01-A™: Unique blend of bioactive peptides and 18 free amino acids.\n- Hydration & skin comfort: Glycerin, Propanediol, Caprylic/Capric Triglyceride.\n- Cleansing & gentle surfactants: Lauryl Glucoside, Coco-Glucoside.\n- Skin barrier support: Cetearyl Alcohol, Stearic Acid, Glyceryl Stearate, Sodium Stearoyl Glutamate.\n- Stability of formulation: Sodium Benzoate, Hydroxyacetophenone.\n\nDescription\n\n100ml\nGentle Silk Cleanser is a daily cleansing formula enriched with the proprietary Hydrolysed Silk Complex HSC01-A™ and glycerin to purify the skin while preserving its essential lipids. Designed to respect the skin's natural barrier, it removes impurities, environmental residue, and excess oil without disturbing the skin's optimum hydration equilibrium.\nIts lightweight, feather-soft texture transforms on contact with water, emulsifying into a milky fluid that rinses away effortlessly. The result is a complexion that feels clean, comfortable, and prepared for exfoliation.\nDermatologically tested and approved across clinical trials.\nBENEFITS\nImmediately: Skin is refreshed, softened, and hydrated.\nWith continued use: Skin appears smoother, more balanced, and visibly more radiant.\nTESTING\n(1) Clinical patch test conducted on 54 healthy volunteers.\n(2) 50% of participants had self-assessed sensitive skin.\n(3) Evaluated over a 6-week period under dermatological supervision.\n(4) No irritation or sensitisation observed throughout the study.\n(5) Proven suitable for sensitive skin and daily use.\nApproved under the Leaping Bunny programme.\n\nRecommended use\n\nMorning or Evening.\nSuitable for all skin types.",
+                  "source_kind": "shopify_body_html_labeled_section"
+                },
+                {
+                  "heading": "How to Use",
+                  "body": "Dampen the skin with lukewarm water.\n\nUsing fingertips, massage the Gentle Silk Cleanser into the face in circular motions until a creamy texture forms.\n\nRinse thoroughly to remove impurities and reveal a soft, refreshed complexion.",
+                  "source_kind": "accordion_how_to_use"
+                },
+                {
+                  "heading": "Ingredients",
+                  "body": "explained:\n- Hydrolysed Silk Complex HSC01-A™: Unique blend of bioactive peptides and 18 free amino acids.\n- Hydration & skin comfort: Glycerin, Propanediol, Caprylic/Capric Triglyceride.\n- Cleansing & gentle surfactants: Lauryl Glucoside, Coco-Glucoside.\n- Skin barrier support: Cetearyl Alcohol, Stearic Acid, Glyceryl Stearate, Sodium Stearoyl Glutamate.\n- Stability of formulation: Sodium Benzoate, Hydroxyacetophenone.",
+                  "source_kind": "accordion_ingredients"
+                },
+                {
+                  "heading": "Details",
+                  "body": "100ml\n\nGentle Silk Cleanser is a daily cleansing formula enriched with the proprietary Hydrolysed Silk Complex HSC01-A™ and glycerin to purify the skin while preserving its essential lipids. Designed to respect the skin's natural barrier, it removes impurities, environmental residue, and excess oil without disturbing the skin's optimum hydration equilibrium.\n\nIts lightweight, feather-soft texture transforms on contact with water, emulsifying into a milky fluid that rinses away effortlessly. The result is a complexion that feels clean, comfortable, and prepared for exfoliation.\n\nDermatologically tested and approved across clinical trials.\n\nBENEFITS\nImmediately: Skin is refreshed, softened, and hydrated.\nWith continued use: Skin appears smoother, more balanced, and visibly more radiant.\n\nTESTING\n(1) Clinical patch test conducted on 54 healthy volunteers.\n(2) 50% of participants had self-assessed sensitive skin.\n(3) Evaluated over a 6-week period under dermatological supervision.\n(4) No irritation or sensitisation observed throughout the study.\n(5) Proven suitable for sensitive skin and daily use.\n\nApproved under the Leaping Bunny programme.",
+                  "source_kind": "accordion_control"
+                },
+                {
+                  "heading": "Hero ingredients",
+                  "body": "HSC-01A™ 0.5% & Glycerin 4%\n\nHSC-01A™ undergoes a precise lab hydrolysis process which unlocks a rare blend of di- and tripeptides alongside silk's native 18 free amino acids. Sharing a 90% rate of affinity with the human skin and echoing its natural-moisturising factors, these amino acids rebuild the intercellular lipid matrix, while bioactive peptides prompt fibroblasts to support elasticity for a renewed and youthful appearance.\n\nThis process results in an elevated protein content of 2.52% - more than double that of hydrolysed silk alternatives - delivering a significantly higher concentration of glycine, serine, alanine, and other amino acids known to maintain moisture, stimulate collagen synthesis, and support elasticity.\n\nWithin the HSC-01A™:\n\nPeptides act as cellular messengers, stimulating collagen production and reinforcing structural integrity.\nFree amino acids such as serine, arginine, and glycine contribute to long-lasting hydration, improved tone, and strengthened skin resilience.\nThe predominance of tripeptides, each with a molecular weight of ~300 Da, ensures excellent skin penetration for targeted regeneration and visible results.\n\nThe HSC-01A™ amino acid profile is optimised for consistency and protein concentration. The result: a refined, performance-focused active that works across all layers of the skin, delivering hydration, structure, and glow - with every application.",
+                  "source_kind": "accordion_control"
+                }
+              ],
+              "reason_code": "preserve_reviewed_pivota_asset",
+              "reason_codes": [
+                "preserve_reviewed_pivota_asset"
+              ],
+              "source_quality_status": "high",
+              "source_origin": "shopify_json"
+            },
+            "ingredients_raw": {
+              "value": "explained:\n- Hydrolysed Silk Complex HSC01-A™: Unique blend of bioactive peptides and 18 free amino acids.\n- Hydration & skin comfort: Glycerin, Propanediol, Caprylic/Capric Triglyceride.\n- Cleansing & gentle surfactants: Lauryl Glucoside, Coco-Glucoside.\n- Skin barrier support: Cetearyl Alcohol, Stearic Acid, Glyceryl Stearate, Sodium Stearoyl Glutamate.\n- Stability of formulation: Sodium Benzoate, Hydroxyacetophenone. Description 100ml\nGentle Silk Cleanser is a daily cleansing formula enriched with the proprietary Hydrolysed Silk Complex HSC01-A™ and glycerin to purify the skin while preserving its essential lipids. Designed to respect the skin's natural barrier, it removes impurities, environmental residue, and excess oil without disturbing the skin's optimum hydration equilibrium.\nIts lightweight, feather-soft texture transforms on contact with water, emulsifying into a milky fluid that rinses away effortlessly. The result is a complexion that feels clean, comfortable, and prepared for exfoliation.\nDermatologically tested and approved across clinical trials.",
+              "reason_code": "preserve_reviewed_pivota_asset",
+              "reason_codes": [
+                "preserve_reviewed_pivota_asset"
+              ],
+              "source_quality_status": "high",
+              "source_origin": "shopify_json"
+            },
+            "how_to_use_raw": {
+              "value": "Dampen the skin with lukewarm water.\nUsing fingertips, massage the Gentle Silk Cleanser into the face in circular motions until a creamy texture forms.\nRinse thoroughly to remove impurities and reveal a soft, refreshed complexion.",
+              "reason_code": "preserve_reviewed_pivota_asset",
+              "reason_codes": [
+                "preserve_reviewed_pivota_asset"
+              ],
+              "source_quality_status": "medium",
+              "source_origin": "retail_pdp"
+            }
+          }
+        },
+        "inci_list": "Water, Caprylic/Capric Triglyceride, Cetearyl Alcohol, Stearic Acid, Lauryl Glucoside, Propanediol, Glycerin, Glyceryl Stearate, Coco-Glucoside, Sodium Stearoyl Glutamate, Hydrolysed Silk Complex HSC01-A™, Sodium Benzoate, Hydroxyacetophenone.",
+        "ingredient_intel": {
+          "raw_ingredient_text_clean": "Water, Caprylic/Capric Triglyceride, Cetearyl Alcohol, Stearic Acid, Lauryl Glucoside, Propanediol, Glycerin, Glyceryl Stearate, Coco-Glucoside, Sodium Stearoyl Glutamate, Hydrolysed Silk Complex HSC01-A™, Sodium Benzoate, Hydroxyacetophenone.",
+          "inci_list": "Water, Caprylic/Capric Triglyceride, Cetearyl Alcohol, Stearic Acid, Lauryl Glucoside, Propanediol, Glycerin, Glyceryl Stearate, Coco-Glucoside, Sodium Stearoyl Glutamate, Hydrolysed Silk Complex HSC01-A™, Sodium Benzoate, Hydroxyacetophenone.",
+          "inci_raw": "Water, Caprylic/Capric Triglyceride, Cetearyl Alcohol, Stearic Acid, Lauryl Glucoside, Propanediol, Glycerin, Glyceryl Stearate, Coco-Glucoside, Sodium Stearoyl Glutamate, Hydrolysed Silk Complex HSC01-A™, Sodium Benzoate, Hydroxyacetophenone."
+        },
+        "brand_origin": {
+          "country": null,
+          "home_market": null,
+          "source": null
+        },
+        "market_availability": {
+          "available_markets": [
+            "US"
+          ],
+          "local_purchase_markets": [
+            "US"
+          ],
+          "source_market": "US",
+          "retail_channel_markets": [],
+          "availability_status": "in_stock"
+        },
+        "available_markets": [
+          "US"
+        ],
+        "local_purchase_markets": [
+          "US"
+        ],
+        "locality_facts_v1": {
+          "contract_version": "external_seed.locality_facts.v1",
+          "brand": "Seresilk",
+          "brand_origin": {
+            "country": null,
+            "home_market": null,
+            "source": null
+          },
+          "brand_origin_country": null,
+          "brand_home_market": null,
+          "market_availability": {
+            "available_markets": [
+              "US"
+            ],
+            "local_purchase_markets": [
+              "US"
+            ],
+            "source_market": "US",
+            "retail_channel_markets": [],
+            "availability_status": "in_stock"
+          },
+          "available_markets": [
+            "US"
+          ],
+          "local_purchase_markets": [
+            "US"
+          ],
+          "local_retail_channels": [],
+          "travel_size": null,
+          "travel_size_evidence": null,
+          "creator_local_reason": null,
+          "local_authority_level": "product_market",
+          "sources": [
+            "existing_seed_data",
+            "seed_row_market"
+          ]
+        },
+        "derived": {
+          "recall": {
+            "retrieval_title": "Gentle Silk Cleanser",
+            "retrieval_summary": "100ml The Gentle Silk Cleanser is a daily cleansing formula enriched with the proprietary Hydrolysed Silk Complex HSC01-A™ and glycerin to purify the skin while preserving its essential lipids. Designed to respect the skin's natural barrier, it removes impurities, environmental residue, and excess oil without disturbi…",
+            "retrieval_body": "100ml The Gentle Silk Cleanser is a daily cleansing formula enriched with the proprietary Hydrolysed Silk Complex HSC01-A™ and glycerin to purify the skin while preserving its essential lipids. Designed to respect the skin's natural barrier, it removes impurities, environmental residue, and excess oil without disturbing the skin's optimum hydration equilibrium. Its lightweight, feather-soft texture transforms on contact with water, emulsifying into a milky fluid that rinses away effortlessly. The result is a complexion that feels clean, comfortable, and prepared for exfoliation. BENEFITS Immediately: Skin is refreshed, softened, and hydrated. With continued use: Skin appears smoother, more balanced, and visibly more radiant. Dermatologically tested and approved. Patch test before application. Approved under the Leaping Bunny programme.\n\nOverview: 100ml The Gentle Silk Cleanser is a daily cleansing formula enriched with the proprietary Hydrolysed Silk Complex HSC01-A™ and glycerin to purify the skin while preserving its essential lipids. Designed to respect the skin's natural barrier, it removes impurities, environmental residue, and excess oil without disturbing the skin's optimum hydration equilibrium. Its lightweight, feather-soft texture transforms on contact with water, emulsifying into a milky fluid that rinses away effortlessly. The result is a complexion that feels clean, comfortable, and prepared for exfoliation. BENEFITS Immediately: Skin is refreshed, softened, and hydrated. With continued use: Skin appears smoother, more balanced, and visibly more radiant. Dermatologically tested and approved. Patch test before application. Approved under the Leaping Bunny programme.\n\n100ml Gentle Silk Cleanser is a daily cleansing formula enriched with the proprietary Hydrolysed Silk Complex HSC01-A™ and glycerin to purify the skin while preserving its essential lipids. Designed to respect the skin's natural barrier, it removes impurities, environmental residue, and excess oil without disturbing the skin's optimum hydration equilibrium. Its lightweight, feather-soft texture transforms on contact with water, emulsifying into a milky fluid that rinses away effortlessly. The result is a complexion that feels clean, comfortable, and prepared for exfoliation. Dermatologically tested and approved across clinical trials. BENEFITS Immediately: Skin is refreshed, softened, and hydrated. With continued use: Skin appears smoother, more balanced, and visibly more radiant. TESTING (1) Clinical patch test conducted on 54 healthy volunteers. (2) 50% of participants had self-assessed sensitive skin. (3) Evaluated over a 6-week period under dermatological supervision. (4) No irritation or sensitisation observed throughout the study. (5) Proven suitable for sensitive skin and daily use. Approved under the Leaping Bunny programme.\n\nHero ingredients: HSC-01A™ 0.5% & Glycerin 4% HSC-01A™ undergoes a precise lab hydrolysis process which unlocks a rare blend of di- and tri…",
+            "brand": "Seresilk",
+            "category": "Cleanser",
+            "vertical": "skincare",
+            "ingredient_tokens": [],
+            "locality_tokens": [
+              "available market US",
+              "local purchase US"
+            ],
+            "alias_tokens": [
+              "Gentle Silk Cleanser",
+              "gentlesilkcleanser",
+              "silk cleanser",
+              "gentle silk",
+              "Cleanser",
+              "available market US",
+              "availablemarketus",
+              "market us",
+              "available market",
+              "local purchase US",
+              "localpurchaseus",
+              "purchase us",
+              "local purchase",
+              "gentle",
+              "silk",
+              "available",
+              "market",
+              "us",
+              "local",
+              "purchase"
+            ],
+            "locality_facts_v1": {
+              "contract_version": "external_seed.locality_facts.v1",
+              "brand": "Seresilk",
+              "brand_origin": {
+                "country": null,
+                "home_market": null,
+                "source": null
+              },
+              "brand_origin_country": null,
+              "brand_home_market": null,
+              "market_availability": {
+                "available_markets": [
+                  "US"
+                ],
+                "local_purchase_markets": [
+                  "US"
+                ],
+                "source_market": "US",
+                "retail_channel_markets": [],
+                "availability_status": "in_stock"
+              },
+              "available_markets": [
+                "US"
+              ],
+              "local_purchase_markets": [
+                "US"
+              ],
+              "local_retail_channels": [],
+              "travel_size": null,
+              "travel_size_evidence": null,
+              "creator_local_reason": null,
+              "local_authority_level": "product_market",
+              "sources": [
+                "existing_seed_data",
+                "seed_row_market"
+              ]
+            },
+            "exclusion_flags": {
+              "gift_card": false,
+              "donation_bundle": false,
+              "non_merchandise": false
+            },
+            "quality_signals": {
+              "template_polluted": false,
+              "synthetic_summary": false,
+              "extractor_description_present": true
+            },
+            "quality_state": "eligible",
+            "suppression_flags": {
+              "exclude_from_recall": false,
+              "exclude_from_similar": false,
+              "suppress_ingredients": false,
+              "suppress_active_ingredients": false,
+              "suppress_facts": false
+            },
+            "version": "v1"
+          },
+          "backfill_guardrails_v1": {
+            "commerce_preserved": true,
+            "media_preserved": true,
+            "mode": "content_only",
+            "updated_at": "2026-05-27T16:00:48.337Z"
+          }
+        },
+        "variant_skus": [
+          "7068100687"
+        ]
+      }
+    },
+    "next_row_summary": {
+      "external_product_id": "",
+      "title": "Gentle Silk Cleanser",
+      "canonical_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+      "destination_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+      "image_url": "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_GentleSilkCleanser.jpg?v=1753242356",
+      "image_count": 2,
+      "variant_count": 1,
+      "details_section_count": 5,
+      "faq_count": 0,
+      "how_to_use_present": true,
+      "ingredients_present": true,
+      "active_ingredients_present": false,
+      "seed_snapshot_contract": {
+        "contract_version": "external_seed.snapshot_contract.v1",
+        "source": "catalog_intelligence",
+        "authoritative": true,
+        "structured_fields_authoritative": true,
+        "legacy_fields_quarantined": true,
+        "replace_strategy": "replace_not_merge",
+        "updated_at": "2026-05-27T16:00:48.280Z"
+      },
+      "content_image_count": 0,
+      "section_media_count": 0
+    },
+    "variant_seed_rows": [],
+    "identity_listing_refresh": null,
+    "image_health_validation": null,
+    "diagnostics": null,
+    "commerce_facts_v2": null
+  },
+  "error": null
+}

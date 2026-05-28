@@ -1,0 +1,46 @@
+{
+  "generated_at": "2026-05-27T17:11:43.424Z",
+  "options": {
+    "apply": false,
+    "market": "US",
+    "domain": "",
+    "out": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave34_rms_rohr_seresilk_serving_sync_20260527/rms_force_single_formula_family_dry_run.json",
+    "forceFamily": "single_formula",
+    "generatedAt": "2026-05-27T17:11:43.424Z"
+  },
+  "summary": {
+    "dry_run": true,
+    "input_target_ids": 1,
+    "fetched_rows": 1,
+    "changed_rows": 1,
+    "updated_rows": 0,
+    "failed_rows": 0,
+    "serving_mirror_catalog_updates": 0,
+    "serving_mirror_identity_updates": 0,
+    "by_action": {
+      "force_product_family_override": 1
+    },
+    "by_status": {
+      "dry_run": 1
+    },
+    "by_family": {
+      "single_formula": 1
+    }
+  },
+  "apply_errors": [],
+  "results": [
+    {
+      "external_product_id": "ext_9247e1285fadd4b02bc33aad",
+      "title": "Makeup Remover | Ultimate Makeup Remover Wipe",
+      "family": "single_formula",
+      "classified_family": "set_or_collection",
+      "forced_family": "single_formula",
+      "status": "dry_run",
+      "action": "force_product_family_override",
+      "reason_codes": [
+        "forced_product_family_override",
+        "trusted_inci_available"
+      ]
+    }
+  ]
+}

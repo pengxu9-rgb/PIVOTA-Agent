@@ -1,0 +1,637 @@
+{
+  "generated_at": "2026-05-28T03:45:15.919Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 11,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_e434b90902740f110390a11d",
+      "sellable_item_group_id": "sig_e434b90902740f110390a11d",
+      "product_line_id": "pl_34353c60327a69c56ed0b8a5",
+      "review_family_id": "rf_34353c60327a69c56ed0b8a5",
+      "brand_name": "UpCircle Beauty",
+      "category_paths": [
+        "Body Oil"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Body Oil with Passion Fruit Oil",
+      "subtitle": "This award-winning Body Oil is formulated with luxurious upcycled ingredients, such as natural passion fruit, tangerine, and kumquat oil to help hydrate and nourish the skin. After use, this non-greasy body oil's quick-absorbing characteristics allow it to enhance skin softness and radiance.\n\nInspiring, upcycling, uplifting: This Body Oil is made with upcycled Passion Fruit Oil to nourish and hydrate the skin.\n\nThe UpCircle Promise \nNatural, sustainable, vegan &amp; cruelty-free. Housed in refillable packaging.",
+      "variant_axes": {
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/BodyOil_Bottle_Web_Readycopy.jpg?v=1713265892",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/BodyOil_Bottle_Web_Readycopy.jpg?v=1713265892",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/BodyOil_Packaging_Web_Readycopy.jpg?v=1713265892",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Press_BOPF.png?v=1729177732",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Body_Oil_78efc463-07d3-46e6-add8-d68b43c0062f.png?v=1729590751",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CALLOUTSIMAGES11.jpg?v=1731335664",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Texture_Awards_Body_Oil.png?v=1729590735",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Lifestyle-2_BodyOil_Square_LR.jpg?v=1724320420",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Hateseeingads_1.jpg?v=1724320420"
+      ],
+      "price_min": 21,
+      "price_max": 21,
+      "default_offer_id": "external_seed:ext_664b859ce2599a57c3f1f7ce",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Body Oil with Passion Fruit Oil is a body oil from UpCircle Beauty, with source-backed cues around hydration.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "UpCircle Beauty",
+        "Body Oil"
+      ],
+      "sort_keys": {
+        "price_min": 21,
+        "price_max": 21,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_664b859ce2599a57c3f1f7ce"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_e6dce3a7da796a617c2d87f0",
+      "sellable_item_group_id": "sig_e6dce3a7da796a617c2d87f0",
+      "product_line_id": "pl_831ef2dc06e52611ec94e127",
+      "review_family_id": "rf_831ef2dc06e52611ec94e127",
+      "brand_name": "UpCircle Beauty",
+      "category_paths": [
+        "Body Lotion"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Hand + Body Lotion with Bergamot Water",
+      "subtitle": "Our 99% natural citrus-scented hand and body lotion leaves skin feeling nourished, moisturised and lightly fragranced. T his uplifting lotion combines bergamot water with lemongrass oil to uplift and invigorate the senses whilst protecting and repairing the skin. \n\nSuitable for all skin types. For best results, use after cleansing with the UpCircle Hand + Body Wash with Kiwi Water. \n\nInspiring, upcycling, uplifting: Our hand + body lotion is infused with the residual water of organic bergamot fruit, a by-product of the juicing industry. \n\nThe UpCircle Promise \n100 per cent vegan, cruelty-free and UK-made. Housed in a glass bottle with plastic pump. For a plastic-free repeat order, simply save the pump from your first bottle and select \"Repeat order - aluminium cap\" from the drop-down menu when you make a repeat purchase!",
+      "variant_axes": {
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Hand_BodyLotionwithBergamot_VitaminE1_9c899f6f-265b-4de8-bec6-20f76d92b10f.jpg?v=1699995646",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Hand_BodyLotionwithBergamot_VitaminE1_9c899f6f-265b-4de8-bec6-20f76d92b10f.jpg?v=1699995646",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Hand_BodyLotionwithBergamot_VitaminE_5eeba2d8-c271-4cdd-b35a-adc1e6a78d91.jpg?v=1699995646",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Body_Lotion.png?v=1729593134",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CALLOUTSIMAGES13.jpg?v=1731336132",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Texture_Awards_Hand_Lotion.png?v=1729591020",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/6_2be73773-efed-49af-9453-017e50211db5.jpg?v=1700760985",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/107_93be983d-ee2b-498c-b61a-80323948f367.jpg?v=1700760985",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/7_35a85052-0447-4b6a-99e3-583eef1447aa.jpg?v=1700760985"
+      ],
+      "price_min": 21,
+      "price_max": 21,
+      "default_offer_id": "external_seed:ext_5f63056adbcee15d15e2aba1",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Hand + Body Lotion with Bergamot Water is a body care treatment from UpCircle Beauty, with source-backed cues around cleansing and hydration.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "UpCircle Beauty",
+        "Body Lotion"
+      ],
+      "sort_keys": {
+        "price_min": 21,
+        "price_max": 21,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_5f63056adbcee15d15e2aba1"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_7834553b8631034342c17de0",
+      "sellable_item_group_id": "sig_7834553b8631034342c17de0",
+      "product_line_id": "pl_e0ff73306e3fd7529f309ba8",
+      "review_family_id": "rf_e0ff73306e3fd7529f309ba8",
+      "brand_name": "UpCircle Beauty",
+      "category_paths": [
+        "Face Oil"
+      ],
+      "market": "US",
+      "availability_state": "out_of_stock",
+      "publish_state": "public",
+      "title": "RETURN + REFILL Organic Face Oil with Coffee Extract - ON PAUSE",
+      "subtitle": "Our Refill Scheme is on hold! We're working on a new solution for 2026. Watch this space! \n\nReturn, Refill, Reuse\n\nWith our refill scheme you need to have empty UpCircle packaging to return to us. Once you’ve placed your order, you’ll be emailed all the information you need to return your empty packaging to us including the Freepost label.\n\nExisting customers only - please ensure you already have your face oil bottle to be returned! \n\nThoroughly wash and dry your Serum bottle using warm soapy water \n\nRemove your dropper and keep somewhere safe- we don't need this returned. Please also remove the plastic ring seal around the top of the serum bottle.\n\nPack your empties up ready to be posted - we recommend saving your original packaging. I f you haven't got your original packaging please wrap them carefully. \n\nAfter checking out you will receive an email with a free post label\n\nPrint and attach this label to the parcel and drop to your local Post Office - if you don't have a printer, you can handwrite the address on instead \n\nOnce we have received your empties back we will sterilise the jars using dry heat and refill your jar with a fresh batch of face serum\n\nWe aim to turn around refills within 24 hours of receiving them\n\nYour refilled bottle will be returned to you to enjoy! \n\n*Please note, if you are ordering new products as well as refills these will be sent when your refills are returned to you.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/D4_Indesign_Template_complete87_1.jpg?v=1729602936",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/D4_Indesign_Template_complete87_1.jpg?v=1729602936",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/D4_Indesign_Template_complete41_1.jpg?v=1729602936",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/D4_Indesign_Template_complete12_1.jpg?v=1729602936",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/D4_Indesign_Template_complete67_1.jpg?v=1729602937",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/D4_Indesign_Template_complete109_1.jpg?v=1729602936",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Checklistsquare_b7ff2fa0-47be-4ccc-8bd8-c1690ea9cd0f.jpg?v=1706618008"
+      ],
+      "price_min": 22,
+      "price_max": 22,
+      "default_offer_id": "external_seed:ext_714399863bd72a30bcc6259c",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "RETURN + REFILL Organic Face Oil with Coffee Extract - ON PAUSE is a treatment serum from UpCircle Beauty.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "UpCircle Beauty",
+        "Face Oil"
+      ],
+      "sort_keys": {
+        "price_min": 22,
+        "price_max": 22,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_714399863bd72a30bcc6259c"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_226946a6ba84e4cda0525ac6",
+      "sellable_item_group_id": "sig_226946a6ba84e4cda0525ac6",
+      "product_line_id": "pl_405166bb906040880994f14a",
+      "review_family_id": "rf_405166bb906040880994f14a",
+      "brand_name": "UpCircle Beauty",
+      "category_paths": [
+        "Cleansing Bar"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Cinnamon + Ginger Chai Cleansing Bar",
+      "subtitle": "An award-winning gently exfoliating cleansing bar to purify and energise. Pink clay reduces redness and irritation, whilst organic cinnamon and ginger oils give skin a reviving energy boost. Glycerin hydrates and moisturises the skin.\n\nPerfect for use on both face and body.\n\nInspiring, upcycling, uplifting: This cinnamon + ginger cleansing soap is made with residual chai spices used to create chai syrups.\n\nWinner in the Beauty Shortlist Awards 2021.\n\nThe UpCircle Promise \nCertified Organic with Soil Association, 100% natural, vegan, palm oil-free, sustainable and cruelty-free. Made in UK.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CleansingSoapBarwithCinnamon_Ginger1_c8e97ccb-40fc-4c29-bbc9-17ac20a3b034.jpg?v=1745309772",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CleansingSoapBarwithCinnamon_Ginger1_c8e97ccb-40fc-4c29-bbc9-17ac20a3b034.jpg?v=1745309772",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CleansingSoapBarwithCinnamon_Ginger_032f42a2-13c9-4fc7-82ac-8fd6321779a3.jpg?v=1745309772",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/37.jpg?v=1745309772",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Cleansing_Bar_Cin_Gin_2.png?v=1745309772",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CALLOUTSIMAGES3.jpg?v=1745309772",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Slide6_19287b9f-bebe-4078-8ebc-5eb50c951281.jpg?v=1745309772",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/28_12a9200a-af43-491c-af32-4df7a3c1863d.jpg?v=1745309772",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CleansingSoapBarwithCinnamon_Ginger2.jpg?v=1745309772"
+      ],
+      "price_min": 10,
+      "price_max": 10,
+      "default_offer_id": "external_seed:ext_f1f3ce59fac13141b98a911f",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Cinnamon + Ginger Chai Cleansing Bar is a face cleanser from UpCircle Beauty, with source-backed cues around cleansing and dirt, oil, and impurity removal.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "UpCircle Beauty",
+        "Cleansing Bar"
+      ],
+      "sort_keys": {
+        "price_min": 10,
+        "price_max": 10,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_f1f3ce59fac13141b98a911f"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_6b4903ed828a444bad275d15",
+      "sellable_item_group_id": "sig_6b4903ed828a444bad275d15",
+      "product_line_id": "pl_e35f9ed1244a5b212cd27047",
+      "review_family_id": "rf_e35f9ed1244a5b212cd27047",
+      "brand_name": "UpCircle Beauty",
+      "category_paths": [
+        "Cleansing Bar"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Fennel + Cardamom Chai Cleansing Bar",
+      "subtitle": "Gently exfoliating cardamom &amp; fennel chai cleansing bar to cleanse and moisturise. Green clay draws toxins from pores, helping combat acne and breakouts. While shea butter leaves skin hydrated and smooth. Glycerin helps to keep skin hydrated and nourished. \n\nOur chai cleansing soap bar is suitable for use on face and body.\n\nInspiring, upcycling, uplifting: This soap is made with residual chai spices used to create chai syrups.\n\nThe UpCircle Promise\nCertified Organic with Soil Association, 100% natural, vegan, palm oil-free, sustainable and cruelty-free. Made in UK.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CleansingSoapBarwithFennel_Cardamom1_9859ff0a-30b2-46c7-8069-2e2ca1f6beea.jpg?v=1745188570",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CleansingSoapBarwithFennel_Cardamom1_9859ff0a-30b2-46c7-8069-2e2ca1f6beea.jpg?v=1745188570",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CleansingSoapBarwithFennel_Cardamom_4fa84c97-4fb1-491e-ad2b-67015db80475.jpg?v=1745188570",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/38.jpg?v=1745188570",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Cleansing_Bar_Fen_Car.png?v=1745188570",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CALLOUTSIMAGES3.jpg?v=1745309772",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Texture_Awards_Fen_Car.png?v=1745188570",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/28_04940c5c-9a99-4a01-944b-17c7b0e70334.jpg?v=1745188570",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CleansingBarBeforeandAfterSoothing_66cf1dd6-84b0-4748-af00-ef6c3311146c.jpg?v=1745188570"
+      ],
+      "price_min": 10,
+      "price_max": 10,
+      "default_offer_id": "external_seed:ext_4a83a2638c6cb6ca3c3df9e2",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Fennel + Cardamom Chai Cleansing Bar is a face cleanser from UpCircle Beauty, with source-backed cues around cleansing and dirt, oil, and impurity removal.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "UpCircle Beauty",
+        "Cleansing Bar"
+      ],
+      "sort_keys": {
+        "price_min": 10,
+        "price_max": 10,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_4a83a2638c6cb6ca3c3df9e2"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_82b28455d7df7a1f79243cc8",
+      "sellable_item_group_id": "sig_82b28455d7df7a1f79243cc8",
+      "product_line_id": "pl_2f22e821d4021b2afb7df068",
+      "review_family_id": "rf_2f22e821d4021b2afb7df068",
+      "brand_name": "UpCircle Beauty",
+      "category_paths": [
+        "Body Scrub"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Body Scrub with Coffee + Lemongrass",
+      "subtitle": "Body scrub with upcycled coffee, lemongrass, sea salt, lime and coconut oil.\n\nBuff away dry, dead cells to leave you feeling soft, smooth and refreshed. Blended with shea butter to moisturise the skin post-scrub.\n\nInspiring, upcycling, uplifting: This coffee body scrub is made with top-quality Arabica coffee grounds sourced from artisan coffee shops.\n\nThe UpCircle Promise \nNatural, sustainable, vegan &amp; cruelty-free. Housed in 100% plastic-free packaging.",
+      "variant_axes": {
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/FSCClosed_2.jpg?v=1760975135",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/FSCClosed_2.jpg?v=1760975135",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/BodyScrubwithCoffee_SheaButter-Updatedwebsite_1.jpg?v=1760975135",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/PressBSL_1.png?v=1760975135",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Body_Scrub_4378b04e-e045-41e9-90f5-608e44cfce35.png?v=1760975135",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CALLOUTSIMAGES.jpg?v=1760975135",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/BodyScrubBeforeandAfterComplexion_d8ba5075-0ddf-4dd6-81bb-1f669ed9f5f5.jpg?v=1760975135",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Slide1_87f0c23f-a3d1-45bf-961a-a6d749b45781.jpg?v=1760975135",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Texture_Awards_Lemongrass_Body_Scrub.png?v=1760975135"
+      ],
+      "price_min": 26,
+      "price_max": 26,
+      "default_offer_id": "external_seed:ext_23ae4c5d9d8f2a8be363f2cc",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Body Scrub with Coffee + Lemongrass is a face scrub from UpCircle Beauty, with source-backed cues around hydration.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "UpCircle Beauty",
+        "Body Scrub"
+      ],
+      "sort_keys": {
+        "price_min": 26,
+        "price_max": 26,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_23ae4c5d9d8f2a8be363f2cc"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_63579f497814c8fb0b10f4dc",
+      "sellable_item_group_id": "sig_63579f497814c8fb0b10f4dc",
+      "product_line_id": "pl_6a00efe4d3bdc8a1e7a7da76",
+      "review_family_id": "rf_6a00efe4d3bdc8a1e7a7da76",
+      "brand_name": "UpCircle Beauty",
+      "category_paths": [
+        "Shampoo"
+      ],
+      "market": "US",
+      "availability_state": "out_of_stock",
+      "publish_state": "public",
+      "title": "RETURN + REFILL Shampoo Crème with Pink Berry - ON PAUSE",
+      "subtitle": "Our Refill Scheme is on hold! We're working on a new solution for 2026. Watch this space! \n\nReturn, Refill, Reuse\n\nExisting customers only - please ensure you already have your shampoo crème jar to be returned! \n\nThoroughly wash and dry your empty shampoo jar using warm soapy water \n\nPack your empties up ready to be posted - we recommend saving your original packaging. I f you haven't got your original packaging please wrap them carefully. \n\nAfter checking out you will receive an email with a free post label\n\nPrint and attach the label to the parcel and drop to your local Post Office - if you don't have a printer, you can handwrite the address on instead \n\nOnce we have received your empties back we will sterilise the jars using dry heat and refill your jar with a fresh batch of shampoo\n\nWe aim to turn around refills within 24 hours of receiving them\n\nYour refilled jar will be returned to you to enjoy! \n\n*Please note, if you are ordering new products as well as refills these will be sent when your refills are returned to you.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Texture21.jpg?v=1706550463",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Texture21.jpg?v=1706550463",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/RefillSchemeComplete50.jpg?v=1706550463",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/RefillSchemeComplete23.jpg?v=1706550463",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Shampoo_ReturnForm19.jpg?v=1706550463",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/RefillWebsiteNewandRefill16.jpg?v=1706550463",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Checklistsquare_4064d41f-bec4-403f-b277-8ff58b28fe90.jpg?v=1706618012"
+      ],
+      "price_min": 22,
+      "price_max": 22,
+      "default_offer_id": "external_seed:ext_c384be41af865ac0aecd06ed",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "RETURN + REFILL Shampoo Crème with Pink Berry - ON PAUSE is a hair treatment from UpCircle Beauty.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "UpCircle Beauty",
+        "Shampoo"
+      ],
+      "sort_keys": {
+        "price_min": 22,
+        "price_max": 22,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_c384be41af865ac0aecd06ed"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_1e670d62fb5c926faa81f4a8",
+      "sellable_item_group_id": "sig_1e670d62fb5c926faa81f4a8",
+      "product_line_id": "pl_a69131f1086457a4d3efd797",
+      "review_family_id": "rf_a69131f1086457a4d3efd797",
+      "brand_name": "UpCircle Beauty",
+      "category_paths": [
+        "Eye Treatment"
+      ],
+      "market": "US",
+      "availability_state": "out_of_stock",
+      "publish_state": "public",
+      "title": "RETURN + REFILL Eye Cream with Hyaluronic Acid + Coffee - ON PAUSE",
+      "subtitle": "Our Refill Scheme is on hold! We're working on a new solution for 2026. Watch this space! \n\nReturn, Refill, Reuse\n\nWith our refill scheme you need to have empty UpCircle packaging to return to us. Once you’ve placed your order, you’ll be emailed all the information you need to return your empty packaging to us including the Freepost label.\n\nExisting customers only - please ensure you already have your eye cream jar to be returned! \n\nThoroughly wash and dry your empty eye cream jar using warm soapy water \n\nPack your empties up ready to be posted- we recommend saving your original packaging. I f you haven't got your original packaging please wrap them carefully. \n\nAfter checking out you will receive an email with a free post label\n\nPrint and attach this label to the parcel and drop to your local Post Office - if you don't have a printer, you can handwrite the address on instead \n\nOnce we have received your empties back we will sterilise the jars using dry heat and refill your jar with a fresh batch of eye cream \n\nWe aim to turn around refills within 24 hours of receiving them\n\nYour refilled jar will be returned to you to enjoy! \n\n*Please note, if you are ordering new products as well as refills these will be sent when your refills are returned to you.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Texture10.jpg?v=1706550580",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Texture10.jpg?v=1706550580",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/RefillSchemeComplete34.jpg?v=1706550580",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/RefillSchemeComplete8.jpg?v=1706550580",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/EyeCream_ReturnForm4.jpg?v=1706550580",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/RefillWebsiteNewandRefill8.jpg?v=1706550580",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Checklistsquare_fce444a3-cf73-4700-a21c-65e39a63725d.jpg?v=1706617718"
+      ],
+      "price_min": 24,
+      "price_max": 24,
+      "default_offer_id": "external_seed:ext_719fa01081b88bf7472f06e1",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "RETURN + REFILL Eye Cream with Hyaluronic Acid + Coffee - ON PAUSE is a body care treatment from UpCircle Beauty, with source-backed cues around hydration.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "UpCircle Beauty",
+        "Eye Treatment"
+      ],
+      "sort_keys": {
+        "price_min": 24,
+        "price_max": 24,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_719fa01081b88bf7472f06e1"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_79ea9d5db9a3c8e029fc54fe",
+      "sellable_item_group_id": "sig_79ea9d5db9a3c8e029fc54fe",
+      "product_line_id": "pl_3b2a0b2bdfb20db85944422c",
+      "review_family_id": "rf_3b2a0b2bdfb20db85944422c",
+      "brand_name": "UpCircle Beauty",
+      "category_paths": [
+        "Moisturizer"
+      ],
+      "market": "US",
+      "availability_state": "out_of_stock",
+      "publish_state": "public",
+      "title": "RETURN + REFILL Night Cream with Hyaluronic Acid + Niacinamide - ON PAUSE",
+      "subtitle": "Our Refill Scheme is on hold! We're working on a new solution for 2026. Watch this space! \n\nReturn, Refill, Reuse\n\nWith our refill scheme you need to have empty UpCircle packaging to return to us. Once you’ve placed your order, you’ll be emailed all the information you need to return your empty packaging to us including the Freepost label.\n\nExisting customers only - please ensure you already have your night cream jar to be returned! \n\nThoroughly wash and dry your empty night cream jar using warm soapy water \n\nPack your empties up ready to be posted- we recommend saving your original packaging. I f you haven't got your original packaging please wrap them carefully. \n\nAfter checking out you will receive an email with a free post label\n\nPrint and attach this label to the parcel and drop to your local Post Office - if you don't have a printer, you can handwrite the address on instead \n\nOnce we have received your empties back we will sterilise the jars using dry heat and refill your jar with a fresh batch of night cream \n\nWe aim to turn around refills within 24 hours of receiving them\n\nYour refilled jar will be returned to you to enjoy! \n\n*Please note, if you are ordering new products as well as refills these will be sent when your refills are returned to you.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Texture20.jpg?v=1706550790",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Texture20.jpg?v=1706550790",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/RefillSchemeComplete47.jpg?v=1706550790",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/RefillSchemeComplete21_52478508-97e2-4afa-89da-365dd90c7ef1.jpg?v=1706550790",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/NightCream_ReturnForm13.jpg?v=1706550790",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/RefillWebsiteNewandRefill4_0b1e5585-52f2-48bd-a97f-4c32f6c9a662.jpg?v=1706550790",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Checklistsquare_31b6756b-2ac4-44db-8a1b-5235c9c488ff.jpg?v=1706618046"
+      ],
+      "price_min": 24,
+      "price_max": 24,
+      "default_offer_id": "external_seed:ext_96484ace25be03a8f8cb595d",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "RETURN + REFILL Night Cream with Hyaluronic Acid + Niacinamide - ON PAUSE is a body care treatment from UpCircle Beauty, with source-backed cues around hydration and brightening support.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "UpCircle Beauty",
+        "Moisturizer"
+      ],
+      "sort_keys": {
+        "price_min": 24,
+        "price_max": 24,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_96484ace25be03a8f8cb595d"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_6846eff67d20841d07ce07dc",
+      "sellable_item_group_id": "sig_6846eff67d20841d07ce07dc",
+      "product_line_id": "pl_16c0faf0f9cad0651969901e",
+      "review_family_id": "rf_16c0faf0f9cad0651969901e",
+      "brand_name": "UpCircle Beauty",
+      "category_paths": [
+        "Serum"
+      ],
+      "market": "US",
+      "availability_state": "out_of_stock",
+      "publish_state": "public",
+      "title": "RETURN + REFILL Peptide Serum with Custard Apple + Blood Orange - ON PAUSE",
+      "subtitle": "Our Refill Scheme is on hold! We're working on a new solution for 2026. Watch this space! \n\nReturn, Refill, Reuse\n\nExisting customers only - please ensure you already have your peptide serum bottle to be returned! \n\nThoroughly wash and dry your empty peptide serum bottle using warm soapy water \n\nPack your empties up ready to be posted - we recommend saving your original packaging. I f you haven't got your original packaging please wrap them carefully. \n\nAfter checking out you will receive an email with a free post label\n\nPrint and attach the label to the parcel and drop to your local Post Office - if you don't have a printer, you can handwrite the address on instead \n\nOnce we have received your empties back we will sterilise the bottle using dry heat and refill your bottle with a fresh batch of peptide serum \n\nYour refilled bottle will be returned to you to enjoy! \n\nWe aim to turn around refills within 24 hours of receiving them\n\n*Please note, if you are ordering new products as well as refills these will be sent when your refills are returned to you.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/TexturePeptideSerum_1.jpg?v=1729092316",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/TexturePeptideSerum_1.jpg?v=1729092316",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/EmptyPeptideSerum_1.jpg?v=1729092317",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CleanPeptideSerum_1.jpg?v=1729092317",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/ReturnformPeptideSerum_1.jpg?v=1729092317",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/OnSkinPeptideSerum_1.jpg?v=1729092317",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Checklistsquare_1068e3dd-6790-4ecd-be1f-df434845907f.jpg?v=1706617600"
+      ],
+      "price_min": 28,
+      "price_max": 28,
+      "default_offer_id": "external_seed:ext_3584983333bdd1568bd59312",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "RETURN + REFILL Peptide Serum with Custard Apple + Blood Orange - ON PAUSE is a treatment serum from UpCircle Beauty, with source-backed ingredient cues around peptides.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "UpCircle Beauty",
+        "Serum"
+      ],
+      "sort_keys": {
+        "price_min": 28,
+        "price_max": 28,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_3584983333bdd1568bd59312"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_69612c2d0788a9296c85e6ef",
+      "sellable_item_group_id": "sig_69612c2d0788a9296c85e6ef",
+      "product_line_id": "pl_87c8aa61bd6e80c707f34959",
+      "review_family_id": "rf_87c8aa61bd6e80c707f34959",
+      "brand_name": "UpCircle Beauty",
+      "category_paths": [
+        "Cleanser"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Cleansing Face Milk with Oat Powder + Aloe Vera",
+      "subtitle": "When applied to the face, this creamy oat powder repairs and restores the skin’s moisture barrier. This multi-award winning oat cleanser has a milky, creamy formula that hydrates and nourishes the skin. You can think of the oat powder as the oat milk to your latte and the other ingredients as the skin-loving syrup shots. Suitable for all skin types, this everyday vegan facial cleanser leaves skin buttery soft.\n\nInspiring, upcycling, uplifting: Our gentle cleansing face milk is made with oat powder upcycled from the food and drink industry. Dermatologically approved for use on sensitive skin. Suitable for use on babies and children.",
+      "variant_axes": {
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/2605_cleanser_i.jpg?v=1777646655",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/2605_cleanser_i.jpg?v=1777646655",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/2605_cleanser_outer.jpg?v=1777646655",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Press_FCOP.png?v=1745047593",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Cleansing_Milk_94bf72a3-856c-4530-9898-44737717840b.png?v=1745047593",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CALLOUTS_IMAGES24.jpg?v=1745047593",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Texture_Awards_Cleansing_Milk_1.png?v=1745047593",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/119_40e81619-2efc-46e6-b5e1-c28df2dc9506.jpg?v=1745047593",
+        "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/73.jpg?v=1745047593"
+      ],
+      "price_min": 28,
+      "price_max": 28,
+      "default_offer_id": "external_seed:ext_6815bee1060ef71d9a99ce5b",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Cleansing Face Milk with Oat Powder + Aloe Vera is a face color product from UpCircle Beauty, with source-backed cues around a cream-powder texture.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "UpCircle Beauty",
+        "Cleanser"
+      ],
+      "sort_keys": {
+        "price_min": 28,
+        "price_max": 28,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_6815bee1060ef71d9a99ce5b"
+      ]
+    }
+  ]
+}

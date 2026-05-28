@@ -216,6 +216,38 @@ function hasStructuredInci(seedData) {
   ].some((value) => Array.isArray(value) && value.length > 0);
 }
 
+function ingredientAuthorityMatches(authority, ingredientsRaw) {
+  const item = asObject(authority);
+  if (!item) return false;
+  if (text(item.purity_status).toLowerCase() === 'suppressed') return false;
+  const expectedItems = parseInciItems(ingredientsRaw);
+  if (!expectedItems.length) return false;
+  const expectedKey = expectedItems.map((value) => text(value).toLowerCase()).join('|');
+  const actualItems = asArray(item.items).map(normalizeInciItem).filter(Boolean);
+  const actualKey = actualItems.map((value) => text(value).toLowerCase()).join('|');
+  if (actualItems.length && actualKey === expectedKey) return true;
+  return text(item.raw_text || item.rawText).toLowerCase() === text(ingredientsRaw).toLowerCase();
+}
+
+function hasReviewedIngredientAuthority(seedData, ingredientsRaw) {
+  const snapshot = asObject(seedData.snapshot);
+  return [seedData, snapshot].every((target) =>
+    ingredientAuthorityMatches(asObject(asObject(target.ingredient_intel).authoritative), ingredientsRaw),
+  );
+}
+
+function ingredientCaptureStatus(seedData) {
+  const snapshot = asObject(seedData.snapshot);
+  return text(
+    asObject(seedData.pdp_field_capture_status).ingredients_raw ||
+      asObject(snapshot.pdp_field_capture_status).ingredients_raw,
+  ).toLowerCase();
+}
+
+function needsIngredientCaptureStatusMaterialization(seedData) {
+  return ['missing', 'blocked', 'quarantined', 'polluted', 'low'].includes(ingredientCaptureStatus(seedData));
+}
+
 function shouldPatchField(seedData, field, nextValue, entry) {
   const normalizedNext = text(nextValue);
   if (!normalizedNext) return { patch: false, reason: 'empty_patch_value' };
@@ -227,6 +259,12 @@ function shouldPatchField(seedData, field, nextValue, entry) {
     }
     if (field === 'pdp_ingredients_raw' && !hasStructuredInci(seedData)) {
       return { patch: true, reason: 'materialize_structured_inci' };
+    }
+    if (field === 'pdp_ingredients_raw' && needsIngredientCaptureStatusMaterialization(seedData)) {
+      return { patch: true, reason: 'materialize_ingredient_capture_status' };
+    }
+    if (field === 'pdp_ingredients_raw' && !hasReviewedIngredientAuthority(seedData, normalizedNext)) {
+      return { patch: true, reason: 'materialize_reviewed_ingredient_authority' };
     }
     return { patch: false, reason: 'no_change_same_value' };
   }
@@ -326,6 +364,26 @@ function buildReviewContract(manifest, now, fields) {
   };
 }
 
+function buildReviewedIngredientAuthority(entry, ingredientsRaw, ingredientsInci, now) {
+  const sourceKind = text(entry.source_kind || 'official_pdp_structured_section');
+  const officialSource = /official/i.test(sourceKind);
+  return {
+    raw_text: ingredientsRaw,
+    items: ingredientsInci,
+    active_items: [],
+    source_origin: officialSource ? 'official_pdp' : 'reviewed_source_backed_pdp_content_patch',
+    source_quality_status: 'high',
+    purity_status: 'authoritative',
+    review_state: 'assistant_reviewed',
+    reviewed_by: text(entry.reviewed_by),
+    reviewed_at: now,
+    source_url: text(entry.source_url || entry.canonical_url),
+    source_kind: sourceKind,
+    reason: text(entry.reason),
+    generated_at: now,
+  };
+}
+
 function readManifestEntries(raw) {
   const root = Array.isArray(raw) ? { entries: raw } : asObject(raw);
   const entries = asArray(root.entries || root.patches || root.rows);
@@ -349,6 +407,8 @@ function readManifestEntries(raw) {
       entry.pdp_ingredients_raw || entry.raw_ingredient_text_clean || entry.ingredients_raw,
     ),
     pdp_details_sections: asArray(entry.pdp_details_sections),
+    allow_single_ingredient_inci: Boolean(entry.allow_single_ingredient_inci || entry.allowSingleIngredientInci || root.allow_single_ingredient_inci || root.allowSingleIngredientInci),
+    refresh_serving_payload: Boolean(entry.refresh_serving_payload || entry.refreshServingPayload || root.refresh_serving_payload || root.refreshServingPayload),
   }));
 }
 
@@ -371,9 +431,11 @@ function validateEntry(entry) {
     if (isPolluted(entry.pdp_how_to_use_raw)) blockers.push('how_to_polluted');
   }
   if (entry.pdp_ingredients_raw) {
-    if (entry.pdp_ingredients_raw.length < 80) blockers.push('ingredients_too_short');
+    const inciItems = parseInciItems(entry.pdp_ingredients_raw);
+    const singleIngredientAllowed = entry.allow_single_ingredient_inci === true && inciItems.length === 1;
+    if (entry.pdp_ingredients_raw.length < 80 && !singleIngredientAllowed) blockers.push('ingredients_too_short');
     if (isIngredientPolluted(entry.pdp_ingredients_raw)) blockers.push('ingredients_polluted');
-    if (!/,/.test(entry.pdp_ingredients_raw)) blockers.push('ingredients_not_inci_like');
+    if (!/,/.test(entry.pdp_ingredients_raw) && !singleIngredientAllowed) blockers.push('ingredients_not_inci_like');
   }
   if (!entry.evidence || entry.evidence.length < 20) blockers.push('missing_review_evidence');
   if (!entry.reviewed_by) blockers.push('missing_reviewer');
@@ -415,6 +477,15 @@ function buildNextSeedData(row, entry, now) {
   } else if (cleanIngredients && ingredientsPatchDecision.reason) skippedFields.push(ingredientsPatchDecision.reason);
 
   if (!fields.length) {
+    if (entry.refresh_serving_payload === true) {
+      return {
+        blocked: [],
+        changed: true,
+        skipped_fields: skippedFields,
+        seedData,
+        fields,
+      };
+    }
     return {
       blocked: skippedFields.some((reason) => reason.startsWith('blocked_')) ? skippedFields : [],
       changed: false,
@@ -458,6 +529,11 @@ function buildNextSeedData(row, entry, now) {
         inci_raw: cleanIngredients,
         inci_list: ingredientsInci,
         inci_normalized: ingredientsInci,
+        authoritative: buildReviewedIngredientAuthority(entry, cleanIngredients, ingredientsInci, now),
+      };
+      target.pdp_field_capture_status = {
+        ...asObject(target.pdp_field_capture_status),
+        ingredients_raw: 'present',
       };
       if (entry.write_reviewed_ingredient_authority === true) {
         target.ingredient_intel.authoritative = {
@@ -471,8 +547,6 @@ function buildNextSeedData(row, entry, now) {
           reviewed_by: text(entry.reviewed_by),
           generated_at: now,
         };
-      } else {
-        delete target.ingredient_intel.authoritative;
       }
     };
     patchIngredients(seedData);
@@ -509,6 +583,7 @@ function buildServingPatch(seedData, fields = []) {
   const fieldSet = new Set(asArray(fields));
   const patch = {
     pdp_field_quality_summary: seedData.pdp_field_quality_summary,
+    pdp_field_capture_status: seedData.pdp_field_capture_status,
     external_seed_snapshot_contract: seedData.external_seed_snapshot_contract,
     reviewed_pdp_content_patch_v1: seedData.reviewed_pdp_content_patch_v1,
   };

@@ -6362,6 +6362,13 @@ function deriveSourceBackedCategoryFromProductText(representativeProduct) {
     category = 'Face Makeup Brush';
   } else if (/\bbrushes\s+included\b/i.test(text) && /\b(?:set|trio|bundle|vault)\b/i.test(title)) {
     category = 'Brush Set';
+  } else if (
+    !/\b(?:set|sets|kit|kits|bundle|bundles|duo|trio|routine|regimen|collection|pair|gift\s+set)\b/i.test(titleLower) &&
+    /\b(?:cleanser|cleansing\s+(?:gel|oil|balm|foam|milk|cream)|face\s+wash|make\s*up\s+remover|makeup\s+remover)\b/i.test(
+      titleLower,
+    )
+  ) {
+    category = 'Cleanser';
   }
 
   if (!category) return null;
@@ -7723,6 +7730,7 @@ module.exports = {
   findCommerceFactsOfferForBackfill,
   findCommerceFactsForBackfill,
   enrichPayloadWithCommerceFacts,
+  deriveSourceBackedCategoryFromProductText,
   chooseRepresentativeProduct,
   buildSeedUpdatePayload,
   buildVariantSeedRows,

@@ -1,0 +1,129 @@
+{
+  "generated_at": "2026-05-28T03:22:05.871Z",
+  "dry_run": false,
+  "manifest": "reports/markato_expansion_status_20260524/wave42_active_coconut_source_backed_description_20260528/reviewed_description_patch_manifest.json",
+  "summary": {
+    "scanned_rows": 3,
+    "missing_rows": 0,
+    "blocked_rows": 0,
+    "change_candidates": 3,
+    "updated_rows": 3,
+    "catalog_product_updates": 3,
+    "identity_updates": 3
+  },
+  "apply_results": [
+    {
+      "external_product_id": "ext_11509e4feaf83a2419d8c77d",
+      "seed_updates": 1,
+      "catalog_product_updates": 1,
+      "identity_updates": 1
+    },
+    {
+      "external_product_id": "ext_9518e81076efc5c5138214ee",
+      "seed_updates": 1,
+      "catalog_product_updates": 1,
+      "identity_updates": 1
+    },
+    {
+      "external_product_id": "ext_57fe66e03e7b47b972b78c30",
+      "seed_updates": 1,
+      "catalog_product_updates": 1,
+      "identity_updates": 1
+    }
+  ],
+  "plans": [
+    {
+      "external_product_id": "ext_11509e4feaf83a2419d8c77d",
+      "seed_id": "eps_d59fad188d62afa3cf2f56fd",
+      "title": "KOJIC DRIP",
+      "canonical_url": "https://activedrip.com/products/niacinamide-kojic-acid-glow-and-corrective-serum",
+      "status": "ready",
+      "changed": true,
+      "blockers": [],
+      "skipped_fields": [],
+      "patched_fields": [
+        "description",
+        "pdp_description_raw"
+      ],
+      "before": {
+        "description": "Inspired by Japanese fermentation traditions.",
+        "pdp_description_raw": "",
+        "pdp_ingredients_raw": "Aqua (Water), Glycerin, Niacinamide, Propanediol, Ethyl Macadamiate, Kojic Acid, Malachite Extract, Tocopheryl Acetate, Ethylhexylglycerin, Helianthus Annuus (Sunflower) Seed Oil, Hydrogenated Phosphatidylcholine, Phosphatidylcholine, Mannitol, Cholesterol, Malic Acid, Tocopherol, Xanthan Gum, Carbomer, Decyl Glucoside, Caprylyl Glycol, Sodium Chloride, Phenoxyethanol, Sodium Benzoate, Potassium Sorbate.",
+        "pdp_how_to_use_raw": "Apply two to four drops to the entire face, neck and chest once daily. Avoid the eye area. Massage gently with the fingertips until it is completely absorbed. Use in AM & PM.",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "KOJIC DRIP is a fragrance-free niacinamide and kojic acid serum for uneven tone, dark spots, post-acne marks, and dullness, pairing barrier-conscious brightening support with daily AM/PM serum use.",
+        "pdp_description_raw": "KOJIC DRIP is a fragrance-free niacinamide and kojic acid serum for uneven tone, dark spots, post-acne marks, and dullness, pairing barrier-conscious brightening support with daily AM/PM serum use.",
+        "pdp_how_to_use_raw": "Apply two to four drops to the entire face, neck and chest once daily. Avoid the eye area. Massage gently with the fingertips until it is completely absorbed. Use in AM & PM.",
+        "pdp_ingredients_raw": "Aqua (Water), Glycerin, Niacinamide, Propanediol, Ethyl Macadamiate, Kojic Acid, Malachite Extract, Tocopheryl Acetate, Ethylhexylglycerin, Helianthus Annuus (Sunflower) Seed Oil, Hydrogenated Phosphatidylcholine, Phosphatidylcholine, Mannitol, Cholesterol, Malic Acid, Tocopherol, Xanthan Gum, Carbomer, Decyl Glucoside, Caprylyl Glycol, Sodium Chloride, Phenoxyethanol, Sodium Benzoate, Potassium Sorbate.",
+        "ingredients_polluted": false,
+        "detail_section_count": 0,
+        "polluted_detail_section_count": 0
+      }
+    },
+    {
+      "external_product_id": "ext_9518e81076efc5c5138214ee",
+      "seed_id": "eps_b62d981a219a498ecd7b94ed",
+      "title": "Matcha Shake Shampoo Concentrate | For All Hair Types",
+      "canonical_url": "https://coconutmatter.com/products/matcha-shake-shampoo-concentrate",
+      "status": "ready",
+      "changed": true,
+      "blockers": [],
+      "skipped_fields": [],
+      "patched_fields": [
+        "description",
+        "pdp_description_raw"
+      ],
+      "before": {
+        "description": "Matcha Shake Shampoo Concentrate",
+        "pdp_description_raw": "",
+        "pdp_ingredients_raw": "Sodium Cocoyl Isethionate, Modified Corn Starch, Kaolin, Sorbitol, Guar hydroxypropyltrimonium chloride, Cocos Nucifera Fruit Powder, Betaine, Citric Acid, Sodium Bicarbonate, Aloe Barbadensis Leaf Powder, Hydrolyzed Rice Protein, Argania spinosa (Argan) Kernel Oil, Emblica officinalis fruit extract, Camellia Sinensis Leaf Powder, Gluconolactone (and) Sodium Benzoate, Isoamyl laurate, Inulin, Lavandula Angustifolia (Lavender) Oil, Litsea Cubeba Fruit Oil, Mentha Piperita Oil, Tocopherol",
+        "pdp_how_to_use_raw": "Watch this tutorial video to get the perfect wash! How much powder do I need for washing? Short hair: 1/4 tsp; Medium length: 1/2 tsp; Long hair: 1 tsp Want more lather? Just add more water! Over time, you may find that you need less powder for washing your hair. Matcha Shake is free from harsh sulfates, so it doesn't create as many bubbles as regular shampoo. However, it still cleans effectively, even without excessive lather! Say hello to happy, healthier hair! P.S. If you use hair styling products, a double wash will provide a deeper clean.",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "Matcha Shake is a sulfate-free powder shampoo concentrate made with plants and minerals to gently cleanse without stripping, add volume, support a calmer scalp, and help hair feel softer and shinier.",
+        "pdp_description_raw": "Matcha Shake is a sulfate-free powder shampoo concentrate made with plants and minerals to gently cleanse without stripping, add volume, support a calmer scalp, and help hair feel softer and shinier.",
+        "pdp_how_to_use_raw": "Watch this tutorial video to get the perfect wash! How much powder do I need for washing? Short hair: 1/4 tsp; Medium length: 1/2 tsp; Long hair: 1 tsp Want more lather? Just add more water! Over time, you may find that you need less powder for washing your hair. Matcha Shake is free from harsh sulfates, so it doesn't create as many bubbles as regular shampoo. However, it still cleans effectively, even without excessive lather! Say hello to happy, healthier hair! P.S. If you use hair styling products, a double wash will provide a deeper clean.",
+        "pdp_ingredients_raw": "Sodium Cocoyl Isethionate, Modified Corn Starch, Kaolin, Sorbitol, Guar hydroxypropyltrimonium chloride, Cocos Nucifera Fruit Powder, Betaine, Citric Acid, Sodium Bicarbonate, Aloe Barbadensis Leaf Powder, Hydrolyzed Rice Protein, Argania spinosa (Argan) Kernel Oil, Emblica officinalis fruit extract, Camellia Sinensis Leaf Powder, Gluconolactone (and) Sodium Benzoate, Isoamyl laurate, Inulin, Lavandula Angustifolia (Lavender) Oil, Litsea Cubeba Fruit Oil, Mentha Piperita Oil, Tocopherol",
+        "ingredients_polluted": false,
+        "detail_section_count": 0,
+        "polluted_detail_section_count": 0
+      }
+    },
+    {
+      "external_product_id": "ext_57fe66e03e7b47b972b78c30",
+      "seed_id": "eps_ccfacc32c00451497b119be2",
+      "title": "Oaty Shake Body Wash Concentrate",
+      "canonical_url": "https://coconutmatter.com/products/oaty-shake-body-wash-concentrate",
+      "status": "ready",
+      "changed": true,
+      "blockers": [],
+      "skipped_fields": [],
+      "patched_fields": [
+        "description",
+        "pdp_description_raw"
+      ],
+      "before": {
+        "description": "Oaty Shake Body Wash Concentrate",
+        "pdp_description_raw": "",
+        "pdp_ingredients_raw": "Sodium Cocoyl Isethionate, Modified Corn Starch, Kaolin, Avena Sativa Kernel Powder, Sorbitol, Citric Acid, Cocos Nucifera Fruit Powder, Sodium Bicarbonate, Guar Hydroxypropyltrimonium Chloride, Aloe Barbadensis Leaf Powder, Hydrolysed Rice Protein, Citrus Aurantium Peel Powder, Citrus Aurantium Dulcis Peel Oil, Gluconolactone (and) Sodium Benzoate, Isomyl laurate, Cocos Nucifera Fruit oil, Inulin, Citrus aurantifolia oil, Citrus Limon Peel Oil, Inulin, Tocopherol, Santalum album powder",
+        "pdp_how_to_use_raw": "We recommend using our Oaty Shake Body Wash Concentrate with our 2-in-1 Konjac Sponge for best skin results. Watch this tutorial video to get the perfect wash! Use ½ to 1 teaspoon for full body wash. Over time, you may find that you need less powder for washing your skin. Oaty Shake is free from harsh sulfates, so it doesn't create as many bubbles as regular body wash. However, it still cleans effectively, even without excessive lather! Say hello to happy, healthier skin!",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "Oaty Shake is a vegan powder body wash concentrate with oat powder, citrus peel, aloe, rice protein, and coconut oil, designed to cleanse without stripping while calming dry, dull, irritated, or flaky skin.",
+        "pdp_description_raw": "Oaty Shake is a vegan powder body wash concentrate with oat powder, citrus peel, aloe, rice protein, and coconut oil, designed to cleanse without stripping while calming dry, dull, irritated, or flaky skin.",
+        "pdp_how_to_use_raw": "We recommend using our Oaty Shake Body Wash Concentrate with our 2-in-1 Konjac Sponge for best skin results. Watch this tutorial video to get the perfect wash! Use ½ to 1 teaspoon for full body wash. Over time, you may find that you need less powder for washing your skin. Oaty Shake is free from harsh sulfates, so it doesn't create as many bubbles as regular body wash. However, it still cleans effectively, even without excessive lather! Say hello to happy, healthier skin!",
+        "pdp_ingredients_raw": "Sodium Cocoyl Isethionate, Modified Corn Starch, Kaolin, Avena Sativa Kernel Powder, Sorbitol, Citric Acid, Cocos Nucifera Fruit Powder, Sodium Bicarbonate, Guar Hydroxypropyltrimonium Chloride, Aloe Barbadensis Leaf Powder, Hydrolysed Rice Protein, Citrus Aurantium Peel Powder, Citrus Aurantium Dulcis Peel Oil, Gluconolactone (and) Sodium Benzoate, Isomyl laurate, Cocos Nucifera Fruit oil, Inulin, Citrus aurantifolia oil, Citrus Limon Peel Oil, Inulin, Tocopherol, Santalum album powder",
+        "ingredients_polluted": false,
+        "detail_section_count": 0,
+        "polluted_detail_section_count": 0
+      }
+    }
+  ]
+}

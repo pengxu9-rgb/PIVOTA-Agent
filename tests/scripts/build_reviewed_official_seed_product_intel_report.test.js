@@ -459,6 +459,51 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     expect(JSON.stringify(forestBundle)).not.toMatch(/plant 1 m2|biodiverse forest/i);
   });
 
+  test('keeps OILUJ certification and sensitive-suitability copy out of public Product Intel', () => {
+    const oilujDescription = [
+      'Introducing our premium face, body, and hair oil crafted with the finest organic moringa oil and sandalwood essential oil.',
+      'Our unique blend offers a multitude of benefits for your skin and hair, including:',
+      'Moringa oil helps reduce the appearance of fine lines and wrinkles, while sandalwood essential oil promotes skin elasticity.',
+      'Sandalwood essential oil helps alleviate irritation and redness, making it suitable for sensitive skin types.',
+      'This oil blend strengthens hair follicles, reduces split ends, and adds shine and luster to your locks.',
+      'Experience the transformative power of nature with our organic moringa and sandalwood oil blend - your ultimate solution for healthy, radiant skin and hair.',
+      'Vegan Gluten-Free Paraben-FreeFragrance-Free',
+    ].join(' ');
+
+    const bundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_oiluj_sandalwood',
+        title: 'OILÙJ, Life Oil: Organic Moringa/Sandalwood Blend',
+        canonical_url: 'https://www.oiluj.com/store/p11/oiluj-life-oil-moringa-sandalwood.html',
+        seed_data: {
+          brand: 'OILUJ',
+          category: 'Body Oil',
+          category_path: ['beauty', 'skincare', 'body', 'body-oil'],
+          description: oilujDescription,
+          pdp_ingredients_raw: oilujDescription,
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_oiluj_sandalwood',
+        sellable_item_group_id: 'sig_oiluj_sandalwood',
+      },
+      generatedAt: '2026-05-28T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+
+    const serialized = JSON.stringify(bundle);
+    expect(serialized).not.toMatch(/\b(?:vegan|gluten[-\s]?free|paraben[-\s]?free)\b/i);
+    expect(serialized).not.toMatch(/suitable for sensitive skin|ultimate solution|strengthens hair follicles/i);
+    expect(detectPublicProductIntelQualityIssues(bundle)).not.toContain('public_sensitive_claim');
+    expect(bundle.shopping_card.highlight).toBe('Body oil formula detail');
+    expect(bundle.texture_finish.texture).toBe('body_oil');
+    expect(classifyGeneratedBundle(bundle)).toMatchObject({
+      displayable: true,
+      high_quality_ready: true,
+    });
+  });
+
   test('softens Apiceuticals shampoo public source claims before quality validation', () => {
     const description =
       'PROPOWAX™ SERIES ANTIOXIDANT • ANTIPOLLUTION 100% Clean, Sustainable, Cruelty-free Beauty 10.1 fl. oz. / 300 ml The PROPOWAX™ Antioxidant Shampoo is the world’s first honeycomb shampoo powered by the patented Living Honeycomb — clinically proven to deliver the highest antioxidant activity worldwide. Detoxifies and restores scalp & hair from pollution, UV, styling tools, and harsh products. Rebalances, soothes, and strengthens hair from the roots. Leaves hair radiant, nourished, and infused with a luxurious fine fragrance.';

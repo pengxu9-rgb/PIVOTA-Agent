@@ -59,6 +59,10 @@ const STOP_MARKERS = [
   /\bnote\s*:/i,
   /\bcaution\s*:/i,
   /\bfor external use only\b/i,
+  /(?:^|[,.]\s*)\*+\s*organic(?:ally)?\s+(?:grown\s+)?ingredients?\b/i,
+  /(?:^|[,.]\s*)\^?\*+\s*natural constituent of essential oils listed\b/i,
+  /(?:^|[,.]\s*)\^+\s*natural constituent of essential oils listed\b/i,
+  /\b\d+%\s+organic of total\b/i,
 ];
 const ACTIVE_STOP_MARKERS = [
   ...STOP_MARKERS,
@@ -71,6 +75,8 @@ const INGREDIENT_FUNCTION_LABEL_RE =
   /^(?:carrier|antioxidant|chelating agent|emollient|emulsifier|emulsion stabilizer|film former|humectant|thickener|skin conditioner|preservative|surfactant|solvent|stabilizer|ph adjuster|buffering agent|colorant|opacifier|viscosity controlling|viscosity controller|absorbent|abrasive|binder|cleansing agent)$/i;
 const SOURCE_PRIORITY = {
   kb_reviewed: 5,
+  official_html: 4,
+  official_pdp: 4,
   existing_authority: 4,
   pdp_section: 3,
   structured_array: 2,
@@ -246,15 +252,25 @@ function readReviewedActiveCandidates(product, inputs) {
   });
 }
 
-function findLastSectionMatch(text, re) {
+function findLastSectionMatch(text, re, predicate = null) {
   let match = null;
   let next = re.exec(text);
   while (next) {
-    match = next;
+    if (!predicate || predicate(next)) match = next;
     next = re.exec(text);
   }
   re.lastIndex = 0;
   return match;
+}
+
+function looksLikeIngredientSectionHeadingMatch(text, match) {
+  if (!match || typeof match.index !== 'number') return false;
+  const label = asString(match[1] || match[0]).toLowerCase();
+  if (/^(?:full\s+ingredient|inci)/.test(label)) return true;
+  if (match.index <= 2) return true;
+  if (/:\s*$/.test(asString(match[0]))) return true;
+  const prefix = text.slice(Math.max(0, match.index - 24), match.index);
+  return /(?:^|[.!?\n\r|•])\s*$/.test(prefix);
 }
 
 function sanitizeIngredientRawText(rawText, { activeOnly = false } = {}) {
@@ -262,7 +278,9 @@ function sanitizeIngredientRawText(rawText, { activeOnly = false } = {}) {
   if (!text) return '';
 
   const sectionRe = activeOnly ? ACTIVE_SECTION_RE : INGREDIENT_SECTION_RE;
-  const sectionMatch = findLastSectionMatch(text, sectionRe);
+  const sectionMatch = findLastSectionMatch(text, sectionRe, (match) =>
+    activeOnly || looksLikeIngredientSectionHeadingMatch(text, match)
+  );
   if (sectionMatch && typeof sectionMatch.index === 'number') {
     text = text.slice(sectionMatch.index + sectionMatch[0].length);
   }
@@ -789,6 +807,79 @@ function collectIngredientIntelCandidates(product, inputs = readIngredientInputs
   ].filter(Boolean);
 }
 
+function collectOfficialIngredientQualityCandidates(product, inputs = readIngredientInputs(product)) {
+  const fieldQuality = (value) => asPlainObject(value);
+  const contentFields = (value) => asPlainObject(asPlainObject(value)?.fields) || {};
+  return [
+    fieldQuality(product?.pdp_field_quality_summary?.ingredients_raw),
+    fieldQuality(product?.pdp_field_quality_summary?.ingredients_inci),
+    fieldQuality(inputs.seedData?.pdp_field_quality_summary?.ingredients_raw),
+    fieldQuality(inputs.seedData?.pdp_field_quality_summary?.ingredients_inci),
+    fieldQuality(inputs.snapshot?.pdp_field_quality_summary?.ingredients_raw),
+    fieldQuality(inputs.snapshot?.pdp_field_quality_summary?.ingredients_inci),
+    fieldQuality(contentFields(product?.pdp_content_asset_v1).ingredients_raw),
+    fieldQuality(contentFields(product?.pdp_content_asset_v1).ingredients_inci),
+    fieldQuality(contentFields(inputs.seedData?.pdp_content_asset_v1).ingredients_raw),
+    fieldQuality(contentFields(inputs.seedData?.pdp_content_asset_v1).ingredients_inci),
+    fieldQuality(contentFields(inputs.snapshot?.pdp_content_asset_v1).ingredients_raw),
+    fieldQuality(contentFields(inputs.snapshot?.pdp_content_asset_v1).ingredients_inci),
+    fieldQuality(product?.source_payload?.pdp_field_quality_summary?.ingredients_raw),
+    fieldQuality(product?.source_payload?.seed_data?.pdp_field_quality_summary?.ingredients_raw),
+    fieldQuality(product?.source_payload?.seed_data?.snapshot?.pdp_field_quality_summary?.ingredients_raw),
+  ].filter(Boolean);
+}
+
+function isTrustedOfficialIngredientQuality(value) {
+  const quality = asPlainObject(value);
+  if (!quality) return false;
+  const sourceOrigin = asString(quality.source_origin || quality.sourceOrigin).toLowerCase();
+  const sourceQuality = asString(
+    quality.source_quality_status || quality.sourceQualityStatus || quality.quality_status,
+  ).toLowerCase();
+  const sourceKinds = [
+    ...[].concat(quality.source_kinds || quality.sourceKinds || []),
+    quality.source_kind || quality.sourceKind,
+  ]
+    .map(asString)
+    .join(' ')
+    .toLowerCase();
+  const reviewState = asString(quality.review_state || quality.reviewState || quality.content_review_state).toLowerCase();
+  const officialSource =
+    ['official_html', 'official_pdp', 'official_public_pdp'].includes(sourceOrigin) ||
+    /official_pdp_full_ingredients|official_pdp_ingredients|official_html/.test(sourceKinds);
+  const trustedQuality = ['high', 'authoritative', 'reviewed'].includes(sourceQuality);
+  const reviewedState = !reviewState || /reviewed|approved/.test(reviewState);
+  return officialSource && trustedQuality && reviewedState;
+}
+
+function collectRawIngredientTextCandidates(product, inputs = readIngredientInputs(product)) {
+  return [
+    product?.pdp_ingredients_raw,
+    product?.pdpIngredientsRaw,
+    product?.raw_ingredient_text_clean,
+    inputs.seedData?.pdp_ingredients_raw,
+    inputs.seedData?.raw_ingredient_text_clean,
+    inputs.snapshot?.pdp_ingredients_raw,
+    inputs.snapshot?.raw_ingredient_text_clean,
+    product?.source_payload?.pdp_ingredients_raw,
+    product?.source_payload?.raw_ingredient_text_clean,
+    product?.source_payload?.seed_data?.pdp_ingredients_raw,
+    product?.source_payload?.seed_data?.raw_ingredient_text_clean,
+    product?.source_payload?.seed_data?.snapshot?.pdp_ingredients_raw,
+    product?.source_payload?.seed_data?.snapshot?.raw_ingredient_text_clean,
+  ];
+}
+
+function findTrustedOfficialSingleIngredientQuality(product, targetKey, inputs = readIngredientInputs(product)) {
+  if (!targetKey) return null;
+  const hasTrustedQuality = collectOfficialIngredientQualityCandidates(product, inputs).find(isTrustedOfficialIngredientQuality);
+  if (!hasTrustedQuality) return null;
+  const matchingRaw = collectRawIngredientTextCandidates(product, inputs)
+    .map((value) => normalizeIngredientKey(sanitizeIngredientRawText(value)))
+    .some((key) => key && key === targetKey);
+  return matchingRaw ? hasTrustedQuality : null;
+}
+
 function hasTrustedSingleIngredientAuthority(product, items, inputs = readIngredientInputs(product)) {
   const normalizedItems = normalizeIngredientItems(items, { max: 4 });
   if (normalizedItems.length !== 1) return false;
@@ -816,14 +907,21 @@ function hasTrustedSingleIngredientAuthority(product, items, inputs = readIngred
     );
     if (raw && normalizeIngredientKey(raw) === targetKey) return true;
   }
-  return false;
+  return Boolean(findTrustedOfficialSingleIngredientQuality(product, targetKey, inputs));
 }
 
 function resolveSingleIngredientAuthoritySourceOrigin(product, inputs = readIngredientInputs(product)) {
   const trusted = collectIngredientIntelCandidates(product, inputs).find((candidate) =>
     isTrustedIngredientIntel(candidate),
   );
-  return asString(trusted?.source_origin || trusted?.sourceOrigin) || 'structured_array';
+  if (trusted) return asString(trusted.source_origin || trusted.sourceOrigin) || 'structured_array';
+  const normalizedItems = normalizeIngredientItems(
+    splitIngredientText(sanitizeIngredientRawText(collectRawIngredientTextCandidates(product, inputs).find(Boolean))),
+    { max: 4 },
+  );
+  const targetKey = normalizedItems.length === 1 ? normalizeIngredientKey(normalizedItems[0]) : '';
+  const quality = findTrustedOfficialSingleIngredientQuality(product, targetKey, inputs);
+  return asString(quality?.source_origin || quality?.sourceOrigin) || 'structured_array';
 }
 
 function buildAuthorityRecord({
@@ -1190,6 +1288,18 @@ function buildAuthorityFromLegacyRaw(product, inputs) {
     if (reviewedPartialQuality) {
       const partialAuthority = parseReviewedPartialIngredientText(candidate, reviewedPartialQuality);
       if (partialAuthority) parsed.push(partialAuthority);
+    }
+    const sanitized = sanitizeIngredientRawText(candidate);
+    const singleItems = normalizeIngredientItems(splitIngredientText(sanitized), { max: 4 });
+    if (singleItems.length === 1 && hasTrustedSingleIngredientAuthority(product, singleItems, inputs)) {
+      parsed.push(
+        buildAuthorityRecord({
+          rawText: sanitized,
+          items: singleItems,
+          sourceOrigin: resolveSingleIngredientAuthoritySourceOrigin(product, inputs),
+          purityStatus: 'authoritative',
+        }),
+      );
     }
     const authority = parseCandidateRawText(candidate, 'pdp_section');
     if (authority) parsed.push(authority);

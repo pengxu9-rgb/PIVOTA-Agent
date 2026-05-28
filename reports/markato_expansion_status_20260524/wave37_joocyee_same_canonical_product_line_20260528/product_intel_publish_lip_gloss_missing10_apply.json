@@ -1,0 +1,30 @@
+{
+  "status": "ok",
+  "mode": "write",
+  "report": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave37_joocyee_same_canonical_product_line_20260528/official_seed_product_intel_report_lip_gloss_missing10.json",
+  "rows": [
+    "live_ext_41c98523b6fc0a8279c3095c",
+    "live_ext_35ffa71281354a958ef30f7e",
+    "live_ext_4888a0d0940daa58fc77af80",
+    "live_ext_52a27acd606756dea463a717",
+    "live_ext_a9a9d873995dc784e34cb222",
+    "live_ext_2881559170714581057e21eb",
+    "live_ext_3c9980e0455d648c3173c14e",
+    "live_ext_70a0b0b3c68a48630060c7ff",
+    "live_ext_75c1cd3bbad92bbdbc6ab010",
+    "live_ext_c037778265747b32fc52a16c"
+  ],
+  "entries": [
+    "product:ext_41c98523b6fc0a8279c3095c",
+    "product:ext_35ffa71281354a958ef30f7e",
+    "product:ext_4888a0d0940daa58fc77af80",
+    "product:ext_52a27acd606756dea463a717",
+    "product:ext_a9a9d873995dc784e34cb222",
+    "product:ext_2881559170714581057e21eb",
+    "product:ext_3c9980e0455d648c3173c14e",
+    "product:ext_70a0b0b3c68a48630060c7ff",
+    "product:ext_75c1cd3bbad92bbdbc6ab010",
+    "product:ext_c037778265747b32fc52a16c"
+  ],
+  "skipped_rows": []
+}

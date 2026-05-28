@@ -1,0 +1,870 @@
+{
+  "status": "dry_run",
+  "reason": "",
+  "target_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+  "row": {
+    "id": "eps_f44441b9491577f7041972cc",
+    "external_product_id": "ext_3a16e6a6300af832ae3ccdb7",
+    "title": "OILÙJ, \"Eye Live\"",
+    "brand": "",
+    "domain": "oiluj.com",
+    "canonical_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+    "destination_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+    "seed_snapshot_contract": {
+      "source": "reviewed_source_backed_pdp_content_patch",
+      "updated_at": "2026-05-28T02:03:23.435Z",
+      "authoritative": true,
+      "contract_version": "external_seed.snapshot_contract.v1",
+      "replace_strategy": "replace_not_merge",
+      "legacy_fields_quarantined": true,
+      "structured_fields_authoritative": true
+    }
+  },
+  "payload": {
+    "changed": true,
+    "next_row": {
+      "title": "OILÙJ, \"Eye Live\"",
+      "canonical_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+      "destination_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+      "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p15_i2_w1776.jpeg?width=640",
+      "price_amount": 35,
+      "price_currency": "USD",
+      "availability": "unknown",
+      "seed_data": {
+        "brand": "OILUJ",
+        "title": "OILÙJ, \"Eye Live\"",
+        "images": [
+          "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p15_i2_w1776.jpeg?width=640",
+          "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p15_i2_w1776.jpeg?width=640"
+        ],
+        "snapshot": {
+          "title": "OILÙJ, \"Eye Live\"",
+          "images": [
+            "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p15_i2_w1776.jpeg?width=640",
+            "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p15_i2_w1776.jpeg?width=640"
+          ],
+          "source": "catalog_intelligence",
+          "variants": [
+            {
+              "sku": "AUTO-e91e8820",
+              "url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+              "price": "35",
+              "stock": "In Stock",
+              "currency": "USD",
+              "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p15_i2_w1776.jpeg?width=640",
+              "image_urls": [
+                "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p15_i2_w1776.jpeg?width=640",
+                "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p15_i2_w1776.jpeg?width=640"
+              ],
+              "variant_id": "e91e8820b0be",
+              "description": "Botanical skincare products specializing in the benefits of Moringa oil.",
+              "option_name": "Offer",
+              "option_value": "Default"
+            }
+          ],
+          "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p15_i2_w1776.jpeg?width=640",
+          "image_urls": [
+            "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p15_i2_w1776.jpeg?width=640",
+            "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p15_i2_w1776.jpeg?width=640"
+          ],
+          "description": "Botanical skincare products specializing in the benefits of Moringa oil.",
+          "diagnostics": {
+            "requested_domain": "www.oiluj.com",
+            "resolved_base_url": "http://www.oiluj.com",
+            "discovery_strategy": "seed_page",
+            "failure_category": null,
+            "block_provider": null,
+            "http_trace": [
+              {
+                "url": "https://www.oiluj.com/products.json?limit=1",
+                "status": 404
+              },
+              {
+                "url": "https://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+                "status": 200
+              },
+              {
+                "url": "https://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+                "status": 200
+              },
+              {
+                "url": "https://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+                "status": 200
+              }
+            ]
+          },
+          "extracted_at": "2026-05-28T02:05:15.984Z",
+          "canonical_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+          "search_aliases": [
+            "OILÙJ, \"Eye Live\""
+          ],
+          "destination_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+          "authority_source": {
+            "source_url": "https://www.oiluj.com",
+            "source_role": "primary",
+            "matched_preferred_titles": []
+          },
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-28T02:05:12.376Z",
+            "evidence_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "low",
+              "checked_at": "2026-05-28T02:05:12.376Z",
+              "reason_codes": [
+                "market_currency_not_verified",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html"
+            },
+            "regional_price": {
+              "amount": 35,
+              "currency": "USD",
+              "display_raw": "35",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "low",
+              "market_switch_status": "unknown",
+              "observed_currency": "USD",
+              "source_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+              "captured_at": "2026-05-28T02:05:12.376Z"
+            },
+            "availability": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "captured_at": "2026-05-28T02:05:12.376Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-28T02:05:12.376Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-28T02:05:12.376Z"
+            }
+          },
+          "source_validation": {
+            "source_host": "oiluj.com",
+            "source_type": "brand_owned",
+            "requires_multi_offer_merge_validation": false
+          },
+          "commerce_facts_gate": {
+            "status": "pass",
+            "market_id": "US",
+            "expected_currency": "USD",
+            "observed_currency": "USD",
+            "market_switch_status": "unknown",
+            "sellable_region_status": "unknown",
+            "shipping_status": "unknown",
+            "promotions_status": "unknown",
+            "availability_status": "unknown",
+            "problems": []
+          },
+          "pdp_description_raw": "OILUJ presents Eye Live as an eye-contour treatment built around evening primrose, jojoba oil, moringa oil, and vitamin E for the delicate eye area.",
+          "pdp_details_sections": [
+            {
+              "heading": "PDP Focus",
+              "body": "The page frames the treatment around moisture, antioxidant-rich botanical oils, and gentle care for the eye area.",
+              "source_kind": "unknown"
+            },
+            {
+              "heading": "Use Context",
+              "body": "The product page describes targeted care for the delicate eye area and says it can be incorporated into a day or night skincare routine.",
+              "source_kind": "unknown"
+            }
+          ],
+          "seed_description_origin": "pdp_variant_description",
+          "pdp_field_quality_summary": {
+            "description_raw": {
+              "source_origin": "shopify_json",
+              "source_quality_status": "high",
+              "source_kinds": [
+                "structured_overview"
+              ],
+              "reason_codes": []
+            },
+            "details_sections": {
+              "source_origin": "reviewed_source_backed_pdp_content_patch",
+              "source_quality_status": "high",
+              "source_kinds": [
+                "official_pdp_structured_section"
+              ],
+              "reason_codes": []
+            },
+            "ingredients_raw": {
+              "source_origin": "unknown",
+              "source_quality_status": "low",
+              "source_kinds": [],
+              "reason_codes": [
+                "missing_source_kind"
+              ]
+            },
+            "active_ingredients_raw": {
+              "source_origin": "unknown",
+              "source_quality_status": "low",
+              "source_kinds": [],
+              "reason_codes": [
+                "missing_source_kind"
+              ]
+            },
+            "how_to_use_raw": {
+              "source_origin": "unknown",
+              "source_quality_status": "low",
+              "source_kinds": [],
+              "reason_codes": [
+                "missing_source_kind"
+              ]
+            },
+            "faq_items": {
+              "source_origin": "unknown",
+              "source_quality_status": "low",
+              "source_kinds": [],
+              "reason_codes": [
+                "missing_source_kind"
+              ]
+            }
+          },
+          "reviewed_pdp_content_patch_v1": {
+            "reason": "reviewed_source_backed_official_oiluj_pdp_description_patch",
+            "evidence": "Official OILUJ PDP HTML was fetched on 2026-05-28 and reviewed from the wsite-com-product-short-description block. No complete INCI or step-by-step use directions were found, so this patch only updates description and details.",
+            "source_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+            "reviewed_at": "2026-05-28T02:03:23.435Z",
+            "reviewed_by": "codex_review",
+            "source_kind": "official_pdp_structured_section",
+            "review_state": "assistant_reviewed",
+            "patched_fields": [
+              "description",
+              "pdp_description_raw",
+              "pdp_details_sections"
+            ],
+            "contract_version": "external_seed.reviewed_pdp_content_patch.v1"
+          },
+          "external_seed_snapshot_contract": {
+            "contract_version": "external_seed.snapshot_contract.v1",
+            "source": "catalog_intelligence",
+            "authoritative": true,
+            "structured_fields_authoritative": true,
+            "legacy_fields_quarantined": true,
+            "replace_strategy": "replace_not_merge",
+            "updated_at": "2026-05-28T02:05:15.984Z"
+          },
+          "product_kind": "single_formula",
+          "pdp_field_capture_status": {
+            "description_raw": "present",
+            "details_sections": "present",
+            "ingredients_raw": "missing",
+            "active_ingredients_raw": "missing",
+            "how_to_use_raw": "missing",
+            "faq_items": "missing"
+          },
+          "pdp_content_asset_v1": {
+            "contract_version": "pivota.pdp_content_asset.v1",
+            "owner": "pivota",
+            "fields": {
+              "description": {
+                "review_state": "unreviewed",
+                "overwrite_policy": "preserve_best_available",
+                "source_quality_status": "high",
+                "source_origin": "shopify_json",
+                "content_hash": "432b9d7044a67663",
+                "updated_at": "2026-05-28T02:05:15.983Z"
+              },
+              "description_raw": {
+                "review_state": "unreviewed",
+                "overwrite_policy": "preserve_best_available",
+                "source_quality_status": "high",
+                "source_origin": "shopify_json",
+                "content_hash": "432b9d7044a67663",
+                "updated_at": "2026-05-28T02:05:15.983Z"
+              },
+              "details_sections": {
+                "review_state": "unreviewed",
+                "overwrite_policy": "preserve_best_available",
+                "source_quality_status": "high",
+                "source_origin": "reviewed_source_backed_pdp_content_patch",
+                "content_hash": "fbf2aa0dead03164",
+                "updated_at": "2026-05-28T02:05:15.984Z"
+              }
+            }
+          },
+          "variant_skus": [
+            "AUTO-e91e8820"
+          ],
+          "brand_origin": {
+            "country": null,
+            "home_market": null,
+            "source": null
+          },
+          "market_availability": {
+            "available_markets": [
+              "US"
+            ],
+            "local_purchase_markets": [
+              "US"
+            ],
+            "source_market": "US",
+            "retail_channel_markets": [],
+            "availability_status": "in_stock"
+          },
+          "available_markets": [
+            "US"
+          ],
+          "local_purchase_markets": [
+            "US"
+          ],
+          "locality_facts_v1": {
+            "contract_version": "external_seed.locality_facts.v1",
+            "brand": "OILUJ",
+            "brand_origin": {
+              "country": null,
+              "home_market": null,
+              "source": null
+            },
+            "brand_origin_country": null,
+            "brand_home_market": null,
+            "market_availability": {
+              "available_markets": [
+                "US"
+              ],
+              "local_purchase_markets": [
+                "US"
+              ],
+              "source_market": "US",
+              "retail_channel_markets": [],
+              "availability_status": "in_stock"
+            },
+            "available_markets": [
+              "US"
+            ],
+            "local_purchase_markets": [
+              "US"
+            ],
+            "local_retail_channels": [],
+            "travel_size": null,
+            "travel_size_evidence": null,
+            "creator_local_reason": null,
+            "local_authority_level": "product_market",
+            "sources": [
+              "existing_seed_data",
+              "seed_row_market"
+            ]
+          },
+          "price_amount": 35,
+          "availability": "unknown"
+        },
+        "variants": [
+          {
+            "sku": "AUTO-e91e8820",
+            "url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+            "price": "35",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p15_i2_w1776.jpeg?width=640",
+            "image_urls": [
+              "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p15_i2_w1776.jpeg?width=640",
+              "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p15_i2_w1776.jpeg?width=640"
+            ],
+            "variant_id": "e91e8820b0be",
+            "description": "Botanical skincare products specializing in the benefits of Moringa oil.",
+            "option_name": "Offer",
+            "option_value": "Default"
+          }
+        ],
+        "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p15_i2_w1776.jpeg?width=640",
+        "image_urls": [
+          "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p15_i2_w1776.jpeg?width=640",
+          "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p15_i2_w1776.jpeg?width=640"
+        ],
+        "description": "OILUJ presents Eye Live as an eye-contour treatment built around evening primrose, jojoba oil, moringa oil, and vitamin E for the delicate eye area.",
+        "availability": "unknown",
+        "price_amount": 35,
+        "canonical_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+        "price_currency": "USD",
+        "search_aliases": [
+          "OILÙJ, \"Eye Live\""
+        ],
+        "destination_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+        "authority_source": {
+          "source_url": "https://www.oiluj.com",
+          "source_role": "primary",
+          "matched_preferred_titles": []
+        },
+        "commerce_facts_v1": {
+          "contract_version": "commerce_facts.v1",
+          "market_id": "US",
+          "country": "US",
+          "currency_target": "USD",
+          "source_authority": "catalog_extract_v2",
+          "captured_at": "2026-05-28T02:05:12.376Z",
+          "evidence_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+          "sellable_region": {
+            "status": "unknown",
+            "countries": [],
+            "evidence_source": "catalog_extract_v2",
+            "confidence": "low",
+            "checked_at": "2026-05-28T02:05:12.376Z",
+            "reason_codes": [
+              "market_currency_not_verified",
+              "shipping_destination_not_verified",
+              "external_checkout_not_queried"
+            ],
+            "evidence_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html"
+          },
+          "regional_price": {
+            "amount": 35,
+            "currency": "USD",
+            "display_raw": "35",
+            "price_type": "list",
+            "compare_at_amount": null,
+            "compare_at_currency": null,
+            "compare_at_display_raw": null,
+            "tax_included": "unknown",
+            "confidence": "low",
+            "market_switch_status": "unknown",
+            "observed_currency": "USD",
+            "source_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+            "captured_at": "2026-05-28T02:05:12.376Z"
+          },
+          "availability": {
+            "status": "unknown",
+            "source": "catalog_extract_v2",
+            "confidence": "unknown",
+            "captured_at": "2026-05-28T02:05:12.376Z"
+          },
+          "shipping": {
+            "status": "unknown",
+            "source": "catalog_extract_v2",
+            "confidence": "unknown",
+            "reason_codes": [
+              "external_checkout_not_queried"
+            ],
+            "checked_at": "2026-05-28T02:05:12.376Z"
+          },
+          "promotions": [],
+          "returns": {
+            "status": "unknown",
+            "source": "catalog_extract_v2",
+            "confidence": "unknown",
+            "reason_codes": [
+              "external_returns_not_extracted"
+            ],
+            "checked_at": "2026-05-28T02:05:12.376Z"
+          }
+        },
+        "source_validation": {
+          "source_host": "oiluj.com",
+          "source_type": "brand_owned",
+          "requires_multi_offer_merge_validation": false
+        },
+        "commerce_facts_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "unknown",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "promotions_status": "unknown",
+          "availability_status": "unknown",
+          "problems": []
+        },
+        "external_product_id": "ext_3a16e6a6300af832ae3ccdb7",
+        "pdp_description_raw": "OILUJ presents Eye Live as an eye-contour treatment built around evening primrose, jojoba oil, moringa oil, and vitamin E for the delicate eye area.",
+        "pdp_details_sections": [
+          {
+            "heading": "PDP Focus",
+            "body": "The page frames the treatment around moisture, antioxidant-rich botanical oils, and gentle care for the eye area.",
+            "source_kind": "unknown"
+          },
+          {
+            "heading": "Use Context",
+            "body": "The product page describes targeted care for the delicate eye area and says it can be incorporated into a day or night skincare routine.",
+            "source_kind": "unknown"
+          }
+        ],
+        "seed_description_origin": "pdp_variant_description",
+        "pdp_field_quality_summary": {
+          "description_raw": {
+            "source_origin": "shopify_json",
+            "source_quality_status": "high",
+            "source_kinds": [
+              "structured_overview"
+            ],
+            "reason_codes": []
+          },
+          "details_sections": {
+            "source_origin": "reviewed_source_backed_pdp_content_patch",
+            "source_quality_status": "high",
+            "source_kinds": [
+              "official_pdp_structured_section"
+            ],
+            "reason_codes": []
+          },
+          "ingredients_raw": {
+            "source_origin": "unknown",
+            "source_quality_status": "low",
+            "source_kinds": [],
+            "reason_codes": [
+              "missing_source_kind"
+            ]
+          },
+          "active_ingredients_raw": {
+            "source_origin": "unknown",
+            "source_quality_status": "low",
+            "source_kinds": [],
+            "reason_codes": [
+              "missing_source_kind"
+            ]
+          },
+          "how_to_use_raw": {
+            "source_origin": "unknown",
+            "source_quality_status": "low",
+            "source_kinds": [],
+            "reason_codes": [
+              "missing_source_kind"
+            ]
+          },
+          "faq_items": {
+            "source_origin": "unknown",
+            "source_quality_status": "low",
+            "source_kinds": [],
+            "reason_codes": [
+              "missing_source_kind"
+            ]
+          }
+        },
+        "reviewed_pdp_content_patch_v1": {
+          "reason": "reviewed_source_backed_official_oiluj_pdp_description_patch",
+          "evidence": "Official OILUJ PDP HTML was fetched on 2026-05-28 and reviewed from the wsite-com-product-short-description block. No complete INCI or step-by-step use directions were found, so this patch only updates description and details.",
+          "source_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+          "reviewed_at": "2026-05-28T02:03:23.435Z",
+          "reviewed_by": "codex_review",
+          "source_kind": "official_pdp_structured_section",
+          "review_state": "assistant_reviewed",
+          "patched_fields": [
+            "description",
+            "pdp_description_raw",
+            "pdp_details_sections"
+          ],
+          "contract_version": "external_seed.reviewed_pdp_content_patch.v1"
+        },
+        "external_seed_snapshot_contract": {
+          "contract_version": "external_seed.snapshot_contract.v1",
+          "source": "catalog_intelligence",
+          "authoritative": true,
+          "structured_fields_authoritative": true,
+          "legacy_fields_quarantined": true,
+          "replace_strategy": "replace_not_merge",
+          "updated_at": "2026-05-28T02:05:15.984Z"
+        },
+        "product_kind": "single_formula",
+        "pdp_field_capture_status": {
+          "description_raw": "present",
+          "details_sections": "present",
+          "ingredients_raw": "missing",
+          "active_ingredients_raw": "missing",
+          "how_to_use_raw": "missing",
+          "faq_items": "missing"
+        },
+        "pdp_content_asset_v1": {
+          "contract_version": "pivota.pdp_content_asset.v1",
+          "owner": "pivota",
+          "fields": {
+            "description": {
+              "review_state": "unreviewed",
+              "overwrite_policy": "preserve_best_available",
+              "source_quality_status": "high",
+              "source_origin": "shopify_json",
+              "content_hash": "432b9d7044a67663",
+              "updated_at": "2026-05-28T02:05:15.983Z"
+            },
+            "description_raw": {
+              "review_state": "unreviewed",
+              "overwrite_policy": "preserve_best_available",
+              "source_quality_status": "high",
+              "source_origin": "shopify_json",
+              "content_hash": "432b9d7044a67663",
+              "updated_at": "2026-05-28T02:05:15.983Z"
+            },
+            "details_sections": {
+              "review_state": "unreviewed",
+              "overwrite_policy": "preserve_best_available",
+              "source_quality_status": "high",
+              "source_origin": "reviewed_source_backed_pdp_content_patch",
+              "content_hash": "fbf2aa0dead03164",
+              "updated_at": "2026-05-28T02:05:15.984Z"
+            }
+          }
+        },
+        "snapshot_quarantine": {
+          "contract_version": "external_seed.snapshot_quarantine.v1",
+          "source": "catalog_intelligence",
+          "extractor_mode": "puppeteer",
+          "updated_at": "2026-05-28T02:05:15.983Z",
+          "preserved_candidates": {
+            "description_raw": {
+              "value": "Botanical skincare products specializing in the benefits of Moringa oil.",
+              "reason_code": "preserve_reviewed_pivota_asset",
+              "reason_codes": [
+                "preserve_reviewed_pivota_asset"
+              ],
+              "source_quality_status": "high",
+              "source_origin": "shopify_json"
+            },
+            "description": {
+              "value": "Botanical skincare products specializing in the benefits of Moringa oil.",
+              "reason_code": "preserve_reviewed_pivota_asset",
+              "reason_codes": [
+                "preserve_reviewed_pivota_asset"
+              ],
+              "source_quality_status": "high",
+              "source_origin": "shopify_json"
+            }
+          }
+        },
+        "brand_origin": {
+          "country": null,
+          "home_market": null,
+          "source": null
+        },
+        "market_availability": {
+          "available_markets": [
+            "US"
+          ],
+          "local_purchase_markets": [
+            "US"
+          ],
+          "source_market": "US",
+          "retail_channel_markets": [],
+          "availability_status": "in_stock"
+        },
+        "available_markets": [
+          "US"
+        ],
+        "local_purchase_markets": [
+          "US"
+        ],
+        "locality_facts_v1": {
+          "contract_version": "external_seed.locality_facts.v1",
+          "brand": "OILUJ",
+          "brand_origin": {
+            "country": null,
+            "home_market": null,
+            "source": null
+          },
+          "brand_origin_country": null,
+          "brand_home_market": null,
+          "market_availability": {
+            "available_markets": [
+              "US"
+            ],
+            "local_purchase_markets": [
+              "US"
+            ],
+            "source_market": "US",
+            "retail_channel_markets": [],
+            "availability_status": "in_stock"
+          },
+          "available_markets": [
+            "US"
+          ],
+          "local_purchase_markets": [
+            "US"
+          ],
+          "local_retail_channels": [],
+          "travel_size": null,
+          "travel_size_evidence": null,
+          "creator_local_reason": null,
+          "local_authority_level": "product_market",
+          "sources": [
+            "existing_seed_data",
+            "seed_row_market"
+          ]
+        },
+        "derived": {
+          "recall": {
+            "retrieval_title": "OILÙJ, \"Eye Live\"",
+            "retrieval_summary": "OILUJ presents Eye Live as an eye-contour treatment built around evening primrose, jojoba oil, moringa oil, and vitamin E for the delicate eye area. Botanical skincare products specializing in the benefits of Moringa oil.",
+            "retrieval_body": "OILUJ presents Eye Live as an eye-contour treatment built around evening primrose, jojoba oil, moringa oil, and vitamin E for the delicate eye area.\n\nBotanical skincare products specializing in the benefits of Moringa oil.\n\nPDP Focus: The page frames the treatment around moisture, antioxidant-rich botanical oils, and gentle care for the eye area.\n\nUse Context: The product page describes targeted care for the delicate eye area and says it can be incorporated into a day or night skincare routine.",
+            "brand": "OILUJ",
+            "category": "Treatment",
+            "vertical": "skincare",
+            "ingredient_tokens": [],
+            "locality_tokens": [
+              "available market US",
+              "local purchase US"
+            ],
+            "alias_tokens": [
+              "OILÙJ, \"Eye Live\"",
+              "oiluj eye live",
+              "oilujeyelive",
+              "eye live",
+              "oiluj eye",
+              "Treatment",
+              "available market US",
+              "availablemarketus",
+              "market us",
+              "available market",
+              "local purchase US",
+              "localpurchaseus",
+              "purchase us",
+              "local purchase",
+              "eye",
+              "live",
+              "available",
+              "market",
+              "us",
+              "local",
+              "purchase"
+            ],
+            "locality_facts_v1": {
+              "contract_version": "external_seed.locality_facts.v1",
+              "brand": "OILUJ",
+              "brand_origin": {
+                "country": null,
+                "home_market": null,
+                "source": null
+              },
+              "brand_origin_country": null,
+              "brand_home_market": null,
+              "market_availability": {
+                "available_markets": [
+                  "US"
+                ],
+                "local_purchase_markets": [
+                  "US"
+                ],
+                "source_market": "US",
+                "retail_channel_markets": [],
+                "availability_status": "in_stock"
+              },
+              "available_markets": [
+                "US"
+              ],
+              "local_purchase_markets": [
+                "US"
+              ],
+              "local_retail_channels": [],
+              "travel_size": null,
+              "travel_size_evidence": null,
+              "creator_local_reason": null,
+              "local_authority_level": "product_market",
+              "sources": [
+                "existing_seed_data",
+                "seed_row_market"
+              ]
+            },
+            "exclusion_flags": {
+              "gift_card": false,
+              "donation_bundle": false,
+              "non_merchandise": false
+            },
+            "quality_signals": {
+              "template_polluted": false,
+              "synthetic_summary": false,
+              "extractor_description_present": true
+            },
+            "quality_state": "eligible",
+            "suppression_flags": {
+              "exclude_from_recall": false,
+              "exclude_from_similar": false,
+              "suppress_ingredients": false,
+              "suppress_active_ingredients": false,
+              "suppress_facts": false
+            },
+            "version": "v1"
+          },
+          "backfill_guardrails_v1": {
+            "commerce_preserved": true,
+            "media_preserved": true,
+            "mode": "preserve_selected_fields",
+            "updated_at": "2026-05-28T02:05:15.990Z"
+          }
+        },
+        "variant_skus": [
+          "AUTO-e91e8820"
+        ]
+      }
+    },
+    "next_row_summary": {
+      "external_product_id": "",
+      "title": "OILÙJ, \"Eye Live\"",
+      "canonical_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+      "destination_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+      "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p15_i2_w1776.jpeg?width=640",
+      "image_count": 2,
+      "variant_count": 1,
+      "details_section_count": 2,
+      "faq_count": 0,
+      "how_to_use_present": false,
+      "ingredients_present": false,
+      "active_ingredients_present": false,
+      "seed_snapshot_contract": {
+        "contract_version": "external_seed.snapshot_contract.v1",
+        "source": "catalog_intelligence",
+        "authoritative": true,
+        "structured_fields_authoritative": true,
+        "legacy_fields_quarantined": true,
+        "replace_strategy": "replace_not_merge",
+        "updated_at": "2026-05-28T02:05:15.984Z"
+      },
+      "content_image_count": 0,
+      "section_media_count": 0
+    },
+    "variant_seed_rows": [],
+    "identity_listing_refresh": null,
+    "image_health_validation": null,
+    "diagnostics": null,
+    "commerce_facts_v2": {
+      "requested": true,
+      "matched": true,
+      "gate": {
+        "status": "pass",
+        "market_id": "US",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "market_switch_status": "unknown",
+        "sellable_region_status": "unknown",
+        "shipping_status": "unknown",
+        "promotions_status": "unknown",
+        "availability_status": "unknown",
+        "problems": []
+      },
+      "counters_by_site_market": [
+        {
+          "source_site": "www.oiluj.com",
+          "market_id": "US",
+          "total_offers": 1,
+          "native_currency_hit_rate": 0,
+          "price_parse_success_rate": 1,
+          "currency_confidence_low_rate": 1,
+          "market_switch_fail_rate": 0
+        }
+      ]
+    }
+  },
+  "error": null
+}

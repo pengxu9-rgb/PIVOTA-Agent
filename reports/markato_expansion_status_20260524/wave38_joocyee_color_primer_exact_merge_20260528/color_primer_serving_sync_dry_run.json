@@ -1,0 +1,830 @@
+{
+  "generated_at": "2026-05-28T01:39:09.720Z",
+  "mode": "dry_run",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": true,
+  "requested_ids": 3,
+  "fetched_rows": 3,
+  "mirror_rows": 3,
+  "planned_sku_rows": 4,
+  "planned_offer_rows": 4,
+  "planned_index_state_rows": 3,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "dry_run",
+    "existing_before": {
+      "catalog_products": 3,
+      "catalog_skus": 2,
+      "catalog_offers": 2,
+      "product_group_members": 1
+    },
+    "stale_delete_preview": {
+      "current_sku_rows": 5,
+      "current_offer_rows": 5,
+      "planned_stale_sku_deletes": 3,
+      "planned_stale_offer_deletes": 3,
+      "sample_stale_skus": [
+        {
+          "title": "Color-correcting Primer",
+          "sku_key": "prod::external_seed::external_seed::ext_3ca7c85748b01b4bc8e2f3bb::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_3ca7c85748b01b4bc8e2f3bb",
+          "source_variant_id": "prod::external_seed::external_seed::ext_3ca7c85748b01b4bc8e2f3bb",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Color-correcting Primer",
+          "sku_key": "prod::external_seed::external_seed::ext_794deab047eb4a75225329df::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_794deab047eb4a75225329df",
+          "source_variant_id": "prod::external_seed::external_seed::ext_794deab047eb4a75225329df",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Color-correcting Primer",
+          "sku_key": "prod::external_seed::external_seed::ext_8bced3f34a8100c3cfa62377::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_8bced3f34a8100c3cfa62377",
+          "source_variant_id": "prod::external_seed::external_seed::ext_8bced3f34a8100c3cfa62377",
+          "visible_attributes": {}
+        }
+      ],
+      "sample_stale_offers": [
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_3ca7c85748b01b4bc8e2f3bb::canonical",
+          "offer_id": "offer:external_seed:3fa6d3d5c8d10f6d16e47eabafb3fb36",
+          "list_price": 18.9,
+          "product_key": "prod::external_seed::external_seed::ext_3ca7c85748b01b4bc8e2f3bb",
+          "merchant_effective_price": 18.9
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_794deab047eb4a75225329df::canonical",
+          "offer_id": "offer:external_seed:03f1b7cc3eb4b260b2cfe5eb80aa823c",
+          "list_price": 18.9,
+          "product_key": "prod::external_seed::external_seed::ext_794deab047eb4a75225329df",
+          "merchant_effective_price": 18.9
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_8bced3f34a8100c3cfa62377::canonical",
+          "offer_id": "offer:external_seed:c7d5fe1e9f0b32114466473ea7b6c710",
+          "list_price": 18.9,
+          "product_key": "prod::external_seed::external_seed::ext_8bced3f34a8100c3cfa62377",
+          "merchant_effective_price": 18.9
+        }
+      ]
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 4
+    },
+    "product_upserts": 0,
+    "sku_upserts": 0,
+    "offer_upserts": 0,
+    "group_member_upserts": 0,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 0,
+    "identity_live_read_updates": 0,
+    "catalog_row_trust_upserts": 0,
+    "stale_offer_deletes": 0,
+    "stale_sku_deletes": 0
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_3ca7c85748b01b4bc8e2f3bb",
+      "product_key": "prod::external_seed::external_seed::ext_3ca7c85748b01b4bc8e2f3bb",
+      "product_group_id": "sig_de2c100382224878790af271",
+      "title": "Color-correcting Primer",
+      "brand": "Joocyee",
+      "product_type": "Primer",
+      "category": "Primer",
+      "category_path": "beauty/makeup/face/primer",
+      "canonical_url": "https://joocyee.com/products/color-correcting-primer",
+      "pivota_signature_id": "sig_21ec476a97152c0c4323f3068e07eabf",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_3ca7c85748b01b4bc8e2f3bb::sku_00291b13e127cd1ea888",
+        "product_key": "prod::external_seed::external_seed::ext_3ca7c85748b01b4bc8e2f3bb",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_3ca7c85748b01b4bc8e2f3bb",
+        "source_variant_id": "ext_3ca7c85748b01b4bc8e2f3bb:53960867643702",
+        "source_domain": "joocyee.com",
+        "sku": "6978647803336",
+        "barcode": null,
+        "title": "Soft Light Green",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/02_f2736478-dcc0-41e3-b415-c9189693db2e.jpg?v=1777277736",
+        "visible_attributes": {
+          "Color": "Soft Light Green"
+        },
+        "visible_option_labels": {
+          "Color": "Soft Light Green"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_3ca7c85748b01b4bc8e2f3bb",
+          "raw_variant_id": "53960867643702",
+          "source_variant_id": "ext_3ca7c85748b01b4bc8e2f3bb:53960867643702",
+          "variant_sku": "6978647803336",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://joocyee.com/products/color-correcting-primer",
+          "external_redirect_url": "https://joocyee.com/products/color-correcting-primer",
+          "price": "18.9",
+          "price_amount": 18.9,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/02_f2736478-dcc0-41e3-b415-c9189693db2e.jpg?v=1777277736",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Color": "Soft Light Green"
+          },
+          "raw_variant": {
+            "id": "53960867643702",
+            "sku": "6978647803336",
+            "url": "https://joocyee.com/products/color-correcting-primer?variant=53960867643702&utm_source=pivota&utm_medium=affiliate",
+            "price": "18.90",
+            "stock": "In Stock",
+            "title": "Soft Light Green",
+            "images": [
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/02_f2736478-dcc0-41e3-b415-c9189693db2e.jpg?v=1777277736",
+              "https://joocyee.com/cdn/shop/files/02-id.jpg?v=1777277736",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/b29a020a8b854e14e37563ac56c10b27.jpg?v=1777277765",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/9ae9a560a9e3371478e67f927b81bc89.jpg?v=1777277765",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/0c70a81518926b795fbb78c8b50c785b_a1b00473-fdae-48b5-a1ae-77652c5fede0.jpg?v=1777277765",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/b29a020a8b854e14e37563ac56c10b27_985d8f0f-bc52-49a6-ad77-4f3b30ab3871.jpg?v=1777355163",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/02_3e08a805-a6d2-43fa-9609-d26c504eef66.jpg?v=1777277736",
+              "https://joocyee.com/cdn/shop/files/01_2f246575-5c52-40b0-b6a5-5a408d7bdb52.jpg?v=1777277719",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/01_0830c177-3ce7-4da8-8a1f-3b1a4fab215d.jpg?v=1777277720"
+            ],
+            "options": [
+              {
+                "name": "Color",
+                "value": "Soft Light Green"
+              }
+            ],
+            "currency": "USD",
+            "deep_link": "https://joocyee.com/products/color-correcting-primer?variant=53960867643702&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/02_f2736478-dcc0-41e3-b415-c9189693db2e.jpg?v=1777277736",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/02_f2736478-dcc0-41e3-b415-c9189693db2e.jpg?v=1777277736",
+              "https://joocyee.com/cdn/shop/files/02-id.jpg?v=1777277736",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/b29a020a8b854e14e37563ac56c10b27.jpg?v=1777277765",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/9ae9a560a9e3371478e67f927b81bc89.jpg?v=1777277765",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/0c70a81518926b795fbb78c8b50c785b_a1b00473-fdae-48b5-a1ae-77652c5fede0.jpg?v=1777277765",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/b29a020a8b854e14e37563ac56c10b27_985d8f0f-bc52-49a6-ad77-4f3b30ab3871.jpg?v=1777355163",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/02_3e08a805-a6d2-43fa-9609-d26c504eef66.jpg?v=1777277736",
+              "https://joocyee.com/cdn/shop/files/01_2f246575-5c52-40b0-b6a5-5a408d7bdb52.jpg?v=1777277719",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/01_0830c177-3ce7-4da8-8a1f-3b1a4fab215d.jpg?v=1777277720"
+            ],
+            "variant_id": "53960867643702",
+            "description": "Naturally translucent, no chalky white cast\n\nBlends seamlessly in 3 seconds with bare hand.\n\nFormulated with cactus flower extract to deliver long-lasting hydration and moisture.\n\nExclusive pigment grinding technology blends perfectly with multiple skin types.\n\n0.25μm covering particles refined through 6 grinding processes for a non-caky, undetectable finish.\n\nShade Options:\n\nSoft Light Green\nNeutralizes redness and blemishes to restore a clear, even complexion.\n\nSoft Light Purple\nBrightens dull, sallow skin for a translucent, radiant glow.\n\nNET WT.: 1.01oz / 30g",
+            "option_name": "Color",
+            "product_url": "https://joocyee.com/products/color-correcting-primer",
+            "option_value": "Soft Light Green"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:0be44eb97415a84210584ea29765994c",
+        "sku_key": "prod::external_seed::external_seed::ext_3ca7c85748b01b4bc8e2f3bb::sku_00291b13e127cd1ea888",
+        "product_key": "prod::external_seed::external_seed::ext_3ca7c85748b01b4bc8e2f3bb",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 18.9,
+        "merchant_effective_price": 18.9,
+        "estimated_best_price": 18.9,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "epsv_dfbd57e3cd61bee1bd7e1033",
+        "source_domain": "joocyee.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "epsv_dfbd57e3cd61bee1bd7e1033",
+          "external_product_id": "ext_3ca7c85748b01b4bc8e2f3bb",
+          "domain": "joocyee.com",
+          "market": "US",
+          "product_title": "Color-correcting Primer",
+          "variant_title": "Soft Light Green",
+          "variant_sku": "6978647803336",
+          "raw_variant_id": "53960867643702",
+          "url": "https://joocyee.com/products/color-correcting-primer",
+          "offer_url": "https://joocyee.com/products/color-correcting-primer",
+          "canonical_url": "https://joocyee.com/products/color-correcting-primer",
+          "destination_url": "https://joocyee.com/products/color-correcting-primer",
+          "external_redirect_url": "https://joocyee.com/products/color-correcting-primer",
+          "merchant_display_name": "Joocyee",
+          "price": "18.9",
+          "price_amount": 18.9,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-14T00:47:50.939Z",
+            "evidence_url": "https://joocyee.com/products/color-correcting-primer",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-14T00:47:50.939Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://joocyee.com/products/color-correcting-primer"
+            },
+            "regional_price": {
+              "amount": 18.9,
+              "currency": "USD",
+              "display_raw": "18.90",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://joocyee.com/products/color-correcting-primer",
+              "captured_at": "2026-05-14T00:47:50.939Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-14T00:47:50.939Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-14T00:47:50.939Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-14T00:47:50.939Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 18.9,
+              "currency": "USD",
+              "display_raw": "18.90",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://joocyee.com/products/color-correcting-primer",
+              "captured_at": "2026-05-14T00:47:50.939Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-14T00:47:50.939Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 569
+      }
+    },
+    {
+      "external_product_id": "ext_794deab047eb4a75225329df",
+      "product_key": "prod::external_seed::external_seed::ext_794deab047eb4a75225329df",
+      "product_group_id": "sig_de2c100382224878790af271",
+      "title": "Color-correcting Primer",
+      "brand": "Joocyee",
+      "product_type": "Primer",
+      "category": "Primer",
+      "category_path": "beauty/makeup/face/primer",
+      "canonical_url": "https://joocyee.com/products/color-correcting-primer",
+      "pivota_signature_id": "sig_6c0ec349bd054178a2d4de2e237c7b1f",
+      "sku_rows": 2,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_794deab047eb4a75225329df::sku_c2776b5f9515420165e1",
+        "product_key": "prod::external_seed::external_seed::ext_794deab047eb4a75225329df",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_794deab047eb4a75225329df",
+        "source_variant_id": "ext_794deab047eb4a75225329df:53960867676470",
+        "source_domain": "joocyee.com",
+        "sku": "6978647803329",
+        "barcode": null,
+        "title": "Soft Light Purple",
+        "currency": "USD",
+        "image_url": "https://joocyee.com/cdn/shop/files/01_2f246575-5c52-40b0-b6a5-5a408d7bdb52.jpg?v=1777277719",
+        "visible_attributes": {
+          "Color": "Soft Light Purple"
+        },
+        "visible_option_labels": {
+          "Color": "Soft Light Purple"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_794deab047eb4a75225329df",
+          "raw_variant_id": "53960867676470",
+          "source_variant_id": "ext_794deab047eb4a75225329df:53960867676470",
+          "variant_sku": "6978647803329",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://joocyee.com/products/color-correcting-primer",
+          "external_redirect_url": "https://joocyee.com/products/color-correcting-primer",
+          "price": "18.9",
+          "price_amount": 18.9,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://joocyee.com/cdn/shop/files/01_2f246575-5c52-40b0-b6a5-5a408d7bdb52.jpg?v=1777277719",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Color": "Soft Light Purple"
+          },
+          "raw_variant": {
+            "sku": "6978647803329",
+            "url": "https://joocyee.com/products/color-correcting-primer?variant=53960867676470&utm_source=pivota&utm_medium=affiliate",
+            "price": "18.90",
+            "stock": "In Stock",
+            "title": "Soft Light Purple",
+            "images": [
+              "https://joocyee.com/cdn/shop/files/01_2f246575-5c52-40b0-b6a5-5a408d7bdb52.jpg?v=1777277719",
+              "https://joocyee.com/cdn/shop/files/02-id.jpg?v=1777277736",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/b29a020a8b854e14e37563ac56c10b27.jpg?v=1777277765",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/9ae9a560a9e3371478e67f927b81bc89.jpg?v=1777277765",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/0c70a81518926b795fbb78c8b50c785b_a1b00473-fdae-48b5-a1ae-77652c5fede0.jpg?v=1777277765",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/b29a020a8b854e14e37563ac56c10b27_985d8f0f-bc52-49a6-ad77-4f3b30ab3871.jpg?v=1777355163",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/02_f2736478-dcc0-41e3-b415-c9189693db2e.jpg?v=1777277736",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/02_3e08a805-a6d2-43fa-9609-d26c504eef66.jpg?v=1777277736",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/01_0830c177-3ce7-4da8-8a1f-3b1a4fab215d.jpg?v=1777277720"
+            ],
+            "options": [
+              {
+                "name": "Color",
+                "value": "Soft Light Purple"
+              }
+            ],
+            "currency": "USD",
+            "deep_link": "https://joocyee.com/products/color-correcting-primer?variant=53960867676470&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://joocyee.com/cdn/shop/files/01_2f246575-5c52-40b0-b6a5-5a408d7bdb52.jpg?v=1777277719",
+            "image_urls": [
+              "https://joocyee.com/cdn/shop/files/01_2f246575-5c52-40b0-b6a5-5a408d7bdb52.jpg?v=1777277719",
+              "https://joocyee.com/cdn/shop/files/02-id.jpg?v=1777277736",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/b29a020a8b854e14e37563ac56c10b27.jpg?v=1777277765",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/9ae9a560a9e3371478e67f927b81bc89.jpg?v=1777277765",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/0c70a81518926b795fbb78c8b50c785b_a1b00473-fdae-48b5-a1ae-77652c5fede0.jpg?v=1777277765",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/b29a020a8b854e14e37563ac56c10b27_985d8f0f-bc52-49a6-ad77-4f3b30ab3871.jpg?v=1777355163",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/02_f2736478-dcc0-41e3-b415-c9189693db2e.jpg?v=1777277736",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/02_3e08a805-a6d2-43fa-9609-d26c504eef66.jpg?v=1777277736",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/01_0830c177-3ce7-4da8-8a1f-3b1a4fab215d.jpg?v=1777277720"
+            ],
+            "variant_id": "53960867676470",
+            "description": "Naturally translucent, no chalky white cast\n\nBlends seamlessly in 3 seconds with bare hand.\n\nFormulated with cactus flower extract to deliver long-lasting hydration and moisture.\n\nExclusive pigment grinding technology blends perfectly with multiple skin types.\n\n0.25μm covering particles refined through 6 grinding processes for a non-caky, undetectable finish.\n\nShade Options:\n\nSoft Light Green\nNeutralizes redness and blemishes to restore a clear, even complexion.\n\nSoft Light Purple\nBrightens dull, sallow skin for a translucent, radiant glow.\n\nNET WT.: 1.01oz / 30g",
+            "option_name": "Color",
+            "product_url": "https://joocyee.com/products/color-correcting-primer",
+            "option_value": "Soft Light Purple"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:b851e0883eff539946963fa71a518103",
+        "sku_key": "prod::external_seed::external_seed::ext_794deab047eb4a75225329df::sku_c2776b5f9515420165e1",
+        "product_key": "prod::external_seed::external_seed::ext_794deab047eb4a75225329df",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 18.9,
+        "merchant_effective_price": 18.9,
+        "estimated_best_price": 18.9,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_ebb12bb4d8f9c3e65b57a8f3",
+        "source_domain": "joocyee.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_ebb12bb4d8f9c3e65b57a8f3",
+          "external_product_id": "ext_794deab047eb4a75225329df",
+          "domain": "joocyee.com",
+          "market": "US",
+          "product_title": "Color-correcting Primer",
+          "variant_title": "Soft Light Purple",
+          "variant_sku": "6978647803329",
+          "raw_variant_id": "53960867676470",
+          "url": "https://joocyee.com/products/color-correcting-primer",
+          "offer_url": "https://joocyee.com/products/color-correcting-primer",
+          "canonical_url": "https://joocyee.com/products/color-correcting-primer",
+          "destination_url": "https://joocyee.com/products/color-correcting-primer",
+          "external_redirect_url": "https://joocyee.com/products/color-correcting-primer",
+          "merchant_display_name": "Joocyee",
+          "price": "18.9",
+          "price_amount": 18.9,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-14T00:47:50.939Z",
+            "evidence_url": "https://joocyee.com/products/color-correcting-primer",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-14T00:47:50.939Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://joocyee.com/products/color-correcting-primer"
+            },
+            "regional_price": {
+              "amount": 18.9,
+              "currency": "USD",
+              "display_raw": "18.90",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://joocyee.com/products/color-correcting-primer",
+              "captured_at": "2026-05-14T00:47:50.939Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-14T00:47:50.939Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-14T00:47:50.939Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-14T00:47:50.939Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 18.9,
+              "currency": "USD",
+              "display_raw": "18.90",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://joocyee.com/products/color-correcting-primer",
+              "captured_at": "2026-05-14T00:47:50.939Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-14T00:47:50.939Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 569
+      }
+    },
+    {
+      "external_product_id": "ext_8bced3f34a8100c3cfa62377",
+      "product_key": "prod::external_seed::external_seed::ext_8bced3f34a8100c3cfa62377",
+      "product_group_id": "sig_de2c100382224878790af271",
+      "title": "Color-correcting Primer",
+      "brand": "Joocyee",
+      "product_type": "Primer",
+      "category": "Primer",
+      "category_path": "beauty/makeup/face/primer",
+      "canonical_url": "https://joocyee.com/products/color-correcting-primer",
+      "pivota_signature_id": "sig_f6f452fb0f01fb07be5487f10add516f",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_8bced3f34a8100c3cfa62377::sku_e615aa9cca03a6aa81e6",
+        "product_key": "prod::external_seed::external_seed::ext_8bced3f34a8100c3cfa62377",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_8bced3f34a8100c3cfa62377",
+        "source_variant_id": "ext_8bced3f34a8100c3cfa62377:53960867676470",
+        "source_domain": "joocyee.com",
+        "sku": "6978647803329",
+        "barcode": null,
+        "title": "Soft Light Purple",
+        "currency": "USD",
+        "image_url": "https://joocyee.com/cdn/shop/files/01_2f246575-5c52-40b0-b6a5-5a408d7bdb52.jpg?v=1777277719",
+        "visible_attributes": {
+          "Color": "Soft Light Purple"
+        },
+        "visible_option_labels": {
+          "Color": "Soft Light Purple"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_8bced3f34a8100c3cfa62377",
+          "raw_variant_id": "53960867676470",
+          "source_variant_id": "ext_8bced3f34a8100c3cfa62377:53960867676470",
+          "variant_sku": "6978647803329",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://joocyee.com/products/color-correcting-primer",
+          "external_redirect_url": "https://joocyee.com/products/color-correcting-primer",
+          "price": "18.9",
+          "price_amount": 18.9,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://joocyee.com/cdn/shop/files/01_2f246575-5c52-40b0-b6a5-5a408d7bdb52.jpg?v=1777277719",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Color": "Soft Light Purple"
+          },
+          "raw_variant": {
+            "id": "53960867676470",
+            "sku": "6978647803329",
+            "url": "https://joocyee.com/products/color-correcting-primer?variant=53960867676470&utm_source=pivota&utm_medium=affiliate",
+            "price": "18.90",
+            "stock": "In Stock",
+            "title": "Soft Light Purple",
+            "images": [
+              "https://joocyee.com/cdn/shop/files/01_2f246575-5c52-40b0-b6a5-5a408d7bdb52.jpg?v=1777277719",
+              "https://joocyee.com/cdn/shop/files/02-id.jpg?v=1777277736",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/b29a020a8b854e14e37563ac56c10b27.jpg?v=1777277765",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/9ae9a560a9e3371478e67f927b81bc89.jpg?v=1777277765",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/0c70a81518926b795fbb78c8b50c785b_a1b00473-fdae-48b5-a1ae-77652c5fede0.jpg?v=1777277765",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/b29a020a8b854e14e37563ac56c10b27_985d8f0f-bc52-49a6-ad77-4f3b30ab3871.jpg?v=1777355163",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/02_f2736478-dcc0-41e3-b415-c9189693db2e.jpg?v=1777277736",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/02_3e08a805-a6d2-43fa-9609-d26c504eef66.jpg?v=1777277736",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/01_0830c177-3ce7-4da8-8a1f-3b1a4fab215d.jpg?v=1777277720"
+            ],
+            "options": [
+              {
+                "name": "Color",
+                "value": "Soft Light Purple"
+              }
+            ],
+            "currency": "USD",
+            "deep_link": "https://joocyee.com/products/color-correcting-primer?variant=53960867676470&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://joocyee.com/cdn/shop/files/01_2f246575-5c52-40b0-b6a5-5a408d7bdb52.jpg?v=1777277719",
+            "image_urls": [
+              "https://joocyee.com/cdn/shop/files/01_2f246575-5c52-40b0-b6a5-5a408d7bdb52.jpg?v=1777277719",
+              "https://joocyee.com/cdn/shop/files/02-id.jpg?v=1777277736",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/b29a020a8b854e14e37563ac56c10b27.jpg?v=1777277765",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/9ae9a560a9e3371478e67f927b81bc89.jpg?v=1777277765",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/0c70a81518926b795fbb78c8b50c785b_a1b00473-fdae-48b5-a1ae-77652c5fede0.jpg?v=1777277765",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/b29a020a8b854e14e37563ac56c10b27_985d8f0f-bc52-49a6-ad77-4f3b30ab3871.jpg?v=1777355163",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/02_f2736478-dcc0-41e3-b415-c9189693db2e.jpg?v=1777277736",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/02_3e08a805-a6d2-43fa-9609-d26c504eef66.jpg?v=1777277736",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/01_0830c177-3ce7-4da8-8a1f-3b1a4fab215d.jpg?v=1777277720"
+            ],
+            "variant_id": "53960867676470",
+            "description": "Naturally translucent, no chalky white cast\n\nBlends seamlessly in 3 seconds with bare hand.\n\nFormulated with cactus flower extract to deliver long-lasting hydration and moisture.\n\nExclusive pigment grinding technology blends perfectly with multiple skin types.\n\n0.25μm covering particles refined through 6 grinding processes for a non-caky, undetectable finish.\n\nShade Options:\n\nSoft Light Green\nNeutralizes redness and blemishes to restore a clear, even complexion.\n\nSoft Light Purple\nBrightens dull, sallow skin for a translucent, radiant glow.\n\nNET WT.: 1.01oz / 30g",
+            "option_name": "Color",
+            "product_url": "https://joocyee.com/products/color-correcting-primer",
+            "option_value": "Soft Light Purple"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:21c3079639efce98baee671832fadf61",
+        "sku_key": "prod::external_seed::external_seed::ext_8bced3f34a8100c3cfa62377::sku_e615aa9cca03a6aa81e6",
+        "product_key": "prod::external_seed::external_seed::ext_8bced3f34a8100c3cfa62377",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 18.9,
+        "merchant_effective_price": 18.9,
+        "estimated_best_price": 18.9,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "epsv_2f96a2d8d7f9686a5b196a92",
+        "source_domain": "joocyee.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "epsv_2f96a2d8d7f9686a5b196a92",
+          "external_product_id": "ext_8bced3f34a8100c3cfa62377",
+          "domain": "joocyee.com",
+          "market": "US",
+          "product_title": "Color-correcting Primer",
+          "variant_title": "Soft Light Purple",
+          "variant_sku": "6978647803329",
+          "raw_variant_id": "53960867676470",
+          "url": "https://joocyee.com/products/color-correcting-primer",
+          "offer_url": "https://joocyee.com/products/color-correcting-primer",
+          "canonical_url": "https://joocyee.com/products/color-correcting-primer",
+          "destination_url": "https://joocyee.com/products/color-correcting-primer",
+          "external_redirect_url": "https://joocyee.com/products/color-correcting-primer",
+          "merchant_display_name": "Joocyee",
+          "price": "18.9",
+          "price_amount": 18.9,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-14T00:47:50.939Z",
+            "evidence_url": "https://joocyee.com/products/color-correcting-primer",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-14T00:47:50.939Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://joocyee.com/products/color-correcting-primer"
+            },
+            "regional_price": {
+              "amount": 18.9,
+              "currency": "USD",
+              "display_raw": "18.90",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://joocyee.com/products/color-correcting-primer",
+              "captured_at": "2026-05-14T00:47:50.939Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-14T00:47:50.939Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-14T00:47:50.939Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-14T00:47:50.939Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 18.9,
+              "currency": "USD",
+              "display_raw": "18.90",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://joocyee.com/products/color-correcting-primer",
+              "captured_at": "2026-05-14T00:47:50.939Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-14T00:47:50.939Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 569
+      }
+    }
+  ]
+}

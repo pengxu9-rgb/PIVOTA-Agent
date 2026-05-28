@@ -87,6 +87,41 @@ describe('pdpIngredientAuthority', () => {
     );
   });
 
+  test('keeps UpCircle official INCI when organic footnotes mention ingredients', () => {
+    const modules = buildStructuredPdpIngredientModules({
+      merchant_id: 'external_seed',
+      source: 'external_seed',
+      title: 'Hand + Body Lotion with Bergamot Water',
+      category: 'Body Lotion',
+      product_type: 'Body Lotion',
+      category_path: 'beauty/bodycare/body-lotion',
+      pdp_schema_profile: 'beauty_formula',
+      pdp_ingredients_raw:
+        'Aqua, Glycerin, Cetyl Alcohol, Glyceryl Stearate, Helianthus Annuus (Sunflower) Seed Oil*, Citrus Aurantium Dulcis (Orange) Peel Oil, Cocos Nucifera (Coconut) Fruit Oil, Citrus Aurantium Bergamia (Bergamot) Fruit Water, Prunus Amygdalus Dulcis (Sweet Almond) Oil, Simmondsia Chinensis (Jojoba) Seed Oil, Aloe Barbadensis Leaf Extract*, Cymbopogon Flexuosus (Lemongrass) Oil, Mentha Piperita (Peppermint) Leaf Oil, Tocopherol, Sodium Stearoyl Lactylate, Dehydroacetic Acid, Benzyl Alcohol, Limonene^, Citral^, Geraniol^, Citronellol^, Linalool^. *Organic ingredients, ^Natural constituent of essential oils listed.',
+      pdp_field_quality_summary: {
+        ingredients_raw: {
+          source_origin: 'official_html',
+          source_quality_status: 'high',
+        },
+      },
+    });
+
+    expect(modules.ingredientsInciData).toEqual(
+      expect.objectContaining({
+        source_origin: 'pdp_section',
+        source_quality_status: 'authoritative',
+        items: expect.arrayContaining([
+          'Aqua',
+          'Glycerin',
+          'Helianthus Annuus (Sunflower) Seed Oil*',
+          'Citrus Aurantium Bergamia (Bergamot) Fruit Water',
+          'Linalool^',
+        ]),
+      }),
+    );
+    expect(modules.authority.purity_status).toBe('authoritative');
+  });
+
   test('keeps official fragrance balm INCI visible when text starts with a shade prefix', () => {
     const modules = buildStructuredPdpIngredientModules({
       merchant_id: 'external_seed',

@@ -2161,6 +2161,38 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     expect(payload.modules.find((module) => module.type === 'materials')).toBeFalsy();
   });
 
+  test('renders official high-quality single botanical ingredient for formula PDPs', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_delicate_rose_mist',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Bulgarian Rose Water Face, Hair & Body Mist Spray',
+        category: 'Face Mist',
+        catalog_category_path: 'beauty/skincare/face-mist',
+        image_url: 'https://example.com/rose-mist.png',
+        price: { amount: 29.99, currency: 'USD' },
+        pdp_ingredients_raw: 'Organic Rosa Damascena (Damask Rose) Floral Water',
+        raw_ingredient_text_clean: 'Organic Rosa Damascena (Damask Rose) Floral Water',
+        pdp_field_quality_summary: {
+          ingredients_raw: {
+            source_origin: 'official_html',
+            source_quality_status: 'high',
+            source_kinds: ['official_pdp_full_ingredients'],
+          },
+        },
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const ingredientsInci = payload.modules.find((module) => module.type === 'ingredients_inci');
+
+    expect(ingredientsInci?.data?.items).toEqual(['Organic Rosa Damascena (Damask Rose) Floral Water']);
+    expect(ingredientsInci?.data?.source_origin).toBe('official_html');
+    expect(ingredientsInci?.data?.source_quality_status).toBe('authoritative');
+  });
+
   test('surfaces source-backed key ingredient actives for external seed formula PDPs', () => {
     const payload = buildPdpPayload({
       product: {
