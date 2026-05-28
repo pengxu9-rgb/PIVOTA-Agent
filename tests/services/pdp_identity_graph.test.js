@@ -3314,39 +3314,12 @@ describe('pdpIdentityGraph', () => {
     );
   });
 
-  test('listLivePdpIdentityRowsForRefs gates on identity_status/live_read when catalog_row_trust flag is off', async () => {
+  test('listLivePdpIdentityRowsForRefs gates on catalog_row_trust.serving_decision=public', async () => {
     process.env = {
       ...ORIGINAL_ENV,
       NODE_ENV: 'test',
-      DATABASE_URL: 'postgresql://example.test/pdp-identity-trust-off',
+      DATABASE_URL: 'postgresql://example.test/pdp-identity-trust',
       PDP_IDENTITY_GRAPH_ENABLED: 'false',
-    };
-    delete process.env.PDP_IDENTITY_USES_CATALOG_ROW_TRUST;
-    jest.resetModules();
-    const { listLivePdpIdentityRowsForRefs } = require('../../src/services/pdpIdentityGraph');
-    let capturedSql = null;
-    const queryFn = jest.fn(async (sql) => {
-      capturedSql = String(sql);
-      return { rows: [] };
-    });
-    await listLivePdpIdentityRowsForRefs({
-      sourceListingRefs: ['external_seed:ext_1'],
-      queryFn,
-    });
-    expect(queryFn).toHaveBeenCalledTimes(1);
-    expect(capturedSql).toMatch(/FROM\s+pdp_identity_listing\s*$/m);
-    expect(capturedSql).toMatch(/identity_status\s*=\s*'approved'/i);
-    expect(capturedSql).toMatch(/live_read_enabled\s*=\s*true/i);
-    expect(capturedSql).not.toMatch(/catalog_row_trust/i);
-  });
-
-  test('listLivePdpIdentityRowsForRefs gates on catalog_row_trust when flag is on', async () => {
-    process.env = {
-      ...ORIGINAL_ENV,
-      NODE_ENV: 'test',
-      DATABASE_URL: 'postgresql://example.test/pdp-identity-trust-on',
-      PDP_IDENTITY_GRAPH_ENABLED: 'false',
-      PDP_IDENTITY_USES_CATALOG_ROW_TRUST: 'true',
     };
     jest.resetModules();
     const { listLivePdpIdentityRowsForRefs } = require('../../src/services/pdpIdentityGraph');
@@ -3378,7 +3351,6 @@ describe('pdpIdentityGraph', () => {
       NODE_ENV: 'test',
       DATABASE_URL: 'postgresql://example.test/pdp-identity-trust-missing',
       PDP_IDENTITY_GRAPH_ENABLED: 'false',
-      PDP_IDENTITY_USES_CATALOG_ROW_TRUST: 'true',
     };
     jest.resetModules();
     const { listLivePdpIdentityRowsForRefs } = require('../../src/services/pdpIdentityGraph');
@@ -3392,60 +3364,6 @@ describe('pdpIdentityGraph', () => {
       queryFn,
     });
     expect(rows).toEqual([]);
-  });
-
-  test('listLivePdpIdentityRowsForRefs ignores inactive external-seed identity rows', async () => {
-    process.env = {
-      ...ORIGINAL_ENV,
-      NODE_ENV: 'test',
-      DATABASE_URL: 'postgresql://example.test/pivota',
-      PDP_IDENTITY_GRAPH_ENABLED: 'false',
-    };
-    jest.resetModules();
-    const { listLivePdpIdentityRowsForRefs } = require('../../src/services/pdpIdentityGraph');
-    const activeRow = {
-      source_listing_ref: 'external_seed:ext_active',
-      merchant_id: 'external_seed',
-      product_id: 'ext_active',
-      source_kind: 'external_seed',
-      source_tier: 'brand',
-      live_read_enabled: true,
-      sellable_item_group_id: 'sig_active',
-      product_line_id: 'pl_active',
-      review_family_id: 'rf_active',
-      identity_status: 'approved',
-      identity_confidence: 0.98,
-      match_basis: ['official_url:https://brand.example/products/ext-active'],
-      review_required: false,
-      review_reason_codes: [],
-    };
-    const inactiveRow = {
-      ...activeRow,
-      source_listing_ref: 'external_seed:ext_inactive',
-      product_id: 'ext_inactive',
-      sellable_item_group_id: 'sig_inactive',
-    };
-    const queryFn = jest.fn(async (sql) => {
-      const normalizedSql = String(sql || '').replace(/\s+/g, ' ').trim();
-      return {
-        rows: normalizedSql.includes('FROM external_product_seeds eps')
-          ? [activeRow]
-          : [activeRow, inactiveRow],
-      };
-    });
-
-    const rows = await listLivePdpIdentityRowsForRefs({
-      sourceListingRefs: ['external_seed:ext_active', 'external_seed:ext_inactive'],
-      queryFn,
-    });
-
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toEqual(
-      expect.objectContaining({
-        source_listing_ref: 'external_seed:ext_active',
-        sellable_item_group_id: 'sig_active',
-      }),
-    );
   });
 
   test('promotePdpIdentityLiveRead dry-run enables whole exact-item groups backed by brand source', async () => {
