@@ -407,6 +407,13 @@ function buildPlan(row, options = {}) {
   };
 
   if ((currentInci || currentStructuredInci) && !forceFilledInci) {
+    if (options.forceFamily) {
+      result.action = 'force_product_family_override';
+      result.reason_codes = ['forced_product_family_override', 'trusted_inci_available'];
+      const changed = before !== JSON.stringify(seedData);
+      result.status = changed ? (options.apply ? 'pending_apply' : 'dry_run') : 'skipped_current_has_inci';
+      return { result, nextSeedData: seedData, changed };
+    }
     result.status = 'skipped_current_has_inci';
     return { result, nextSeedData: seedData, changed: false };
   }
@@ -576,7 +583,9 @@ function buildServingBlockPatch(seedData, options = {}) {
 }
 
 async function syncIngredientBlockerServingMirrors(externalProductId, seedData, action = '') {
-  const preserveTrustedIngredients = action === 'clear_stale_force_fill_contract';
+  const preserveTrustedIngredients =
+    action === 'clear_stale_force_fill_contract' ||
+    action === 'force_product_family_override';
   const payloadPatch = buildServingBlockPatch(seedData, { preserveTrustedIngredients });
   if (!Object.keys(payloadPatch).length) return { catalog_products: 0, pdp_identity_listing: 0 };
   const payloadJson = JSON.stringify(payloadPatch).replace(/\u0000/g, '').replace(/\\+u0000/gi, '');
@@ -708,6 +717,7 @@ async function main() {
         'component_ref_review_required',
         'mark_inci_not_applicable',
         'clear_stale_force_fill_contract',
+        'force_product_family_override',
       ].includes(plan.result.action)) {
         try {
           const sync = await syncIngredientBlockerServingMirrors(

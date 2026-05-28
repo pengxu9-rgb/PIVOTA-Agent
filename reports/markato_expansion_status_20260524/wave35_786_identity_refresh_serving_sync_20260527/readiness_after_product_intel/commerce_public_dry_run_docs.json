@@ -1,0 +1,498 @@
+{
+  "generated_at": "2026-05-27T17:25:52.560Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 9,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_3995bef348fc16e82bedefd6",
+      "sellable_item_group_id": "sig_3995bef348fc16e82bedefd6",
+      "product_line_id": "pl_90650b64494b23181d2b7dc7",
+      "review_family_id": "rf_90650b64494b23181d2b7dc7",
+      "brand_name": "786 Cosmetics",
+      "category_paths": [
+        "Powder"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Havana - Breathable Nail Polish",
+      "subtitle": "This beautiful mint green is inspired by the colorful Cuban city of Havana. Known for its beautiful pastel-covered buildings, vintage cars, beaches and striking culture, this city is also famous for its rich 500 year old history filled with colonial rule, pirates, revolutions and more. Considered as one of the most impressive historical city centers in the Caribbean, the city is a UNESCO Heritage site.\n\nHavana is best described as an opaque perfect mint green.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Havana-BreathableNailPolish.jpg?v=1737674598",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Havana-BreathableNailPolish.jpg?v=1737674598",
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Havana_3.png?v=1737674598",
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/products/786cosmetics-default-title-havana-breathable-nail-polish-new-40480973160679.png?v=1737674598"
+      ],
+      "price_min": 13.99,
+      "price_max": 13.99,
+      "default_offer_id": "external_seed:ext_ab5107f3a835da10508757c6",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A nail polish from 786 Cosmetics for nail-care routines.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "786 Cosmetics",
+        "Powder"
+      ],
+      "sort_keys": {
+        "price_min": 13.99,
+        "price_max": 13.99,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_ab5107f3a835da10508757c6"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_2f9acb7f87ef84f04de0cafe",
+      "sellable_item_group_id": "sig_2f9acb7f87ef84f04de0cafe",
+      "product_line_id": "pl_9ef24885c14be9bc9561a265",
+      "review_family_id": "rf_9ef24885c14be9bc9561a265",
+      "brand_name": "786 Cosmetics",
+      "category_paths": [
+        "Powder"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Tallinn - Breathable Nail Polish",
+      "subtitle": "This creamy pink-brown hue is inspired by and named after the beautiful Estonian city, Tallinn. Overlooking the Baltic Sea, Tallinn is home to colorful buildings, turreted castles, and has one of the best-preserved historical centers in Europe, with its medieval churches and other buildings falling under UNESCO protection.\n\nThis color is best described creamy brown with pink undertones.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Tallinn-BreathableNailPolish.jpg?v=1762529231",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Tallinn-BreathableNailPolish.jpg?v=1762529231",
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Tallinn_3.png?v=1737675209",
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/products/786cosmetics-default-title-tallinn-breathable-nail-polish-38210120941799.png?v=1737675209"
+      ],
+      "price_min": 9.79,
+      "price_max": 9.79,
+      "default_offer_id": "external_seed:ext_c6d113bff874c00abfb4ba33",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A nail polish from 786 Cosmetics for nail-care routines.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "786 Cosmetics",
+        "Powder"
+      ],
+      "sort_keys": {
+        "price_min": 9.79,
+        "price_max": 9.79,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_c6d113bff874c00abfb4ba33"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_d99b29e6ad8e33c0ab94cbed",
+      "sellable_item_group_id": "sig_d99b29e6ad8e33c0ab94cbed",
+      "product_line_id": "pl_7ba9be0e2c5ad6a61c37e181",
+      "review_family_id": "rf_7ba9be0e2c5ad6a61c37e181",
+      "brand_name": "786 Cosmetics",
+      "category_paths": [
+        "Powder"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Uluru - Breathable Nail Polish",
+      "subtitle": "This muted redwood colored nail polish is inspired by and named after the large sandstone rock formation found in Australia. Uluru, or Ayers Rock, is a UNESCO World Heritage Site and is sacred to the aboriginal people of the area. The monolith has rich indigenous history and myths and legends surrounding it that go back thousands of years. The area around the formation has ancient paintings, rock caves, springs and waterholes and is known to give off a reddish pink hue in the sunlight.\n\nUluru is a muted redwood nail polish with cool brown undertones. Uluru is more brown and less saturated than Cusco.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Uluru-BreathableNailPolish.jpg?v=1762529553",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Uluru-BreathableNailPolish.jpg?v=1762529553",
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Uluru_3.png?v=1737671255",
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Uluru-BreathableNailPolish_2.jpg?v=1737671255",
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Uluru-BreathableNailPolish_3.jpg?v=1737671255",
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Uluru-BreathableNailPolish_4.jpg?v=1737671255",
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Uluru-BreathableNailPolish_5.jpg?v=1737671255"
+      ],
+      "price_min": 9.79,
+      "price_max": 9.79,
+      "default_offer_id": "external_seed:ext_f56010dd5bf971f7b7f644a6",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A nail polish from 786 Cosmetics for nail-care routines.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "786 Cosmetics",
+        "Powder"
+      ],
+      "sort_keys": {
+        "price_min": 9.79,
+        "price_max": 9.79,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_f56010dd5bf971f7b7f644a6"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_0b9d23782833ad5356ac276a",
+      "sellable_item_group_id": "sig_0b9d23782833ad5356ac276a",
+      "product_line_id": "pl_e59ed8ee8e78a6051bdf86e9",
+      "review_family_id": "rf_e59ed8ee8e78a6051bdf86e9",
+      "brand_name": "786 Cosmetics",
+      "category_paths": [
+        "Powder"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Patagonia - Breathable Nail Polish",
+      "subtitle": "This mint aquamarine is inspired by the Marble Caves of Patagonia, Chile. The Marble Caves, also called the Capillas de Mármol, formed over the last 6000+ years as water melted from nearby glaciers and washed up against solid rocks slowly carving out the caves. Over time, the minerals in the water caused the caves to have blue, green, aquamarine, yellow, and black hues.\n\nPatagonia is a light, mint aquamarine halal nail polish. Patagonia is more green toned than Azores.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Patagonia-BreathableNailPolish.jpg?v=1762528735",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Patagonia-BreathableNailPolish.jpg?v=1762528735",
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/PatagoniaSwatch.png?v=1737988781",
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Patagonia.jpg?v=1737988781"
+      ],
+      "price_min": 13.99,
+      "price_max": 13.99,
+      "default_offer_id": "external_seed:ext_abd25039dea2189dfcca8079",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A nail polish from 786 Cosmetics for nail-care routines.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "786 Cosmetics",
+        "Powder"
+      ],
+      "sort_keys": {
+        "price_min": 13.99,
+        "price_max": 13.99,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_abd25039dea2189dfcca8079"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_334c164a037b883cdb4e9078",
+      "sellable_item_group_id": "sig_334c164a037b883cdb4e9078",
+      "product_line_id": "pl_cf8a525c866c73d9cf80a388",
+      "review_family_id": "rf_cf8a525c866c73d9cf80a388",
+      "brand_name": "786 Cosmetics",
+      "category_paths": [
+        "Powder"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Dubrovnik - Breathable Nail Polish",
+      "subtitle": "This creamy coral is inspired by the orange terracotta roofs found in the medieval town of Lucca in Dubrovnik, Croatia. The stunning city of Dubrovnik is a popular tourist choice for its location overlooking the Adriatic Sea. It's also a UNESCO world heritage site recognizing its outstanding medieval architecture and fortified old town.\n\nThis color is best described as a creamy terracotta coral.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Dubrovnik-BreathableNailPolish.jpg?v=1762529171",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Dubrovnik-BreathableNailPolish.jpg?v=1762529171",
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Dubrovnik_3.png?v=1737672806",
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/products/786cosmetics-default-title-dubrovnik-breathable-nail-polish-36760242421991.jpg?v=1737672806"
+      ],
+      "price_min": 9.79,
+      "price_max": 9.79,
+      "default_offer_id": "external_seed:ext_efe7512de8c6df9f75ca19e0",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A nail polish from 786 Cosmetics for nail-care routines.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "786 Cosmetics",
+        "Powder"
+      ],
+      "sort_keys": {
+        "price_min": 9.79,
+        "price_max": 9.79,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_efe7512de8c6df9f75ca19e0"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_140a391c218848e70b1a3ec1",
+      "sellable_item_group_id": "sig_140a391c218848e70b1a3ec1",
+      "product_line_id": "pl_4f7f6cd23be6bb759786b202",
+      "review_family_id": "rf_4f7f6cd23be6bb759786b202",
+      "brand_name": "786 Cosmetics",
+      "category_paths": [
+        "Powder"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Toulouse - Breathable Nail Polish",
+      "subtitle": "This pretty pink is inspired by \"La Ville Rose\" or \"The Pink City,\" Toulouse, France. The city gets its name from its unique and beautiful pink stone architecture. The city was originally founded by the Romans in the 5th century and today is home to three UNESCO World Heritage Sites including the Basilica of St. Sernin, the largest remaining Romanesque building in Europe.\n\nToulouse is a beautiful, everyday medium pink nail polish. Toulouse is lighter than Uluru and more pink than Himalayas.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Toulouse-BreathableNailPolish.jpg?v=1762529163",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Toulouse-BreathableNailPolish.jpg?v=1762529163",
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Toulouse.png?v=1737674408",
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/products/786cosmetics-default-title-toulouse-breathable-nail-polish-34643798622439.jpg?v=1737674408",
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/products/786cosmetics-default-title-toulouse-breathable-nail-polish-34643798786279.png?v=1737674408"
+      ],
+      "price_min": 13.99,
+      "price_max": 13.99,
+      "default_offer_id": "external_seed:ext_da3b149ed322142c187224b6",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A nail polish from 786 Cosmetics for nail-care routines.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "786 Cosmetics",
+        "Powder"
+      ],
+      "sort_keys": {
+        "price_min": 13.99,
+        "price_max": 13.99,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_da3b149ed322142c187224b6"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_6ab9aef32646e31b8520db08",
+      "sellable_item_group_id": "sig_6ab9aef32646e31b8520db08",
+      "product_line_id": "pl_f55869297b676129a9da7aea",
+      "review_family_id": "rf_f55869297b676129a9da7aea",
+      "brand_name": "786 Cosmetics",
+      "category_paths": [
+        "Powder"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Dakar - Breathable Nail Polish",
+      "subtitle": "This pretty light pink nail polish is inspired by Dakar, Senegal [dah-kahr] and it's pink Lake Retba, also fondly called \"Lac Rose\" or \"Lake Rose\". The lake gets its pink hue from an algae that produces a red pigment, and is at its most vivid during the dry seasons. It's currently under consideration as a World Heritage Site by UNESCO.\n\nDakar is best described as a nude with a light pink, rosy tone.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Dakar-BreathableNailPolish.jpg?v=1762525802",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Dakar-BreathableNailPolish.jpg?v=1762525802",
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Dakar_3.png?v=1737673263",
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/products/786cosmetics-default-title-dakar-breathable-nail-polish-17949380575396.jpg?v=1738277469",
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/products/786cosmetics-default-title-dakar-breathable-nail-polish-17949371564196.jpg?v=1738277469"
+      ],
+      "price_min": 13.99,
+      "price_max": 13.99,
+      "default_offer_id": "external_seed:ext_5f55c01bae5cd6b5f0a0e78e",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A 786 Cosmetics nail polish listed on the brand source page as Dakar - Breathable Nail Polish. The source description identifies: This pretty light pink nail polish is inspired by Dakar, Senegal [dah-kahr] and it's pink Lake Retba, also fondly called \"Lac Rose\" or \"Lake Rose\".",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "786 Cosmetics",
+        "Powder"
+      ],
+      "sort_keys": {
+        "price_min": 13.99,
+        "price_max": 13.99,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_5f55c01bae5cd6b5f0a0e78e"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_e86eacac8d29e3f2ea6c369a",
+      "sellable_item_group_id": "sig_e86eacac8d29e3f2ea6c369a",
+      "product_line_id": "pl_08285d8280323a358a32cf78",
+      "review_family_id": "rf_08285d8280323a358a32cf78",
+      "brand_name": "786 Cosmetics",
+      "category_paths": [
+        "Powder"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Azores - Breathable Nail Polish",
+      "subtitle": "This periwinkle blue is inspired by the Portuguese archipelago, Azores. Azores is made of nine stunning islands with blue and green lakes, volcanic craters, hot water waterfalls, and stunning landscapes. Every summer, gorgeous blue hydrangeas take over the beautiful Island of Faial, giving it the name \"the blue island.\"\n\nAzores is a light periwinkle blue halal nail polish with a gentle shimmer.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Azores-BreathableNailPolish.jpg?v=1762527166",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Azores-BreathableNailPolish.jpg?v=1762527166",
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Azores_3.png?v=1737674668",
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/9.jpg?v=1737988475",
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/10.jpg?v=1737988477",
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/11.jpg?v=1737988478",
+        "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_365619948_18276175015149740_2609485125880599339_n_1080_1.jpg?crop=center&v=1696617175",
+        "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_365619948_18276175015149740_2609485125880599339_n_1080_1.jpg?v=1696617175",
+        "https://786cosmetics.com/cdn/shop/files/3.gif?crop=center&v=1699983256"
+      ],
+      "price_min": 13.99,
+      "price_max": 13.99,
+      "default_offer_id": "external_seed:ext_faf89834933316df0d8da973",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A nail polish from 786 Cosmetics for nail-care routines.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "786 Cosmetics",
+        "Powder"
+      ],
+      "sort_keys": {
+        "price_min": 13.99,
+        "price_max": 13.99,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_faf89834933316df0d8da973"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_94209714a811afb2feb7c730",
+      "sellable_item_group_id": "sig_94209714a811afb2feb7c730",
+      "product_line_id": "pl_6c9759747eca9ed92ee9bafe",
+      "review_family_id": "rf_6c9759747eca9ed92ee9bafe",
+      "brand_name": "786 Cosmetics",
+      "category_paths": [
+        "Powder"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Karachi - Breathable Nail Polish",
+      "subtitle": "This deep evergreen color is inspired by the cosmopolitan city of Karachi, Pakistan [kuh-rah-chee] and the green of the Pakistan flag. Considered Pakistan's most ethnically and religiously diverse city, Karachi is also one of the most populous and fastest growing cities in the world.\n\nKarachi is best described as a deep evergreen color with an iridescent finish. This opaque dark green is vivid in one coat.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Karachi-BreathableNailPolish-786Cosmetics.jpg?v=1762525791",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Karachi-BreathableNailPolish-786Cosmetics.jpg?v=1762525791",
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Karachi_3.png?v=1737670136",
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Karachi-BreathableNailPolish-786Cosmetics_4.jpg?v=1737670136",
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Karachi-BreathableNailPolish-786Cosmetics_2.jpg?v=1737670136",
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Karachi-BreathableNailPolish-786Cosmetics_3.jpg?v=1737670136"
+      ],
+      "price_min": 9.79,
+      "price_max": 9.79,
+      "default_offer_id": "external_seed:ext_a36359795b89961a7c052b21",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A nail polish from 786 Cosmetics for nail-care routines.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "786 Cosmetics",
+        "Powder"
+      ],
+      "sort_keys": {
+        "price_min": 9.79,
+        "price_max": 9.79,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_a36359795b89961a7c052b21"
+      ]
+    }
+  ]
+}

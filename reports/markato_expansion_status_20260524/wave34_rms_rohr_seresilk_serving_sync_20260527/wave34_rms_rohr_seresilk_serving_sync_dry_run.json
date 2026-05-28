@@ -1,0 +1,744 @@
+{
+  "generated_at": "2026-05-27T15:56:15.658Z",
+  "mode": "dry_run",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": true,
+  "requested_ids": 3,
+  "fetched_rows": 3,
+  "mirror_rows": 3,
+  "planned_sku_rows": 3,
+  "planned_offer_rows": 3,
+  "planned_index_state_rows": 3,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "dry_run",
+    "existing_before": {
+      "catalog_products": 3,
+      "catalog_skus": 3,
+      "catalog_offers": 3,
+      "product_group_members": 3
+    },
+    "stale_delete_preview": {
+      "current_sku_rows": 4,
+      "current_offer_rows": 4,
+      "planned_stale_sku_deletes": 1,
+      "planned_stale_offer_deletes": 1,
+      "sample_stale_skus": [
+        {
+          "title": "Makeup Remover | Ultimate Makeup Remover Wipe",
+          "sku_key": "prod::external_seed::external_seed::ext_9247e1285fadd4b02bc33aad::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_9247e1285fadd4b02bc33aad",
+          "source_variant_id": "prod::external_seed::external_seed::ext_9247e1285fadd4b02bc33aad",
+          "visible_attributes": {}
+        }
+      ],
+      "sample_stale_offers": [
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_9247e1285fadd4b02bc33aad::canonical",
+          "offer_id": "offer:external_seed:0d5ac20f072c62d69ee5548928dd2cf9",
+          "list_price": 25,
+          "product_key": "prod::external_seed::external_seed::ext_9247e1285fadd4b02bc33aad",
+          "merchant_effective_price": 25
+        }
+      ]
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 3
+    },
+    "product_upserts": 0,
+    "sku_upserts": 0,
+    "offer_upserts": 0,
+    "group_member_upserts": 0,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 0,
+    "identity_live_read_updates": 0,
+    "catalog_row_trust_upserts": 0,
+    "stale_offer_deletes": 0,
+    "stale_sku_deletes": 0
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_9247e1285fadd4b02bc33aad",
+      "product_key": "prod::external_seed::external_seed::ext_9247e1285fadd4b02bc33aad",
+      "product_group_id": "sig_91aba759389bcb0b08d56a25",
+      "title": "Makeup Remover | Ultimate Makeup Remover Wipe",
+      "brand": "RMS Beauty",
+      "product_type": "Makeup Remover Wipes",
+      "category": "Makeup Remover Wipes",
+      "category_path": "beauty/skincare/cleanser",
+      "canonical_url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe",
+      "pivota_signature_id": "sig_4f05205935bae8f209f015583e140258",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_9247e1285fadd4b02bc33aad::sku_d715401a8d0bb1b25bf6",
+        "product_key": "prod::external_seed::external_seed::ext_9247e1285fadd4b02bc33aad",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_9247e1285fadd4b02bc33aad",
+        "source_variant_id": "ext_9247e1285fadd4b02bc33aad:5935622403",
+        "source_domain": "rmsbeauty.com",
+        "sku": "RCC4",
+        "barcode": null,
+        "title": "20 Pack",
+        "currency": "USD",
+        "image_url": "https://www.rmsbeauty.com/cdn/shop/files/MakeupWipes-PackShot.jpg?v=1762198164",
+        "visible_attributes": {
+          "Size": "20 Pack"
+        },
+        "visible_option_labels": {
+          "Size": "20 Pack"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_9247e1285fadd4b02bc33aad",
+          "raw_variant_id": "5935622403",
+          "source_variant_id": "ext_9247e1285fadd4b02bc33aad:5935622403",
+          "variant_sku": "RCC4",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe",
+          "external_redirect_url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe",
+          "price": "25",
+          "price_amount": 25,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://www.rmsbeauty.com/cdn/shop/files/MakeupWipes-PackShot.jpg?v=1762198164",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "20 Pack"
+          },
+          "raw_variant": {
+            "sku": "RCC4",
+            "url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe?variant=5935622403&utm_source=pivota&utm_medium=affiliate",
+            "price": "25.00",
+            "stock": "In Stock",
+            "title": "20 Pack",
+            "options": [
+              {
+                "name": "Size",
+                "value": "20 Pack",
+                "axis_kind": "size"
+              }
+            ],
+            "currency": "USD",
+            "axis_kind": "size",
+            "deep_link": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe?variant=5935622403&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://www.rmsbeauty.com/cdn/shop/files/MakeupWipes-PackShot.jpg?v=1762198164",
+            "image_urls": [
+              "https://www.rmsbeauty.com/cdn/shop/files/MakeupWipes-PackShot.jpg?v=1762198164",
+              "https://www.rmsbeauty.com/cdn/shop/files/MakeupWipes-Lifestyle1.jpg?v=1767268765",
+              "https://www.rmsbeauty.com/cdn/shop/files/UltimateMakeupremoverwipes-Anni-Hover-900x1084.jpg?v=1767268765",
+              "https://cdn.shopify.com/s/files/1/0642/6399/files/MakeupWIpes-Lifestyle2.jpg?v=1767268765",
+              "https://cdn.shopify.com/s/files/1/0642/6399/files/MakeupWipes-Callouts.jpg?v=1767268765",
+              "https://www.rmsbeauty.com/cdn/shop/files/RMS_Blush_10.jpg?v=1737581200",
+              "https://www.rmsbeauty.com/cdn/shop/files/RMS-LOGO-BLACK.png?v=1676461026",
+              "https://www.rmsbeauty.com/cdn/shop/files/HydraEyesQuartet-810170741524-PEP1-WildVelvet-Pack-Shot-900x1084.jpg?v=1770695747",
+              "https://www.rmsbeauty.com/cdn/shop/files/untitled_design_2.png?v=1767266703",
+              "https://www.rmsbeauty.com/cdn/shop/files/810170741685-chameleon-lip-oil-pack-shot-900x1084_.com.jpg?v=1776298798",
+              "https://www.rmsbeauty.com/cdn/shop/files/MASCARA-900X1084.png?v=1762281009",
+              "https://www.rmsbeauty.com/cdn/shop/files/810170740183-SSP1-PACK-SHOT.jpg?v=1762290924",
+              "https://www.rmsbeauty.com/cdn/shop/files/816248028986-rhc4-c05-pack-shot-900x1084_1.jpg?v=1753885001",
+              "https://www.rmsbeauty.com/cdn/shop/files/hydrabronzer-900x1084-ppage-pack-beachwalkbetty_2x_7e5fd7ee-5c2e-41ef-8c3d-2665521ad05e.jpg?v=1762288392",
+              "https://www.rmsbeauty.com/cdn/shop/files/LIPNIGHTS_1.jpg?v=1762287787",
+              "https://www.rmsbeauty.com/cdn/shop/files/LIP2CHEEK-DEMURE-NEW_CAP_1.jpg?v=1776177560",
+              "https://www.rmsbeauty.com/cdn/shop/files/GoNude-PPAGE-900x1084-Pack-MidnightNude_2x_80f4fa6d-b840-429d-8461-48a35b4b6e58.jpg?v=1763578340",
+              "https://www.rmsbeauty.com/cdn/shop/files/eyelights-ppage-900x1084-strobe-pack_2x_74f5cdf1-480a-4adf-bab5-5e69a13a633b.jpg?v=1776177634",
+              "https://www.rmsbeauty.com/cdn/shop/products/900X1084-POWDER-BLUSH-BRUSH.png?v=1762274480",
+              "https://www.rmsbeauty.com/cdn/shop/files/Skin2SkinEverythingBrush-PPAGE-900x1084-Pack2x.jpg?v=1762287921",
+              "https://www.rmsbeauty.com/cdn/shop/products/SPONGE-900X1084.png?v=1776101648",
+              "https://www.rmsbeauty.com/cdn/shop/files/Mist-PrimerPackShot.jpg?v=1762291732"
+            ],
+            "variant_id": "5935622403",
+            "description": "What It Is:\nPure, clean, and simple make-up remover and cleansing wipes. Your new everyday living essential.\n\nWhat It Does:\nGently and thoroughly cleanses and freshens skin.\n\nWhat Makes It Special:\nMelts away stubborn face and eye makeup with ease, as it softens and hydrates without stripping away moisture.\n\nIngredients:\n*Cocos Nucifera (Coconut) Oil\n\n*Organic\nNon-GMO, non-nano, soy free, gluten free, cruelty-free",
+            "option_name": "Size",
+            "product_url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe",
+            "option_value": "20 Pack",
+            "display_label": "Size: 20 Pack",
+            "source_quality_status": "reviewed_deterministic"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:18b9d780f8b9afb57244b115616dd277",
+        "sku_key": "prod::external_seed::external_seed::ext_9247e1285fadd4b02bc33aad::sku_d715401a8d0bb1b25bf6",
+        "product_key": "prod::external_seed::external_seed::ext_9247e1285fadd4b02bc33aad",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 25,
+        "merchant_effective_price": 25,
+        "estimated_best_price": 25,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_0f62b1951364d06db98ab494",
+        "source_domain": "rmsbeauty.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_0f62b1951364d06db98ab494",
+          "external_product_id": "ext_9247e1285fadd4b02bc33aad",
+          "domain": "rmsbeauty.com",
+          "market": "US",
+          "product_title": "Makeup Remover | Ultimate Makeup Remover Wipe",
+          "variant_title": "20 Pack",
+          "variant_sku": "RCC4",
+          "raw_variant_id": "5935622403",
+          "url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe",
+          "offer_url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe",
+          "canonical_url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe",
+          "destination_url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe",
+          "external_redirect_url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe",
+          "merchant_display_name": "RMS Beauty",
+          "price": "25",
+          "price_amount": 25,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-14T23:09:38.806Z",
+            "evidence_url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-14T23:09:38.806Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe"
+            },
+            "regional_price": {
+              "amount": 25,
+              "currency": "USD",
+              "display_raw": "25.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe",
+              "captured_at": "2026-05-14T23:09:38.806Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-14T23:09:38.806Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-14T23:09:38.806Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-14T23:09:38.806Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 25,
+              "currency": "USD",
+              "display_raw": "25.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe",
+              "captured_at": "2026-05-14T23:09:38.806Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-14T23:09:38.806Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 417
+      }
+    },
+    {
+      "external_product_id": "ext_1b95875bc9bdeee751d0cee1",
+      "product_key": "prod::external_seed::external_seed::ext_1b95875bc9bdeee751d0cee1",
+      "product_group_id": "sig_36920dabe218886c3dd32627",
+      "title": "Lilly Pilly Face Moisturiser with Omega-3",
+      "brand": "Rohr Remedy",
+      "product_type": "Moisturizer",
+      "category": "Moisturizer",
+      "category_path": "beauty/skincare/moisturizer",
+      "canonical_url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser",
+      "pivota_signature_id": "sig_36920dabe218886c3dd32627",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_1b95875bc9bdeee751d0cee1::sku_51ce6f9798d7fcbdcb0b",
+        "product_key": "prod::external_seed::external_seed::ext_1b95875bc9bdeee751d0cee1",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_1b95875bc9bdeee751d0cee1",
+        "source_variant_id": "ext_1b95875bc9bdeee751d0cee1:31273097658479",
+        "source_domain": "rohrremedy.com",
+        "sku": "UBLMP24",
+        "barcode": null,
+        "title": "Lilly Pilly Face Moisturiser with Omega-3",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0237/1131/files/Lilly_pilly_with_flowers.jpg?v=1771234667",
+        "visible_attributes": {
+          "Size": "50ml"
+        },
+        "visible_option_labels": {
+          "Size": "50ml"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_1b95875bc9bdeee751d0cee1",
+          "raw_variant_id": "31273097658479",
+          "source_variant_id": "ext_1b95875bc9bdeee751d0cee1:31273097658479",
+          "variant_sku": "UBLMP24",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser",
+          "external_redirect_url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser",
+          "price": "30",
+          "price_amount": 30,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0237/1131/files/Lilly_pilly_with_flowers.jpg?v=1771234667",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "50ml"
+          },
+          "raw_variant": {
+            "sku": "UBLMP24",
+            "url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser",
+            "price": "30",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0237/1131/files/Lilly_pilly_with_flowers.jpg?v=1771234667",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0237/1131/files/Lilly_pilly_with_flowers.jpg?v=1771234667",
+              "https://cdn.shopify.com/s/files/1/0237/1131/files/5_2b58a2ad-9a7b-4d7b-8ec3-0c8c81f0cd10.png?v=1771234667",
+              "https://cdn.shopify.com/s/files/1/0237/1131/products/IMG_1036_002.jpg?v=1771234667",
+              "https://cdn.shopify.com/s/files/1/0237/1131/files/LillyPillyFace_2.jpg?v=1771234667"
+            ],
+            "variant_id": "31273097658479",
+            "description": "An enriching everyday moisturiser for normal skin. Combining Lilly Pilly extract with Omega 3 oils. \n\nMultibuy\nThis item qualifies for a multibuy discount. Add three to your cart and the discount will be automatically applied at checkout. \n\nAGE: Teens - 20s, 30s, 40s, 50s+\nSKIN CONCERN: Dull, dry or dehydrated skin, First signs of ageing, Oiliness and shine\nSKIN TYPE: Normal to dry, Normal to oily",
+            "option_name": "Size",
+            "option_value": "50ml"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:9e979d56be545f894e4e68a52afdf617",
+        "sku_key": "prod::external_seed::external_seed::ext_1b95875bc9bdeee751d0cee1::sku_51ce6f9798d7fcbdcb0b",
+        "product_key": "prod::external_seed::external_seed::ext_1b95875bc9bdeee751d0cee1",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 30,
+        "merchant_effective_price": 30,
+        "estimated_best_price": 30,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_5ee0b414653347fb5af51740",
+        "source_domain": "rohrremedy.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_5ee0b414653347fb5af51740",
+          "external_product_id": "ext_1b95875bc9bdeee751d0cee1",
+          "domain": "rohrremedy.com",
+          "market": "US",
+          "product_title": "Lilly Pilly Face Moisturiser with Omega-3",
+          "variant_title": "Lilly Pilly Face Moisturiser with Omega-3",
+          "variant_sku": "UBLMP24",
+          "raw_variant_id": "31273097658479",
+          "url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser",
+          "offer_url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser",
+          "canonical_url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser",
+          "destination_url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser",
+          "external_redirect_url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser",
+          "merchant_display_name": "Rohr Remedy",
+          "price": "30",
+          "price_amount": 30,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T05:00:18.176Z",
+            "evidence_url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "low",
+              "checked_at": "2026-05-24T05:00:18.176Z",
+              "reason_codes": [
+                "market_currency_not_verified",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser"
+            },
+            "regional_price": {
+              "amount": 30,
+              "currency": "USD",
+              "display_raw": "30.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "low",
+              "market_switch_status": "unknown",
+              "observed_currency": "USD",
+              "source_url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser",
+              "captured_at": "2026-05-24T05:00:18.176Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T05:00:18.176Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T05:00:18.176Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T05:00:18.176Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "status": "unverified",
+              "reason": "low_confidence_or_market_mismatch"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T05:00:18.176Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 400
+      }
+    },
+    {
+      "external_product_id": "ext_0d4ffd13b899460cabb1f392",
+      "product_key": "prod::external_seed::external_seed::ext_0d4ffd13b899460cabb1f392",
+      "product_group_id": "sig_2104c12c38d9c5ae898514d4",
+      "title": "Gentle Silk Cleanser",
+      "brand": "Seresilk",
+      "product_type": "Cleanser",
+      "category": "Cleanser",
+      "category_path": "beauty/skincare/cleanser",
+      "canonical_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+      "pivota_signature_id": "sig_2104c12c38d9c5ae898514d4",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_0d4ffd13b899460cabb1f392::sku_c27c557f31a3d3c4792c",
+        "product_key": "prod::external_seed::external_seed::ext_0d4ffd13b899460cabb1f392",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_0d4ffd13b899460cabb1f392",
+        "source_variant_id": "ext_0d4ffd13b899460cabb1f392:40067068100687",
+        "source_domain": "seresilk.com.au",
+        "sku": "7068100687",
+        "barcode": null,
+        "title": "Gentle Silk Cleanser",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_GentleSilkCleanser.jpg?v=1753242356",
+        "visible_attributes": {
+          "Size": "100ml"
+        },
+        "visible_option_labels": {
+          "Size": "100ml"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_0d4ffd13b899460cabb1f392",
+          "raw_variant_id": "40067068100687",
+          "source_variant_id": "ext_0d4ffd13b899460cabb1f392:40067068100687",
+          "variant_sku": "7068100687",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+          "external_redirect_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+          "price": "54.52",
+          "price_amount": 54.52,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_GentleSilkCleanser.jpg?v=1753242356",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "100ml"
+          },
+          "raw_variant": {
+            "sku": "7068100687",
+            "url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+            "price": "54.52",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_GentleSilkCleanser.jpg?v=1753242356",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_GentleSilkCleanser.jpg?v=1753242356",
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Texture_Square_GentleSilkCleanser.webp?v=1753242356",
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/EditorialGentleSilkCleanserSquare.webp?v=1753242356"
+            ],
+            "variant_id": "40067068100687",
+            "description": "100ml \n\nThe Gentle Silk Cleanser is a daily cleansing formula enriched with the proprietary Hydrolysed Silk Complex HSC01-A™ and glycerin to purify the skin while preserving its essential lipids. Designed to respect the skin’s natural barrier, it removes impurities, environmental residue, and excess oil without disturbing the skin’s optimum hydration equilibrium.\n\nIts lightweight, feather-soft texture transforms on contact with water, emulsifying into a milky fluid that rinses away effortlessly. The result is a complexion that feels clean, comfortable, and prepared for exfoliation.\n\nBENEFITS\nImmediately: Skin is refreshed, softened, and hydrated. With continued use: Skin appears smoother, more balanced, and visibly more radiant.\n\nDermatologically tested and approved. Patch test before application.\nApproved under the Leaping Bunny programme.",
+            "option_name": "Size",
+            "option_value": "100ml"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:f9caa9ae6d5cc22bbd7650e0f20327c1",
+        "sku_key": "prod::external_seed::external_seed::ext_0d4ffd13b899460cabb1f392::sku_c27c557f31a3d3c4792c",
+        "product_key": "prod::external_seed::external_seed::ext_0d4ffd13b899460cabb1f392",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 54.52,
+        "merchant_effective_price": 54.52,
+        "estimated_best_price": 54.52,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_5ae568728c95aa19d64a9413",
+        "source_domain": "seresilk.com.au",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_5ae568728c95aa19d64a9413",
+          "external_product_id": "ext_0d4ffd13b899460cabb1f392",
+          "domain": "seresilk.com.au",
+          "market": "US",
+          "product_title": "Gentle Silk Cleanser",
+          "variant_title": "Gentle Silk Cleanser",
+          "variant_sku": "7068100687",
+          "raw_variant_id": "40067068100687",
+          "url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+          "offer_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+          "canonical_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+          "destination_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+          "external_redirect_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+          "merchant_display_name": "Seresilk",
+          "price": "54.52",
+          "price_amount": 54.52,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T05:00:18.772Z",
+            "evidence_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-24T05:00:18.772Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://seresilk.com.au/products/gentle-silk-cleanser"
+            },
+            "regional_price": {
+              "amount": 54.52,
+              "currency": "USD",
+              "display_raw": "54.52",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+              "captured_at": "2026-05-24T05:00:18.772Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T05:00:18.772Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T05:00:18.772Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T05:00:18.772Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 54.52,
+              "currency": "USD",
+              "display_raw": "54.52",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+              "captured_at": "2026-05-24T05:00:18.772Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T05:00:18.772Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 852
+      }
+    }
+  ]
+}

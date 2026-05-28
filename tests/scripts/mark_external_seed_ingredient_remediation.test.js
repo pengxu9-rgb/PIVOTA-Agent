@@ -177,6 +177,50 @@ describe('mark-external-seed-ingredient-remediation', () => {
     expect(plan.nextSeedData.ingredient_intel.inci_applicability.status).toBe('not_applicable');
   });
 
+  test('forced single-formula family patches metadata without blocking current reviewed INCI', () => {
+    const row = baseRow({
+      title: 'Makeup Remover Wipe',
+      product_kind: 'bundle',
+      ingredients_inci: ['Cocos Nucifera (Coconut) Oil'],
+      pdp_ingredients_raw: 'Cocos Nucifera (Coconut) Oil',
+      raw_ingredient_text_clean: 'Cocos Nucifera (Coconut) Oil',
+      pdp_field_quality_summary: {
+        ingredients_raw: {
+          source_origin: 'official_pdp',
+          source_quality_status: 'high',
+        },
+        ingredients_inci: {
+          source_origin: 'official_pdp',
+          source_quality_status: 'high',
+        },
+      },
+      snapshot: {
+        product_kind: 'bundle',
+        ingredients_inci: ['Cocos Nucifera (Coconut) Oil'],
+        pdp_ingredients_raw: 'Cocos Nucifera (Coconut) Oil',
+      },
+    });
+    row.title = 'Makeup Remover Wipe';
+
+    const plan = buildPlan(row, {
+      generatedAt: '2026-05-27T00:00:00.000Z',
+      apply: false,
+      forceFamily: 'single_formula',
+    });
+
+    expect(plan.changed).toBe(true);
+    expect(plan.result.action).toBe('force_product_family_override');
+    expect(plan.result.status).toBe('dry_run');
+    expect(plan.result.family).toBe('single_formula');
+    expect(plan.nextSeedData.product_family).toBe('single_formula');
+    expect(plan.nextSeedData.product_kind).toBe('single_formula');
+    expect(plan.nextSeedData.snapshot.product_family).toBe('single_formula');
+    expect(plan.nextSeedData.snapshot.product_kind).toBe('single_formula');
+    expect(
+      buildServingBlockPatch(plan.nextSeedData, { preserveTrustedIngredients: true }).ingredients_inci,
+    ).toEqual(['Cocos Nucifera (Coconut) Oil']);
+  });
+
   test('forced accessory family can patch product family on already not-applicable rows', () => {
     const row = baseRow({
       title: 'Lip Sleeping Mask Topper',

@@ -1,0 +1,585 @@
+{
+  "generated_at": "2026-05-28T01:11:16.868Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": null,
+    "externalProductIds": [
+      "ext_05040ea019efc2b0fe1a9111",
+      "ext_5232f3454fc57c62d8d3e7bc",
+      "ext_10d91302e0cbb32d89cb0cb7",
+      "ext_37711c1df803ce80b791b2c5"
+    ],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave36_identity_refresh_small_batch_20260528/readiness_before_catalog_sync/pdp_readiness_checkpoint",
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": true,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json"
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 4,
+    "by_market": {
+      "US": 4
+    },
+    "by_domain": [
+      {
+        "key": "delicatedaisys.com",
+        "count": 2
+      },
+      {
+        "key": "joocyee.com",
+        "count": 1
+      },
+      {
+        "key": "medicube.us",
+        "count": 1
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 3
+      },
+      {
+        "key": "set_or_collection",
+        "count": 1
+      }
+    ],
+    "coverage": {
+      "missing_inci": 0,
+      "missing_active_raw": 3,
+      "missing_details": 2,
+      "missing_how_to": 0,
+      "missing_faq": 4
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 4,
+        "high_quality_ready": 4,
+        "missing_kb": 0,
+        "not_displayable": 0
+      },
+      "effective": {
+        "displayable": 4,
+        "high_quality_ready": 4,
+        "missing_kb": 0,
+        "not_displayable": 0,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [],
+      "effective_issue_domains": [],
+      "quality_state": [
+        {
+          "key": "reviewed",
+          "count": 3
+        },
+        {
+          "key": "verified",
+          "count": 1
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "seller_plus_formula",
+          "count": 4
+        }
+      ],
+      "samples": {}
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 2,
+      "any_active_items": 0,
+      "status": [
+        {
+          "key": "missing_hero",
+          "count": 2
+        },
+        {
+          "key": "not_applicable_product_family",
+          "count": 1
+        },
+        {
+          "key": "not_expected_missing",
+          "count": 1
+        }
+      ],
+      "issues": [
+        {
+          "key": "missing_hero",
+          "count": 2
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "delicatedaisys.com::missing_hero",
+          "count": 2
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "pdp_section",
+          "count": 3
+        },
+        {
+          "key": "none",
+          "count": 1
+        }
+      ],
+      "samples": {
+        "missing_hero": [
+          {
+            "external_product_id": "ext_5232f3454fc57c62d8d3e7bc",
+            "domain": "delicatedaisys.com",
+            "title": "Refreshing Body Wash Bulgarian Rose",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_05040ea019efc2b0fe1a9111",
+            "domain": "delicatedaisys.com",
+            "title": "Firming & Polishing Body Scrub Sea Salt & Pineapple",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "no_visible_variant_axis",
+          "count": 2
+        },
+        {
+          "key": "flagged",
+          "count": 1
+        },
+        {
+          "key": "ready",
+          "count": 1
+        }
+      ],
+      "issues": [
+        {
+          "key": "default_option_size_evidence_missing_axis",
+          "count": 1
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "joocyee.com::default_option_size_evidence_missing_axis",
+          "count": 1
+        }
+      ],
+      "samples": {
+        "default_option_size_evidence_missing_axis": [
+          {
+            "external_product_id": "ext_10d91302e0cbb32d89cb0cb7",
+            "domain": "joocyee.com",
+            "title": "Dual-Ended Eyebrow Pencil & Cream 2.0",
+            "status": "flagged",
+            "examples": [
+              {
+                "axis_name": "default",
+                "axis_kind": "volume",
+                "value": "2 g",
+                "visual": false
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_1af3062b970e3d57f0b84a5c",
+      "external_product_id": "ext_5232f3454fc57c62d8d3e7bc",
+      "market": "US",
+      "domain": "delicatedaisys.com",
+      "title": "Refreshing Body Wash Bulgarian Rose",
+      "canonical_url": "https://delicatedaisys.com/products/refreshing-body-wash-bulgarian-rose",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_5232f3454fc57c62d8d3e7bc",
+          "kb_key": "product:ext_5232f3454fc57c62d8d3e7bc",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_5232f3454fc57c62d8d3e7bc",
+          "kb_key": "product:ext_5232f3454fc57c62d8d3e7bc",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 316,
+          "inci_chars": 505,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 505,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 316,
+        "inci_chars": 505,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 505,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_ed40abaf48a059aec2f56de6",
+      "external_product_id": "ext_05040ea019efc2b0fe1a9111",
+      "market": "US",
+      "domain": "delicatedaisys.com",
+      "title": "Firming & Polishing Body Scrub Sea Salt & Pineapple",
+      "canonical_url": "https://delicatedaisys.com/products/firming-polishing-body-scrub-sea-salt-pineapple",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_05040ea019efc2b0fe1a9111",
+          "kb_key": "product:ext_05040ea019efc2b0fe1a9111",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_05040ea019efc2b0fe1a9111",
+          "kb_key": "product:ext_05040ea019efc2b0fe1a9111",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 221,
+          "inci_chars": 280,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 280,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 221,
+        "inci_chars": 280,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 280,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_c4fba571d4949c5fba99e6aa",
+      "external_product_id": "ext_10d91302e0cbb32d89cb0cb7",
+      "market": "US",
+      "domain": "joocyee.com",
+      "title": "Dual-Ended Eyebrow Pencil & Cream 2.0",
+      "canonical_url": "https://joocyee.com/products/dual-ended-eyebrow-pencil-cream-2-0",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_10d91302e0cbb32d89cb0cb7",
+          "kb_key": "product:ext_10d91302e0cbb32d89cb0cb7",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_10d91302e0cbb32d89cb0cb7",
+          "kb_key": "product:ext_10d91302e0cbb32d89cb0cb7",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 225,
+          "inci_chars": 3012,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 3012,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_not_displayable"
+      },
+      "variants": {
+        "status": "flagged",
+        "issues": [
+          "default_option_size_evidence_missing_axis"
+        ],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [
+            {
+              "axis_name": "default",
+              "axis_kind": "volume",
+              "value": "2 g",
+              "visual": false
+            }
+          ],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 225,
+        "inci_chars": 3012,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 3012,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_e67d5c9f7068957e23321697",
+      "external_product_id": "ext_37711c1df803ce80b791b2c5",
+      "market": "US",
+      "domain": "medicube.us",
+      "title": "Collagen Night Wrapping Mask",
+      "canonical_url": "https://medicube.us/products/collagen-night-wrapping-mask",
+      "product_family": "set_or_collection",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_37711c1df803ce80b791b2c5",
+          "kb_key": "product:ext_37711c1df803ce80b791b2c5",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_37711c1df803ce80b791b2c5",
+          "kb_key": "product:ext_37711c1df803ce80b791b2c5",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 261,
+          "inci_chars": 497,
+          "active_ingredients_chars": 61,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 497,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 5,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 261,
+        "inci_chars": 497,
+        "active_ingredients_chars": 61,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 497,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

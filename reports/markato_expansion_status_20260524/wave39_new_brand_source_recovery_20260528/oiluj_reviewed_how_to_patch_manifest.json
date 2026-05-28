@@ -1,0 +1,34 @@
+{
+  "market": "US",
+  "reviewed_by": "codex_quality_reviewer_owner_delegated",
+  "reason": "reviewed_source_backed_oiluj_how_to_patch",
+  "source_kind": "official_pdp_description_usage_sentence",
+  "evidence": "Reviewed official OILUJ PDP descriptions saved in wave39 HTML snapshots. Only usage sentences were transcribed; no INCI or formula claims were added.",
+  "entries": [
+    {
+      "external_product_id": "ext_07cfaab25950196c3ec1b5f3",
+      "source_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+      "pdp_how_to_use_raw": "Use this multipurpose oil on the face, body, and hair as described by the source product page."
+    },
+    {
+      "external_product_id": "ext_1493a61baf165a6c00e4977b",
+      "source_url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+      "pdp_how_to_use_raw": "Use this multipurpose oil on the face, body, and hair as described by the source product page."
+    },
+    {
+      "external_product_id": "ext_3a16e6a6300af832ae3ccdb7",
+      "source_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+      "pdp_how_to_use_raw": "Incorporate this lightweight eye contour treatment into a skincare routine for targeted care around the delicate eye area, day or night."
+    },
+    {
+      "external_product_id": "ext_79fc9f55f8b092590e168c8d",
+      "source_url": "http://www.oiluj.com/store/p17/OIL%C3%99J%2C_%22Lip_Life%22.html",
+      "pdp_how_to_use_raw": "Use this lip balm as a daily lip moisturizer or as a base before lipstick or lip gloss."
+    },
+    {
+      "external_product_id": "ext_ab35eb07e8635bb1e1be3ebf",
+      "source_url": "http://www.oiluj.com/store/p5/OIL%C3%99J%2C_Life_Oil.html",
+      "pdp_how_to_use_raw": "Apply this moringa oil to skin; the source page notes that bottle residue disappears once the oil is applied to skin."
+    }
+  ]
+}

@@ -1,0 +1,2128 @@
+{
+  "generated_at": "2026-05-27T17:22:18.284Z",
+  "mode": "apply",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": true,
+  "requested_ids": 9,
+  "fetched_rows": 9,
+  "mirror_rows": 9,
+  "planned_sku_rows": 9,
+  "planned_offer_rows": 9,
+  "planned_index_state_rows": 9,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "apply",
+    "existing_before": {
+      "catalog_products": 9,
+      "catalog_skus": 0,
+      "catalog_offers": 0,
+      "product_group_members": 0
+    },
+    "stale_delete_preview": {
+      "current_sku_rows": 9,
+      "current_offer_rows": 9,
+      "planned_stale_sku_deletes": 9,
+      "planned_stale_offer_deletes": 9,
+      "sample_stale_skus": [
+        {
+          "title": "Dakar - Breathable Nail Polish",
+          "sku_key": "prod::external_seed::external_seed::ext_5f55c01bae5cd6b5f0a0e78e::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_5f55c01bae5cd6b5f0a0e78e",
+          "source_variant_id": "prod::external_seed::external_seed::ext_5f55c01bae5cd6b5f0a0e78e",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Karachi - Breathable Nail Polish",
+          "sku_key": "prod::external_seed::external_seed::ext_a36359795b89961a7c052b21::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_a36359795b89961a7c052b21",
+          "source_variant_id": "prod::external_seed::external_seed::ext_a36359795b89961a7c052b21",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Havana - Breathable Nail Polish",
+          "sku_key": "prod::external_seed::external_seed::ext_ab5107f3a835da10508757c6::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_ab5107f3a835da10508757c6",
+          "source_variant_id": "prod::external_seed::external_seed::ext_ab5107f3a835da10508757c6",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Patagonia - Breathable Nail Polish",
+          "sku_key": "prod::external_seed::external_seed::ext_abd25039dea2189dfcca8079::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_abd25039dea2189dfcca8079",
+          "source_variant_id": "prod::external_seed::external_seed::ext_abd25039dea2189dfcca8079",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Tallinn - Breathable Nail Polish",
+          "sku_key": "prod::external_seed::external_seed::ext_c6d113bff874c00abfb4ba33::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_c6d113bff874c00abfb4ba33",
+          "source_variant_id": "prod::external_seed::external_seed::ext_c6d113bff874c00abfb4ba33",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Toulouse - Breathable Nail Polish",
+          "sku_key": "prod::external_seed::external_seed::ext_da3b149ed322142c187224b6::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_da3b149ed322142c187224b6",
+          "source_variant_id": "prod::external_seed::external_seed::ext_da3b149ed322142c187224b6",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Dubrovnik - Breathable Nail Polish",
+          "sku_key": "prod::external_seed::external_seed::ext_efe7512de8c6df9f75ca19e0::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_efe7512de8c6df9f75ca19e0",
+          "source_variant_id": "prod::external_seed::external_seed::ext_efe7512de8c6df9f75ca19e0",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Uluru - Breathable Nail Polish",
+          "sku_key": "prod::external_seed::external_seed::ext_f56010dd5bf971f7b7f644a6::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_f56010dd5bf971f7b7f644a6",
+          "source_variant_id": "prod::external_seed::external_seed::ext_f56010dd5bf971f7b7f644a6",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Azores - Breathable Nail Polish",
+          "sku_key": "prod::external_seed::external_seed::ext_faf89834933316df0d8da973::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_faf89834933316df0d8da973",
+          "source_variant_id": "prod::external_seed::external_seed::ext_faf89834933316df0d8da973",
+          "visible_attributes": {}
+        }
+      ],
+      "sample_stale_offers": [
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_5f55c01bae5cd6b5f0a0e78e::canonical",
+          "offer_id": "offer:external_seed:7b38783737c8067926cb2941f2f154cd",
+          "list_price": 13.99,
+          "product_key": "prod::external_seed::external_seed::ext_5f55c01bae5cd6b5f0a0e78e",
+          "merchant_effective_price": 13.99
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_a36359795b89961a7c052b21::canonical",
+          "offer_id": "offer:external_seed:740016f66090d939e67cd905b7d8fcfa",
+          "list_price": 9.79,
+          "product_key": "prod::external_seed::external_seed::ext_a36359795b89961a7c052b21",
+          "merchant_effective_price": 9.79
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_ab5107f3a835da10508757c6::canonical",
+          "offer_id": "offer:external_seed:481b3b5464e364c2a93901e281b74963",
+          "list_price": 13.99,
+          "product_key": "prod::external_seed::external_seed::ext_ab5107f3a835da10508757c6",
+          "merchant_effective_price": 13.99
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_abd25039dea2189dfcca8079::canonical",
+          "offer_id": "offer:external_seed:1bf9dd5155110b86a921aad4571de0db",
+          "list_price": 13.99,
+          "product_key": "prod::external_seed::external_seed::ext_abd25039dea2189dfcca8079",
+          "merchant_effective_price": 13.99
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_c6d113bff874c00abfb4ba33::canonical",
+          "offer_id": "offer:external_seed:8c0486e96ae1d79cb84c7b0328fb8791",
+          "list_price": 9.79,
+          "product_key": "prod::external_seed::external_seed::ext_c6d113bff874c00abfb4ba33",
+          "merchant_effective_price": 9.79
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_da3b149ed322142c187224b6::canonical",
+          "offer_id": "offer:external_seed:4ed93cc466c4cfae1f097edf2c320222",
+          "list_price": 13.99,
+          "product_key": "prod::external_seed::external_seed::ext_da3b149ed322142c187224b6",
+          "merchant_effective_price": 13.99
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_efe7512de8c6df9f75ca19e0::canonical",
+          "offer_id": "offer:external_seed:30b4febf690bee9e0dd105e5d189f2ad",
+          "list_price": 9.79,
+          "product_key": "prod::external_seed::external_seed::ext_efe7512de8c6df9f75ca19e0",
+          "merchant_effective_price": 9.79
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_f56010dd5bf971f7b7f644a6::canonical",
+          "offer_id": "offer:external_seed:e854369308d2af9a6a829d1d650dc6b1",
+          "list_price": 9.79,
+          "product_key": "prod::external_seed::external_seed::ext_f56010dd5bf971f7b7f644a6",
+          "merchant_effective_price": 9.79
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_faf89834933316df0d8da973::canonical",
+          "offer_id": "offer:external_seed:5beafe636552ab98a3a33c5108653300",
+          "list_price": 13.99,
+          "product_key": "prod::external_seed::external_seed::ext_faf89834933316df0d8da973",
+          "merchant_effective_price": 13.99
+        }
+      ]
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 9
+    },
+    "product_upserts": 9,
+    "sku_upserts": 9,
+    "offer_upserts": 9,
+    "group_member_upserts": 9,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 9,
+    "identity_live_read_updates": 9,
+    "catalog_row_trust_upserts": 9,
+    "stale_offer_deletes": 9,
+    "stale_sku_deletes": 9
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_faf89834933316df0d8da973",
+      "product_key": "prod::external_seed::external_seed::ext_faf89834933316df0d8da973",
+      "product_group_id": "sig_e86eacac8d29e3f2ea6c369a",
+      "title": "Azores - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "product_type": "Beauty Product",
+      "category": "Beauty Product",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/azores-breathable-nail-polish",
+      "pivota_signature_id": "sig_e86eacac8d29e3f2ea6c369a",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_faf89834933316df0d8da973::sku_6940d2c505b69e336d67",
+        "product_key": "prod::external_seed::external_seed::ext_faf89834933316df0d8da973",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_faf89834933316df0d8da973",
+        "source_variant_id": "ext_faf89834933316df0d8da973:36937860153508",
+        "source_domain": "786cosmetics.com",
+        "sku": "Azores",
+        "barcode": null,
+        "title": "Azores - Breathable Nail Polish",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Azores-BreathableNailPolish.jpg?v=1762527166",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_faf89834933316df0d8da973",
+          "raw_variant_id": "36937860153508",
+          "source_variant_id": "ext_faf89834933316df0d8da973:36937860153508",
+          "variant_sku": "Azores",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://786cosmetics.com/products/azores-breathable-nail-polish",
+          "external_redirect_url": "https://786cosmetics.com/products/azores-breathable-nail-polish",
+          "price": "13.99",
+          "price_amount": 13.99,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Azores-BreathableNailPolish.jpg?v=1762527166",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "Azores",
+            "url": "https://786cosmetics.com/products/azores-breathable-nail-polish?variant=36937860153508&utm_source=pivota&utm_medium=affiliate",
+            "price": "13.99",
+            "stock": "In Stock",
+            "title": "Default",
+            "options": [],
+            "currency": "USD",
+            "deep_link": "https://786cosmetics.com/products/azores-breathable-nail-polish?variant=36937860153508&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Azores-BreathableNailPolish.jpg?v=1762527166",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Azores-BreathableNailPolish.jpg?v=1762527166",
+              "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Azores_3.png?v=1737674668",
+              "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/9.jpg?v=1737988475",
+              "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/10.jpg?v=1737988477",
+              "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/11.jpg?v=1737988478",
+              "https://786cosmetics.com/files/Azores-BreathableNailPolish.jpg",
+              "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_365619948_18276175015149740_2609485125880599339_n_1080_1.jpg?crop=center&v=1696617175",
+              "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_365619948_18276175015149740_2609485125880599339_n_1080_1.jpg?v=1696617175",
+              "https://786cosmetics.com/cdn/shop/files/3.gif?crop=center&v=1699983256",
+              "https://786cosmetics.com/cdn/shop/files/3.gif?v=1699983256",
+              "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_36981757_234850793800975_8157423542682517504_n_1080.jpg?crop=center&v=1698087774",
+              "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_36981757_234850793800975_8157423542682517504_n_1080.jpg?v=1698087774",
+              "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_377854146_984534276096847_5858701429379112223_n_1080.jpg?crop=center&v=1696872887",
+              "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_377854146_984534276096847_5858701429379112223_n_1080.jpg?v=1696872887",
+              "https://786cosmetics.com/cdn/shop/files/9.gif?crop=center&v=1699983259",
+              "https://786cosmetics.com/cdn/shop/files/9.gif?v=1699983259",
+              "https://786cosmetics.com/cdn/shop/files/PhotoJun202023_113212AM.jpg?crop=center&v=1708453061",
+              "https://786cosmetics.com/cdn/shop/files/PhotoJun202023_113212AM.jpg?v=1708453061",
+              "https://786cosmetics.com/cdn/shop/files/35.png?crop=center&v=1698091492",
+              "https://786cosmetics.com/cdn/shop/files/35.png?v=1698091492",
+              "https://786cosmetics.com/cdn/shop/files/32.png?crop=center&v=1698091491",
+              "https://786cosmetics.com/cdn/shop/files/32.png?v=1698091491"
+            ],
+            "variant_id": "36937860153508",
+            "description": "This periwinkle blue is inspired by the Portuguese archipelago, Azores. Azores is made of nine stunning islands with blue and green lakes, volcanic craters, hot water waterfalls, and stunning landscapes. Every summer, gorgeous blue hydrangeas take over the beautiful Island of Faial, giving it the name \"the blue island.\"\n\nAzores is a light periwinkle blue halal nail polish with a gentle shimmer.",
+            "product_url": "https://786cosmetics.com/products/azores-breathable-nail-polish"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:bb51b4f597ddfa27213f563216276091",
+        "sku_key": "prod::external_seed::external_seed::ext_faf89834933316df0d8da973::sku_6940d2c505b69e336d67",
+        "product_key": "prod::external_seed::external_seed::ext_faf89834933316df0d8da973",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 13.99,
+        "merchant_effective_price": 13.99,
+        "estimated_best_price": 13.99,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_99ec566b1f749b6e2d21e127",
+        "source_domain": "786cosmetics.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_99ec566b1f749b6e2d21e127",
+          "external_product_id": "ext_faf89834933316df0d8da973",
+          "domain": "786cosmetics.com",
+          "market": "US",
+          "product_title": "Azores - Breathable Nail Polish",
+          "variant_title": "Azores - Breathable Nail Polish",
+          "variant_sku": "Azores",
+          "raw_variant_id": "36937860153508",
+          "url": "https://786cosmetics.com/products/azores-breathable-nail-polish",
+          "offer_url": "https://786cosmetics.com/products/azores-breathable-nail-polish",
+          "canonical_url": "https://786cosmetics.com/products/azores-breathable-nail-polish",
+          "destination_url": "https://786cosmetics.com/products/azores-breathable-nail-polish",
+          "external_redirect_url": "https://786cosmetics.com/products/azores-breathable-nail-polish",
+          "merchant_display_name": "786 Cosmetics",
+          "price": "13.99",
+          "price_amount": 13.99,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T04:43:40.321Z",
+            "evidence_url": "https://786cosmetics.com/products/azores-breathable-nail-polish",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T04:43:40.321Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://786cosmetics.com/products/azores-breathable-nail-polish"
+            },
+            "regional_price": {
+              "amount": 13.99,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://786cosmetics.com/products/azores-breathable-nail-polish",
+              "captured_at": "2026-05-18T04:43:40.321Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:43:40.321Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T04:43:40.321Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T04:43:40.321Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 13.99,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://786cosmetics.com/products/azores-breathable-nail-polish",
+              "captured_at": "2026-05-18T04:43:40.321Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:43:40.321Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 397
+      }
+    },
+    {
+      "external_product_id": "ext_5f55c01bae5cd6b5f0a0e78e",
+      "product_key": "prod::external_seed::external_seed::ext_5f55c01bae5cd6b5f0a0e78e",
+      "product_group_id": "sig_6ab9aef32646e31b8520db08",
+      "title": "Dakar - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "product_type": "Beauty Product",
+      "category": "Beauty Product",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/dakar-breathable-nail-polish",
+      "pivota_signature_id": "sig_6ab9aef32646e31b8520db08",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_5f55c01bae5cd6b5f0a0e78e::sku_18441a9a2e78dc589869",
+        "product_key": "prod::external_seed::external_seed::ext_5f55c01bae5cd6b5f0a0e78e",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_5f55c01bae5cd6b5f0a0e78e",
+        "source_variant_id": "ext_5f55c01bae5cd6b5f0a0e78e:34780885844132",
+        "source_domain": "786cosmetics.com",
+        "sku": "Dakar",
+        "barcode": null,
+        "title": "Dakar - Breathable Nail Polish",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Dakar-BreathableNailPolish.jpg?v=1762525802",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_5f55c01bae5cd6b5f0a0e78e",
+          "raw_variant_id": "34780885844132",
+          "source_variant_id": "ext_5f55c01bae5cd6b5f0a0e78e:34780885844132",
+          "variant_sku": "Dakar",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://786cosmetics.com/products/dakar-breathable-nail-polish",
+          "external_redirect_url": "https://786cosmetics.com/products/dakar-breathable-nail-polish",
+          "price": "13.99",
+          "price_amount": 13.99,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Dakar-BreathableNailPolish.jpg?v=1762525802",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "Dakar",
+            "url": "https://786cosmetics.com/products/dakar-breathable-nail-polish?variant=34780885844132&utm_source=pivota&utm_medium=affiliate",
+            "price": "13.99",
+            "stock": "In Stock",
+            "title": "Default",
+            "options": [],
+            "currency": "USD",
+            "deep_link": "https://786cosmetics.com/products/dakar-breathable-nail-polish?variant=34780885844132&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Dakar-BreathableNailPolish.jpg?v=1762525802",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Dakar-BreathableNailPolish.jpg?v=1762525802",
+              "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Dakar_3.png?v=1737673263",
+              "https://cdn.shopify.com/s/files/1/0413/6229/2900/products/786cosmetics-default-title-dakar-breathable-nail-polish-17949380575396.jpg?v=1738277469",
+              "https://cdn.shopify.com/s/files/1/0413/6229/2900/products/786cosmetics-default-title-dakar-breathable-nail-polish-17949371564196.jpg?v=1738277469",
+              "https://786cosmetics.com/files/Dakar-BreathableNailPolish.jpg"
+            ],
+            "variant_id": "34780885844132",
+            "description": "This pretty light pink nail polish is inspired by Dakar, Senegal [dah-kahr] and it's pink Lake Retba, also fondly called \"Lac Rose\" or \"Lake Rose\". The lake gets its pink hue from an algae that produces a red pigment, and is at its most vivid during the dry seasons. It's currently under consideration as a World Heritage Site by UNESCO.\n\nDakar is best described as a nude with a light pink, rosy tone.",
+            "product_url": "https://786cosmetics.com/products/dakar-breathable-nail-polish"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:0d2650c22b933370e579199c9ba18cd0",
+        "sku_key": "prod::external_seed::external_seed::ext_5f55c01bae5cd6b5f0a0e78e::sku_18441a9a2e78dc589869",
+        "product_key": "prod::external_seed::external_seed::ext_5f55c01bae5cd6b5f0a0e78e",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 13.99,
+        "merchant_effective_price": 13.99,
+        "estimated_best_price": 13.99,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_323070413b1efd1e46ef2723",
+        "source_domain": "786cosmetics.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_323070413b1efd1e46ef2723",
+          "external_product_id": "ext_5f55c01bae5cd6b5f0a0e78e",
+          "domain": "786cosmetics.com",
+          "market": "US",
+          "product_title": "Dakar - Breathable Nail Polish",
+          "variant_title": "Dakar - Breathable Nail Polish",
+          "variant_sku": "Dakar",
+          "raw_variant_id": "34780885844132",
+          "url": "https://786cosmetics.com/products/dakar-breathable-nail-polish",
+          "offer_url": "https://786cosmetics.com/products/dakar-breathable-nail-polish",
+          "canonical_url": "https://786cosmetics.com/products/dakar-breathable-nail-polish",
+          "destination_url": "https://786cosmetics.com/products/dakar-breathable-nail-polish",
+          "external_redirect_url": "https://786cosmetics.com/products/dakar-breathable-nail-polish",
+          "merchant_display_name": "786 Cosmetics",
+          "price": "13.99",
+          "price_amount": 13.99,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T04:43:40.323Z",
+            "evidence_url": "https://786cosmetics.com/products/dakar-breathable-nail-polish",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T04:43:40.323Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://786cosmetics.com/products/dakar-breathable-nail-polish"
+            },
+            "regional_price": {
+              "amount": 13.99,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://786cosmetics.com/products/dakar-breathable-nail-polish",
+              "captured_at": "2026-05-18T04:43:40.323Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:43:40.323Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T04:43:40.323Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T04:43:40.323Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 13.99,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://786cosmetics.com/products/dakar-breathable-nail-polish",
+              "captured_at": "2026-05-18T04:43:40.323Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:43:40.323Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 402
+      }
+    },
+    {
+      "external_product_id": "ext_efe7512de8c6df9f75ca19e0",
+      "product_key": "prod::external_seed::external_seed::ext_efe7512de8c6df9f75ca19e0",
+      "product_group_id": "sig_334c164a037b883cdb4e9078",
+      "title": "Dubrovnik - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "product_type": "Beauty Product",
+      "category": "Beauty Product",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/dubrovnik-breathable-nail-polish",
+      "pivota_signature_id": "sig_334c164a037b883cdb4e9078",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_efe7512de8c6df9f75ca19e0::sku_08e85d84913f10c6aaf7",
+        "product_key": "prod::external_seed::external_seed::ext_efe7512de8c6df9f75ca19e0",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_efe7512de8c6df9f75ca19e0",
+        "source_variant_id": "ext_efe7512de8c6df9f75ca19e0:40807968538788",
+        "source_domain": "786cosmetics.com",
+        "sku": "Dubrovnik",
+        "barcode": null,
+        "title": "Dubrovnik - Breathable Nail Polish",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Dubrovnik-BreathableNailPolish.jpg?v=1762529171",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_efe7512de8c6df9f75ca19e0",
+          "raw_variant_id": "40807968538788",
+          "source_variant_id": "ext_efe7512de8c6df9f75ca19e0:40807968538788",
+          "variant_sku": "Dubrovnik",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://786cosmetics.com/products/dubrovnik-breathable-nail-polish",
+          "external_redirect_url": "https://786cosmetics.com/products/dubrovnik-breathable-nail-polish",
+          "price": "9.79",
+          "price_amount": 9.79,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Dubrovnik-BreathableNailPolish.jpg?v=1762529171",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "Dubrovnik",
+            "url": "https://786cosmetics.com/products/dubrovnik-breathable-nail-polish?variant=40807968538788&utm_source=pivota&utm_medium=affiliate",
+            "price": "9.79",
+            "stock": "In Stock",
+            "title": "Default",
+            "options": [],
+            "currency": "USD",
+            "deep_link": "https://786cosmetics.com/products/dubrovnik-breathable-nail-polish?variant=40807968538788&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Dubrovnik-BreathableNailPolish.jpg?v=1762529171",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Dubrovnik-BreathableNailPolish.jpg?v=1762529171",
+              "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Dubrovnik_3.png?v=1737672806",
+              "https://cdn.shopify.com/s/files/1/0413/6229/2900/products/786cosmetics-default-title-dubrovnik-breathable-nail-polish-36760242421991.jpg?v=1737672806",
+              "https://786cosmetics.com/files/Dubrovnik-BreathableNailPolish.jpg"
+            ],
+            "variant_id": "40807968538788",
+            "description": "This creamy coral is inspired by the orange terracotta roofs found in the medieval town of Lucca in Dubrovnik, Croatia. The stunning city of Dubrovnik is a popular tourist choice for its location overlooking the Adriatic Sea. It's also a UNESCO world heritage site recognizing its outstanding medieval architecture and fortified old town.\n\nThis color is best described as a creamy terracotta coral.",
+            "product_url": "https://786cosmetics.com/products/dubrovnik-breathable-nail-polish"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:3abb18e7d2c2999633f828b910df1250",
+        "sku_key": "prod::external_seed::external_seed::ext_efe7512de8c6df9f75ca19e0::sku_08e85d84913f10c6aaf7",
+        "product_key": "prod::external_seed::external_seed::ext_efe7512de8c6df9f75ca19e0",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 9.79,
+        "merchant_effective_price": 9.79,
+        "estimated_best_price": 9.79,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_d4e632768a881bff8a952422",
+        "source_domain": "786cosmetics.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_d4e632768a881bff8a952422",
+          "external_product_id": "ext_efe7512de8c6df9f75ca19e0",
+          "domain": "786cosmetics.com",
+          "market": "US",
+          "product_title": "Dubrovnik - Breathable Nail Polish",
+          "variant_title": "Dubrovnik - Breathable Nail Polish",
+          "variant_sku": "Dubrovnik",
+          "raw_variant_id": "40807968538788",
+          "url": "https://786cosmetics.com/products/dubrovnik-breathable-nail-polish",
+          "offer_url": "https://786cosmetics.com/products/dubrovnik-breathable-nail-polish",
+          "canonical_url": "https://786cosmetics.com/products/dubrovnik-breathable-nail-polish",
+          "destination_url": "https://786cosmetics.com/products/dubrovnik-breathable-nail-polish",
+          "external_redirect_url": "https://786cosmetics.com/products/dubrovnik-breathable-nail-polish",
+          "merchant_display_name": "786 Cosmetics",
+          "price": "9.79",
+          "price_amount": 9.79,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T04:43:40.322Z",
+            "evidence_url": "https://786cosmetics.com/products/dubrovnik-breathable-nail-polish",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T04:43:40.322Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://786cosmetics.com/products/dubrovnik-breathable-nail-polish"
+            },
+            "regional_price": {
+              "amount": 9.79,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://786cosmetics.com/products/dubrovnik-breathable-nail-polish",
+              "captured_at": "2026-05-18T04:43:40.322Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:43:40.322Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T04:43:40.322Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T04:43:40.322Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 9.79,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://786cosmetics.com/products/dubrovnik-breathable-nail-polish",
+              "captured_at": "2026-05-18T04:43:40.322Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:43:40.322Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 398
+      }
+    },
+    {
+      "external_product_id": "ext_ab5107f3a835da10508757c6",
+      "product_key": "prod::external_seed::external_seed::ext_ab5107f3a835da10508757c6",
+      "product_group_id": "sig_3995bef348fc16e82bedefd6",
+      "title": "Havana - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "product_type": "Beauty Product",
+      "category": "Beauty Product",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/havana-breathable-nail-polish",
+      "pivota_signature_id": "sig_3995bef348fc16e82bedefd6",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_ab5107f3a835da10508757c6::sku_ba3833e4641a3e887139",
+        "product_key": "prod::external_seed::external_seed::ext_ab5107f3a835da10508757c6",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_ab5107f3a835da10508757c6",
+        "source_variant_id": "ext_ab5107f3a835da10508757c6:44882203246823",
+        "source_domain": "786cosmetics.com",
+        "sku": "Havana",
+        "barcode": null,
+        "title": "Havana - Breathable Nail Polish",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Havana-BreathableNailPolish.jpg?v=1737674598",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_ab5107f3a835da10508757c6",
+          "raw_variant_id": "44882203246823",
+          "source_variant_id": "ext_ab5107f3a835da10508757c6:44882203246823",
+          "variant_sku": "Havana",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://786cosmetics.com/products/havana-breathable-nail-polish",
+          "external_redirect_url": "https://786cosmetics.com/products/havana-breathable-nail-polish",
+          "price": "13.99",
+          "price_amount": 13.99,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Havana-BreathableNailPolish.jpg?v=1737674598",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "Havana",
+            "url": "https://786cosmetics.com/products/havana-breathable-nail-polish?variant=44882203246823&utm_source=pivota&utm_medium=affiliate",
+            "price": "13.99",
+            "stock": "In Stock",
+            "title": "Default",
+            "options": [],
+            "currency": "USD",
+            "deep_link": "https://786cosmetics.com/products/havana-breathable-nail-polish?variant=44882203246823&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Havana-BreathableNailPolish.jpg?v=1737674598",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Havana-BreathableNailPolish.jpg?v=1737674598",
+              "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Havana_3.png?v=1737674598",
+              "https://cdn.shopify.com/s/files/1/0413/6229/2900/products/786cosmetics-default-title-havana-breathable-nail-polish-new-40480973160679.png?v=1737674598",
+              "https://786cosmetics.com/files/Havana-BreathableNailPolish.jpg"
+            ],
+            "variant_id": "44882203246823",
+            "description": "This beautiful mint green is inspired by the colorful Cuban city of Havana. Known for its beautiful pastel-covered buildings, vintage cars, beaches and striking culture, this city is also famous for its rich 500 year old history filled with colonial rule, pirates, revolutions and more. Considered as one of the most impressive historical city centers in the Caribbean, the city is a UNESCO Heritage site.\n\nHavana is best described as an opaque perfect mint green.",
+            "product_url": "https://786cosmetics.com/products/havana-breathable-nail-polish"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:7d8d3c1b07eda074f2dde9eb346dec4c",
+        "sku_key": "prod::external_seed::external_seed::ext_ab5107f3a835da10508757c6::sku_ba3833e4641a3e887139",
+        "product_key": "prod::external_seed::external_seed::ext_ab5107f3a835da10508757c6",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 13.99,
+        "merchant_effective_price": 13.99,
+        "estimated_best_price": 13.99,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_6aa3f87f415c9e2832cfd266",
+        "source_domain": "786cosmetics.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_6aa3f87f415c9e2832cfd266",
+          "external_product_id": "ext_ab5107f3a835da10508757c6",
+          "domain": "786cosmetics.com",
+          "market": "US",
+          "product_title": "Havana - Breathable Nail Polish",
+          "variant_title": "Havana - Breathable Nail Polish",
+          "variant_sku": "Havana",
+          "raw_variant_id": "44882203246823",
+          "url": "https://786cosmetics.com/products/havana-breathable-nail-polish",
+          "offer_url": "https://786cosmetics.com/products/havana-breathable-nail-polish",
+          "canonical_url": "https://786cosmetics.com/products/havana-breathable-nail-polish",
+          "destination_url": "https://786cosmetics.com/products/havana-breathable-nail-polish",
+          "external_redirect_url": "https://786cosmetics.com/products/havana-breathable-nail-polish",
+          "merchant_display_name": "786 Cosmetics",
+          "price": "13.99",
+          "price_amount": 13.99,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T04:43:40.319Z",
+            "evidence_url": "https://786cosmetics.com/products/havana-breathable-nail-polish",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T04:43:40.319Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://786cosmetics.com/products/havana-breathable-nail-polish"
+            },
+            "regional_price": {
+              "amount": 13.99,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://786cosmetics.com/products/havana-breathable-nail-polish",
+              "captured_at": "2026-05-18T04:43:40.319Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:43:40.319Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T04:43:40.319Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T04:43:40.319Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 13.99,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://786cosmetics.com/products/havana-breathable-nail-polish",
+              "captured_at": "2026-05-18T04:43:40.319Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:43:40.319Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 464
+      }
+    },
+    {
+      "external_product_id": "ext_a36359795b89961a7c052b21",
+      "product_key": "prod::external_seed::external_seed::ext_a36359795b89961a7c052b21",
+      "product_group_id": "sig_94209714a811afb2feb7c730",
+      "title": "Karachi - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "product_type": "Beauty Product",
+      "category": "Beauty Product",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/karachi-breathable-nail-polish",
+      "pivota_signature_id": "sig_94209714a811afb2feb7c730",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_a36359795b89961a7c052b21::sku_3f806f456c4d638072a9",
+        "product_key": "prod::external_seed::external_seed::ext_a36359795b89961a7c052b21",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_a36359795b89961a7c052b21",
+        "source_variant_id": "ext_a36359795b89961a7c052b21:34780884795556",
+        "source_domain": "786cosmetics.com",
+        "sku": "Karachi",
+        "barcode": null,
+        "title": "Karachi - Breathable Nail Polish",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Karachi-BreathableNailPolish-786Cosmetics.jpg?v=1762525791",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_a36359795b89961a7c052b21",
+          "raw_variant_id": "34780884795556",
+          "source_variant_id": "ext_a36359795b89961a7c052b21:34780884795556",
+          "variant_sku": "Karachi",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://786cosmetics.com/products/karachi-breathable-nail-polish",
+          "external_redirect_url": "https://786cosmetics.com/products/karachi-breathable-nail-polish",
+          "price": "9.79",
+          "price_amount": 9.79,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Karachi-BreathableNailPolish-786Cosmetics.jpg?v=1762525791",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "Karachi",
+            "url": "https://786cosmetics.com/products/karachi-breathable-nail-polish?variant=34780884795556&utm_source=pivota&utm_medium=affiliate",
+            "price": "9.79",
+            "stock": "In Stock",
+            "title": "Default",
+            "options": [],
+            "currency": "USD",
+            "deep_link": "https://786cosmetics.com/products/karachi-breathable-nail-polish?variant=34780884795556&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Karachi-BreathableNailPolish-786Cosmetics.jpg?v=1762525791",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Karachi-BreathableNailPolish-786Cosmetics.jpg?v=1762525791",
+              "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Karachi_3.png?v=1737670136",
+              "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Karachi-BreathableNailPolish-786Cosmetics_4.jpg?v=1737670136",
+              "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Karachi-BreathableNailPolish-786Cosmetics_2.jpg?v=1737670136",
+              "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Karachi-BreathableNailPolish-786Cosmetics_3.jpg?v=1737670136",
+              "https://786cosmetics.com/files/Karachi-BreathableNailPolish-786Cosmetics.jpg"
+            ],
+            "variant_id": "34780884795556",
+            "description": "This deep evergreen color is inspired by the cosmopolitan city of Karachi, Pakistan [kuh-rah-chee] and the green of the Pakistan flag. Considered Pakistan's most ethnically and religiously diverse city, Karachi is also one of the most populous and fastest growing cities in the world.\n\nKarachi is best described as a deep evergreen color with an iridescent finish. This opaque dark green is vivid in one coat.",
+            "product_url": "https://786cosmetics.com/products/karachi-breathable-nail-polish"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:696547560970134419b8ff123e3788d8",
+        "sku_key": "prod::external_seed::external_seed::ext_a36359795b89961a7c052b21::sku_3f806f456c4d638072a9",
+        "product_key": "prod::external_seed::external_seed::ext_a36359795b89961a7c052b21",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 9.79,
+        "merchant_effective_price": 9.79,
+        "estimated_best_price": 9.79,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_1f011a75f01a2fa4f1aea4cb",
+        "source_domain": "786cosmetics.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_1f011a75f01a2fa4f1aea4cb",
+          "external_product_id": "ext_a36359795b89961a7c052b21",
+          "domain": "786cosmetics.com",
+          "market": "US",
+          "product_title": "Karachi - Breathable Nail Polish",
+          "variant_title": "Karachi - Breathable Nail Polish",
+          "variant_sku": "Karachi",
+          "raw_variant_id": "34780884795556",
+          "url": "https://786cosmetics.com/products/karachi-breathable-nail-polish",
+          "offer_url": "https://786cosmetics.com/products/karachi-breathable-nail-polish",
+          "canonical_url": "https://786cosmetics.com/products/karachi-breathable-nail-polish",
+          "destination_url": "https://786cosmetics.com/products/karachi-breathable-nail-polish",
+          "external_redirect_url": "https://786cosmetics.com/products/karachi-breathable-nail-polish",
+          "merchant_display_name": "786 Cosmetics",
+          "price": "9.79",
+          "price_amount": 9.79,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T04:43:40.323Z",
+            "evidence_url": "https://786cosmetics.com/products/karachi-breathable-nail-polish",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T04:43:40.323Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://786cosmetics.com/products/karachi-breathable-nail-polish"
+            },
+            "regional_price": {
+              "amount": 9.79,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://786cosmetics.com/products/karachi-breathable-nail-polish",
+              "captured_at": "2026-05-18T04:43:40.323Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:43:40.323Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T04:43:40.323Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T04:43:40.323Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 9.79,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://786cosmetics.com/products/karachi-breathable-nail-polish",
+              "captured_at": "2026-05-18T04:43:40.323Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:43:40.323Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 409
+      }
+    },
+    {
+      "external_product_id": "ext_abd25039dea2189dfcca8079",
+      "product_key": "prod::external_seed::external_seed::ext_abd25039dea2189dfcca8079",
+      "product_group_id": "sig_0b9d23782833ad5356ac276a",
+      "title": "Patagonia - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "product_type": "Beauty Product",
+      "category": "Beauty Product",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/patagonia-breathable-nail-polish",
+      "pivota_signature_id": "sig_0b9d23782833ad5356ac276a",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_abd25039dea2189dfcca8079::sku_8d35adda4e0f26a94807",
+        "product_key": "prod::external_seed::external_seed::ext_abd25039dea2189dfcca8079",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_abd25039dea2189dfcca8079",
+        "source_variant_id": "ext_abd25039dea2189dfcca8079:39770798096548",
+        "source_domain": "786cosmetics.com",
+        "sku": "Patagonia",
+        "barcode": null,
+        "title": "Patagonia - Breathable Nail Polish",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Patagonia-BreathableNailPolish.jpg?v=1762528735",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_abd25039dea2189dfcca8079",
+          "raw_variant_id": "39770798096548",
+          "source_variant_id": "ext_abd25039dea2189dfcca8079:39770798096548",
+          "variant_sku": "Patagonia",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://786cosmetics.com/products/patagonia-breathable-nail-polish",
+          "external_redirect_url": "https://786cosmetics.com/products/patagonia-breathable-nail-polish",
+          "price": "13.99",
+          "price_amount": 13.99,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Patagonia-BreathableNailPolish.jpg?v=1762528735",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "Patagonia",
+            "url": "https://786cosmetics.com/products/patagonia-breathable-nail-polish?variant=39770798096548&utm_source=pivota&utm_medium=affiliate",
+            "price": "13.99",
+            "stock": "In Stock",
+            "title": "Default",
+            "options": [],
+            "currency": "USD",
+            "deep_link": "https://786cosmetics.com/products/patagonia-breathable-nail-polish?variant=39770798096548&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Patagonia-BreathableNailPolish.jpg?v=1762528735",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Patagonia-BreathableNailPolish.jpg?v=1762528735",
+              "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/PatagoniaSwatch.png?v=1737988781",
+              "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Patagonia.jpg?v=1737988781",
+              "https://786cosmetics.com/files/Patagonia-BreathableNailPolish.jpg"
+            ],
+            "variant_id": "39770798096548",
+            "description": "This mint aquamarine is inspired by the Marble Caves of Patagonia, Chile. The Marble Caves, also called the Capillas de Mármol, formed over the last 6000+ years as water melted from nearby glaciers and washed up against solid rocks slowly carving out the caves. Over time, the minerals in the water caused the caves to have blue, green, aquamarine, yellow, and black hues.\n\nPatagonia is a light, mint aquamarine halal nail polish. Patagonia is more green toned than Azores.",
+            "product_url": "https://786cosmetics.com/products/patagonia-breathable-nail-polish"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:f87adefc1c974bd44a05aefd802f3d8c",
+        "sku_key": "prod::external_seed::external_seed::ext_abd25039dea2189dfcca8079::sku_8d35adda4e0f26a94807",
+        "product_key": "prod::external_seed::external_seed::ext_abd25039dea2189dfcca8079",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 13.99,
+        "merchant_effective_price": 13.99,
+        "estimated_best_price": 13.99,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_d9869c986c24b371b75bb144",
+        "source_domain": "786cosmetics.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_d9869c986c24b371b75bb144",
+          "external_product_id": "ext_abd25039dea2189dfcca8079",
+          "domain": "786cosmetics.com",
+          "market": "US",
+          "product_title": "Patagonia - Breathable Nail Polish",
+          "variant_title": "Patagonia - Breathable Nail Polish",
+          "variant_sku": "Patagonia",
+          "raw_variant_id": "39770798096548",
+          "url": "https://786cosmetics.com/products/patagonia-breathable-nail-polish",
+          "offer_url": "https://786cosmetics.com/products/patagonia-breathable-nail-polish",
+          "canonical_url": "https://786cosmetics.com/products/patagonia-breathable-nail-polish",
+          "destination_url": "https://786cosmetics.com/products/patagonia-breathable-nail-polish",
+          "external_redirect_url": "https://786cosmetics.com/products/patagonia-breathable-nail-polish",
+          "merchant_display_name": "786 Cosmetics",
+          "price": "13.99",
+          "price_amount": 13.99,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T04:43:40.322Z",
+            "evidence_url": "https://786cosmetics.com/products/patagonia-breathable-nail-polish",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T04:43:40.322Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://786cosmetics.com/products/patagonia-breathable-nail-polish"
+            },
+            "regional_price": {
+              "amount": 13.99,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://786cosmetics.com/products/patagonia-breathable-nail-polish",
+              "captured_at": "2026-05-18T04:43:40.322Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:43:40.322Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T04:43:40.322Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T04:43:40.322Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 13.99,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://786cosmetics.com/products/patagonia-breathable-nail-polish",
+              "captured_at": "2026-05-18T04:43:40.322Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:43:40.322Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 473
+      }
+    },
+    {
+      "external_product_id": "ext_c6d113bff874c00abfb4ba33",
+      "product_key": "prod::external_seed::external_seed::ext_c6d113bff874c00abfb4ba33",
+      "product_group_id": "sig_2f9acb7f87ef84f04de0cafe",
+      "title": "Tallinn - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "product_type": "Beauty Product",
+      "category": "Beauty Product",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/tallinn-breathable-nail-polish",
+      "pivota_signature_id": "sig_2f9acb7f87ef84f04de0cafe",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_c6d113bff874c00abfb4ba33::sku_dec5042308e6bf4c91c7",
+        "product_key": "prod::external_seed::external_seed::ext_c6d113bff874c00abfb4ba33",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_c6d113bff874c00abfb4ba33",
+        "source_variant_id": "ext_c6d113bff874c00abfb4ba33:41077774352548",
+        "source_domain": "786cosmetics.com",
+        "sku": "Tallinn",
+        "barcode": null,
+        "title": "Tallinn - Breathable Nail Polish",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Tallinn-BreathableNailPolish.jpg?v=1762529231",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_c6d113bff874c00abfb4ba33",
+          "raw_variant_id": "41077774352548",
+          "source_variant_id": "ext_c6d113bff874c00abfb4ba33:41077774352548",
+          "variant_sku": "Tallinn",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://786cosmetics.com/products/tallinn-breathable-nail-polish",
+          "external_redirect_url": "https://786cosmetics.com/products/tallinn-breathable-nail-polish",
+          "price": "9.79",
+          "price_amount": 9.79,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Tallinn-BreathableNailPolish.jpg?v=1762529231",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "Tallinn",
+            "url": "https://786cosmetics.com/products/tallinn-breathable-nail-polish?variant=41077774352548&utm_source=pivota&utm_medium=affiliate",
+            "price": "9.79",
+            "stock": "In Stock",
+            "title": "Default",
+            "options": [],
+            "currency": "USD",
+            "deep_link": "https://786cosmetics.com/products/tallinn-breathable-nail-polish?variant=41077774352548&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Tallinn-BreathableNailPolish.jpg?v=1762529231",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Tallinn-BreathableNailPolish.jpg?v=1762529231",
+              "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Tallinn_3.png?v=1737675209",
+              "https://cdn.shopify.com/s/files/1/0413/6229/2900/products/786cosmetics-default-title-tallinn-breathable-nail-polish-38210120941799.png?v=1737675209",
+              "https://786cosmetics.com/files/Tallinn-BreathableNailPolish.jpg"
+            ],
+            "variant_id": "41077774352548",
+            "description": "This creamy pink-brown hue is inspired by and named after the beautiful Estonian city, Tallinn. Overlooking the Baltic Sea, Tallinn is home to colorful buildings, turreted castles, and has one of the best-preserved historical centers in Europe, with its medieval churches and other buildings falling under UNESCO protection.\n\nThis color is best described creamy brown with pink undertones.",
+            "product_url": "https://786cosmetics.com/products/tallinn-breathable-nail-polish"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:dfd1b3b9a9d7048ae67e8c3abcc766cc",
+        "sku_key": "prod::external_seed::external_seed::ext_c6d113bff874c00abfb4ba33::sku_dec5042308e6bf4c91c7",
+        "product_key": "prod::external_seed::external_seed::ext_c6d113bff874c00abfb4ba33",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 9.79,
+        "merchant_effective_price": 9.79,
+        "estimated_best_price": 9.79,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_dd8fcffb22e044802c744bc0",
+        "source_domain": "786cosmetics.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_dd8fcffb22e044802c744bc0",
+          "external_product_id": "ext_c6d113bff874c00abfb4ba33",
+          "domain": "786cosmetics.com",
+          "market": "US",
+          "product_title": "Tallinn - Breathable Nail Polish",
+          "variant_title": "Tallinn - Breathable Nail Polish",
+          "variant_sku": "Tallinn",
+          "raw_variant_id": "41077774352548",
+          "url": "https://786cosmetics.com/products/tallinn-breathable-nail-polish",
+          "offer_url": "https://786cosmetics.com/products/tallinn-breathable-nail-polish",
+          "canonical_url": "https://786cosmetics.com/products/tallinn-breathable-nail-polish",
+          "destination_url": "https://786cosmetics.com/products/tallinn-breathable-nail-polish",
+          "external_redirect_url": "https://786cosmetics.com/products/tallinn-breathable-nail-polish",
+          "merchant_display_name": "786 Cosmetics",
+          "price": "9.79",
+          "price_amount": 9.79,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T04:43:40.319Z",
+            "evidence_url": "https://786cosmetics.com/products/tallinn-breathable-nail-polish",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T04:43:40.319Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://786cosmetics.com/products/tallinn-breathable-nail-polish"
+            },
+            "regional_price": {
+              "amount": 9.79,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://786cosmetics.com/products/tallinn-breathable-nail-polish",
+              "captured_at": "2026-05-18T04:43:40.319Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:43:40.319Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T04:43:40.319Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T04:43:40.319Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 9.79,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://786cosmetics.com/products/tallinn-breathable-nail-polish",
+              "captured_at": "2026-05-18T04:43:40.319Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:43:40.319Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 389
+      }
+    },
+    {
+      "external_product_id": "ext_da3b149ed322142c187224b6",
+      "product_key": "prod::external_seed::external_seed::ext_da3b149ed322142c187224b6",
+      "product_group_id": "sig_140a391c218848e70b1a3ec1",
+      "title": "Toulouse - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "product_type": "Beauty Product",
+      "category": "Beauty Product",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/toulouse-breathable-nail-polish",
+      "pivota_signature_id": "sig_140a391c218848e70b1a3ec1",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_da3b149ed322142c187224b6::sku_9203fdfdcdc1c1028fdc",
+        "product_key": "prod::external_seed::external_seed::ext_da3b149ed322142c187224b6",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_da3b149ed322142c187224b6",
+        "source_variant_id": "ext_da3b149ed322142c187224b6:40807958937764",
+        "source_domain": "786cosmetics.com",
+        "sku": "Toulouse",
+        "barcode": null,
+        "title": "Toulouse - Breathable Nail Polish",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Toulouse-BreathableNailPolish.jpg?v=1762529163",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_da3b149ed322142c187224b6",
+          "raw_variant_id": "40807958937764",
+          "source_variant_id": "ext_da3b149ed322142c187224b6:40807958937764",
+          "variant_sku": "Toulouse",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://786cosmetics.com/products/toulouse-breathable-nail-polish",
+          "external_redirect_url": "https://786cosmetics.com/products/toulouse-breathable-nail-polish",
+          "price": "13.99",
+          "price_amount": 13.99,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Toulouse-BreathableNailPolish.jpg?v=1762529163",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "Toulouse",
+            "url": "https://786cosmetics.com/products/toulouse-breathable-nail-polish?variant=40807958937764&utm_source=pivota&utm_medium=affiliate",
+            "price": "13.99",
+            "stock": "In Stock",
+            "title": "Default",
+            "options": [],
+            "currency": "USD",
+            "deep_link": "https://786cosmetics.com/products/toulouse-breathable-nail-polish?variant=40807958937764&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Toulouse-BreathableNailPolish.jpg?v=1762529163",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Toulouse-BreathableNailPolish.jpg?v=1762529163",
+              "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Toulouse.png?v=1737674408",
+              "https://cdn.shopify.com/s/files/1/0413/6229/2900/products/786cosmetics-default-title-toulouse-breathable-nail-polish-34643798622439.jpg?v=1737674408",
+              "https://cdn.shopify.com/s/files/1/0413/6229/2900/products/786cosmetics-default-title-toulouse-breathable-nail-polish-34643798786279.png?v=1737674408",
+              "https://786cosmetics.com/files/Toulouse-BreathableNailPolish.jpg"
+            ],
+            "variant_id": "40807958937764",
+            "description": "This pretty pink is inspired by \"La Ville Rose\" or \"The Pink City,\" Toulouse, France. The city gets its name from its unique and beautiful pink stone architecture. The city was originally founded by the Romans in the 5th century and today is home to three UNESCO World Heritage Sites including the Basilica of St. Sernin, the largest remaining Romanesque building in Europe.\n\nToulouse is a beautiful, everyday medium pink nail polish. Toulouse is lighter than Uluru and more pink than Himalayas.",
+            "product_url": "https://786cosmetics.com/products/toulouse-breathable-nail-polish"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:23a8a1417b536aa6fd992a182c301d70",
+        "sku_key": "prod::external_seed::external_seed::ext_da3b149ed322142c187224b6::sku_9203fdfdcdc1c1028fdc",
+        "product_key": "prod::external_seed::external_seed::ext_da3b149ed322142c187224b6",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 13.99,
+        "merchant_effective_price": 13.99,
+        "estimated_best_price": 13.99,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_01040fa8d8fbd5ee897c68b3",
+        "source_domain": "786cosmetics.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_01040fa8d8fbd5ee897c68b3",
+          "external_product_id": "ext_da3b149ed322142c187224b6",
+          "domain": "786cosmetics.com",
+          "market": "US",
+          "product_title": "Toulouse - Breathable Nail Polish",
+          "variant_title": "Toulouse - Breathable Nail Polish",
+          "variant_sku": "Toulouse",
+          "raw_variant_id": "40807958937764",
+          "url": "https://786cosmetics.com/products/toulouse-breathable-nail-polish",
+          "offer_url": "https://786cosmetics.com/products/toulouse-breathable-nail-polish",
+          "canonical_url": "https://786cosmetics.com/products/toulouse-breathable-nail-polish",
+          "destination_url": "https://786cosmetics.com/products/toulouse-breathable-nail-polish",
+          "external_redirect_url": "https://786cosmetics.com/products/toulouse-breathable-nail-polish",
+          "merchant_display_name": "786 Cosmetics",
+          "price": "13.99",
+          "price_amount": 13.99,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T04:43:40.322Z",
+            "evidence_url": "https://786cosmetics.com/products/toulouse-breathable-nail-polish",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T04:43:40.322Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://786cosmetics.com/products/toulouse-breathable-nail-polish"
+            },
+            "regional_price": {
+              "amount": 13.99,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://786cosmetics.com/products/toulouse-breathable-nail-polish",
+              "captured_at": "2026-05-18T04:43:40.322Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:43:40.322Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T04:43:40.322Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T04:43:40.322Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 13.99,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://786cosmetics.com/products/toulouse-breathable-nail-polish",
+              "captured_at": "2026-05-18T04:43:40.322Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:43:40.322Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 495
+      }
+    },
+    {
+      "external_product_id": "ext_f56010dd5bf971f7b7f644a6",
+      "product_key": "prod::external_seed::external_seed::ext_f56010dd5bf971f7b7f644a6",
+      "product_group_id": "sig_d99b29e6ad8e33c0ab94cbed",
+      "title": "Uluru - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "product_type": "Beauty Product",
+      "category": "Beauty Product",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/uluru-breathable-nail-polish",
+      "pivota_signature_id": "sig_d99b29e6ad8e33c0ab94cbed",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_f56010dd5bf971f7b7f644a6::sku_5ab4f0b07725fb0f5e20",
+        "product_key": "prod::external_seed::external_seed::ext_f56010dd5bf971f7b7f644a6",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_f56010dd5bf971f7b7f644a6",
+        "source_variant_id": "ext_f56010dd5bf971f7b7f644a6:41349209850020",
+        "source_domain": "786cosmetics.com",
+        "sku": "Uluru",
+        "barcode": null,
+        "title": "Uluru - Breathable Nail Polish",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Uluru-BreathableNailPolish.jpg?v=1762529553",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_f56010dd5bf971f7b7f644a6",
+          "raw_variant_id": "41349209850020",
+          "source_variant_id": "ext_f56010dd5bf971f7b7f644a6:41349209850020",
+          "variant_sku": "Uluru",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://786cosmetics.com/products/uluru-breathable-nail-polish",
+          "external_redirect_url": "https://786cosmetics.com/products/uluru-breathable-nail-polish",
+          "price": "9.79",
+          "price_amount": 9.79,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Uluru-BreathableNailPolish.jpg?v=1762529553",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "Uluru",
+            "url": "https://786cosmetics.com/products/uluru-breathable-nail-polish?variant=41349209850020&utm_source=pivota&utm_medium=affiliate",
+            "price": "9.79",
+            "stock": "In Stock",
+            "title": "Default",
+            "options": [],
+            "currency": "USD",
+            "deep_link": "https://786cosmetics.com/products/uluru-breathable-nail-polish?variant=41349209850020&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Uluru-BreathableNailPolish.jpg?v=1762529553",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Uluru-BreathableNailPolish.jpg?v=1762529553",
+              "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Uluru_3.png?v=1737671255",
+              "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Uluru-BreathableNailPolish_2.jpg?v=1737671255",
+              "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Uluru-BreathableNailPolish_3.jpg?v=1737671255",
+              "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Uluru-BreathableNailPolish_4.jpg?v=1737671255",
+              "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Uluru-BreathableNailPolish_5.jpg?v=1737671255",
+              "https://786cosmetics.com/files/Uluru-BreathableNailPolish.jpg"
+            ],
+            "variant_id": "41349209850020",
+            "description": "This muted redwood colored nail polish is inspired by and named after the large sandstone rock formation found in Australia. Uluru, or Ayers Rock, is a UNESCO World Heritage Site and is sacred to the aboriginal people of the area. The monolith has rich indigenous history and myths and legends surrounding it that go back thousands of years. The area around the formation has ancient paintings, rock caves, springs and waterholes and is known to give off a reddish pink hue in the sunlight.\n\nUluru is a muted redwood nail polish with cool brown undertones. Uluru is more brown and less saturated than Cusco.",
+            "product_url": "https://786cosmetics.com/products/uluru-breathable-nail-polish"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:deca06691fc37954d8984564fa88babf",
+        "sku_key": "prod::external_seed::external_seed::ext_f56010dd5bf971f7b7f644a6::sku_5ab4f0b07725fb0f5e20",
+        "product_key": "prod::external_seed::external_seed::ext_f56010dd5bf971f7b7f644a6",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 9.79,
+        "merchant_effective_price": 9.79,
+        "estimated_best_price": 9.79,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_fdca90dd7c8f74589690222f",
+        "source_domain": "786cosmetics.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_fdca90dd7c8f74589690222f",
+          "external_product_id": "ext_f56010dd5bf971f7b7f644a6",
+          "domain": "786cosmetics.com",
+          "market": "US",
+          "product_title": "Uluru - Breathable Nail Polish",
+          "variant_title": "Uluru - Breathable Nail Polish",
+          "variant_sku": "Uluru",
+          "raw_variant_id": "41349209850020",
+          "url": "https://786cosmetics.com/products/uluru-breathable-nail-polish",
+          "offer_url": "https://786cosmetics.com/products/uluru-breathable-nail-polish",
+          "canonical_url": "https://786cosmetics.com/products/uluru-breathable-nail-polish",
+          "destination_url": "https://786cosmetics.com/products/uluru-breathable-nail-polish",
+          "external_redirect_url": "https://786cosmetics.com/products/uluru-breathable-nail-polish",
+          "merchant_display_name": "786 Cosmetics",
+          "price": "9.79",
+          "price_amount": 9.79,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T04:43:40.323Z",
+            "evidence_url": "https://786cosmetics.com/products/uluru-breathable-nail-polish",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T04:43:40.323Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://786cosmetics.com/products/uluru-breathable-nail-polish"
+            },
+            "regional_price": {
+              "amount": 9.79,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://786cosmetics.com/products/uluru-breathable-nail-polish",
+              "captured_at": "2026-05-18T04:43:40.323Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:43:40.323Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T04:43:40.323Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T04:43:40.323Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 9.79,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://786cosmetics.com/products/uluru-breathable-nail-polish",
+              "captured_at": "2026-05-18T04:43:40.323Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:43:40.323Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 607
+      }
+    }
+  ]
+}

@@ -12,6 +12,7 @@ const {
   readCommerceFactsV1,
   validateCommerceFactsGateForSeedRow,
 } = require('../src/commerce/commerceFacts');
+const { classifyExternalSeedProductKind } = require('../src/services/externalSeedProductKind');
 
 const MERCHANT_ID = 'external_seed';
 const PLATFORM = 'external_seed';
@@ -458,6 +459,9 @@ function inferHighConfidenceTitleCategoryShape(row) {
   if (/\b(?:eye\s+cream|eye\s+serum|eye\s+oil|eye\s+treatment|eye\s+balm)\b/.test(titleText)) {
     return { productType: 'Eye Treatment', category: 'Eye Treatment', categoryPath: 'beauty/skincare/eye-care' };
   }
+  if (/\b(?:make\s*up|makeup)\s+remover\s+wipes?\b/.test(titleText) || /\bcleansing\s+wipes?\b/.test(titleText)) {
+    return { productType: 'Makeup Remover Wipes', category: 'Makeup Remover Wipes', categoryPath: 'beauty/skincare/cleanser' };
+  }
   return null;
 }
 
@@ -520,7 +524,50 @@ function inferSetOrBundleCategoryShape(row) {
   return { productType: 'Beauty Set', category: 'Beauty Set', categoryPath: 'beauty/sets' };
 }
 
+function productKindValueForFamily(family) {
+  const normalized = asString(family).toLowerCase();
+  if (normalized === 'set_or_collection') return 'bundle';
+  if (['single_formula', 'accessory', 'non_merch', 'sample', 'unknown_product'].includes(normalized)) {
+    return normalized;
+  }
+  return '';
+}
+
+function classifyMirrorProductKind(row, categoryShape, context = {}) {
+  const seedData = asObject(context.seedData || pickSeedData(row));
+  const snapshot = asObject(context.snapshot || pickSnapshot(row));
+  const category = asString(categoryShape?.category);
+  const productType = asString(categoryShape?.productType || category);
+  const categoryPath = asString(categoryShape?.categoryPath);
+  return classifyExternalSeedProductKind({
+    ...row,
+    title: context.title || row.title,
+    description: context.description || row.description,
+    category,
+    product_type: productType,
+    category_path: categoryPath,
+    catalog_category_path: categoryPath,
+    seed_data: {
+      ...seedData,
+      category,
+      product_type: productType,
+      category_path: categoryPath,
+      catalog_category_path: categoryPath,
+      snapshot: {
+        ...snapshot,
+        category,
+        product_type: productType,
+        category_path: categoryPath,
+        catalog_category_path: categoryPath,
+      },
+    },
+  });
+}
+
 function inferCatalogMirrorCategory(row) {
+  const highConfidenceTitleShape = inferHighConfidenceTitleCategoryShape(row);
+  if (highConfidenceTitleShape) return highConfidenceTitleShape;
+
   const setOrBundleShape = inferSetOrBundleCategoryShape(row);
   if (setOrBundleShape) return setOrBundleShape;
 
@@ -551,9 +598,6 @@ function inferCatalogMirrorCategory(row) {
   if (/\b(?:sunscreen|sun\s*screen|spf\s*\d+|sun\s+stick|sun\s+cream)\b/.test(haystack)) {
     return { productType: 'Sunscreen', category: 'Sunscreen', categoryPath: 'beauty/skincare/sunscreen' };
   }
-  const highConfidenceTitleShape = inferHighConfidenceTitleCategoryShape(row);
-  if (highConfidenceTitleShape) return highConfidenceTitleShape;
-
   if (/\b(?:highlighter|illuminator|luminizer|luminiser)\b/.test(haystack)) {
     return { productType: 'Highlighter', category: 'Highlighter', categoryPath: 'beauty/makeup/cheek/highlighter' };
   }
@@ -949,6 +993,14 @@ function buildMirror(row) {
   const imageUrls = pickImageUrls(row);
   const description = pickDescription(row);
   const categoryShape = inferCatalogMirrorCategory(row);
+  const mirrorProductKind = classifyMirrorProductKind(row, categoryShape, {
+    title,
+    description,
+    seedData,
+    snapshot,
+  });
+  const productFamily = mirrorProductKind.family || 'unknown_product';
+  const productKindValue = productKindValueForFamily(productFamily);
   const identity = asObject(row.identity_listing);
   const existingSigId = isSig(row.existing_pivota_signature_id)
     ? asString(row.existing_pivota_signature_id)
@@ -995,6 +1047,10 @@ function buildMirror(row) {
     product_name: title,
     product_type: categoryShape.productType,
     category: categoryShape.category,
+    ...(productKindValue ? { product_kind: productKindValue } : {}),
+    product_family: productFamily,
+    external_seed_product_family: productFamily,
+    external_seed_product_kind_reasons: mirrorProductKind.reasons || [],
     external_product_id: externalProductId,
     canonical_url: canonicalUrl,
     destination_url: canonicalUrl,
@@ -1017,6 +1073,10 @@ function buildMirror(row) {
       product_name: title,
       product_type: categoryShape.productType,
       category: categoryShape.category,
+      ...(productKindValue ? { product_kind: productKindValue } : {}),
+      product_family: productFamily,
+      external_seed_product_family: productFamily,
+      external_seed_product_kind_reasons: mirrorProductKind.reasons || [],
       external_product_id: externalProductId,
       canonical_url: canonicalUrl,
       destination_url: canonicalUrl,

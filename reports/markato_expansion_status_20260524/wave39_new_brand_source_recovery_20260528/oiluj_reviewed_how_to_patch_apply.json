@@ -1,0 +1,167 @@
+{
+  "generated_at": "2026-05-28T02:28:41.412Z",
+  "dry_run": true,
+  "manifest": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave39_new_brand_source_recovery_20260528/oiluj_reviewed_how_to_patch_manifest.json",
+  "summary": {
+    "scanned_rows": 5,
+    "missing_rows": 0,
+    "blocked_rows": 0,
+    "change_candidates": 5,
+    "updated_rows": 0,
+    "catalog_product_updates": 0,
+    "identity_updates": 0
+  },
+  "apply_results": [],
+  "plans": [
+    {
+      "external_product_id": "ext_07cfaab25950196c3ec1b5f3",
+      "seed_id": "eps_dc72b5d18cbbbffe502bfa20",
+      "title": "OILÙJ, Life Oil: Organic Moringa/Sandalwood Blend",
+      "canonical_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+      "status": "ready",
+      "changed": true,
+      "blockers": [],
+      "skipped_fields": [],
+      "patched_fields": [
+        "pdp_how_to_use_raw"
+      ],
+      "before": {
+        "description": "OILUJ presents this face, body, and hair oil as an organic moringa oil and sandalwood essential-oil blend in a 2 fl oz / 60 ml format, with vegan, gluten-free, paraben-free, and fragrance-free positioning.",
+        "pdp_description_raw": "OILUJ presents this face, body, and hair oil as an organic moringa oil and sandalwood essential-oil blend in a 2 fl oz / 60 ml format, with vegan, gluten-free, paraben-free, and fragrance-free positioning.",
+        "pdp_ingredients_raw": "",
+        "pdp_how_to_use_raw": "",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "OILUJ presents this face, body, and hair oil as an organic moringa oil and sandalwood essential-oil blend in a 2 fl oz / 60 ml format, with vegan, gluten-free, paraben-free, and fragrance-free positioning.",
+        "pdp_description_raw": "OILUJ presents this face, body, and hair oil as an organic moringa oil and sandalwood essential-oil blend in a 2 fl oz / 60 ml format, with vegan, gluten-free, paraben-free, and fragrance-free positioning.",
+        "pdp_how_to_use_raw": "Use this multipurpose oil on the face, body, and hair as described by the source product page.",
+        "pdp_ingredients_raw": "",
+        "ingredients_polluted": false,
+        "detail_section_count": 2,
+        "polluted_detail_section_count": 0
+      }
+    },
+    {
+      "external_product_id": "ext_1493a61baf165a6c00e4977b",
+      "seed_id": "eps_788807b1346798f50430e971",
+      "title": "OILÙJ, Life Oil: Organic Moringa/ French Lavender Blend",
+      "canonical_url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+      "status": "ready",
+      "changed": true,
+      "blockers": [],
+      "skipped_fields": [],
+      "patched_fields": [
+        "pdp_how_to_use_raw"
+      ],
+      "before": {
+        "description": "OILUJ presents this face, body, and hair oil as an organic moringa oil and French lavender essential-oil blend, positioned for hydration, aromatic comfort, and multipurpose use.",
+        "pdp_description_raw": "OILUJ presents this face, body, and hair oil as an organic moringa oil and French lavender essential-oil blend, positioned for hydration, aromatic comfort, and multipurpose use.",
+        "pdp_ingredients_raw": "",
+        "pdp_how_to_use_raw": "",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "OILUJ presents this face, body, and hair oil as an organic moringa oil and French lavender essential-oil blend, positioned for hydration, aromatic comfort, and multipurpose use.",
+        "pdp_description_raw": "OILUJ presents this face, body, and hair oil as an organic moringa oil and French lavender essential-oil blend, positioned for hydration, aromatic comfort, and multipurpose use.",
+        "pdp_how_to_use_raw": "Use this multipurpose oil on the face, body, and hair as described by the source product page.",
+        "pdp_ingredients_raw": "",
+        "ingredients_polluted": false,
+        "detail_section_count": 2,
+        "polluted_detail_section_count": 0
+      }
+    },
+    {
+      "external_product_id": "ext_3a16e6a6300af832ae3ccdb7",
+      "seed_id": "eps_f44441b9491577f7041972cc",
+      "title": "OILÙJ, \"Eye Live\"",
+      "canonical_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+      "status": "ready",
+      "changed": true,
+      "blockers": [],
+      "skipped_fields": [],
+      "patched_fields": [
+        "pdp_how_to_use_raw"
+      ],
+      "before": {
+        "description": "OILUJ presents Eye Live as an eye-contour treatment built around evening primrose, jojoba oil, moringa oil, and vitamin E for the delicate eye area.",
+        "pdp_description_raw": "OILUJ presents Eye Live as an eye-contour treatment built around evening primrose, jojoba oil, moringa oil, and vitamin E for the delicate eye area.",
+        "pdp_ingredients_raw": "",
+        "pdp_how_to_use_raw": "",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "OILUJ presents Eye Live as an eye-contour treatment built around evening primrose, jojoba oil, moringa oil, and vitamin E for the delicate eye area.",
+        "pdp_description_raw": "OILUJ presents Eye Live as an eye-contour treatment built around evening primrose, jojoba oil, moringa oil, and vitamin E for the delicate eye area.",
+        "pdp_how_to_use_raw": "Incorporate this lightweight eye contour treatment into a skincare routine for targeted care around the delicate eye area, day or night.",
+        "pdp_ingredients_raw": "",
+        "ingredients_polluted": false,
+        "detail_section_count": 2,
+        "polluted_detail_section_count": 0
+      }
+    },
+    {
+      "external_product_id": "ext_79fc9f55f8b092590e168c8d",
+      "seed_id": "eps_c7fd84cd5bb7e47f0d2eb06f",
+      "title": "OILÙJ, \"Lip Life\"",
+      "canonical_url": "http://www.oiluj.com/store/p17/OIL%C3%99J%2C_%22Lip_Life%22.html",
+      "status": "ready",
+      "changed": true,
+      "blockers": [],
+      "skipped_fields": [],
+      "patched_fields": [
+        "pdp_how_to_use_raw"
+      ],
+      "before": {
+        "description": "OILUJ presents Lip Life as an organic lip balm made with virgin coconut oil, organic beeswax, moringa oil, and vitamin E for daily lip moisture.",
+        "pdp_description_raw": "OILUJ presents Lip Life as an organic lip balm made with virgin coconut oil, organic beeswax, moringa oil, and vitamin E for daily lip moisture.",
+        "pdp_ingredients_raw": "",
+        "pdp_how_to_use_raw": "",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "OILUJ presents Lip Life as an organic lip balm made with virgin coconut oil, organic beeswax, moringa oil, and vitamin E for daily lip moisture.",
+        "pdp_description_raw": "OILUJ presents Lip Life as an organic lip balm made with virgin coconut oil, organic beeswax, moringa oil, and vitamin E for daily lip moisture.",
+        "pdp_how_to_use_raw": "Use this lip balm as a daily lip moisturizer or as a base before lipstick or lip gloss.",
+        "pdp_ingredients_raw": "",
+        "ingredients_polluted": false,
+        "detail_section_count": 2,
+        "polluted_detail_section_count": 0
+      }
+    },
+    {
+      "external_product_id": "ext_ab35eb07e8635bb1e1be3ebf",
+      "seed_id": "eps_b7a050ba2f78906f4c033659",
+      "title": "OILÙJ, Life Oil",
+      "canonical_url": "http://www.oiluj.com/store/p5/OIL%C3%99J%2C_Life_Oil.html",
+      "status": "ready",
+      "changed": true,
+      "blockers": [],
+      "skipped_fields": [],
+      "patched_fields": [
+        "pdp_how_to_use_raw"
+      ],
+      "before": {
+        "description": "OILUJ presents Life Oil as cold-pressed moringa oil sourced from Nicaragua, with a first-pressed golden oil format for skin and hair.",
+        "pdp_description_raw": "OILUJ presents Life Oil as cold-pressed moringa oil sourced from Nicaragua, with a first-pressed golden oil format for skin and hair.",
+        "pdp_ingredients_raw": "",
+        "pdp_how_to_use_raw": "",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "OILUJ presents Life Oil as cold-pressed moringa oil sourced from Nicaragua, with a first-pressed golden oil format for skin and hair.",
+        "pdp_description_raw": "OILUJ presents Life Oil as cold-pressed moringa oil sourced from Nicaragua, with a first-pressed golden oil format for skin and hair.",
+        "pdp_how_to_use_raw": "Apply this moringa oil to skin; the source page notes that bottle residue disappears once the oil is applied to skin.",
+        "pdp_ingredients_raw": "",
+        "ingredients_polluted": false,
+        "detail_section_count": 2,
+        "polluted_detail_section_count": 0
+      }
+    }
+  ]
+}

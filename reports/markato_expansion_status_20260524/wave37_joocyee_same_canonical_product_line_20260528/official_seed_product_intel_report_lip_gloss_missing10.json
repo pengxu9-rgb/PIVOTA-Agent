@@ -1,0 +1,2580 @@
+{
+  "meta": {
+    "generated_at": "2026-05-28T01:27:46.886Z",
+    "source": "reviewed_official_seed_product_intel_report",
+    "batch_name": "wave37_joocyee_glazed_lip_gloss_missing_product_intel",
+    "inventory": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave37_joocyee_same_canonical_product_line_20260528/readiness_after_lip_gloss_sync_all14/commerce_index_kb_readiness_inventory.json",
+    "selected_cases": 10,
+    "reviewer": "codex_wave37",
+    "reviewer_kind": "assistant",
+    "candidate_quality_summary": {
+      "public_ready": 10,
+      "high_quality_ready": 10,
+      "evidence_profile": {
+        "seller_plus_formula": 10
+      }
+    }
+  },
+  "rows": [
+    {
+      "case_id": "live_ext_41c98523b6fc0a8279c3095c",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_wave37",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-28T01:27:46.886Z",
+      "notes": "Approved official-PDP-seed rewrite for Glazed Lip Gloss; evidence_profile=seller_plus_formula; source_url=https://joocyee.com/products/glazed-lip-gloss",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_wave37",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_41c98523b6fc0a8279c3095c",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_41c98523b6fc0a8279c3095c",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_1ffa9ef2d2d3e5f9bc92ed9d",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Lip product identity",
+              "body": "A Joocyee lip product listed on the brand source page as Glazed Lip Gloss. The source description identifies: All-Day Wear, Always Luminous Evolutionary 「Low Temperature Formulation」 Film-Forming Tech 90% Essence Infusion Creamy-smooth texture on lips Three trendy shade families Flattering for all skin tones Shade Options."
+            },
+            "best_for": [
+              {
+                "tag": "lip_shoppers",
+                "label": "Lip product shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "All-Day Wear, Always Luminous Evolutionary 「Low Temperature Formulation」 Film-Forming Tech 90% Essence Infusion Creamy-smooth texture on lips Three trendy shade families Flattering for all skin tones Shade Options.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include 20: Octyldodecanol, Saccharomyces/Rice Ferment Filtrate, Diisostearyl Malate, Trimethylsiloxyphenyl Dimethicone, Diphenylsiloxy Phenyl Trimethicone. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "lip_color",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the lip product context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-28T01:27:46.886Z",
+              "source_version": "wave37_joocyee_glazed_lip_gloss_missing_product_intel"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://joocyee.com/products/glazed-lip-gloss"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 63,
+                "source_url": "https://joocyee.com/products/glazed-lip-gloss"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "lip product",
+            "texture": "lip",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://joocyee.com/products/glazed-lip-gloss"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 63,
+              "source_url": "https://joocyee.com/products/glazed-lip-gloss"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-28T01:27:46.886Z",
+            "source_version": "wave37_joocyee_glazed_lip_gloss_missing_product_intel"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_wave37",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-28T01:27:46.886Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave37_joocyee_glazed_lip_gloss_missing_product_intel",
+            "official_source_url": "https://joocyee.com/products/glazed-lip-gloss",
+            "official_source_ingredient_count": 63,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Glazed Lip Gloss",
+            "subtitle": "Lip Product",
+            "highlight": "Shine lip formula detail",
+            "intro": "A Joocyee lip product listed on the brand source page as Glazed Lip Gloss. The source description identifies: All-Day Wear, Always Luminous Evolutionary 「Low Temperature Formulation」 Film-Forming Tech 90% Essence Infusion Creamy-smooth texture on lips Three trendy shade families Flattering for all skin tones Shade Options.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Glazed Lip Gloss",
+            "compact_candidate": "Lip Product",
+            "highlight_candidate": "Shine lip formula detail",
+            "intro_candidate": "A Joocyee lip product listed on the brand source page as Glazed Lip Gloss. The source description identifies: All-Day Wear, Always Luminous Evolutionary 「Low Temperature Formulation」 Film-Forming Tech 90% Essence Infusion Creamy-smooth texture on lips Three trendy shade families Flattering for all skin tones Shade Options.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_35ffa71281354a958ef30f7e",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_wave37",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-28T01:27:46.886Z",
+      "notes": "Approved official-PDP-seed rewrite for Glazed Lip Gloss; evidence_profile=seller_plus_formula; source_url=https://joocyee.com/products/glazed-lip-gloss",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_wave37",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_35ffa71281354a958ef30f7e",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_35ffa71281354a958ef30f7e",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_ce5317a38b3c710f808f6aa3",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Lip product identity",
+              "body": "A Joocyee lip product listed on the brand source page as Glazed Lip Gloss. The source description identifies: All-Day Wear, Always Luminous Evolutionary 「Low Temperature Formulation」 Film-Forming Tech 90% Essence Infusion Creamy-smooth texture on lips Three trendy shade families Flattering for all skin tones Shade Options."
+            },
+            "best_for": [
+              {
+                "tag": "lip_shoppers",
+                "label": "Lip product shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "All-Day Wear, Always Luminous Evolutionary 「Low Temperature Formulation」 Film-Forming Tech 90% Essence Infusion Creamy-smooth texture on lips Three trendy shade families Flattering for all skin tones Shade Options.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include 20: Octyldodecanol, Saccharomyces/Rice Ferment Filtrate, Diisostearyl Malate, Trimethylsiloxyphenyl Dimethicone, Diphenylsiloxy Phenyl Trimethicone. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "lip_color",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the lip product context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-28T01:27:46.886Z",
+              "source_version": "wave37_joocyee_glazed_lip_gloss_missing_product_intel"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://joocyee.com/products/glazed-lip-gloss"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 63,
+                "source_url": "https://joocyee.com/products/glazed-lip-gloss"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "lip product",
+            "texture": "lip",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://joocyee.com/products/glazed-lip-gloss"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 63,
+              "source_url": "https://joocyee.com/products/glazed-lip-gloss"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-28T01:27:46.886Z",
+            "source_version": "wave37_joocyee_glazed_lip_gloss_missing_product_intel"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_wave37",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-28T01:27:46.886Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave37_joocyee_glazed_lip_gloss_missing_product_intel",
+            "official_source_url": "https://joocyee.com/products/glazed-lip-gloss",
+            "official_source_ingredient_count": 63,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Glazed Lip Gloss",
+            "subtitle": "Lip Product",
+            "highlight": "Shine lip formula detail",
+            "intro": "A Joocyee lip product listed on the brand source page as Glazed Lip Gloss. The source description identifies: All-Day Wear, Always Luminous Evolutionary 「Low Temperature Formulation」 Film-Forming Tech 90% Essence Infusion Creamy-smooth texture on lips Three trendy shade families Flattering for all skin tones Shade Options.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Glazed Lip Gloss",
+            "compact_candidate": "Lip Product",
+            "highlight_candidate": "Shine lip formula detail",
+            "intro_candidate": "A Joocyee lip product listed on the brand source page as Glazed Lip Gloss. The source description identifies: All-Day Wear, Always Luminous Evolutionary 「Low Temperature Formulation」 Film-Forming Tech 90% Essence Infusion Creamy-smooth texture on lips Three trendy shade families Flattering for all skin tones Shade Options.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_4888a0d0940daa58fc77af80",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_wave37",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-28T01:27:46.886Z",
+      "notes": "Approved official-PDP-seed rewrite for Glazed Lip Gloss; evidence_profile=seller_plus_formula; source_url=https://joocyee.com/products/glazed-lip-gloss",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_wave37",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_4888a0d0940daa58fc77af80",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_4888a0d0940daa58fc77af80",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_bd5ed2292f663109e373a1fa",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Lip product identity",
+              "body": "A Joocyee lip product listed on the brand source page as Glazed Lip Gloss. The source description identifies: All-Day Wear, Always Luminous Evolutionary 「Low Temperature Formulation」 Film-Forming Tech 90% Essence Infusion Creamy-smooth texture on lips Three trendy shade families Flattering for all skin tones Shade Options."
+            },
+            "best_for": [
+              {
+                "tag": "lip_shoppers",
+                "label": "Lip product shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "All-Day Wear, Always Luminous Evolutionary 「Low Temperature Formulation」 Film-Forming Tech 90% Essence Infusion Creamy-smooth texture on lips Three trendy shade families Flattering for all skin tones Shade Options.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include 20: Octyldodecanol, Saccharomyces/Rice Ferment Filtrate, Diisostearyl Malate, Trimethylsiloxyphenyl Dimethicone, Diphenylsiloxy Phenyl Trimethicone. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "lip_color",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the lip product context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-28T01:27:46.886Z",
+              "source_version": "wave37_joocyee_glazed_lip_gloss_missing_product_intel"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://joocyee.com/products/glazed-lip-gloss"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 63,
+                "source_url": "https://joocyee.com/products/glazed-lip-gloss"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "lip product",
+            "texture": "lip",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://joocyee.com/products/glazed-lip-gloss"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 63,
+              "source_url": "https://joocyee.com/products/glazed-lip-gloss"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-28T01:27:46.886Z",
+            "source_version": "wave37_joocyee_glazed_lip_gloss_missing_product_intel"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_wave37",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-28T01:27:46.886Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave37_joocyee_glazed_lip_gloss_missing_product_intel",
+            "official_source_url": "https://joocyee.com/products/glazed-lip-gloss",
+            "official_source_ingredient_count": 63,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Glazed Lip Gloss",
+            "subtitle": "Lip Product",
+            "highlight": "Shine lip formula detail",
+            "intro": "A Joocyee lip product listed on the brand source page as Glazed Lip Gloss. The source description identifies: All-Day Wear, Always Luminous Evolutionary 「Low Temperature Formulation」 Film-Forming Tech 90% Essence Infusion Creamy-smooth texture on lips Three trendy shade families Flattering for all skin tones Shade Options.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Glazed Lip Gloss",
+            "compact_candidate": "Lip Product",
+            "highlight_candidate": "Shine lip formula detail",
+            "intro_candidate": "A Joocyee lip product listed on the brand source page as Glazed Lip Gloss. The source description identifies: All-Day Wear, Always Luminous Evolutionary 「Low Temperature Formulation」 Film-Forming Tech 90% Essence Infusion Creamy-smooth texture on lips Three trendy shade families Flattering for all skin tones Shade Options.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_52a27acd606756dea463a717",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_wave37",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-28T01:27:46.886Z",
+      "notes": "Approved official-PDP-seed rewrite for Glazed Lip Gloss; evidence_profile=seller_plus_formula; source_url=https://joocyee.com/products/glazed-lip-gloss",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_wave37",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_52a27acd606756dea463a717",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_52a27acd606756dea463a717",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_40f7c9b410f2e1d61e4e00e4",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Lip product identity",
+              "body": "A Joocyee lip product listed on the brand source page as Glazed Lip Gloss. The source description identifies: All-Day Wear, Always Luminous Evolutionary 「Low Temperature Formulation」 Film-Forming Tech 90% Essence Infusion Creamy-smooth texture on lips Three trendy shade families Flattering for all skin tones Shade Options."
+            },
+            "best_for": [
+              {
+                "tag": "lip_shoppers",
+                "label": "Lip product shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "All-Day Wear, Always Luminous Evolutionary 「Low Temperature Formulation」 Film-Forming Tech 90% Essence Infusion Creamy-smooth texture on lips Three trendy shade families Flattering for all skin tones Shade Options.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include 20: Octyldodecanol, Saccharomyces/Rice Ferment Filtrate, Diisostearyl Malate, Trimethylsiloxyphenyl Dimethicone, Diphenylsiloxy Phenyl Trimethicone. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "lip_color",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the lip product context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-28T01:27:46.886Z",
+              "source_version": "wave37_joocyee_glazed_lip_gloss_missing_product_intel"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://joocyee.com/products/glazed-lip-gloss"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 63,
+                "source_url": "https://joocyee.com/products/glazed-lip-gloss"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "lip product",
+            "texture": "lip",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://joocyee.com/products/glazed-lip-gloss"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 63,
+              "source_url": "https://joocyee.com/products/glazed-lip-gloss"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-28T01:27:46.886Z",
+            "source_version": "wave37_joocyee_glazed_lip_gloss_missing_product_intel"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_wave37",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-28T01:27:46.886Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave37_joocyee_glazed_lip_gloss_missing_product_intel",
+            "official_source_url": "https://joocyee.com/products/glazed-lip-gloss",
+            "official_source_ingredient_count": 63,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Glazed Lip Gloss",
+            "subtitle": "Lip Product",
+            "highlight": "Shine lip formula detail",
+            "intro": "A Joocyee lip product listed on the brand source page as Glazed Lip Gloss. The source description identifies: All-Day Wear, Always Luminous Evolutionary 「Low Temperature Formulation」 Film-Forming Tech 90% Essence Infusion Creamy-smooth texture on lips Three trendy shade families Flattering for all skin tones Shade Options.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Glazed Lip Gloss",
+            "compact_candidate": "Lip Product",
+            "highlight_candidate": "Shine lip formula detail",
+            "intro_candidate": "A Joocyee lip product listed on the brand source page as Glazed Lip Gloss. The source description identifies: All-Day Wear, Always Luminous Evolutionary 「Low Temperature Formulation」 Film-Forming Tech 90% Essence Infusion Creamy-smooth texture on lips Three trendy shade families Flattering for all skin tones Shade Options.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_a9a9d873995dc784e34cb222",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_wave37",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-28T01:27:46.886Z",
+      "notes": "Approved official-PDP-seed rewrite for Glazed Lip Gloss; evidence_profile=seller_plus_formula; source_url=https://joocyee.com/products/glazed-lip-gloss",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_wave37",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_a9a9d873995dc784e34cb222",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_a9a9d873995dc784e34cb222",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_6254fb2b854e70ccf86de1ce",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Lip product identity",
+              "body": "A Joocyee lip product listed on the brand source page as Glazed Lip Gloss. The source description identifies: All-Day Wear, Always Luminous Evolutionary 「Low Temperature Formulation」 Film-Forming Tech 90% Essence Infusion Creamy-smooth texture on lips Three trendy shade families Flattering for all skin tones Shade Options."
+            },
+            "best_for": [
+              {
+                "tag": "lip_shoppers",
+                "label": "Lip product shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "All-Day Wear, Always Luminous Evolutionary 「Low Temperature Formulation」 Film-Forming Tech 90% Essence Infusion Creamy-smooth texture on lips Three trendy shade families Flattering for all skin tones Shade Options.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include 20: Octyldodecanol, Saccharomyces/Rice Ferment Filtrate, Diisostearyl Malate, Trimethylsiloxyphenyl Dimethicone, Diphenylsiloxy Phenyl Trimethicone. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "lip_color",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the lip product context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-28T01:27:46.886Z",
+              "source_version": "wave37_joocyee_glazed_lip_gloss_missing_product_intel"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://joocyee.com/products/glazed-lip-gloss"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 63,
+                "source_url": "https://joocyee.com/products/glazed-lip-gloss"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "lip product",
+            "texture": "lip",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://joocyee.com/products/glazed-lip-gloss"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 63,
+              "source_url": "https://joocyee.com/products/glazed-lip-gloss"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-28T01:27:46.886Z",
+            "source_version": "wave37_joocyee_glazed_lip_gloss_missing_product_intel"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_wave37",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-28T01:27:46.886Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave37_joocyee_glazed_lip_gloss_missing_product_intel",
+            "official_source_url": "https://joocyee.com/products/glazed-lip-gloss",
+            "official_source_ingredient_count": 63,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Glazed Lip Gloss",
+            "subtitle": "Lip Product",
+            "highlight": "Shine lip formula detail",
+            "intro": "A Joocyee lip product listed on the brand source page as Glazed Lip Gloss. The source description identifies: All-Day Wear, Always Luminous Evolutionary 「Low Temperature Formulation」 Film-Forming Tech 90% Essence Infusion Creamy-smooth texture on lips Three trendy shade families Flattering for all skin tones Shade Options.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Glazed Lip Gloss",
+            "compact_candidate": "Lip Product",
+            "highlight_candidate": "Shine lip formula detail",
+            "intro_candidate": "A Joocyee lip product listed on the brand source page as Glazed Lip Gloss. The source description identifies: All-Day Wear, Always Luminous Evolutionary 「Low Temperature Formulation」 Film-Forming Tech 90% Essence Infusion Creamy-smooth texture on lips Three trendy shade families Flattering for all skin tones Shade Options.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_2881559170714581057e21eb",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_wave37",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-28T01:27:46.886Z",
+      "notes": "Approved official-PDP-seed rewrite for Glazed Lip Gloss; evidence_profile=seller_plus_formula; source_url=https://joocyee.com/products/glazed-lip-gloss",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_wave37",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_2881559170714581057e21eb",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_2881559170714581057e21eb",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_a138447b66b63085f5607f39",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Lip product identity",
+              "body": "A Joocyee lip product listed on the brand source page as Glazed Lip Gloss. The source description identifies: All-Day Wear, Always Luminous Evolutionary 「Low Temperature Formulation」 Film-Forming Tech 90% Essence Infusion Creamy-smooth texture on lips Three trendy shade families Flattering for all skin tones Shade Options."
+            },
+            "best_for": [
+              {
+                "tag": "lip_shoppers",
+                "label": "Lip product shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "All-Day Wear, Always Luminous Evolutionary 「Low Temperature Formulation」 Film-Forming Tech 90% Essence Infusion Creamy-smooth texture on lips Three trendy shade families Flattering for all skin tones Shade Options.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include 20: Octyldodecanol, Saccharomyces/Rice Ferment Filtrate, Diisostearyl Malate, Trimethylsiloxyphenyl Dimethicone, Diphenylsiloxy Phenyl Trimethicone. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "lip_color",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the lip product context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-28T01:27:46.886Z",
+              "source_version": "wave37_joocyee_glazed_lip_gloss_missing_product_intel"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://joocyee.com/products/glazed-lip-gloss"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 63,
+                "source_url": "https://joocyee.com/products/glazed-lip-gloss"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "lip product",
+            "texture": "lip",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://joocyee.com/products/glazed-lip-gloss"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 63,
+              "source_url": "https://joocyee.com/products/glazed-lip-gloss"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-28T01:27:46.886Z",
+            "source_version": "wave37_joocyee_glazed_lip_gloss_missing_product_intel"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_wave37",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-28T01:27:46.886Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave37_joocyee_glazed_lip_gloss_missing_product_intel",
+            "official_source_url": "https://joocyee.com/products/glazed-lip-gloss",
+            "official_source_ingredient_count": 63,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Glazed Lip Gloss",
+            "subtitle": "Lip Product",
+            "highlight": "Shine lip formula detail",
+            "intro": "A Joocyee lip product listed on the brand source page as Glazed Lip Gloss. The source description identifies: All-Day Wear, Always Luminous Evolutionary 「Low Temperature Formulation」 Film-Forming Tech 90% Essence Infusion Creamy-smooth texture on lips Three trendy shade families Flattering for all skin tones Shade Options.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Glazed Lip Gloss",
+            "compact_candidate": "Lip Product",
+            "highlight_candidate": "Shine lip formula detail",
+            "intro_candidate": "A Joocyee lip product listed on the brand source page as Glazed Lip Gloss. The source description identifies: All-Day Wear, Always Luminous Evolutionary 「Low Temperature Formulation」 Film-Forming Tech 90% Essence Infusion Creamy-smooth texture on lips Three trendy shade families Flattering for all skin tones Shade Options.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_3c9980e0455d648c3173c14e",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_wave37",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-28T01:27:46.886Z",
+      "notes": "Approved official-PDP-seed rewrite for Glazed Lip Gloss; evidence_profile=seller_plus_formula; source_url=https://joocyee.com/products/glazed-lip-gloss",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_wave37",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_3c9980e0455d648c3173c14e",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_3c9980e0455d648c3173c14e",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_269e443984fa3d0ac908c01f",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Lip product identity",
+              "body": "A Joocyee lip product listed on the brand source page as Glazed Lip Gloss. The source description identifies: All-Day Wear, Always Luminous Evolutionary 「Low Temperature Formulation」 Film-Forming Tech 90% Essence Infusion Creamy-smooth texture on lips Three trendy shade families Flattering for all skin tones Shade Options."
+            },
+            "best_for": [
+              {
+                "tag": "lip_shoppers",
+                "label": "Lip product shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "All-Day Wear, Always Luminous Evolutionary 「Low Temperature Formulation」 Film-Forming Tech 90% Essence Infusion Creamy-smooth texture on lips Three trendy shade families Flattering for all skin tones Shade Options.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include 20: Octyldodecanol, Saccharomyces/Rice Ferment Filtrate, Diisostearyl Malate, Trimethylsiloxyphenyl Dimethicone, Diphenylsiloxy Phenyl Trimethicone. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "lip_color",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the lip product context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-28T01:27:46.886Z",
+              "source_version": "wave37_joocyee_glazed_lip_gloss_missing_product_intel"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://joocyee.com/products/glazed-lip-gloss"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 63,
+                "source_url": "https://joocyee.com/products/glazed-lip-gloss"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "lip product",
+            "texture": "lip",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://joocyee.com/products/glazed-lip-gloss"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 63,
+              "source_url": "https://joocyee.com/products/glazed-lip-gloss"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-28T01:27:46.886Z",
+            "source_version": "wave37_joocyee_glazed_lip_gloss_missing_product_intel"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_wave37",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-28T01:27:46.886Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave37_joocyee_glazed_lip_gloss_missing_product_intel",
+            "official_source_url": "https://joocyee.com/products/glazed-lip-gloss",
+            "official_source_ingredient_count": 63,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Glazed Lip Gloss",
+            "subtitle": "Lip Product",
+            "highlight": "Shine lip formula detail",
+            "intro": "A Joocyee lip product listed on the brand source page as Glazed Lip Gloss. The source description identifies: All-Day Wear, Always Luminous Evolutionary 「Low Temperature Formulation」 Film-Forming Tech 90% Essence Infusion Creamy-smooth texture on lips Three trendy shade families Flattering for all skin tones Shade Options.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Glazed Lip Gloss",
+            "compact_candidate": "Lip Product",
+            "highlight_candidate": "Shine lip formula detail",
+            "intro_candidate": "A Joocyee lip product listed on the brand source page as Glazed Lip Gloss. The source description identifies: All-Day Wear, Always Luminous Evolutionary 「Low Temperature Formulation」 Film-Forming Tech 90% Essence Infusion Creamy-smooth texture on lips Three trendy shade families Flattering for all skin tones Shade Options.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_70a0b0b3c68a48630060c7ff",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_wave37",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-28T01:27:46.886Z",
+      "notes": "Approved official-PDP-seed rewrite for Glazed Lip Gloss; evidence_profile=seller_plus_formula; source_url=https://joocyee.com/products/glazed-lip-gloss",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_wave37",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_70a0b0b3c68a48630060c7ff",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_70a0b0b3c68a48630060c7ff",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_54ce4c755ee54ef8d69529ea",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Lip product identity",
+              "body": "A Joocyee lip product listed on the brand source page as Glazed Lip Gloss. The source description identifies: All-Day Wear, Always Luminous Evolutionary 「Low Temperature Formulation」 Film-Forming Tech 90% Essence Infusion Creamy-smooth texture on lips Three trendy shade families Flattering for all skin tones Shade Options."
+            },
+            "best_for": [
+              {
+                "tag": "lip_shoppers",
+                "label": "Lip product shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "All-Day Wear, Always Luminous Evolutionary 「Low Temperature Formulation」 Film-Forming Tech 90% Essence Infusion Creamy-smooth texture on lips Three trendy shade families Flattering for all skin tones Shade Options.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include 20: Octyldodecanol, Saccharomyces/Rice Ferment Filtrate, Diisostearyl Malate, Trimethylsiloxyphenyl Dimethicone, Diphenylsiloxy Phenyl Trimethicone. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "lip_color",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the lip product context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-28T01:27:46.886Z",
+              "source_version": "wave37_joocyee_glazed_lip_gloss_missing_product_intel"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://joocyee.com/products/glazed-lip-gloss"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 63,
+                "source_url": "https://joocyee.com/products/glazed-lip-gloss"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "lip product",
+            "texture": "lip",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://joocyee.com/products/glazed-lip-gloss"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 63,
+              "source_url": "https://joocyee.com/products/glazed-lip-gloss"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-28T01:27:46.886Z",
+            "source_version": "wave37_joocyee_glazed_lip_gloss_missing_product_intel"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_wave37",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-28T01:27:46.886Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave37_joocyee_glazed_lip_gloss_missing_product_intel",
+            "official_source_url": "https://joocyee.com/products/glazed-lip-gloss",
+            "official_source_ingredient_count": 63,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Glazed Lip Gloss",
+            "subtitle": "Lip Product",
+            "highlight": "Shine lip formula detail",
+            "intro": "A Joocyee lip product listed on the brand source page as Glazed Lip Gloss. The source description identifies: All-Day Wear, Always Luminous Evolutionary 「Low Temperature Formulation」 Film-Forming Tech 90% Essence Infusion Creamy-smooth texture on lips Three trendy shade families Flattering for all skin tones Shade Options.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Glazed Lip Gloss",
+            "compact_candidate": "Lip Product",
+            "highlight_candidate": "Shine lip formula detail",
+            "intro_candidate": "A Joocyee lip product listed on the brand source page as Glazed Lip Gloss. The source description identifies: All-Day Wear, Always Luminous Evolutionary 「Low Temperature Formulation」 Film-Forming Tech 90% Essence Infusion Creamy-smooth texture on lips Three trendy shade families Flattering for all skin tones Shade Options.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_75c1cd3bbad92bbdbc6ab010",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_wave37",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-28T01:27:46.886Z",
+      "notes": "Approved official-PDP-seed rewrite for Glazed Lip Gloss; evidence_profile=seller_plus_formula; source_url=https://joocyee.com/products/glazed-lip-gloss",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_wave37",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_75c1cd3bbad92bbdbc6ab010",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_75c1cd3bbad92bbdbc6ab010",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_71f43f953faef33621ca99cf",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Lip product identity",
+              "body": "A Joocyee lip product listed on the brand source page as Glazed Lip Gloss. The source description identifies: All-Day Wear, Always Luminous Evolutionary 「Low Temperature Formulation」 Film-Forming Tech 90% Essence Infusion Creamy-smooth texture on lips Three trendy shade families Flattering for all skin tones Shade Options."
+            },
+            "best_for": [
+              {
+                "tag": "lip_shoppers",
+                "label": "Lip product shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "All-Day Wear, Always Luminous Evolutionary 「Low Temperature Formulation」 Film-Forming Tech 90% Essence Infusion Creamy-smooth texture on lips Three trendy shade families Flattering for all skin tones Shade Options.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include 20: Octyldodecanol, Saccharomyces/Rice Ferment Filtrate, Diisostearyl Malate, Trimethylsiloxyphenyl Dimethicone, Diphenylsiloxy Phenyl Trimethicone. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "lip_color",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the lip product context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-28T01:27:46.886Z",
+              "source_version": "wave37_joocyee_glazed_lip_gloss_missing_product_intel"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://joocyee.com/products/glazed-lip-gloss"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 63,
+                "source_url": "https://joocyee.com/products/glazed-lip-gloss"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "lip product",
+            "texture": "lip",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://joocyee.com/products/glazed-lip-gloss"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 63,
+              "source_url": "https://joocyee.com/products/glazed-lip-gloss"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-28T01:27:46.886Z",
+            "source_version": "wave37_joocyee_glazed_lip_gloss_missing_product_intel"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_wave37",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-28T01:27:46.886Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave37_joocyee_glazed_lip_gloss_missing_product_intel",
+            "official_source_url": "https://joocyee.com/products/glazed-lip-gloss",
+            "official_source_ingredient_count": 63,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Glazed Lip Gloss",
+            "subtitle": "Lip Product",
+            "highlight": "Shine lip formula detail",
+            "intro": "A Joocyee lip product listed on the brand source page as Glazed Lip Gloss. The source description identifies: All-Day Wear, Always Luminous Evolutionary 「Low Temperature Formulation」 Film-Forming Tech 90% Essence Infusion Creamy-smooth texture on lips Three trendy shade families Flattering for all skin tones Shade Options.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Glazed Lip Gloss",
+            "compact_candidate": "Lip Product",
+            "highlight_candidate": "Shine lip formula detail",
+            "intro_candidate": "A Joocyee lip product listed on the brand source page as Glazed Lip Gloss. The source description identifies: All-Day Wear, Always Luminous Evolutionary 「Low Temperature Formulation」 Film-Forming Tech 90% Essence Infusion Creamy-smooth texture on lips Three trendy shade families Flattering for all skin tones Shade Options.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_c037778265747b32fc52a16c",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_wave37",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-28T01:27:46.886Z",
+      "notes": "Approved official-PDP-seed rewrite for Glazed Lip Gloss; evidence_profile=seller_plus_formula; source_url=https://joocyee.com/products/glazed-lip-gloss",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_wave37",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_c037778265747b32fc52a16c",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_c037778265747b32fc52a16c",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_33fe6dbde945c2735d4f0a33",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Lip product identity",
+              "body": "A Joocyee lip product listed on the brand source page as Glazed Lip Gloss. The source description identifies: All-Day Wear, Always Luminous Evolutionary 「Low Temperature Formulation」 Film-Forming Tech 90% Essence Infusion Creamy-smooth texture on lips Three trendy shade families Flattering for all skin tones Shade Options."
+            },
+            "best_for": [
+              {
+                "tag": "lip_shoppers",
+                "label": "Lip product shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "All-Day Wear, Always Luminous Evolutionary 「Low Temperature Formulation」 Film-Forming Tech 90% Essence Infusion Creamy-smooth texture on lips Three trendy shade families Flattering for all skin tones Shade Options.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include 20: Octyldodecanol, Saccharomyces/Rice Ferment Filtrate, Diisostearyl Malate, Trimethylsiloxyphenyl Dimethicone, Diphenylsiloxy Phenyl Trimethicone. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "lip_color",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the lip product context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-28T01:27:46.886Z",
+              "source_version": "wave37_joocyee_glazed_lip_gloss_missing_product_intel"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://joocyee.com/products/glazed-lip-gloss"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 63,
+                "source_url": "https://joocyee.com/products/glazed-lip-gloss"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "lip product",
+            "texture": "lip",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://joocyee.com/products/glazed-lip-gloss"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 63,
+              "source_url": "https://joocyee.com/products/glazed-lip-gloss"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-28T01:27:46.886Z",
+            "source_version": "wave37_joocyee_glazed_lip_gloss_missing_product_intel"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_wave37",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-28T01:27:46.886Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave37_joocyee_glazed_lip_gloss_missing_product_intel",
+            "official_source_url": "https://joocyee.com/products/glazed-lip-gloss",
+            "official_source_ingredient_count": 63,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Glazed Lip Gloss",
+            "subtitle": "Lip Product",
+            "highlight": "Shine lip formula detail",
+            "intro": "A Joocyee lip product listed on the brand source page as Glazed Lip Gloss. The source description identifies: All-Day Wear, Always Luminous Evolutionary 「Low Temperature Formulation」 Film-Forming Tech 90% Essence Infusion Creamy-smooth texture on lips Three trendy shade families Flattering for all skin tones Shade Options.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Glazed Lip Gloss",
+            "compact_candidate": "Lip Product",
+            "highlight_candidate": "Shine lip formula detail",
+            "intro_candidate": "A Joocyee lip product listed on the brand source page as Glazed Lip Gloss. The source description identifies: All-Day Wear, Always Luminous Evolutionary 「Low Temperature Formulation」 Film-Forming Tech 90% Essence Infusion Creamy-smooth texture on lips Three trendy shade families Flattering for all skin tones Shade Options.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    }
+  ]
+}

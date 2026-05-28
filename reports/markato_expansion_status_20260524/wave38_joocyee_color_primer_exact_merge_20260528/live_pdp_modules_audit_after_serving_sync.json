@@ -1,0 +1,351 @@
+{
+  "generated_at": "2026-05-28T01:41:06.202Z",
+  "source": "external_seed_live_pdp_modules_audit",
+  "query": {
+    "market": "US",
+    "domain": null,
+    "brand": null,
+    "external_product_id": null,
+    "external_product_ids": [
+      "ext_3ca7c85748b01b4bc8e2f3bb",
+      "ext_794deab047eb4a75225329df",
+      "ext_8bced3f34a8100c3cfa62377"
+    ],
+    "include_attached": true,
+    "limit": 50,
+    "offset": 0,
+    "include_similar": true,
+    "use_sig": false
+  },
+  "summary": {
+    "scanned": 3,
+    "ready": 3,
+    "thin": 0,
+    "not_conversion_ready": 0,
+    "by_domain": [
+      {
+        "key": "joocyee.com",
+        "count": 3
+      }
+    ],
+    "blocker_counts": [],
+    "weak_insights_ids": [],
+    "seller_only_insights_ids": [],
+    "force_filled_ids": [],
+    "content_gap_ids": []
+  },
+  "rows": [
+    {
+      "external_product_id": "ext_3ca7c85748b01b4bc8e2f3bb",
+      "pivota_signature_id": "sig_21ec476a97152c0c4323f3068e07eabf",
+      "probed_product_id": "ext_3ca7c85748b01b4bc8e2f3bb",
+      "probed_id_type": "ext",
+      "seed_id": "epsv_dfbd57e3cd61bee1bd7e1033",
+      "market": "US",
+      "domain": "joocyee.com",
+      "title": "Color-correcting Primer",
+      "canonical_url": "https://joocyee.com/products/color-correcting-primer",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "f684d4829110",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 9,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com",
+          "joocyee.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Color: Soft Light Green",
+          "Soft Light Green"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Makeup primer",
+        "why_count": 3,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 45,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 5,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 22
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_8bced3f34a8100c3cfa62377",
+      "pivota_signature_id": "sig_f6f452fb0f01fb07be5487f10add516f",
+      "probed_product_id": "ext_8bced3f34a8100c3cfa62377",
+      "probed_id_type": "ext",
+      "seed_id": "epsv_2f96a2d8d7f9686a5b196a92",
+      "market": "US",
+      "domain": "joocyee.com",
+      "title": "Color-correcting Primer",
+      "canonical_url": "https://joocyee.com/products/color-correcting-primer",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "f684d4829110",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 9,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "joocyee.com",
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Color: Soft Light Green",
+          "Soft Light Green"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Makeup primer",
+        "why_count": 3,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 45,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 5,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 22
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_794deab047eb4a75225329df",
+      "pivota_signature_id": "sig_6c0ec349bd054178a2d4de2e237c7b1f",
+      "probed_product_id": "ext_794deab047eb4a75225329df",
+      "probed_id_type": "ext",
+      "seed_id": "eps_ebb12bb4d8f9c3e65b57a8f3",
+      "market": "US",
+      "domain": "joocyee.com",
+      "title": "Color-correcting Primer",
+      "canonical_url": "https://joocyee.com/products/color-correcting-primer",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "f684d4829110",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 9,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "joocyee.com",
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Color: Soft Light Green",
+          "Soft Light Green"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Makeup primer",
+        "why_count": 3,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 45,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 5,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 22
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    }
+  ]
+}

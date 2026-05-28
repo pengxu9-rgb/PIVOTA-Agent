@@ -1,0 +1,955 @@
+{
+  "generated_at": "2026-05-27T17:28:46.054Z",
+  "source": "external_seed_live_pdp_modules_audit",
+  "query": {
+    "market": "US",
+    "domain": null,
+    "brand": null,
+    "external_product_id": null,
+    "external_product_ids": [
+      "ext_faf89834933316df0d8da973",
+      "ext_5f55c01bae5cd6b5f0a0e78e",
+      "ext_efe7512de8c6df9f75ca19e0",
+      "ext_ab5107f3a835da10508757c6",
+      "ext_a36359795b89961a7c052b21",
+      "ext_abd25039dea2189dfcca8079",
+      "ext_c6d113bff874c00abfb4ba33",
+      "ext_da3b149ed322142c187224b6",
+      "ext_f56010dd5bf971f7b7f644a6"
+    ],
+    "include_attached": true,
+    "limit": 50,
+    "offset": 0,
+    "include_similar": true,
+    "use_sig": false
+  },
+  "summary": {
+    "scanned": 9,
+    "ready": 9,
+    "thin": 0,
+    "not_conversion_ready": 0,
+    "by_domain": [
+      {
+        "key": "786cosmetics.com",
+        "count": 9
+      }
+    ],
+    "blocker_counts": [],
+    "weak_insights_ids": [],
+    "seller_only_insights_ids": [],
+    "force_filled_ids": [],
+    "content_gap_ids": []
+  },
+  "rows": [
+    {
+      "external_product_id": "ext_ab5107f3a835da10508757c6",
+      "pivota_signature_id": "sig_3995bef348fc16e82bedefd6",
+      "probed_product_id": "ext_ab5107f3a835da10508757c6",
+      "probed_id_type": "ext",
+      "seed_id": "eps_6aa3f87f415c9e2832cfd266",
+      "market": "US",
+      "domain": "786cosmetics.com",
+      "title": "Havana - Breathable Nail Polish",
+      "canonical_url": "https://786cosmetics.com/products/havana-breathable-nail-polish",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "777e943357b7",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 1,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Nail polish identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 36,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 9,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 17
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_c6d113bff874c00abfb4ba33",
+      "pivota_signature_id": "sig_2f9acb7f87ef84f04de0cafe",
+      "probed_product_id": "ext_c6d113bff874c00abfb4ba33",
+      "probed_id_type": "ext",
+      "seed_id": "eps_dd8fcffb22e044802c744bc0",
+      "market": "US",
+      "domain": "786cosmetics.com",
+      "title": "Tallinn - Breathable Nail Polish",
+      "canonical_url": "https://786cosmetics.com/products/tallinn-breathable-nail-polish",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "777e943357b7",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 1,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Nail polish identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 36,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 9,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 17
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_f56010dd5bf971f7b7f644a6",
+      "pivota_signature_id": "sig_d99b29e6ad8e33c0ab94cbed",
+      "probed_product_id": "ext_f56010dd5bf971f7b7f644a6",
+      "probed_id_type": "ext",
+      "seed_id": "eps_fdca90dd7c8f74589690222f",
+      "market": "US",
+      "domain": "786cosmetics.com",
+      "title": "Uluru - Breathable Nail Polish",
+      "canonical_url": "https://786cosmetics.com/products/uluru-breathable-nail-polish",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "777e943357b7",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 6,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Nail polish identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 36,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 9,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 17
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_abd25039dea2189dfcca8079",
+      "pivota_signature_id": "sig_0b9d23782833ad5356ac276a",
+      "probed_product_id": "ext_abd25039dea2189dfcca8079",
+      "probed_id_type": "ext",
+      "seed_id": "eps_d9869c986c24b371b75bb144",
+      "market": "US",
+      "domain": "786cosmetics.com",
+      "title": "Patagonia - Breathable Nail Polish",
+      "canonical_url": "https://786cosmetics.com/products/patagonia-breathable-nail-polish",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "777e943357b7",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 3,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Nail polish identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 36,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 9,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 17
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_efe7512de8c6df9f75ca19e0",
+      "pivota_signature_id": "sig_334c164a037b883cdb4e9078",
+      "probed_product_id": "ext_efe7512de8c6df9f75ca19e0",
+      "probed_id_type": "ext",
+      "seed_id": "eps_d4e632768a881bff8a952422",
+      "market": "US",
+      "domain": "786cosmetics.com",
+      "title": "Dubrovnik - Breathable Nail Polish",
+      "canonical_url": "https://786cosmetics.com/products/dubrovnik-breathable-nail-polish",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "777e943357b7",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 1,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Nail polish identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 36,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 9,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 17
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_da3b149ed322142c187224b6",
+      "pivota_signature_id": "sig_140a391c218848e70b1a3ec1",
+      "probed_product_id": "ext_da3b149ed322142c187224b6",
+      "probed_id_type": "ext",
+      "seed_id": "eps_01040fa8d8fbd5ee897c68b3",
+      "market": "US",
+      "domain": "786cosmetics.com",
+      "title": "Toulouse - Breathable Nail Polish",
+      "canonical_url": "https://786cosmetics.com/products/toulouse-breathable-nail-polish",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "777e943357b7",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 2,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Nail polish identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 36,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 9,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 17
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_5f55c01bae5cd6b5f0a0e78e",
+      "pivota_signature_id": "sig_6ab9aef32646e31b8520db08",
+      "probed_product_id": "ext_5f55c01bae5cd6b5f0a0e78e",
+      "probed_id_type": "ext",
+      "seed_id": "eps_323070413b1efd1e46ef2723",
+      "market": "US",
+      "domain": "786cosmetics.com",
+      "title": "Dakar - Breathable Nail Polish",
+      "canonical_url": "https://786cosmetics.com/products/dakar-breathable-nail-polish",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "777e943357b7",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 2,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Nail polish identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 36,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 9,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 17
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_faf89834933316df0d8da973",
+      "pivota_signature_id": "sig_e86eacac8d29e3f2ea6c369a",
+      "probed_product_id": "ext_faf89834933316df0d8da973",
+      "probed_id_type": "ext",
+      "seed_id": "eps_99ec566b1f749b6e2d21e127",
+      "market": "US",
+      "domain": "786cosmetics.com",
+      "title": "Azores - Breathable Nail Polish",
+      "canonical_url": "https://786cosmetics.com/products/azores-breathable-nail-polish",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "777e943357b7",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 21,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com",
+          "786cosmetics.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Nail polish identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 36,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 8,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 16
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_a36359795b89961a7c052b21",
+      "pivota_signature_id": "sig_94209714a811afb2feb7c730",
+      "probed_product_id": "ext_a36359795b89961a7c052b21",
+      "probed_id_type": "ext",
+      "seed_id": "eps_1f011a75f01a2fa4f1aea4cb",
+      "market": "US",
+      "domain": "786cosmetics.com",
+      "title": "Karachi - Breathable Nail Polish",
+      "canonical_url": "https://786cosmetics.com/products/karachi-breathable-nail-polish",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "777e943357b7",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 5,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Nail polish identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 36,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 9,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 17
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    }
+  ]
+}

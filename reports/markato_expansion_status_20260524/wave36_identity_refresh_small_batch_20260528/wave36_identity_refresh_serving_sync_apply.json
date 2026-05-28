@@ -1,0 +1,776 @@
+{
+  "generated_at": "2026-05-28T01:13:05.944Z",
+  "mode": "apply",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": true,
+  "requested_ids": 3,
+  "fetched_rows": 3,
+  "mirror_rows": 3,
+  "planned_sku_rows": 5,
+  "planned_offer_rows": 5,
+  "planned_index_state_rows": 3,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "apply",
+    "existing_before": {
+      "catalog_products": 3,
+      "catalog_skus": 2,
+      "catalog_offers": 2,
+      "product_group_members": 2
+    },
+    "stale_delete_preview": {
+      "current_sku_rows": 5,
+      "current_offer_rows": 5,
+      "planned_stale_sku_deletes": 3,
+      "planned_stale_offer_deletes": 3,
+      "sample_stale_skus": [
+        {
+          "title": "Firming & Polishing Body Scrub Sea Salt & Pineapple",
+          "sku_key": "prod::external_seed::external_seed::ext_05040ea019efc2b0fe1a9111::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_05040ea019efc2b0fe1a9111",
+          "source_variant_id": "prod::external_seed::external_seed::ext_05040ea019efc2b0fe1a9111",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Dual-Ended Eyebrow Pencil & Cream 2.0",
+          "sku_key": "prod::external_seed::external_seed::ext_10d91302e0cbb32d89cb0cb7::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_10d91302e0cbb32d89cb0cb7",
+          "source_variant_id": "prod::external_seed::external_seed::ext_10d91302e0cbb32d89cb0cb7",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Refreshing Body Wash Bulgarian Rose",
+          "sku_key": "prod::external_seed::external_seed::ext_5232f3454fc57c62d8d3e7bc::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_5232f3454fc57c62d8d3e7bc",
+          "source_variant_id": "prod::external_seed::external_seed::ext_5232f3454fc57c62d8d3e7bc",
+          "visible_attributes": {}
+        }
+      ],
+      "sample_stale_offers": [
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_05040ea019efc2b0fe1a9111::canonical",
+          "offer_id": "offer:external_seed:abc9db2d287849ccdfd535107cbad2c5",
+          "list_price": 34.99,
+          "product_key": "prod::external_seed::external_seed::ext_05040ea019efc2b0fe1a9111",
+          "merchant_effective_price": 34.99
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_10d91302e0cbb32d89cb0cb7::canonical",
+          "offer_id": "offer:external_seed:2403a99777fbc7a876a7fdb4c912dd99",
+          "list_price": 20.9,
+          "product_key": "prod::external_seed::external_seed::ext_10d91302e0cbb32d89cb0cb7",
+          "merchant_effective_price": 20.9
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_5232f3454fc57c62d8d3e7bc::canonical",
+          "offer_id": "offer:external_seed:26f53a9b552e6d5dc4d86f2cbde78e06",
+          "list_price": 19.99,
+          "product_key": "prod::external_seed::external_seed::ext_5232f3454fc57c62d8d3e7bc",
+          "merchant_effective_price": 19.99
+        }
+      ]
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 5
+    },
+    "product_upserts": 3,
+    "sku_upserts": 5,
+    "offer_upserts": 5,
+    "group_member_upserts": 3,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 1,
+    "index_state_upserts": 3,
+    "identity_live_read_updates": 3,
+    "catalog_row_trust_upserts": 3,
+    "stale_offer_deletes": 3,
+    "stale_sku_deletes": 3
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_05040ea019efc2b0fe1a9111",
+      "product_key": "prod::external_seed::external_seed::ext_05040ea019efc2b0fe1a9111",
+      "product_group_id": "sig_1119fff3f297236de888e10b",
+      "title": "Firming & Polishing Body Scrub Sea Salt & Pineapple",
+      "brand": "Delicate Daisys Botanical Beauty",
+      "product_type": "Body Scrub",
+      "category": "Body Scrub",
+      "category_path": "beauty/body-care/body-scrubs",
+      "canonical_url": "https://delicatedaisys.com/products/firming-polishing-body-scrub-sea-salt-pineapple",
+      "pivota_signature_id": "sig_1119fff3f297236de888e10b",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_05040ea019efc2b0fe1a9111::sku_ef277e63ec1f640910d6",
+        "product_key": "prod::external_seed::external_seed::ext_05040ea019efc2b0fe1a9111",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_05040ea019efc2b0fe1a9111",
+        "source_variant_id": "ext_05040ea019efc2b0fe1a9111:47818577641746",
+        "source_domain": "delicatedaisys.com",
+        "sku": "860008494047",
+        "barcode": null,
+        "title": "Firming & Polishing Body Scrub Sea Salt & Pineapple",
+        "currency": "USD",
+        "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3426.png?v=1779471089",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_05040ea019efc2b0fe1a9111",
+          "raw_variant_id": "47818577641746",
+          "source_variant_id": "ext_05040ea019efc2b0fe1a9111:47818577641746",
+          "variant_sku": "860008494047",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://delicatedaisys.com/products/firming-polishing-body-scrub-sea-salt-pineapple",
+          "external_redirect_url": "https://delicatedaisys.com/products/firming-polishing-body-scrub-sea-salt-pineapple",
+          "price": "34.99",
+          "price_amount": 34.99,
+          "currency": "USD",
+          "availability": "out_of_stock",
+          "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3426.png?v=1779471089",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "860008494047",
+            "url": "https://delicatedaisys.com/products/firming-polishing-body-scrub-sea-salt-pineapple?variant=47818577641746&utm_source=pivota&utm_medium=affiliate",
+            "price": "34.99",
+            "stock": "Out of Stock",
+            "title": "Default Title",
+            "options": [],
+            "currency": "USD",
+            "deep_link": "https://delicatedaisys.com/products/firming-polishing-body-scrub-sea-salt-pineapple?variant=47818577641746&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3426.png?v=1779471089",
+            "image_urls": [
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3426.png?v=1779471089",
+              "https://delicatedaisys.com/cdn/shop/files/firming-polishing-body-scrub-sea-salt-pineapple-689236.jpg?v=1725349380",
+              "https://delicatedaisys.com/cdn/shop/files/firming-polishing-body-scrub-sea-salt-pineapple-330948.jpg?v=1725349380",
+              "https://delicatedaisys.com/cdn/shop/files/firming-polishing-body-scrub-sea-salt-pineapple-599769.jpg?v=1725349380",
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3427.png?v=1779471298",
+              "https://delicatedaisys.com/cdn/shop/files/firming-polishing-body-scrub-sea-salt-pineapple-908031.jpg?v=1725299212"
+            ],
+            "variant_id": "47818577641746",
+            "product_url": "https://delicatedaisys.com/products/firming-polishing-body-scrub-sea-salt-pineapple"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:a7b0b7c17874ff0a0b8c5ac0545f2e1d",
+        "sku_key": "prod::external_seed::external_seed::ext_05040ea019efc2b0fe1a9111::sku_ef277e63ec1f640910d6",
+        "product_key": "prod::external_seed::external_seed::ext_05040ea019efc2b0fe1a9111",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "out_of_stock",
+        "currency": "USD",
+        "list_price": 34.99,
+        "merchant_effective_price": 34.99,
+        "estimated_best_price": 34.99,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_ed40abaf48a059aec2f56de6",
+        "source_domain": "delicatedaisys.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_ed40abaf48a059aec2f56de6",
+          "external_product_id": "ext_05040ea019efc2b0fe1a9111",
+          "domain": "delicatedaisys.com",
+          "market": "US",
+          "product_title": "Firming & Polishing Body Scrub Sea Salt & Pineapple",
+          "variant_title": "Firming & Polishing Body Scrub Sea Salt & Pineapple",
+          "variant_sku": "860008494047",
+          "raw_variant_id": "47818577641746",
+          "url": "https://delicatedaisys.com/products/firming-polishing-body-scrub-sea-salt-pineapple",
+          "offer_url": "https://delicatedaisys.com/products/firming-polishing-body-scrub-sea-salt-pineapple",
+          "canonical_url": "https://delicatedaisys.com/products/firming-polishing-body-scrub-sea-salt-pineapple",
+          "destination_url": "https://delicatedaisys.com/products/firming-polishing-body-scrub-sea-salt-pineapple",
+          "external_redirect_url": "https://delicatedaisys.com/products/firming-polishing-body-scrub-sea-salt-pineapple",
+          "merchant_display_name": "Delicate Daisys Botanical Beauty",
+          "price": "34.99",
+          "price_amount": 34.99,
+          "price_currency": "USD",
+          "availability": "out_of_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T00:25:44.711Z",
+            "evidence_url": "https://delicatedaisys.com/products/firming-polishing-body-scrub-sea-salt-pineapple",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T00:25:44.711Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://delicatedaisys.com/products/firming-polishing-body-scrub-sea-salt-pineapple"
+            },
+            "regional_price": {
+              "amount": 34.99,
+              "currency": "USD",
+              "display_raw": "34.99",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://delicatedaisys.com/products/firming-polishing-body-scrub-sea-salt-pineapple",
+              "captured_at": "2026-05-23T00:25:44.711Z"
+            },
+            "availability": {
+              "status": "out_of_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:25:44.711Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T00:25:44.711Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T00:25:44.711Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 34.99,
+              "currency": "USD",
+              "display_raw": "34.99",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://delicatedaisys.com/products/firming-polishing-body-scrub-sea-salt-pineapple",
+              "captured_at": "2026-05-23T00:25:44.711Z"
+            },
+            "availability": {
+              "status": "out_of_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:25:44.711Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 399
+      }
+    },
+    {
+      "external_product_id": "ext_5232f3454fc57c62d8d3e7bc",
+      "product_key": "prod::external_seed::external_seed::ext_5232f3454fc57c62d8d3e7bc",
+      "product_group_id": "sig_3f1727ac681c8652a1e234b7",
+      "title": "Refreshing Body Wash Bulgarian Rose",
+      "brand": "Delicate Daisys Botanical Beauty",
+      "product_type": "Body Wash",
+      "category": "Body Wash",
+      "category_path": "beauty/body-care/body-wash",
+      "canonical_url": "https://delicatedaisys.com/products/refreshing-body-wash-bulgarian-rose",
+      "pivota_signature_id": "sig_3f1727ac681c8652a1e234b7",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_5232f3454fc57c62d8d3e7bc::sku_b6f4b601743efd66535e",
+        "product_key": "prod::external_seed::external_seed::ext_5232f3454fc57c62d8d3e7bc",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_5232f3454fc57c62d8d3e7bc",
+        "source_variant_id": "ext_5232f3454fc57c62d8d3e7bc:47818443424018",
+        "source_domain": "delicatedaisys.com",
+        "sku": "SHOPIFY-47818443424018",
+        "barcode": null,
+        "title": "Refreshing Body Wash Bulgarian Rose",
+        "currency": "USD",
+        "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3443.png?v=1779474250",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_5232f3454fc57c62d8d3e7bc",
+          "raw_variant_id": "47818443424018",
+          "source_variant_id": "ext_5232f3454fc57c62d8d3e7bc:47818443424018",
+          "variant_sku": "SHOPIFY-47818443424018",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://delicatedaisys.com/products/refreshing-body-wash-bulgarian-rose",
+          "external_redirect_url": "https://delicatedaisys.com/products/refreshing-body-wash-bulgarian-rose",
+          "price": "19.99",
+          "price_amount": 19.99,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3443.png?v=1779474250",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "SHOPIFY-47818443424018",
+            "url": "https://delicatedaisys.com/products/refreshing-body-wash-bulgarian-rose?variant=47818443424018&utm_source=pivota&utm_medium=affiliate",
+            "price": "19.99",
+            "stock": "In Stock",
+            "title": "Default Title",
+            "options": [],
+            "currency": "USD",
+            "deep_link": "https://delicatedaisys.com/products/refreshing-body-wash-bulgarian-rose?variant=47818443424018&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3443.png?v=1779474250",
+            "image_urls": [
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3443.png?v=1779474250",
+              "https://delicatedaisys.com/cdn/shop/files/refreshing-body-wash-bulgarian-rose-161019.jpg?v=1725349498",
+              "https://delicatedaisys.com/cdn/shop/files/refreshing-body-wash-bulgarian-rose-221560.jpg?v=1725349498",
+              "https://delicatedaisys.com/cdn/shop/files/refreshing-body-wash-bulgarian-rose-314480.jpg?v=1725349498",
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3444.png?v=1779474250",
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3447.png?v=1779477451"
+            ],
+            "variant_id": "47818443424018",
+            "product_url": "https://delicatedaisys.com/products/refreshing-body-wash-bulgarian-rose"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:0c5d0068428b42863399daaf4a9a41d5",
+        "sku_key": "prod::external_seed::external_seed::ext_5232f3454fc57c62d8d3e7bc::sku_b6f4b601743efd66535e",
+        "product_key": "prod::external_seed::external_seed::ext_5232f3454fc57c62d8d3e7bc",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 19.99,
+        "merchant_effective_price": 19.99,
+        "estimated_best_price": 19.99,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_1af3062b970e3d57f0b84a5c",
+        "source_domain": "delicatedaisys.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_1af3062b970e3d57f0b84a5c",
+          "external_product_id": "ext_5232f3454fc57c62d8d3e7bc",
+          "domain": "delicatedaisys.com",
+          "market": "US",
+          "product_title": "Refreshing Body Wash Bulgarian Rose",
+          "variant_title": "Refreshing Body Wash Bulgarian Rose",
+          "variant_sku": "SHOPIFY-47818443424018",
+          "raw_variant_id": "47818443424018",
+          "url": "https://delicatedaisys.com/products/refreshing-body-wash-bulgarian-rose",
+          "offer_url": "https://delicatedaisys.com/products/refreshing-body-wash-bulgarian-rose",
+          "canonical_url": "https://delicatedaisys.com/products/refreshing-body-wash-bulgarian-rose",
+          "destination_url": "https://delicatedaisys.com/products/refreshing-body-wash-bulgarian-rose",
+          "external_redirect_url": "https://delicatedaisys.com/products/refreshing-body-wash-bulgarian-rose",
+          "merchant_display_name": "Delicate Daisys Botanical Beauty",
+          "price": "19.99",
+          "price_amount": 19.99,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T00:27:13.240Z",
+            "evidence_url": "https://delicatedaisys.com/products/refreshing-body-wash-bulgarian-rose",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T00:27:13.240Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://delicatedaisys.com/products/refreshing-body-wash-bulgarian-rose"
+            },
+            "regional_price": {
+              "amount": 19.99,
+              "currency": "USD",
+              "display_raw": "19.99",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://delicatedaisys.com/products/refreshing-body-wash-bulgarian-rose",
+              "captured_at": "2026-05-23T00:27:13.240Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:27:13.240Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T00:27:13.240Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T00:27:13.240Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 19.99,
+              "currency": "USD",
+              "display_raw": "19.99",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://delicatedaisys.com/products/refreshing-body-wash-bulgarian-rose",
+              "captured_at": "2026-05-23T00:27:13.240Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:27:13.240Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 483
+      }
+    },
+    {
+      "external_product_id": "ext_10d91302e0cbb32d89cb0cb7",
+      "product_key": "prod::external_seed::external_seed::ext_10d91302e0cbb32d89cb0cb7",
+      "product_group_id": "sig_22446b6af1eff4f09e9db714",
+      "title": "Dual-Ended Eyebrow Pencil & Cream 2.0",
+      "brand": "Joocyee",
+      "product_type": "Eye Makeup",
+      "category": "Eye Makeup",
+      "category_path": "beauty/makeup/eye",
+      "canonical_url": "https://joocyee.com/products/dual-ended-eyebrow-pencil-cream-2-0",
+      "pivota_signature_id": "sig_5f620fa7bfc91cd1817f331a6771a8b7",
+      "sku_rows": 3,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_10d91302e0cbb32d89cb0cb7::sku_a8c92ab6debca95ed77c",
+        "product_key": "prod::external_seed::external_seed::ext_10d91302e0cbb32d89cb0cb7",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_10d91302e0cbb32d89cb0cb7",
+        "source_variant_id": "ext_10d91302e0cbb32d89cb0cb7:53971848986934",
+        "source_domain": "joocyee.com",
+        "sku": "6978647804258",
+        "barcode": null,
+        "title": "01 Light Ash Blonde",
+        "currency": "USD",
+        "image_url": "https://joocyee.com/cdn/shop/files/01-id_fbf0d88a-da7f-44f2-b5f5-deb84a70cf95.jpg?v=1777371333",
+        "visible_attributes": {
+          "Color": "01 Light Ash Blonde"
+        },
+        "visible_option_labels": {
+          "Color": "01 Light Ash Blonde"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_10d91302e0cbb32d89cb0cb7",
+          "raw_variant_id": "53971848986934",
+          "source_variant_id": "ext_10d91302e0cbb32d89cb0cb7:53971848986934",
+          "variant_sku": "6978647804258",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://joocyee.com/products/dual-ended-eyebrow-pencil-cream-2-0",
+          "external_redirect_url": "https://joocyee.com/products/dual-ended-eyebrow-pencil-cream-2-0",
+          "price": "20.9",
+          "price_amount": 20.9,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://joocyee.com/cdn/shop/files/01-id_fbf0d88a-da7f-44f2-b5f5-deb84a70cf95.jpg?v=1777371333",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Color": "01 Light Ash Blonde"
+          },
+          "raw_variant": {
+            "sku": "6978647804258",
+            "url": "https://joocyee.com/products/dual-ended-eyebrow-pencil-cream-2-0?variant=53971848986934&utm_source=pivota&utm_medium=affiliate",
+            "price": "20.90",
+            "stock": "In Stock",
+            "title": "01 Light Ash Blonde",
+            "images": [
+              "https://joocyee.com/cdn/shop/files/01-id_fbf0d88a-da7f-44f2-b5f5-deb84a70cf95.jpg?v=1777371333",
+              "https://joocyee.com/cdn/shop/files/01-id_2a209524-506b-4f34-ac60-10d835a7f091.jpg?v=1777431317",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/86c704845122d3e39755517ccc5cdc9e_b3aebc8e-2026-4677-a6e4-cb856a3c3b7b.jpg?v=1777429927",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/6adac5191f8cf673633a653128af80d7.jpg?v=1777429927",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/266a0c1ca480790c678a76d046948b4d.jpg?v=1777429926",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/2_c6623661-874d-4f12-bab5-70b2507baea4.jpg?v=1777429926",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/01_647b53f6-f90f-4948-9f96-430ca0156cf3.jpg?v=1777371334",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/02-id_a70bf0d1-b78a-458e-bc52-1fd970bf3eb3.jpg?v=1777371333",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/02_0ea5a4d0-6069-4138-a18e-3d4e7e132ae2.jpg?v=1777371334",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/03-id.jpg?v=1777371333",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/03_77c6195d-5e9a-43a4-8545-6f776124a04f.jpg?v=1777371334"
+            ],
+            "options": [
+              {
+                "name": "Color",
+                "value": "01 Light Ash Blonde"
+              }
+            ],
+            "currency": "USD",
+            "deep_link": "https://joocyee.com/products/dual-ended-eyebrow-pencil-cream-2-0?variant=53971848986934&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://joocyee.com/cdn/shop/files/01-id_fbf0d88a-da7f-44f2-b5f5-deb84a70cf95.jpg?v=1777371333",
+            "image_urls": [
+              "https://joocyee.com/cdn/shop/files/01-id_fbf0d88a-da7f-44f2-b5f5-deb84a70cf95.jpg?v=1777371333",
+              "https://joocyee.com/cdn/shop/files/01-id_2a209524-506b-4f34-ac60-10d835a7f091.jpg?v=1777431317",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/86c704845122d3e39755517ccc5cdc9e_b3aebc8e-2026-4677-a6e4-cb856a3c3b7b.jpg?v=1777429927",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/6adac5191f8cf673633a653128af80d7.jpg?v=1777429927",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/266a0c1ca480790c678a76d046948b4d.jpg?v=1777429926",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/2_c6623661-874d-4f12-bab5-70b2507baea4.jpg?v=1777429926",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/01_647b53f6-f90f-4948-9f96-430ca0156cf3.jpg?v=1777371334",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/02-id_a70bf0d1-b78a-458e-bc52-1fd970bf3eb3.jpg?v=1777371333",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/02_0ea5a4d0-6069-4138-a18e-3d4e7e132ae2.jpg?v=1777371334",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/03-id.jpg?v=1777371333",
+              "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/03_77c6195d-5e9a-43a4-8545-6f776124a04f.jpg?v=1777371334"
+            ],
+            "variant_id": "53971848986934",
+            "description": "One fine stroke for precise feathered brows, one sweep for brow color that never stains skin.\n\n3 All-New Upgrades\n\nShade Upgrade: More natural, authentic tones\n\nApplication Upgrade: Smooth, buildable, never heavy\n\nFinish Upgrade: Soft matte, no chalky white cast\n\nShade Options:\n\n01 Light Ash Blonde\n\nFor blonde & light hair\n\nInstantly softens brows with low saturation for a dreamy look\n\n02 Soft Mocha Brown\n\nFor brown & natural hair\n\nGentle mocha shade for a soft, everyday natural makeup look\n\n03 Cool Misty Brown\n\nFor black & dark hair\n\nEveryday essential for natural, feathered brows\n\nNet Weight: Brow Pencil 180mg / Brow Tint 2g",
+            "option_name": "Color",
+            "product_url": "https://joocyee.com/products/dual-ended-eyebrow-pencil-cream-2-0",
+            "option_value": "01 Light Ash Blonde"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:ada192d9f770aa85889f6ae24d052b92",
+        "sku_key": "prod::external_seed::external_seed::ext_10d91302e0cbb32d89cb0cb7::sku_a8c92ab6debca95ed77c",
+        "product_key": "prod::external_seed::external_seed::ext_10d91302e0cbb32d89cb0cb7",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 20.9,
+        "merchant_effective_price": 20.9,
+        "estimated_best_price": 20.9,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_c4fba571d4949c5fba99e6aa",
+        "source_domain": "joocyee.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_c4fba571d4949c5fba99e6aa",
+          "external_product_id": "ext_10d91302e0cbb32d89cb0cb7",
+          "domain": "joocyee.com",
+          "market": "US",
+          "product_title": "Dual-Ended Eyebrow Pencil & Cream 2.0",
+          "variant_title": "01 Light Ash Blonde",
+          "variant_sku": "6978647804258",
+          "raw_variant_id": "53971848986934",
+          "url": "https://joocyee.com/products/dual-ended-eyebrow-pencil-cream-2-0",
+          "offer_url": "https://joocyee.com/products/dual-ended-eyebrow-pencil-cream-2-0",
+          "canonical_url": "https://joocyee.com/products/dual-ended-eyebrow-pencil-cream-2-0",
+          "destination_url": "https://joocyee.com/products/dual-ended-eyebrow-pencil-cream-2-0",
+          "external_redirect_url": "https://joocyee.com/products/dual-ended-eyebrow-pencil-cream-2-0",
+          "merchant_display_name": "Joocyee",
+          "price": "20.9",
+          "price_amount": 20.9,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-14T00:47:24.417Z",
+            "evidence_url": "https://joocyee.com/products/dual-ended-eyebrow-pencil-cream-2-0",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-14T00:47:24.417Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://joocyee.com/products/dual-ended-eyebrow-pencil-cream-2-0"
+            },
+            "regional_price": {
+              "amount": 20.9,
+              "currency": "USD",
+              "display_raw": "20.90",
+              "price_type": "list",
+              "compare_at_amount": 20.9,
+              "compare_at_currency": "USD",
+              "compare_at_display_raw": "20.90",
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://joocyee.com/products/dual-ended-eyebrow-pencil-cream-2-0",
+              "captured_at": "2026-05-14T00:47:24.417Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-14T00:47:24.417Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-14T00:47:24.417Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-14T00:47:24.417Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 20.9,
+              "currency": "USD",
+              "display_raw": "20.90",
+              "price_type": "list",
+              "compare_at_amount": 20.9,
+              "compare_at_currency": "USD",
+              "compare_at_display_raw": "20.90",
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://joocyee.com/products/dual-ended-eyebrow-pencil-cream-2-0",
+              "captured_at": "2026-05-14T00:47:24.417Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-14T00:47:24.417Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 634
+      }
+    }
+  ]
+}

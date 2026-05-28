@@ -1,0 +1,183 @@
+{
+  "generated_at": "2026-05-27T15:41:06.641Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 3,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_2b5d9b4dc9941fef121d2f6a",
+      "sellable_item_group_id": "sig_2b5d9b4dc9941fef121d2f6a",
+      "product_line_id": "pl_8545bc9a1c1b1abad3155b16",
+      "review_family_id": "rf_8545bc9a1c1b1abad3155b16",
+      "brand_name": "MASAMI",
+      "category_paths": [
+        "Haircare",
+        "Hair Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Mekabu Hydrating Shine Serum",
+      "subtitle": "MASAMI Shine Serum, enriched with the Japanese ocean botanical Mekabu, gives even unruly, dull, lifeless, over-processed hair a hydrated, smoothed and nourished look. Our Shine Serum works on virtually every hair type and texture to enhance shine while leaving hair soft and silky. It adds vibrancy to hair color while providing the nutrients necessary for long term nourishment and care. Great for any hair type and texture - anyone who wants salon hair every day. \n\nSize: 1.7oz, now in a glass bottle",
+      "variant_axes": {
+        "volume": "7oz",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-serum-mekabu-hydrating-shine-serum-18600012765341-23627648893084.jpg?v=1756936109",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-serum-mekabu-hydrating-shine-serum-18600012765341-23627648893084.jpg?v=1756936109",
+        "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_girl_applying_shine_serum.png?v=1756936109",
+        "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Shine_Serum_straight_hair.jpg?v=1756936109",
+        "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Shine_Serum_Natural_Curls.jpg?v=1756936109",
+        "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Shine_Serum_Blonde.jpg?v=1756936109",
+        "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/Mekabu_ingredient.jpg?v=1756936109"
+      ],
+      "price_min": 34,
+      "price_max": 34,
+      "default_offer_id": "external_seed:ext_53cf4f0ee46873d280f632db",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A MASAMI skincare treatment listed on the official source page as Mekabu Hydrating Shine Serum. The official description identifies: MASAMI Shine Serum, enriched with the Japanese ocean botanical Mekabu, gives even unruly, dull, lifeless, over-processed hair a hydrated, smoothed and nourished look.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "MASAMI",
+        "Haircare",
+        "Hair Serum"
+      ],
+      "sort_keys": {
+        "price_min": 34,
+        "price_max": 34,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_53cf4f0ee46873d280f632db"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_6dbce8838001ffed8105fe24",
+      "sellable_item_group_id": "sig_6dbce8838001ffed8105fe24",
+      "product_line_id": "pl_5a30a545c39e5481d3f4e576",
+      "review_family_id": "rf_5a30a545c39e5481d3f4e576",
+      "brand_name": "JouJou",
+      "category_paths": [
+        "Face Mask"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "FLORAL FILTER Face Mask",
+      "subtitle": "An instant glow-giving face mask that restores radiance and transforms a dull complexion into a vibrant and glowing one. Featuring a new generation of Flower Acids (Keto Acids - AKA) giving it higher properties of skin renewal but without irritation making this rinse-off mask perfect for all skin types, including sensitive skin.\n\n50 ml / 1.69 fl.oz.",
+      "variant_axes": {
+        "volume": "50ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/Floral_PNG.png?v=1739691024",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/Floral_PNG.png?v=1739691024",
+        "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/swatches_WEBFOTKE_5.jpg?v=1769790309",
+        "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/FLORALFILTER_eng_e86fcbbe-a71e-4d70-9648-e04b55d1e22b.jpg?v=1769790309",
+        "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/floral-filter.jpg?v=1769790309",
+        "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/Floral_filter_2.jpg?v=1769790309",
+        "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/floral_filter_3_097d2eae-86c3-47b7-b0e4-1284efa4bb54.jpg?v=1769790309",
+        "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/Yourskinritual_4.jpg?v=1777494858",
+        "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/CactusNectar_WEBFOTKE_10.jpg?v=1777401593"
+      ],
+      "price_min": 101,
+      "price_max": 101,
+      "default_offer_id": "external_seed:ext_de5c3d5849b1256eca4a7566",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "JouJou FLORAL FILTER is a face mask described by the official PDP around instant glow-looking radiance for dull-looking complexion routines.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "JouJou",
+        "Face Mask"
+      ],
+      "sort_keys": {
+        "price_min": 101,
+        "price_max": 101,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_de5c3d5849b1256eca4a7566"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_e7fc20f5e7780ea4a1607f27",
+      "sellable_item_group_id": "sig_e7fc20f5e7780ea4a1607f27",
+      "product_line_id": "pl_5ce64a43a22e200ba8fb3c13",
+      "review_family_id": "rf_5ce64a43a22e200ba8fb3c13",
+      "brand_name": "JouJou",
+      "category_paths": [
+        "Body Oil"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "APHRODITE Body Oil",
+      "subtitle": "A bodycare masterpiece designed to elevate your beauty and well-being. This face-grade non-greasy formula enriched with Schisandra and Bakuchi promotes skin tonning offering more supple, silky and radiant skin with longlasting intoxicating scent. \n\nIlluminate your inner goddess with every drop. \n\n100 ml / 3.38 fl oz",
+      "variant_axes": {
+        "volume": "100ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/Aphrodite_PNG.png?v=1739691001",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/Aphrodite_PNG.png?v=1739691001",
+        "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/swatches_WEBFOTKE_8.jpg?v=1769791134",
+        "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/Aphrodite_3_cecc1713-35b6-472a-82fa-bf54ca8066a4.jpg?v=1769791134",
+        "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/Aphrodite_4_75f1ab3b-f6b2-49c0-b637-c0160b57b7de.jpg?v=1769791134",
+        "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/Aphrodite_2_fe130b1a-7473-4654-9ce7-2a7eaff46449.jpg?v=1769791134"
+      ],
+      "price_min": 91,
+      "price_max": 91,
+      "default_offer_id": "external_seed:ext_83ec9657a96effaf0923f850",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "JouJou APHRODITE is a non-greasy body oil described by the official PDP with schisandra and bakuchi, a silky radiant-looking finish, and a long-lasting scent profile.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "JouJou",
+        "Body Oil"
+      ],
+      "sort_keys": {
+        "price_min": 91,
+        "price_max": 91,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_83ec9657a96effaf0923f850"
+      ]
+    }
+  ]
+}

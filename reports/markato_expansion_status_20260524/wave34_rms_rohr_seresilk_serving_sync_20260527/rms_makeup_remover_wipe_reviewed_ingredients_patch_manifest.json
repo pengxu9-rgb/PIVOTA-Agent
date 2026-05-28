@@ -1,0 +1,17 @@
+{
+  "market": "US",
+  "reviewed_by": "codex_review",
+  "reason": "reviewed_official_pdp_single_ingredient_inci",
+  "evidence": "Official RMS Beauty PDP Ingredients section lists a single ingredient for the makeup remover wipe.",
+  "source_kind": "official_pdp_ingredients_section",
+  "source_url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe",
+  "allow_single_ingredient_inci": true,
+  "refresh_serving_payload": true,
+  "entries": [
+    {
+      "external_product_id": "ext_9247e1285fadd4b02bc33aad",
+      "pdp_ingredients_raw": "Cocos Nucifera (Coconut) Oil",
+      "allow_overwrite_high_quality": true
+    }
+  ]
+}

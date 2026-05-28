@@ -1,0 +1,183 @@
+{
+  "generated_at": "2026-05-28T01:13:30.803Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 3,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_3f1727ac681c8652a1e234b7",
+      "sellable_item_group_id": "sig_3f1727ac681c8652a1e234b7",
+      "product_line_id": "pl_a5dbb5ad8121a0de1943b0ca",
+      "review_family_id": "rf_a5dbb5ad8121a0de1943b0ca",
+      "brand_name": "Delicate Daisys Botanical Beauty",
+      "category_paths": [
+        "Body Wash"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Refreshing Body Wash Bulgarian Rose",
+      "subtitle": "Formulated with pure Bulgarian Rose Oil, this Refreshing Body Wash will cleanse and nourish your skin while leaving behind a fresh and relaxing scent of Damask Rose. With no harsh chemicals, perfumes, alcohol, or dyes, it's suitable for daily use in the shower or at the sink as a hand wash. Keep your skin feeling and looking fresh, clean, and youthful with our expertly crafted formula.\n\nSeal in moisture after showering with our firming retinol body cream for soft, youthful skin.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://delicatedaisys.com/cdn/shop/files/IMG-3443.png?v=1779474250",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3443.png?v=1779474250",
+        "https://delicatedaisys.com/cdn/shop/files/refreshing-body-wash-bulgarian-rose-161019.jpg?v=1725349498",
+        "https://delicatedaisys.com/cdn/shop/files/refreshing-body-wash-bulgarian-rose-221560.jpg?v=1725349498",
+        "https://delicatedaisys.com/cdn/shop/files/refreshing-body-wash-bulgarian-rose-314480.jpg?v=1725349498",
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3444.png?v=1779474250",
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3447.png?v=1779477451"
+      ],
+      "price_min": 19.99,
+      "price_max": 19.99,
+      "default_offer_id": "external_seed:ext_5232f3454fc57c62d8d3e7bc",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Delicate Daisys Botanical Beauty body wash listed on the official source page as Refreshing Body Wash Bulgarian Rose.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Delicate Daisys Botanical Beauty",
+        "Body Wash"
+      ],
+      "sort_keys": {
+        "price_min": 19.99,
+        "price_max": 19.99,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_5232f3454fc57c62d8d3e7bc"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_1119fff3f297236de888e10b",
+      "sellable_item_group_id": "sig_1119fff3f297236de888e10b",
+      "product_line_id": "pl_ac123a0115f82b6857d39759",
+      "review_family_id": "rf_ac123a0115f82b6857d39759",
+      "brand_name": "Delicate Daisys Botanical Beauty",
+      "category_paths": [
+        "Exfoliant",
+        "Body Scrub"
+      ],
+      "market": "US",
+      "availability_state": "out_of_stock",
+      "publish_state": "public",
+      "title": "Firming & Polishing Body Scrub Sea Salt & Pineapple",
+      "subtitle": "This all-natural body scrub contains sea salt, pineapple, and Retinol to effectively exfoliate dead skin cells and combat cellulite. In addition, it can reduce the appearance of fat cells and leave your skin feeling firm and silky. The refreshing pineapple scent will transport you to a tropical paradise.\n\nFollow with our firming body cream to deeply nourish and lock in hydration post-exfoliation.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://delicatedaisys.com/cdn/shop/files/IMG-3426.png?v=1779471089",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3426.png?v=1779471089",
+        "https://delicatedaisys.com/cdn/shop/files/firming-polishing-body-scrub-sea-salt-pineapple-689236.jpg?v=1725349380",
+        "https://delicatedaisys.com/cdn/shop/files/firming-polishing-body-scrub-sea-salt-pineapple-330948.jpg?v=1725349380",
+        "https://delicatedaisys.com/cdn/shop/files/firming-polishing-body-scrub-sea-salt-pineapple-599769.jpg?v=1725349380",
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3427.png?v=1779471298",
+        "https://delicatedaisys.com/cdn/shop/files/firming-polishing-body-scrub-sea-salt-pineapple-908031.jpg?v=1725299212"
+      ],
+      "price_min": 34.99,
+      "price_max": 34.99,
+      "default_offer_id": "external_seed:ext_05040ea019efc2b0fe1a9111",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Delicate Daisys Botanical Beauty body scrub listed on the official source page as Firming & Polishing Body Scrub Sea Salt & Pineapple.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Delicate Daisys Botanical Beauty",
+        "Exfoliant",
+        "Body Scrub"
+      ],
+      "sort_keys": {
+        "price_min": 34.99,
+        "price_max": 34.99,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_05040ea019efc2b0fe1a9111"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_22446b6af1eff4f09e9db714",
+      "sellable_item_group_id": "sig_22446b6af1eff4f09e9db714",
+      "product_line_id": "pl_4a81a80c10e64082efb00773",
+      "review_family_id": "rf_d437f2495d672253f531d782",
+      "brand_name": "Joocyee",
+      "category_paths": [
+        "Brow Pencil"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Dual-Ended Eyebrow Pencil & Cream 2.0",
+      "subtitle": "One fine stroke for precise feathered brows, one sweep for brow color that never stains skin.\n\n3 All-New Upgrades\n\nShade Upgrade: More natural, authentic tones\n\nApplication Upgrade: Smooth, buildable, never heavy\n\nFinish Upgrade: Soft matte, no chalky white cast\n\nShade Options:\n\n01 Light Ash Blonde\n\nFor blonde & light hair\n\nInstantly softens brows with low saturation for a dreamy look\n\n02 Soft Mocha Brown\n\nFor brown & natural hair\n\nGentle mocha shade for a soft, everyday natural makeup look\n\n03 Cool Misty Brown\n\nFor black & dark hair\n\nEveryday essential for natural, feathered brows\n\nNet Weight: Brow Pencil 180mg / Brow Tint 2g",
+      "variant_axes": {
+        "size": "2 g",
+        "volume": "2g",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://joocyee.com/cdn/shop/files/01-id_2a209524-506b-4f34-ac60-10d835a7f091.jpg?v=1777431317",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://joocyee.com/cdn/shop/files/01-id_2a209524-506b-4f34-ac60-10d835a7f091.jpg?v=1777431317",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/86c704845122d3e39755517ccc5cdc9e_b3aebc8e-2026-4677-a6e4-cb856a3c3b7b.jpg?v=1777429927",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/6adac5191f8cf673633a653128af80d7.jpg?v=1777429927",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/266a0c1ca480790c678a76d046948b4d.jpg?v=1777429926",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/2_c6623661-874d-4f12-bab5-70b2507baea4.jpg?v=1777429926",
+        "https://joocyee.com/cdn/shop/files/01-id_fbf0d88a-da7f-44f2-b5f5-deb84a70cf95.jpg?v=1777371333",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/01_647b53f6-f90f-4948-9f96-430ca0156cf3.jpg?v=1777371334",
+        "https://cdn.shopify.com/s/files/1/0804/5654/8662/files/02-id_a70bf0d1-b78a-458e-bc52-1fd970bf3eb3.jpg?v=1777371333"
+      ],
+      "price_min": 20.9,
+      "price_max": 20.9,
+      "default_offer_id": "external_seed:ext_10d91302e0cbb32d89cb0cb7",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Joocyee dual-ended brow product with a fine pencil for feathered strokes and brow cream for soft color fill.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Joocyee",
+        "Brow Pencil"
+      ],
+      "sort_keys": {
+        "price_min": 20.9,
+        "price_max": 20.9,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_10d91302e0cbb32d89cb0cb7"
+      ]
+    }
+  ]
+}

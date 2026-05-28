@@ -1,0 +1,37 @@
+{
+  "generated_at": "2026-05-27T16:19:18.924Z",
+  "options": {
+    "market": "US",
+    "dry_run": true,
+    "content_only": true,
+    "preserve_commerce": false,
+    "preserve_media": false,
+    "include_commerce_facts": false,
+    "skip_insights": true,
+    "expand_variants": false,
+    "limit": 50,
+    "offset": 0,
+    "concurrency": 3,
+    "external_product_ids": [
+      "ext_9247e1285fadd4b02bc33aad"
+    ],
+    "external_product_id": "",
+    "seed_id": "",
+    "domain": "",
+    "brand": ""
+  },
+  "rows_fetched": 1,
+  "summary": {
+    "scanned": 1,
+    "updated": 0,
+    "dry_run": 1,
+    "skipped": 0,
+    "failed": 0,
+    "variant_seed_rows": 0,
+    "commerce_facts_hold": 0
+  },
+  "pivota_insights": {
+    "status": "skipped",
+    "reason": "dry_run"
+  }
+}

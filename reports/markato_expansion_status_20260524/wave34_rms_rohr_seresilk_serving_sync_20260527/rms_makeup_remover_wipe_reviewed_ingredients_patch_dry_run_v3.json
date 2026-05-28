@@ -1,0 +1,49 @@
+{
+  "generated_at": "2026-05-27T16:41:09.941Z",
+  "dry_run": true,
+  "manifest": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave34_rms_rohr_seresilk_serving_sync_20260527/rms_makeup_remover_wipe_reviewed_ingredients_patch_manifest.json",
+  "summary": {
+    "scanned_rows": 1,
+    "missing_rows": 0,
+    "blocked_rows": 0,
+    "change_candidates": 1,
+    "updated_rows": 0,
+    "catalog_product_updates": 0,
+    "identity_updates": 0
+  },
+  "apply_results": [],
+  "plans": [
+    {
+      "external_product_id": "ext_9247e1285fadd4b02bc33aad",
+      "seed_id": "eps_0f62b1951364d06db98ab494",
+      "title": "Makeup Remover | Ultimate Makeup Remover Wipe",
+      "canonical_url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe",
+      "status": "ready",
+      "changed": true,
+      "blockers": [],
+      "skipped_fields": [],
+      "patched_fields": [
+        "pdp_ingredients_raw",
+        "raw_ingredient_text_clean",
+        "ingredients_inci"
+      ],
+      "before": {
+        "description": "What It Is: Pure, clean, and simple make-up remover and cleansing wipes. Your new everyday living essential. What It Does: Gently and thoroughly cleanses and freshens skin. What Makes It Special: Melts away stubborn face and eye makeup with ease, as it softens and hydrates without stripping away moisture. Ingredients: *Cocos Nucifera (Coconut) Oil *Organic Non-GMO, non-nano, soy free, gluten free, cruelty-free",
+        "pdp_description_raw": "What It Is: Pure, clean, and simple make-up remover and cleansing wipes. Your new everyday living essential. What It Does: Gently and thoroughly cleanses and freshens skin. What Makes It Special: Melts away stubborn face and eye makeup with ease, as it softens and hydrates without stripping away moisture. Ingredients: *Cocos Nucifera (Coconut) Oil *Organic Non-GMO, non-nano, soy free, gluten free, cruelty-free",
+        "pdp_ingredients_raw": "Cocos Nucifera (Coconut) Oil",
+        "pdp_how_to_use_raw": "Gently wipe face with unfolded towelette, and remove all traces of even the thickest makeup. For the feel of a traditional wipe, dampen with pure water. In colder temperatures coconut oil will solidify. Hold unopened packet between the palms of your hands for 10-20 seconds to liquefy and evenly distribute the oil. - *Rose-Marie Tip: \"These wipes are what I've always wished I had in my kit. They're saturated with raw organic coconut oil, so they're cleansing, moisturizing, and exfoliating. They're gentle on the skin, but powerful enough to remove heavy makeup, even professional or stage makeup. Intiallly it kind of feels dry to the touch, but then as you start wiping, it becomes more and more emollient. If you like the feel of a traditional wipe, you can also dampen it with a little bit of pure water.\"",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "What It Is:\nPure, clean, and simple make-up remover and cleansing wipes. Your new everyday living essential.\n\nWhat It Does:\nGently and thoroughly cleanses and freshens skin.\n\nWhat Makes It Special:\nMelts away stubborn face and eye makeup with ease, as it softens and hydrates without stripping away moisture.\n\nIngredients:\n*Cocos Nucifera (Coconut) Oil\n\n*Organic\nNon-GMO, non-nano, soy free, gluten free, cruelty-free",
+        "pdp_description_raw": "What It Is:\nPure, clean, and simple make-up remover and cleansing wipes. Your new everyday living essential.\n\nWhat It Does:\nGently and thoroughly cleanses and freshens skin.\n\nWhat Makes It Special:\nMelts away stubborn face and eye makeup with ease, as it softens and hydrates without stripping away moisture.\n\nIngredients:\n*Cocos Nucifera (Coconut) Oil\n\n*Organic\nNon-GMO, non-nano, soy free, gluten free, cruelty-free",
+        "pdp_how_to_use_raw": "Gently wipe face with unfolded towelette, and remove all traces of even the thickest makeup. For the feel of a traditional wipe, dampen with pure water.\n\nIn colder temperatures coconut oil will solidify. Hold unopened packet between the palms of your hands for 10-20 seconds to liquefy and evenly distribute the oil.\n\n- *Rose-Marie Tip: \"These wipes are what I've always wished I had in my kit. They're saturated with raw organic coconut oil, so they're cleansing, moisturizing, and exfoliating. They're gentle on the skin, but powerful enough to remove heavy makeup, even professional or stage makeup. Intiallly it kind of feels dry to the touch, but then as you start wiping, it becomes more and more emollient. If you like the feel of a traditional wipe, you can also dampen it with a little bit of pure water.\"",
+        "pdp_ingredients_raw": "Cocos Nucifera (Coconut) Oil",
+        "ingredients_polluted": false,
+        "detail_section_count": 0,
+        "polluted_detail_section_count": 0
+      }
+    }
+  ]
+}

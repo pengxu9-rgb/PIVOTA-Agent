@@ -1,0 +1,363 @@
+{
+  "generated_at": "2026-05-27T16:47:13.533Z",
+  "source": "external_seed_live_pdp_modules_audit",
+  "query": {
+    "market": "US",
+    "domain": null,
+    "brand": null,
+    "external_product_id": null,
+    "external_product_ids": [
+      "ext_9247e1285fadd4b02bc33aad",
+      "ext_1b95875bc9bdeee751d0cee1",
+      "ext_0d4ffd13b899460cabb1f392"
+    ],
+    "include_attached": true,
+    "limit": 50,
+    "offset": 0,
+    "include_similar": true,
+    "use_sig": false
+  },
+  "summary": {
+    "scanned": 3,
+    "ready": 2,
+    "thin": 1,
+    "not_conversion_ready": 0,
+    "by_domain": [
+      {
+        "key": "rmsbeauty.com",
+        "count": 1
+      },
+      {
+        "key": "rohrremedy.com",
+        "count": 1
+      },
+      {
+        "key": "seresilk.com.au",
+        "count": 1
+      }
+    ],
+    "blocker_counts": [
+      {
+        "key": "missing_ingredients",
+        "count": 1
+      }
+    ],
+    "weak_insights_ids": [],
+    "seller_only_insights_ids": [],
+    "force_filled_ids": [],
+    "content_gap_ids": [
+      "ext_9247e1285fadd4b02bc33aad"
+    ]
+  },
+  "rows": [
+    {
+      "external_product_id": "ext_9247e1285fadd4b02bc33aad",
+      "pivota_signature_id": "sig_4f05205935bae8f209f015583e140258",
+      "probed_product_id": "ext_9247e1285fadd4b02bc33aad",
+      "probed_id_type": "ext",
+      "seed_id": "eps_0f62b1951364d06db98ab494",
+      "market": "US",
+      "domain": "rmsbeauty.com",
+      "title": "Makeup Remover | Ultimate Makeup Remover Wipe",
+      "canonical_url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "777e943357b7",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "product_facts",
+        "supplemental_details"
+      ],
+      "gallery": {
+        "image_count": 3,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "www.rmsbeauty.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 20 Pack",
+          "20 Pack"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_line",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Face cleanser",
+        "why_count": 3,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": false,
+        "ingredients_text_count": 0,
+        "ingredients_source_origin": null,
+        "ingredients_source_quality_status": null,
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 10,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 4
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "stale_bundle_kind_overridden_by_formula_category_text"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [
+        "missing_ingredients"
+      ],
+      "pdp_quality_bucket": "thin",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_1b95875bc9bdeee751d0cee1",
+      "pivota_signature_id": "sig_36920dabe218886c3dd32627",
+      "probed_product_id": "ext_1b95875bc9bdeee751d0cee1",
+      "probed_id_type": "ext",
+      "seed_id": "eps_5ee0b414653347fb5af51740",
+      "market": "US",
+      "domain": "rohrremedy.com",
+      "title": "Lilly Pilly Face Moisturiser with Omega-3",
+      "canonical_url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "777e943357b7",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients"
+      ],
+      "gallery": {
+        "image_count": 1,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 50 mL",
+          "50 mL"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Moisturizer identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 23,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 5,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 19
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_0d4ffd13b899460cabb1f392",
+      "pivota_signature_id": "sig_2104c12c38d9c5ae898514d4",
+      "probed_product_id": "ext_0d4ffd13b899460cabb1f392",
+      "probed_id_type": "ext",
+      "seed_id": "eps_5ae568728c95aa19d64a9413",
+      "market": "US",
+      "domain": "seresilk.com.au",
+      "title": "Gentle Silk Cleanser",
+      "canonical_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "777e943357b7",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients"
+      ],
+      "gallery": {
+        "image_count": 2,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 100 mL",
+          "100 mL"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Cleanser identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 17,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 7,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 31
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    }
+  ]
+}

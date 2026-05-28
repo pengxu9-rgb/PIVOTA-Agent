@@ -1,0 +1,432 @@
+{
+  "generated_at": "2026-05-28T01:26:52.891Z",
+  "source": "external_seed_live_pdp_modules_audit",
+  "query": {
+    "market": "US",
+    "domain": null,
+    "brand": null,
+    "external_product_id": null,
+    "external_product_ids": [
+      "ext_2881559170714581057e21eb",
+      "ext_35ffa71281354a958ef30f7e",
+      "ext_3c9980e0455d648c3173c14e",
+      "ext_41c98523b6fc0a8279c3095c",
+      "ext_4888a0d0940daa58fc77af80",
+      "ext_52a27acd606756dea463a717",
+      "ext_70a0b0b3c68a48630060c7ff",
+      "ext_75c1cd3bbad92bbdbc6ab010",
+      "ext_a9a9d873995dc784e34cb222",
+      "ext_bb9685457f5a919c945ee9ce",
+      "ext_c037778265747b32fc52a16c"
+    ],
+    "include_attached": true,
+    "limit": 50,
+    "offset": 0,
+    "include_similar": true,
+    "use_sig": false
+  },
+  "summary": {
+    "scanned": 11,
+    "ready": 0,
+    "thin": 2,
+    "not_conversion_ready": 9,
+    "by_domain": [
+      {
+        "key": "joocyee.com",
+        "count": 11
+      }
+    ],
+    "blocker_counts": [
+      {
+        "key": "live_pdp_probe_failed",
+        "count": 9
+      },
+      {
+        "key": "missing_or_weak_insights",
+        "count": 2
+      },
+      {
+        "key": "product_intel_unavailable",
+        "count": 2
+      }
+    ],
+    "weak_insights_ids": [
+      "ext_35ffa71281354a958ef30f7e",
+      "ext_bb9685457f5a919c945ee9ce"
+    ],
+    "seller_only_insights_ids": [],
+    "force_filled_ids": [],
+    "content_gap_ids": []
+  },
+  "rows": [
+    {
+      "external_product_id": "ext_3c9980e0455d648c3173c14e",
+      "pivota_signature_id": "sig_1662cfba549972c0c5ad0d9c05179f88",
+      "probed_product_id": "ext_3c9980e0455d648c3173c14e",
+      "probed_id_type": "ext",
+      "seed_id": "epsv_87501109e006391087fc2f3d",
+      "market": "US",
+      "domain": "joocyee.com",
+      "title": "Glazed Lip Gloss",
+      "canonical_url": "https://joocyee.com/products/glazed-lip-gloss",
+      "probe_error": "timeout of 25000ms exceeded",
+      "blocking_reasons": [
+        "live_pdp_probe_failed"
+      ],
+      "pdp_quality_bucket": "not_conversion_ready",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_35ffa71281354a958ef30f7e",
+      "pivota_signature_id": "sig_26fb6163c7fefb4e75ad2f1b2d903e42",
+      "probed_product_id": "ext_35ffa71281354a958ef30f7e",
+      "probed_id_type": "ext",
+      "seed_id": "epsv_505db69486384550a1386d7c",
+      "market": "US",
+      "domain": "joocyee.com",
+      "title": "Glazed Lip Gloss",
+      "canonical_url": "https://joocyee.com/products/glazed-lip-gloss",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "2d1d5d0a0754",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "product_intel",
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 24,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com",
+          "joocyee.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Shade: 60 Grape Glow",
+          "60 Grape Glow"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": null,
+        "evidence_profile": null,
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": null,
+        "why_count": 0,
+        "ok": false
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 57,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 6,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 22
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [
+        "missing_or_weak_insights",
+        "product_intel_unavailable"
+      ],
+      "pdp_quality_bucket": "thin",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_70a0b0b3c68a48630060c7ff",
+      "pivota_signature_id": "sig_210560c0f7eb3d437dc292faaf1a85f8",
+      "probed_product_id": "ext_70a0b0b3c68a48630060c7ff",
+      "probed_id_type": "ext",
+      "seed_id": "epsv_6f7793551006ce40c0fb408f",
+      "market": "US",
+      "domain": "joocyee.com",
+      "title": "Glazed Lip Gloss",
+      "canonical_url": "https://joocyee.com/products/glazed-lip-gloss",
+      "probe_error": "timeout of 25000ms exceeded",
+      "blocking_reasons": [
+        "live_pdp_probe_failed"
+      ],
+      "pdp_quality_bucket": "not_conversion_ready",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_75c1cd3bbad92bbdbc6ab010",
+      "pivota_signature_id": "sig_8657d8ef8b0079198df3ec71e4859a3a",
+      "probed_product_id": "ext_75c1cd3bbad92bbdbc6ab010",
+      "probed_id_type": "ext",
+      "seed_id": "epsv_04aecac56c69d11a02b887df",
+      "market": "US",
+      "domain": "joocyee.com",
+      "title": "Glazed Lip Gloss",
+      "canonical_url": "https://joocyee.com/products/glazed-lip-gloss",
+      "probe_error": "timeout of 25000ms exceeded",
+      "blocking_reasons": [
+        "live_pdp_probe_failed"
+      ],
+      "pdp_quality_bucket": "not_conversion_ready",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_41c98523b6fc0a8279c3095c",
+      "pivota_signature_id": "sig_368da5fec1204a9186cdff833b6666c9",
+      "probed_product_id": "ext_41c98523b6fc0a8279c3095c",
+      "probed_id_type": "ext",
+      "seed_id": "epsv_b1229a74ea6f7f95cafadc7b",
+      "market": "US",
+      "domain": "joocyee.com",
+      "title": "Glazed Lip Gloss",
+      "canonical_url": "https://joocyee.com/products/glazed-lip-gloss",
+      "probe_error": "timeout of 25000ms exceeded",
+      "blocking_reasons": [
+        "live_pdp_probe_failed"
+      ],
+      "pdp_quality_bucket": "not_conversion_ready",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_c037778265747b32fc52a16c",
+      "pivota_signature_id": "sig_27d0ea38139fc5afc27c9013cbd56493",
+      "probed_product_id": "ext_c037778265747b32fc52a16c",
+      "probed_id_type": "ext",
+      "seed_id": "epsv_709e7041c71cf84fd8cc0890",
+      "market": "US",
+      "domain": "joocyee.com",
+      "title": "Glazed Lip Gloss",
+      "canonical_url": "https://joocyee.com/products/glazed-lip-gloss",
+      "probe_error": "timeout of 25000ms exceeded",
+      "blocking_reasons": [
+        "live_pdp_probe_failed"
+      ],
+      "pdp_quality_bucket": "not_conversion_ready",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_4888a0d0940daa58fc77af80",
+      "pivota_signature_id": "sig_6c8f44c03421239b6bdcc9b89c2389f3",
+      "probed_product_id": "ext_4888a0d0940daa58fc77af80",
+      "probed_id_type": "ext",
+      "seed_id": "epsv_039198f61171c76b79baacb9",
+      "market": "US",
+      "domain": "joocyee.com",
+      "title": "Glazed Lip Gloss",
+      "canonical_url": "https://joocyee.com/products/glazed-lip-gloss",
+      "probe_error": "timeout of 25000ms exceeded",
+      "blocking_reasons": [
+        "live_pdp_probe_failed"
+      ],
+      "pdp_quality_bucket": "not_conversion_ready",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_2881559170714581057e21eb",
+      "pivota_signature_id": "sig_a3ebadbf45258ce2f0d2603ce28b3a2d",
+      "probed_product_id": "ext_2881559170714581057e21eb",
+      "probed_id_type": "ext",
+      "seed_id": "epsv_3a2511bd5d3bc0964b3bdbcc",
+      "market": "US",
+      "domain": "joocyee.com",
+      "title": "Glazed Lip Gloss",
+      "canonical_url": "https://joocyee.com/products/glazed-lip-gloss",
+      "probe_error": "timeout of 25000ms exceeded",
+      "blocking_reasons": [
+        "live_pdp_probe_failed"
+      ],
+      "pdp_quality_bucket": "not_conversion_ready",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_a9a9d873995dc784e34cb222",
+      "pivota_signature_id": "sig_b872dfd76e3fe0ed0309e308229e532c",
+      "probed_product_id": "ext_a9a9d873995dc784e34cb222",
+      "probed_id_type": "ext",
+      "seed_id": "epsv_6cbc4a091456620654d0521a",
+      "market": "US",
+      "domain": "joocyee.com",
+      "title": "Glazed Lip Gloss",
+      "canonical_url": "https://joocyee.com/products/glazed-lip-gloss",
+      "probe_error": "timeout of 25000ms exceeded",
+      "blocking_reasons": [
+        "live_pdp_probe_failed"
+      ],
+      "pdp_quality_bucket": "not_conversion_ready",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_52a27acd606756dea463a717",
+      "pivota_signature_id": "sig_83cfd3add20106b149d3976278fa41fb",
+      "probed_product_id": "ext_52a27acd606756dea463a717",
+      "probed_id_type": "ext",
+      "seed_id": "epsv_cd0fa68f03d35b6d9c5c98f6",
+      "market": "US",
+      "domain": "joocyee.com",
+      "title": "Glazed Lip Gloss",
+      "canonical_url": "https://joocyee.com/products/glazed-lip-gloss",
+      "probe_error": "timeout of 25000ms exceeded",
+      "blocking_reasons": [
+        "live_pdp_probe_failed"
+      ],
+      "pdp_quality_bucket": "not_conversion_ready",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_bb9685457f5a919c945ee9ce",
+      "pivota_signature_id": "sig_dd7b1e29d9f60d048b5ced2dbdbb9b6b",
+      "probed_product_id": "ext_bb9685457f5a919c945ee9ce",
+      "probed_id_type": "ext",
+      "seed_id": "eps_045c86298b3f262f544f3fc3",
+      "market": "US",
+      "domain": "joocyee.com",
+      "title": "Glazed Lip Gloss",
+      "canonical_url": "https://joocyee.com/products/glazed-lip-gloss",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "2d1d5d0a0754",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "product_intel",
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 24,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "joocyee.com",
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Shade: 60 Grape Glow",
+          "60 Grape Glow"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": null,
+        "evidence_profile": null,
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": null,
+        "why_count": 0,
+        "ok": false
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 57,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 6,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 22
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [
+        "missing_or_weak_insights",
+        "product_intel_unavailable"
+      ],
+      "pdp_quality_bucket": "thin",
+      "conversion_ready": false
+    }
+  ]
+}

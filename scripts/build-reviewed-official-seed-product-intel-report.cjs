@@ -205,6 +205,7 @@ function sanitizePublicSourceText(value) {
     )
     .replace(/\b100%\s*clean,\s*sustainable,\s*cruelty[-\s]?free\s+beauty\b[.!]?/gi, '')
     .replace(/\bclean,\s*vegan,\s*cruelty[-\s]?free(?:,\s*and\s*dermatologist[-\s]?tested)?\b[.!]?/gi, '')
+    .replace(/\b(?:vegan|gluten[-\s]?free|paraben[-\s]?free)\b[.!]?/gi, '')
     .replace(/\bdouble up and save with this jumbo size of our\b/gi, "This jumbo size is the brand's")
     .replace(/\b\d+(?:\.\d+)?\s*(?:fl\.?\s*oz|ml|oz)\b/gi, '')
     .replace(/\bhighlighte\s+r\b/gi, 'highlighter')
@@ -291,6 +292,16 @@ function sanitizePublicSourceText(value) {
     .replace(/\banti[-\s]?ageing serum\b/gi, 'mature-skin serum')
     .replace(/\banti[-\s]?aging serum\b/gi, 'mature-skin serum')
     .replace(/\bpromotes a healthy,\s*luminous glow\b/gi, 'supports the look of a healthy, luminous glow')
+    .replace(/\bhelps reduce the appearance of fine lines and wrinkles\b/gi, 'addresses the look of fine lines and wrinkles')
+    .replace(/\bpromotes skin elasticity\b/gi, 'is positioned around skin elasticity')
+    .replace(/\bhelps repair damage caused by environmental stressors and UV radiation\b/gi, 'is positioned around environmental-stressor care')
+    .replace(/\bforming a protective barrier against future damage\b/gi, 'supporting a protective-feeling finish')
+    .replace(/\bhelps alleviate irritation and redness\b/gi, 'is positioned around calming-looking skin comfort')
+    .replace(/\bmaking it suitable for sensitive skin types\b/gi, 'with suitability claims kept outside public copy')
+    .replace(/\bstrengthens hair follicles\b/gi, 'is positioned around stronger-feeling hair')
+    .replace(/\breduces split ends\b/gi, 'addresses the look of split ends')
+    .replace(/\bpromoting overall hair health and vitality\b/gi, 'supporting hair-care positioning')
+    .replace(/\byour ultimate solution for healthy,\s*radiant skin and hair\b/gi, 'a source-listed option for radiant-looking skin and hair')
     .replace(/\bEnhances skin brightness and natural radiance Helps\b/g, 'Enhances skin brightness and natural radiance. Helps')
     .replace(/\btone Supports smoother\b/g, 'tone. Supports smoother')
     .replace(/\btexture Deeply nourishes\b/g, 'texture. Deeply nourishes')
@@ -401,6 +412,17 @@ function sanitizeFormulaSummary(value) {
     .replace(/\bInstantly\s+reduces\s+puffiness\s+and\s+under-eye\s+circles\b/gi, 'Positioned around the look of puffiness and under-eye circles')
     .replace(/\breduces\s+puffiness\b/gi, 'addresses the look of puffiness')
     .replace(/\breducing\s+puffiness\b/gi, 'addressing the look of puffiness')
+    .replace(/\b(?:vegan|gluten[-\s]?free|paraben[-\s]?free)\b[.!]?/gi, ' ')
+    .replace(/\bhelps reduce the appearance of fine lines and wrinkles\b/gi, 'addresses the look of fine lines and wrinkles')
+    .replace(/\bpromotes skin elasticity\b/gi, 'is positioned around skin elasticity')
+    .replace(/\bhelps repair damage caused by environmental stressors and UV radiation\b/gi, 'is positioned around environmental-stressor care')
+    .replace(/\bforming a protective barrier against future damage\b/gi, 'supporting a protective-feeling finish')
+    .replace(/\bhelps alleviate irritation and redness\b/gi, 'is positioned around calming-looking skin comfort')
+    .replace(/\bmaking it suitable for sensitive skin types\b/gi, 'with suitability claims kept outside public copy')
+    .replace(/\bstrengthens hair follicles\b/gi, 'is positioned around stronger-feeling hair')
+    .replace(/\breduces split ends\b/gi, 'addresses the look of split ends')
+    .replace(/\bpromoting overall hair health and vitality\b/gi, 'supporting hair-care positioning')
+    .replace(/\byour ultimate solution for healthy,\s*radiant skin and hair\b/gi, 'a source-listed option for radiant-looking skin and hair')
     .replace(/\b(?:see all|how to use|complete list)\b[\s:-]*/gi, ' ')
     .replace(/\b(?:wholesale|affiliate program|refer-a-friend|press|social|instagram|facebook|twitter|tiktok|pinterest|youtube)\b/gi, ' ')
     .replace(/\b(?:var\s+\w+|await)\b[^.!?;,]*/gi, ' ')
@@ -542,7 +564,7 @@ function inferKind(title, category, categoryPath, description = '') {
   ) {
     return 'wellness_supplement';
   }
-  if (/\bbeauty\/bodycare\/body-oil\b/.test(reviewedPath)) return 'body_oil';
+  if (/\bbeauty\/(?:bodycare|skincare\/body)\/body-oil\b/.test(reviewedPath)) return 'body_oil';
   if (/\bbeauty\/skincare\/face-balm\b/.test(reviewedPath)) return 'face_balm';
   if (/\bbeauty\/skincare\/serum\b/.test(reviewedPath) && /\bserum\b/.test(titleCategoryText)) return 'serum';
   if (/\bbeauty\/skincare\/toner\b/.test(reviewedPath) && /\b(?:toner|tonic|humectant|drop)\b/.test(titleCategoryText)) return 'toner';

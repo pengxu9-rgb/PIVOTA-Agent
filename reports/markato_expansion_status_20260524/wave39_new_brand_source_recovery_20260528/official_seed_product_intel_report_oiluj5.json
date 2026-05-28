@@ -1,0 +1,1300 @@
+{
+  "meta": {
+    "generated_at": "2026-05-28T02:22:06.887Z",
+    "source": "reviewed_official_seed_product_intel_report",
+    "batch_name": "wave39_oiluj_official_seed_product_intel",
+    "inventory": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave39_new_brand_source_recovery_20260528/readiness_after_catalog_sync/commerce_index_kb_readiness_inventory.json",
+    "selected_cases": 5,
+    "reviewer": "codex_quality_reviewer_owner_delegated",
+    "reviewer_kind": "assistant",
+    "candidate_quality_summary": {
+      "public_ready": 5,
+      "high_quality_ready": 5,
+      "evidence_profile": {
+        "official_pdp_seed": 5
+      }
+    }
+  },
+  "rows": [
+    {
+      "case_id": "live_ext_07cfaab25950196c3ec1b5f3",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-28T02:22:06.887Z",
+      "notes": "Approved official-PDP-seed rewrite for OILÙJ, Life Oil: Organic Moringa/Sandalwood Blend; evidence_profile=official_pdp_seed; source_url=http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_07cfaab25950196c3ec1b5f3",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_07cfaab25950196c3ec1b5f3",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_ee97839e413a3173f2dcc09f",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Body oil identity",
+              "body": "An OILUJ body oil listed on the brand source page as OILÙJ, Life Oil: Organic Moringa/Sandalwood Blend. The source description identifies: OILUJ presents this face, body, and hair oil as an organic moringa oil and sandalwood essential-oil blend in a / format, with,,, and fragrance-free positioning."
+            },
+            "best_for": [
+              {
+                "tag": "body_oil_shoppers",
+                "label": "Body oil shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "OILUJ presents this face, body, and hair oil as an organic moringa oil and sandalwood essential-oil blend in a / format, with,,, and fragrance-free positioning.",
+                "evidence_strength": "official_pdp_seed"
+              },
+              {
+                "headline": "Evidence gaps kept explicit",
+                "body": "No complete ingredient list was captured for this review batch, so formula-level claims stay unavailable.",
+                "evidence_strength": "official_pdp_seed"
+              }
+            ],
+            "routine_fit": {
+              "step": "body_care",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the body oil context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_gap",
+                "label": "No complete ingredient list was captured for this review batch; avoid formula-level or safety claims.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-28T02:22:06.887Z",
+              "source_version": "wave39_oiluj_official_seed_product_intel"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_seed",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html"
+              },
+              "formula": {
+                "available": false,
+                "ingredient_count": 0,
+                "source_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "body oil",
+            "texture": "body_oil",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html"
+            },
+            "formula": {
+              "available": false,
+              "ingredient_count": 0,
+              "source_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-28T02:22:06.887Z",
+            "source_version": "wave39_oiluj_official_seed_product_intel"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-28T02:22:06.887Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave39_oiluj_official_seed_product_intel",
+            "official_source_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+            "official_source_ingredient_count": 0,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "OILÙJ, Life Oil: Organic Moringa/Sandalwood Blend",
+            "subtitle": "Body Oil",
+            "highlight": "Body oil formula detail",
+            "intro": "An OILUJ body oil listed on the brand source page as OILÙJ, Life Oil: Organic Moringa/Sandalwood Blend. The source description identifies: OILUJ presents this face, body, and hair oil as an organic moringa oil and sandalwood essential-oil blend in a / format, with,,, and fragrance-free positioning.",
+            "evidence_profile": "official_pdp_seed"
+          },
+          "search_card": {
+            "title_candidate": "OILÙJ, Life Oil: Organic Moringa/Sandalwood Blend",
+            "compact_candidate": "Body Oil",
+            "highlight_candidate": "Body oil formula detail",
+            "intro_candidate": "An OILUJ body oil listed on the brand source page as OILÙJ, Life Oil: Organic Moringa/Sandalwood Blend. The source description identifies: OILUJ presents this face, body, and hair oil as an organic moringa oil and sandalwood essential-oil blend in a / format, with,,, and fragrance-free positioning.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_1493a61baf165a6c00e4977b",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-28T02:22:06.887Z",
+      "notes": "Approved official-PDP-seed rewrite for OILÙJ, Life Oil: Organic Moringa/ French Lavender Blend; evidence_profile=official_pdp_seed; source_url=http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_1493a61baf165a6c00e4977b",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_1493a61baf165a6c00e4977b",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_a926cea3453218463535a2f7",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Body oil identity",
+              "body": "An OILUJ body oil listed on the brand source page as OILÙJ, Life Oil: Organic Moringa/ French Lavender Blend. The source description identifies: OILUJ presents this face, body, and hair oil as an organic moringa oil and French lavender essential-oil blend, positioned for hydration, aromatic comfort, and multipurpose use."
+            },
+            "best_for": [
+              {
+                "tag": "body_oil_shoppers",
+                "label": "Body oil shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "OILUJ presents this face, body, and hair oil as an organic moringa oil and French lavender essential-oil blend, positioned for hydration, aromatic comfort, and multipurpose use.",
+                "evidence_strength": "official_pdp_seed"
+              },
+              {
+                "headline": "Evidence gaps kept explicit",
+                "body": "No complete ingredient list was captured for this review batch, so formula-level claims stay unavailable.",
+                "evidence_strength": "official_pdp_seed"
+              }
+            ],
+            "routine_fit": {
+              "step": "body_care",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the body oil context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_gap",
+                "label": "No complete ingredient list was captured for this review batch; avoid formula-level or safety claims.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-28T02:22:06.887Z",
+              "source_version": "wave39_oiluj_official_seed_product_intel"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_seed",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html"
+              },
+              "formula": {
+                "available": false,
+                "ingredient_count": 0,
+                "source_url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "body oil",
+            "texture": "body_oil",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html"
+            },
+            "formula": {
+              "available": false,
+              "ingredient_count": 0,
+              "source_url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-28T02:22:06.887Z",
+            "source_version": "wave39_oiluj_official_seed_product_intel"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-28T02:22:06.887Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave39_oiluj_official_seed_product_intel",
+            "official_source_url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+            "official_source_ingredient_count": 0,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "OILÙJ, Life Oil: Organic Moringa/ French Lavender Blend",
+            "subtitle": "Body Oil",
+            "highlight": "Body oil formula detail",
+            "intro": "An OILUJ body oil listed on the brand source page as OILÙJ, Life Oil: Organic Moringa/ French Lavender Blend. The source description identifies: OILUJ presents this face, body, and hair oil as an organic moringa oil and French lavender essential-oil blend, positioned for hydration, aromatic comfort, and multipurpose use.",
+            "evidence_profile": "official_pdp_seed"
+          },
+          "search_card": {
+            "title_candidate": "OILÙJ, Life Oil: Organic Moringa/ French Lavender Blend",
+            "compact_candidate": "Body Oil",
+            "highlight_candidate": "Body oil formula detail",
+            "intro_candidate": "An OILUJ body oil listed on the brand source page as OILÙJ, Life Oil: Organic Moringa/ French Lavender Blend. The source description identifies: OILUJ presents this face, body, and hair oil as an organic moringa oil and French lavender essential-oil blend, positioned for hydration, aromatic comfort, and multipurpose use.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_3a16e6a6300af832ae3ccdb7",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-28T02:22:06.887Z",
+      "notes": "Approved official-PDP-seed rewrite for OILÙJ, \"Eye Live\"; evidence_profile=official_pdp_seed; source_url=http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_3a16e6a6300af832ae3ccdb7",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_3a16e6a6300af832ae3ccdb7",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_6dc678aa5047edb9ec081365",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Eye treatment identity",
+              "body": "An OILUJ eye treatment listed on the brand source page as OILÙJ, \"Eye Live\". The source description identifies: OILUJ presents Eye Live as an eye-contour treatment built around evening primrose, jojoba oil, moringa oil, and vitamin E for the delicate eye area."
+            },
+            "best_for": [
+              {
+                "tag": "eye_treatment_shoppers",
+                "label": "Eye treatment shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "OILUJ presents Eye Live as an eye-contour treatment built around evening primrose, jojoba oil, moringa oil, and vitamin E for the delicate eye area.",
+                "evidence_strength": "official_pdp_seed"
+              },
+              {
+                "headline": "Evidence gaps kept explicit",
+                "body": "No complete ingredient list was captured for this review batch, so formula-level claims stay unavailable.",
+                "evidence_strength": "official_pdp_seed"
+              }
+            ],
+            "routine_fit": {
+              "step": "skin_care",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the eye treatment context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_gap",
+                "label": "No complete ingredient list was captured for this review batch; avoid formula-level or safety claims.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-28T02:22:06.887Z",
+              "source_version": "wave39_oiluj_official_seed_product_intel"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_seed",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html"
+              },
+              "formula": {
+                "available": false,
+                "ingredient_count": 0,
+                "source_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "eye treatment",
+            "texture": "eye_treatment",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html"
+            },
+            "formula": {
+              "available": false,
+              "ingredient_count": 0,
+              "source_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-28T02:22:06.887Z",
+            "source_version": "wave39_oiluj_official_seed_product_intel"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-28T02:22:06.887Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave39_oiluj_official_seed_product_intel",
+            "official_source_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+            "official_source_ingredient_count": 0,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "OILÙJ, \"Eye Live\"",
+            "subtitle": "Eye Treatment",
+            "highlight": "Eye treatment detail",
+            "intro": "An OILUJ eye treatment listed on the brand source page as OILÙJ, \"Eye Live\". The source description identifies: OILUJ presents Eye Live as an eye-contour treatment built around evening primrose, jojoba oil, moringa oil, and vitamin E for the delicate eye area.",
+            "evidence_profile": "official_pdp_seed"
+          },
+          "search_card": {
+            "title_candidate": "OILÙJ, \"Eye Live\"",
+            "compact_candidate": "Eye Treatment",
+            "highlight_candidate": "Eye treatment detail",
+            "intro_candidate": "An OILUJ eye treatment listed on the brand source page as OILÙJ, \"Eye Live\". The source description identifies: OILUJ presents Eye Live as an eye-contour treatment built around evening primrose, jojoba oil, moringa oil, and vitamin E for the delicate eye area.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_79fc9f55f8b092590e168c8d",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-28T02:22:06.887Z",
+      "notes": "Approved official-PDP-seed rewrite for OILÙJ, \"Lip Life\"; evidence_profile=official_pdp_seed; source_url=http://www.oiluj.com/store/p17/OIL%C3%99J%2C_%22Lip_Life%22.html",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_79fc9f55f8b092590e168c8d",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_79fc9f55f8b092590e168c8d",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_73cf65503f5b81bd97e9dd2a",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Lip balm identity",
+              "body": "An OILUJ lip balm listed on the brand source page as OILÙJ, \"Lip Life\". The source description identifies: OILUJ presents Lip Life as an organic lip balm made with virgin coconut oil, organic beeswax, moringa oil, and vitamin E for daily lip moisture."
+            },
+            "best_for": [
+              {
+                "tag": "lip_shoppers",
+                "label": "Lip balm shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "OILUJ presents Lip Life as an organic lip balm made with virgin coconut oil, organic beeswax, moringa oil, and vitamin E for daily lip moisture.",
+                "evidence_strength": "official_pdp_seed"
+              },
+              {
+                "headline": "Evidence gaps kept explicit",
+                "body": "No complete ingredient list was captured for this review batch, so formula-level claims stay unavailable.",
+                "evidence_strength": "official_pdp_seed"
+              }
+            ],
+            "routine_fit": {
+              "step": "lip_color",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the lip balm context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_gap",
+                "label": "No complete ingredient list was captured for this review batch; avoid formula-level or safety claims.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-28T02:22:06.887Z",
+              "source_version": "wave39_oiluj_official_seed_product_intel"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_seed",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "http://www.oiluj.com/store/p17/OIL%C3%99J%2C_%22Lip_Life%22.html"
+              },
+              "formula": {
+                "available": false,
+                "ingredient_count": 0,
+                "source_url": "http://www.oiluj.com/store/p17/OIL%C3%99J%2C_%22Lip_Life%22.html"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "lip balm",
+            "texture": "lip",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "http://www.oiluj.com/store/p17/OIL%C3%99J%2C_%22Lip_Life%22.html"
+            },
+            "formula": {
+              "available": false,
+              "ingredient_count": 0,
+              "source_url": "http://www.oiluj.com/store/p17/OIL%C3%99J%2C_%22Lip_Life%22.html"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-28T02:22:06.887Z",
+            "source_version": "wave39_oiluj_official_seed_product_intel"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-28T02:22:06.887Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave39_oiluj_official_seed_product_intel",
+            "official_source_url": "http://www.oiluj.com/store/p17/OIL%C3%99J%2C_%22Lip_Life%22.html",
+            "official_source_ingredient_count": 0,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "OILÙJ, \"Lip Life\"",
+            "subtitle": "Lip Balm",
+            "highlight": "Creamy lip formula detail",
+            "intro": "An OILUJ lip balm listed on the brand source page as OILÙJ, \"Lip Life\". The source description identifies: OILUJ presents Lip Life as an organic lip balm made with virgin coconut oil, organic beeswax, moringa oil, and vitamin E for daily lip moisture.",
+            "evidence_profile": "official_pdp_seed"
+          },
+          "search_card": {
+            "title_candidate": "OILÙJ, \"Lip Life\"",
+            "compact_candidate": "Lip Balm",
+            "highlight_candidate": "Creamy lip formula detail",
+            "intro_candidate": "An OILUJ lip balm listed on the brand source page as OILÙJ, \"Lip Life\". The source description identifies: OILUJ presents Lip Life as an organic lip balm made with virgin coconut oil, organic beeswax, moringa oil, and vitamin E for daily lip moisture.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_ab35eb07e8635bb1e1be3ebf",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-28T02:22:06.887Z",
+      "notes": "Approved official-PDP-seed rewrite for OILÙJ, Life Oil; evidence_profile=official_pdp_seed; source_url=http://www.oiluj.com/store/p5/OIL%C3%99J%2C_Life_Oil.html",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_ab35eb07e8635bb1e1be3ebf",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_ab35eb07e8635bb1e1be3ebf",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_e67ca56467dcfed9b5ac5841",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Body oil identity",
+              "body": "An OILUJ body oil listed on the brand source page as OILÙJ, Life Oil. The source description identifies: OILUJ presents Life Oil as cold-pressed moringa oil sourced from Nicaragua, with a first-pressed golden oil format for skin and hair."
+            },
+            "best_for": [
+              {
+                "tag": "body_oil_shoppers",
+                "label": "Body oil shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "OILUJ presents Life Oil as cold-pressed moringa oil sourced from Nicaragua, with a first-pressed golden oil format for skin and hair.",
+                "evidence_strength": "official_pdp_seed"
+              },
+              {
+                "headline": "Evidence gaps kept explicit",
+                "body": "No complete ingredient list was captured for this review batch, so formula-level claims stay unavailable.",
+                "evidence_strength": "official_pdp_seed"
+              }
+            ],
+            "routine_fit": {
+              "step": "body_care",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the body oil context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_gap",
+                "label": "No complete ingredient list was captured for this review batch; avoid formula-level or safety claims.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-28T02:22:06.887Z",
+              "source_version": "wave39_oiluj_official_seed_product_intel"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_seed",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "http://www.oiluj.com/store/p5/OIL%C3%99J%2C_Life_Oil.html"
+              },
+              "formula": {
+                "available": false,
+                "ingredient_count": 0,
+                "source_url": "http://www.oiluj.com/store/p5/OIL%C3%99J%2C_Life_Oil.html"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "body oil",
+            "texture": "body_oil",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "http://www.oiluj.com/store/p5/OIL%C3%99J%2C_Life_Oil.html"
+            },
+            "formula": {
+              "available": false,
+              "ingredient_count": 0,
+              "source_url": "http://www.oiluj.com/store/p5/OIL%C3%99J%2C_Life_Oil.html"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-28T02:22:06.887Z",
+            "source_version": "wave39_oiluj_official_seed_product_intel"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-28T02:22:06.887Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave39_oiluj_official_seed_product_intel",
+            "official_source_url": "http://www.oiluj.com/store/p5/OIL%C3%99J%2C_Life_Oil.html",
+            "official_source_ingredient_count": 0,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "OILÙJ, Life Oil",
+            "subtitle": "Body Oil",
+            "highlight": "Body oil formula detail",
+            "intro": "An OILUJ body oil listed on the brand source page as OILÙJ, Life Oil. The source description identifies: OILUJ presents Life Oil as cold-pressed moringa oil sourced from Nicaragua, with a first-pressed golden oil format for skin and hair.",
+            "evidence_profile": "official_pdp_seed"
+          },
+          "search_card": {
+            "title_candidate": "OILÙJ, Life Oil",
+            "compact_candidate": "Body Oil",
+            "highlight_candidate": "Body oil formula detail",
+            "intro_candidate": "An OILUJ body oil listed on the brand source page as OILÙJ, Life Oil. The source description identifies: OILUJ presents Life Oil as cold-pressed moringa oil sourced from Nicaragua, with a first-pressed golden oil format for skin and hair.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    }
+  ]
+}

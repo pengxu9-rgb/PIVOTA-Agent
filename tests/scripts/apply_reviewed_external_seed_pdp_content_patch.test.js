@@ -251,6 +251,61 @@ describe('apply-reviewed-external-seed-pdp-content-patch', () => {
     ]);
   });
 
+  test('allows reviewed single-ingredient INCI when explicitly marked', () => {
+    const [entry] = readManifestEntries({
+      reviewed_by: 'codex',
+      evidence: 'Official PDP Ingredients section was reviewed and contains one ingredient.',
+      source_url: 'https://brand.example/products/makeup-remover-wipe',
+      source_kind: 'official_pdp_ingredients_section',
+      entries: [
+        {
+          external_product_id: 'ext_single_ingredient',
+          pdp_ingredients_raw: 'Cocos Nucifera (Coconut) Oil',
+          allow_single_ingredient_inci: true,
+        },
+      ],
+    });
+
+    expect(validateEntry(entry)).toEqual([]);
+
+    const result = buildNextSeedData(
+      {
+        external_product_id: 'ext_single_ingredient',
+        seed_data: {
+          pdp_field_capture_status: {
+            ingredients_raw: 'missing',
+          },
+          snapshot: {
+            pdp_field_capture_status: {
+              ingredients_raw: 'missing',
+            },
+          },
+        },
+      },
+      entry,
+      '2026-05-27T00:00:00.000Z',
+    );
+
+    expect(result.blocked).toEqual([]);
+    expect(result.fields).toEqual(expect.arrayContaining(['pdp_ingredients_raw', 'ingredients_inci']));
+    expect(result.seedData.ingredients_inci).toEqual(['Cocos Nucifera (Coconut) Oil']);
+    expect(result.seedData.pdp_field_capture_status.ingredients_raw).toBe('present');
+    expect(result.seedData.snapshot.pdp_field_capture_status.ingredients_raw).toBe('present');
+    expect(result.seedData.ingredient_intel.authoritative).toEqual(
+      expect.objectContaining({
+        raw_text: 'Cocos Nucifera (Coconut) Oil',
+        items: ['Cocos Nucifera (Coconut) Oil'],
+        source_origin: 'official_pdp',
+        source_quality_status: 'high',
+        purity_status: 'authoritative',
+        review_state: 'assistant_reviewed',
+      }),
+    );
+    expect(result.seedData.snapshot.ingredient_intel.authoritative.items).toEqual([
+      'Cocos Nucifera (Coconut) Oil',
+    ]);
+  });
+
   test('materializes canonical ingredient fields when only legacy aliases are populated', () => {
     const [entry] = readManifestEntries({
       reviewed_by: 'codex',
@@ -304,11 +359,162 @@ describe('apply-reviewed-external-seed-pdp-content-patch', () => {
       expect.objectContaining({
         pdp_ingredients_raw: entry.pdp_ingredients_raw,
         raw_ingredient_text_clean: entry.pdp_ingredients_raw,
+        pdp_field_capture_status: expect.objectContaining({
+          ingredients_raw: 'present',
+        }),
         ingredient_intel: expect.objectContaining({
           raw_ingredient_text_clean: entry.pdp_ingredients_raw,
         }),
       }),
     );
+  });
+
+  test('repairs stale missing ingredient capture status when reviewed INCI already exists', () => {
+    const [entry] = readManifestEntries({
+      reviewed_by: 'codex',
+      evidence: 'Official PDP Ingredients section was reviewed and contains one ingredient.',
+      source_url: 'https://brand.example/products/makeup-remover-wipe',
+      source_kind: 'official_pdp_ingredients_section',
+      allow_single_ingredient_inci: true,
+      entries: [
+        {
+          external_product_id: 'ext_capture_status',
+          pdp_ingredients_raw: 'Cocos Nucifera (Coconut) Oil',
+          allow_overwrite_high_quality: true,
+        },
+      ],
+    });
+
+    const result = buildNextSeedData(
+      {
+        external_product_id: 'ext_capture_status',
+        seed_data: {
+          pdp_ingredients_raw: 'Cocos Nucifera (Coconut) Oil',
+          ingredients_inci: ['Cocos Nucifera (Coconut) Oil'],
+          pdp_field_capture_status: {
+            ingredients_raw: 'missing',
+          },
+          snapshot: {},
+        },
+      },
+      entry,
+      '2026-05-27T00:00:00.000Z',
+    );
+
+    expect(result.blocked).toEqual([]);
+    expect(result.changed).toBe(true);
+    expect(result.skipped_fields).not.toContain('no_change_same_value');
+    expect(result.seedData.pdp_field_capture_status.ingredients_raw).toBe('present');
+  });
+
+  test('materializes reviewed ingredient authority when reviewed INCI already exists', () => {
+    const [entry] = readManifestEntries({
+      reviewed_by: 'codex',
+      evidence: 'Official PDP Ingredients section was reviewed and contains one ingredient.',
+      source_url: 'https://brand.example/products/makeup-remover-wipe',
+      source_kind: 'official_pdp_ingredients_section',
+      allow_single_ingredient_inci: true,
+      entries: [
+        {
+          external_product_id: 'ext_missing_authority',
+          pdp_ingredients_raw: 'Cocos Nucifera (Coconut) Oil',
+          allow_overwrite_high_quality: true,
+        },
+      ],
+    });
+
+    const result = buildNextSeedData(
+      {
+        external_product_id: 'ext_missing_authority',
+        seed_data: {
+          pdp_ingredients_raw: 'Cocos Nucifera (Coconut) Oil',
+          raw_ingredient_text_clean: 'Cocos Nucifera (Coconut) Oil',
+          ingredients_inci: ['Cocos Nucifera (Coconut) Oil'],
+          pdp_field_capture_status: {
+            ingredients_raw: 'present',
+          },
+          snapshot: {
+            pdp_ingredients_raw: 'Cocos Nucifera (Coconut) Oil',
+            raw_ingredient_text_clean: 'Cocos Nucifera (Coconut) Oil',
+            ingredients_inci: ['Cocos Nucifera (Coconut) Oil'],
+            pdp_field_capture_status: {
+              ingredients_raw: 'present',
+            },
+          },
+        },
+      },
+      entry,
+      '2026-05-27T00:00:00.000Z',
+    );
+
+    expect(result.blocked).toEqual([]);
+    expect(result.changed).toBe(true);
+    expect(result.skipped_fields).not.toContain('no_change_same_value');
+    expect(result.fields).toEqual(expect.arrayContaining(['pdp_ingredients_raw', 'ingredients_inci']));
+    expect(result.seedData.ingredient_intel.authoritative).toEqual(
+      expect.objectContaining({
+        items: ['Cocos Nucifera (Coconut) Oil'],
+        source_origin: 'official_pdp',
+        purity_status: 'authoritative',
+      }),
+    );
+  });
+
+  test('can refresh serving payload when seed content is already current', () => {
+    const [entry] = readManifestEntries({
+      reviewed_by: 'codex',
+      evidence: 'Official PDP Ingredients section was reviewed and contains one ingredient.',
+      source_url: 'https://brand.example/products/makeup-remover-wipe',
+      source_kind: 'official_pdp_ingredients_section',
+      allow_single_ingredient_inci: true,
+      refresh_serving_payload: true,
+      entries: [
+        {
+          external_product_id: 'ext_refresh_serving',
+          pdp_ingredients_raw: 'Cocos Nucifera (Coconut) Oil',
+          allow_overwrite_high_quality: true,
+        },
+      ],
+    });
+
+    const result = buildNextSeedData(
+      {
+        external_product_id: 'ext_refresh_serving',
+        seed_data: {
+          pdp_ingredients_raw: 'Cocos Nucifera (Coconut) Oil',
+          ingredients_inci: ['Cocos Nucifera (Coconut) Oil'],
+          ingredient_intel: {
+            authoritative: {
+              raw_text: 'Cocos Nucifera (Coconut) Oil',
+              items: ['Cocos Nucifera (Coconut) Oil'],
+              source_origin: 'official_pdp',
+              purity_status: 'authoritative',
+            },
+          },
+          pdp_field_capture_status: {
+            ingredients_raw: 'present',
+          },
+          snapshot: {
+            pdp_ingredients_raw: 'Cocos Nucifera (Coconut) Oil',
+            ingredients_inci: ['Cocos Nucifera (Coconut) Oil'],
+            ingredient_intel: {
+              authoritative: {
+                raw_text: 'Cocos Nucifera (Coconut) Oil',
+                items: ['Cocos Nucifera (Coconut) Oil'],
+                source_origin: 'official_pdp',
+                purity_status: 'authoritative',
+              },
+            },
+          },
+        },
+      },
+      entry,
+      '2026-05-27T00:00:00.000Z',
+    );
+
+    expect(result.blocked).toEqual([]);
+    expect(result.changed).toBe(true);
+    expect(result.fields).toEqual([]);
   });
 
   test('blocks a description-only patch when existing description is high quality', () => {

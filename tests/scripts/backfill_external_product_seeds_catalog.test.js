@@ -7554,3 +7554,31 @@ Contains four types of peptides`,
     expect(payload.nextRow.seed_data.derived.recall).toEqual(expect.any(Object));
   });
 });
+
+describe('backfill external seed source-derived category', () => {
+  const { deriveSourceBackedCategoryFromProductText } = require('../../scripts/backfill-external-product-seeds-catalog');
+
+  test('derives cleanser category from strong single-product title', () => {
+    expect(
+      deriveSourceBackedCategoryFromProductText({
+        title: 'Gentle Silk Cleanser',
+        description: 'A daily cleansing formula for skin.',
+      }),
+    ).toEqual({
+      category: 'Cleanser',
+      source_kind: 'source_title_pattern',
+      source_title: 'Gentle Silk Cleanser',
+      source_fields: ['title'],
+    });
+  });
+
+  test('does not collapse cleanser bundles into single-product cleanser category', () => {
+    expect(
+      deriveSourceBackedCategoryFromProductText({
+        title: 'Gentle Cleanser Duo',
+        description: 'Two cleansing products in one bundle.',
+      }),
+    ).toBeNull();
+  });
+});
+

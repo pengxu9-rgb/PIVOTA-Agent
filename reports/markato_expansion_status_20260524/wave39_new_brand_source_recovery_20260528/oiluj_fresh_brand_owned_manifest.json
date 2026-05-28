@@ -1,0 +1,1858 @@
+{
+  "generated_at": "2026-05-28T01:54:59.293Z",
+  "brand": "OILUJ",
+  "domain": "https://www.oiluj.com",
+  "fallback_domains": [],
+  "market": "US",
+  "preferred_titles": [],
+  "matched_preferred_titles": [],
+  "extracted_product_count": 8,
+  "excluded_bundle_like_count": 1,
+  "excluded_non_product_page_count": 0,
+  "excluded_incomplete_transaction_count": 2,
+  "excluded_brand_scope_mismatch_count": 0,
+  "matched_preferred_title_count": 0,
+  "item_count": 5,
+  "fallback_used": false,
+  "source_attempts": [
+    {
+      "source_url": "https://www.oiluj.com",
+      "source_role": "primary",
+      "extracted_product_count": 8,
+      "item_count": 5,
+      "matched_preferred_title_count": 0,
+      "matched_preferred_titles": [],
+      "diagnostics_summary": {
+        "discovery_strategy": "seed_page",
+        "failure_category": null,
+        "block_provider": null
+      },
+      "used_in_manifest": true,
+      "added_item_count": 5,
+      "added_matched_preferred_titles": [],
+      "skip_reason": null
+    }
+  ],
+  "items": [
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "target_brand": "OILUJ",
+      "target_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+      "extract_status": "brand_catalog_extract",
+      "market": "US",
+      "source_domain": "https://www.oiluj.com",
+      "source_role": "primary",
+      "matched_preferred_titles": [],
+      "alias_preferred_titles": [],
+      "seed_row": {
+        "ingredient_id": null,
+        "ingredient_name": null,
+        "seed_id": "eps_dc72b5d18cbbbffe502bfa20",
+        "brand": "OILUJ",
+        "market": "US",
+        "tool": "creator_agents",
+        "status": "active",
+        "domain": "oiluj.com",
+        "external_product_id": "ext_07cfaab25950196c3ec1b5f3",
+        "canonical_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+        "destination_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+        "title": "OILÙJ, Life Oil: Organic Moringa/Sandalwood Blend",
+        "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640",
+        "price_amount": 65,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "attached_product_key": null,
+        "requires_seed_correction": false,
+        "seed_data": {
+          "brand": "OILUJ",
+          "title": "OILÙJ, Life Oil: Organic Moringa/Sandalwood Blend",
+          "description": "Botanical skincare products specializing in the benefits of Moringa oil.",
+          "external_product_id": "ext_07cfaab25950196c3ec1b5f3",
+          "canonical_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+          "destination_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+          "price_amount": 65,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640",
+          "image_urls": [
+            "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640",
+            "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640"
+          ],
+          "images": [
+            "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640",
+            "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640"
+          ],
+          "variants": [
+            {
+              "sku": "AUTO-da04d4a8",
+              "variant_id": "da04d4a8c80e",
+              "url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+              "option_name": "Offer",
+              "option_value": "Default",
+              "price": "65",
+              "currency": "USD",
+              "stock": "In Stock",
+              "description": "Botanical skincare products specializing in the benefits of Moringa oil.",
+              "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640",
+              "image_urls": [
+                "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640",
+                "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640"
+              ]
+            }
+          ],
+          "snapshot": {
+            "source": "catalog_intelligence_seed_creation_manifest",
+            "extracted_at": "2026-05-28T01:54:59.288Z",
+            "canonical_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+            "destination_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+            "title": "OILÙJ, Life Oil: Organic Moringa/Sandalwood Blend",
+            "description": "Botanical skincare products specializing in the benefits of Moringa oil.",
+            "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640",
+            "image_urls": [
+              "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640",
+              "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640"
+            ],
+            "images": [
+              "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640",
+              "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640"
+            ],
+            "variants": [
+              {
+                "sku": "AUTO-da04d4a8",
+                "variant_id": "da04d4a8c80e",
+                "url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+                "option_name": "Offer",
+                "option_value": "Default",
+                "price": "65",
+                "currency": "USD",
+                "stock": "In Stock",
+                "description": "Botanical skincare products specializing in the benefits of Moringa oil.",
+                "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640",
+                "image_urls": [
+                  "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640",
+                  "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640"
+                ]
+              }
+            ],
+            "diagnostics": {
+              "requested_domain": "www.oiluj.com",
+              "resolved_base_url": "https://www.oiluj.com",
+              "discovery_strategy": "seed_page",
+              "failure_category": null,
+              "block_provider": null,
+              "http_trace": [
+                {
+                  "url": "https://www.oiluj.com/",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/products.json?limit=1",
+                  "status": 404
+                },
+                {
+                  "url": "https://www.oiluj.com/",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/contact.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/our-story.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/contact.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/our-story.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p17/OIL%C3%99J%2C_%22Lip_Life%22.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p17/OIL%C3%99J%2C_%22Lip_Life%22.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p20/The_Trinity_Collection.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p20/The_Trinity_Collection.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p5/OIL%C3%99J%2C_Life_Oil.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p5/OIL%C3%99J%2C_Life_Oil.html",
+                  "status": 200
+                }
+              ]
+            },
+            "search_aliases": [
+              "OILÙJ, Life Oil: Organic Moringa/Sandalwood Blend"
+            ],
+            "authority_source": {
+              "source_url": "https://www.oiluj.com",
+              "source_role": "primary",
+              "matched_preferred_titles": []
+            },
+            "source_validation": {
+              "source_type": "brand_owned",
+              "requires_multi_offer_merge_validation": false,
+              "source_host": "oiluj.com"
+            },
+            "commerce_facts_v1": {
+              "contract_version": "commerce_facts.v1",
+              "market_id": "US",
+              "country": "US",
+              "currency_target": "USD",
+              "source_authority": "catalog_extract_v2",
+              "captured_at": "2026-05-28T01:54:50.795Z",
+              "evidence_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+              "sellable_region": {
+                "status": "unknown",
+                "countries": [],
+                "evidence_source": "catalog_extract_v2",
+                "confidence": "low",
+                "checked_at": "2026-05-28T01:54:50.795Z",
+                "reason_codes": [
+                  "market_currency_not_verified",
+                  "shipping_destination_not_verified",
+                  "external_checkout_not_queried"
+                ],
+                "evidence_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html"
+              },
+              "regional_price": {
+                "amount": 65,
+                "currency": "USD",
+                "display_raw": "65",
+                "price_type": "list",
+                "compare_at_amount": null,
+                "compare_at_currency": null,
+                "compare_at_display_raw": null,
+                "tax_included": "unknown",
+                "confidence": "low",
+                "market_switch_status": "unknown",
+                "observed_currency": "USD",
+                "source_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+                "captured_at": "2026-05-28T01:54:50.795Z"
+              },
+              "availability": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "captured_at": "2026-05-28T01:54:50.795Z"
+              },
+              "shipping": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_checkout_not_queried"
+                ],
+                "checked_at": "2026-05-28T01:54:50.795Z"
+              },
+              "promotions": [],
+              "returns": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_returns_not_extracted"
+                ],
+                "checked_at": "2026-05-28T01:54:50.795Z"
+              }
+            },
+            "commerce_facts_gate": {
+              "status": "pass",
+              "market_id": "US",
+              "expected_currency": "USD",
+              "observed_currency": "USD",
+              "market_switch_status": "unknown",
+              "sellable_region_status": "unknown",
+              "shipping_status": "unknown",
+              "promotions_status": "unknown",
+              "availability_status": "unknown",
+              "problems": []
+            }
+          },
+          "search_aliases": [
+            "OILÙJ, Life Oil: Organic Moringa/Sandalwood Blend"
+          ],
+          "authority_source": {
+            "source_url": "https://www.oiluj.com",
+            "source_role": "primary",
+            "matched_preferred_titles": []
+          },
+          "source_validation": {
+            "source_type": "brand_owned",
+            "requires_multi_offer_merge_validation": false,
+            "source_host": "oiluj.com"
+          },
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-28T01:54:50.795Z",
+            "evidence_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "low",
+              "checked_at": "2026-05-28T01:54:50.795Z",
+              "reason_codes": [
+                "market_currency_not_verified",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html"
+            },
+            "regional_price": {
+              "amount": 65,
+              "currency": "USD",
+              "display_raw": "65",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "low",
+              "market_switch_status": "unknown",
+              "observed_currency": "USD",
+              "source_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+              "captured_at": "2026-05-28T01:54:50.795Z"
+            },
+            "availability": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "captured_at": "2026-05-28T01:54:50.795Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-28T01:54:50.795Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-28T01:54:50.795Z"
+            }
+          },
+          "commerce_facts_gate": {
+            "status": "pass",
+            "market_id": "US",
+            "expected_currency": "USD",
+            "observed_currency": "USD",
+            "market_switch_status": "unknown",
+            "sellable_region_status": "unknown",
+            "shipping_status": "unknown",
+            "promotions_status": "unknown",
+            "availability_status": "unknown",
+            "problems": []
+          }
+        }
+      }
+    },
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "target_brand": "OILUJ",
+      "target_url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+      "extract_status": "brand_catalog_extract",
+      "market": "US",
+      "source_domain": "https://www.oiluj.com",
+      "source_role": "primary",
+      "matched_preferred_titles": [],
+      "alias_preferred_titles": [],
+      "seed_row": {
+        "ingredient_id": null,
+        "ingredient_name": null,
+        "seed_id": "eps_788807b1346798f50430e971",
+        "brand": "OILUJ",
+        "market": "US",
+        "tool": "creator_agents",
+        "status": "active",
+        "domain": "oiluj.com",
+        "external_product_id": "ext_1493a61baf165a6c00e4977b",
+        "canonical_url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+        "destination_url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+        "title": "OILÙJ, Life Oil: Organic Moringa/ French Lavender Blend",
+        "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p12_i2_w1776.jpeg?width=640",
+        "price_amount": 65,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "attached_product_key": null,
+        "requires_seed_correction": false,
+        "seed_data": {
+          "brand": "OILUJ",
+          "title": "OILÙJ, Life Oil: Organic Moringa/ French Lavender Blend",
+          "description": "Botanical skincare products specializing in the benefits of Moringa oil.",
+          "external_product_id": "ext_1493a61baf165a6c00e4977b",
+          "canonical_url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+          "destination_url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+          "price_amount": 65,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p12_i2_w1776.jpeg?width=640",
+          "image_urls": [
+            "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p12_i2_w1776.jpeg?width=640",
+            "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p12_i2_w1776.jpeg?width=640"
+          ],
+          "images": [
+            "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p12_i2_w1776.jpeg?width=640",
+            "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p12_i2_w1776.jpeg?width=640"
+          ],
+          "variants": [
+            {
+              "sku": "AUTO-28ae4c7d",
+              "variant_id": "28ae4c7d9745",
+              "url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+              "option_name": "Offer",
+              "option_value": "Default",
+              "price": "65",
+              "currency": "USD",
+              "stock": "In Stock",
+              "description": "Botanical skincare products specializing in the benefits of Moringa oil.",
+              "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p12_i2_w1776.jpeg?width=640",
+              "image_urls": [
+                "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p12_i2_w1776.jpeg?width=640",
+                "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p12_i2_w1776.jpeg?width=640"
+              ]
+            }
+          ],
+          "snapshot": {
+            "source": "catalog_intelligence_seed_creation_manifest",
+            "extracted_at": "2026-05-28T01:54:59.291Z",
+            "canonical_url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+            "destination_url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+            "title": "OILÙJ, Life Oil: Organic Moringa/ French Lavender Blend",
+            "description": "Botanical skincare products specializing in the benefits of Moringa oil.",
+            "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p12_i2_w1776.jpeg?width=640",
+            "image_urls": [
+              "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p12_i2_w1776.jpeg?width=640",
+              "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p12_i2_w1776.jpeg?width=640"
+            ],
+            "images": [
+              "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p12_i2_w1776.jpeg?width=640",
+              "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p12_i2_w1776.jpeg?width=640"
+            ],
+            "variants": [
+              {
+                "sku": "AUTO-28ae4c7d",
+                "variant_id": "28ae4c7d9745",
+                "url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+                "option_name": "Offer",
+                "option_value": "Default",
+                "price": "65",
+                "currency": "USD",
+                "stock": "In Stock",
+                "description": "Botanical skincare products specializing in the benefits of Moringa oil.",
+                "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p12_i2_w1776.jpeg?width=640",
+                "image_urls": [
+                  "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p12_i2_w1776.jpeg?width=640",
+                  "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p12_i2_w1776.jpeg?width=640"
+                ]
+              }
+            ],
+            "diagnostics": {
+              "requested_domain": "www.oiluj.com",
+              "resolved_base_url": "https://www.oiluj.com",
+              "discovery_strategy": "seed_page",
+              "failure_category": null,
+              "block_provider": null,
+              "http_trace": [
+                {
+                  "url": "https://www.oiluj.com/",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/products.json?limit=1",
+                  "status": 404
+                },
+                {
+                  "url": "https://www.oiluj.com/",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/contact.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/our-story.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/contact.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/our-story.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p17/OIL%C3%99J%2C_%22Lip_Life%22.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p17/OIL%C3%99J%2C_%22Lip_Life%22.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p20/The_Trinity_Collection.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p20/The_Trinity_Collection.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p5/OIL%C3%99J%2C_Life_Oil.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p5/OIL%C3%99J%2C_Life_Oil.html",
+                  "status": 200
+                }
+              ]
+            },
+            "search_aliases": [
+              "OILÙJ, Life Oil: Organic Moringa/ French Lavender Blend"
+            ],
+            "authority_source": {
+              "source_url": "https://www.oiluj.com",
+              "source_role": "primary",
+              "matched_preferred_titles": []
+            },
+            "source_validation": {
+              "source_type": "brand_owned",
+              "requires_multi_offer_merge_validation": false,
+              "source_host": "oiluj.com"
+            },
+            "commerce_facts_v1": {
+              "contract_version": "commerce_facts.v1",
+              "market_id": "US",
+              "country": "US",
+              "currency_target": "USD",
+              "source_authority": "catalog_extract_v2",
+              "captured_at": "2026-05-28T01:54:50.795Z",
+              "evidence_url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+              "sellable_region": {
+                "status": "unknown",
+                "countries": [],
+                "evidence_source": "catalog_extract_v2",
+                "confidence": "low",
+                "checked_at": "2026-05-28T01:54:50.795Z",
+                "reason_codes": [
+                  "market_currency_not_verified",
+                  "shipping_destination_not_verified",
+                  "external_checkout_not_queried"
+                ],
+                "evidence_url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html"
+              },
+              "regional_price": {
+                "amount": 65,
+                "currency": "USD",
+                "display_raw": "65",
+                "price_type": "list",
+                "compare_at_amount": null,
+                "compare_at_currency": null,
+                "compare_at_display_raw": null,
+                "tax_included": "unknown",
+                "confidence": "low",
+                "market_switch_status": "unknown",
+                "observed_currency": "USD",
+                "source_url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+                "captured_at": "2026-05-28T01:54:50.795Z"
+              },
+              "availability": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "captured_at": "2026-05-28T01:54:50.795Z"
+              },
+              "shipping": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_checkout_not_queried"
+                ],
+                "checked_at": "2026-05-28T01:54:50.795Z"
+              },
+              "promotions": [],
+              "returns": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_returns_not_extracted"
+                ],
+                "checked_at": "2026-05-28T01:54:50.795Z"
+              }
+            },
+            "commerce_facts_gate": {
+              "status": "pass",
+              "market_id": "US",
+              "expected_currency": "USD",
+              "observed_currency": "USD",
+              "market_switch_status": "unknown",
+              "sellable_region_status": "unknown",
+              "shipping_status": "unknown",
+              "promotions_status": "unknown",
+              "availability_status": "unknown",
+              "problems": []
+            }
+          },
+          "search_aliases": [
+            "OILÙJ, Life Oil: Organic Moringa/ French Lavender Blend"
+          ],
+          "authority_source": {
+            "source_url": "https://www.oiluj.com",
+            "source_role": "primary",
+            "matched_preferred_titles": []
+          },
+          "source_validation": {
+            "source_type": "brand_owned",
+            "requires_multi_offer_merge_validation": false,
+            "source_host": "oiluj.com"
+          },
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-28T01:54:50.795Z",
+            "evidence_url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "low",
+              "checked_at": "2026-05-28T01:54:50.795Z",
+              "reason_codes": [
+                "market_currency_not_verified",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html"
+            },
+            "regional_price": {
+              "amount": 65,
+              "currency": "USD",
+              "display_raw": "65",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "low",
+              "market_switch_status": "unknown",
+              "observed_currency": "USD",
+              "source_url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+              "captured_at": "2026-05-28T01:54:50.795Z"
+            },
+            "availability": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "captured_at": "2026-05-28T01:54:50.795Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-28T01:54:50.795Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-28T01:54:50.795Z"
+            }
+          },
+          "commerce_facts_gate": {
+            "status": "pass",
+            "market_id": "US",
+            "expected_currency": "USD",
+            "observed_currency": "USD",
+            "market_switch_status": "unknown",
+            "sellable_region_status": "unknown",
+            "shipping_status": "unknown",
+            "promotions_status": "unknown",
+            "availability_status": "unknown",
+            "problems": []
+          }
+        }
+      }
+    },
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "target_brand": "OILUJ",
+      "target_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+      "extract_status": "brand_catalog_extract",
+      "market": "US",
+      "source_domain": "https://www.oiluj.com",
+      "source_role": "primary",
+      "matched_preferred_titles": [],
+      "alias_preferred_titles": [],
+      "seed_row": {
+        "ingredient_id": null,
+        "ingredient_name": null,
+        "seed_id": "eps_f44441b9491577f7041972cc",
+        "brand": "OILUJ",
+        "market": "US",
+        "tool": "creator_agents",
+        "status": "active",
+        "domain": "oiluj.com",
+        "external_product_id": "ext_3a16e6a6300af832ae3ccdb7",
+        "canonical_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+        "destination_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+        "title": "OILÙJ, \"Eye Live\"",
+        "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p15_i2_w1776.jpeg?width=640",
+        "price_amount": 35,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "attached_product_key": null,
+        "requires_seed_correction": false,
+        "seed_data": {
+          "brand": "OILUJ",
+          "title": "OILÙJ, \"Eye Live\"",
+          "description": "Botanical skincare products specializing in the benefits of Moringa oil.",
+          "external_product_id": "ext_3a16e6a6300af832ae3ccdb7",
+          "canonical_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+          "destination_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+          "price_amount": 35,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p15_i2_w1776.jpeg?width=640",
+          "image_urls": [
+            "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p15_i2_w1776.jpeg?width=640",
+            "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p15_i2_w1776.jpeg?width=640"
+          ],
+          "images": [
+            "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p15_i2_w1776.jpeg?width=640",
+            "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p15_i2_w1776.jpeg?width=640"
+          ],
+          "variants": [
+            {
+              "sku": "AUTO-e91e8820",
+              "variant_id": "e91e8820b0be",
+              "url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+              "option_name": "Offer",
+              "option_value": "Default",
+              "price": "35",
+              "currency": "USD",
+              "stock": "In Stock",
+              "description": "Botanical skincare products specializing in the benefits of Moringa oil.",
+              "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p15_i2_w1776.jpeg?width=640",
+              "image_urls": [
+                "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p15_i2_w1776.jpeg?width=640",
+                "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p15_i2_w1776.jpeg?width=640"
+              ]
+            }
+          ],
+          "snapshot": {
+            "source": "catalog_intelligence_seed_creation_manifest",
+            "extracted_at": "2026-05-28T01:54:59.292Z",
+            "canonical_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+            "destination_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+            "title": "OILÙJ, \"Eye Live\"",
+            "description": "Botanical skincare products specializing in the benefits of Moringa oil.",
+            "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p15_i2_w1776.jpeg?width=640",
+            "image_urls": [
+              "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p15_i2_w1776.jpeg?width=640",
+              "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p15_i2_w1776.jpeg?width=640"
+            ],
+            "images": [
+              "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p15_i2_w1776.jpeg?width=640",
+              "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p15_i2_w1776.jpeg?width=640"
+            ],
+            "variants": [
+              {
+                "sku": "AUTO-e91e8820",
+                "variant_id": "e91e8820b0be",
+                "url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+                "option_name": "Offer",
+                "option_value": "Default",
+                "price": "35",
+                "currency": "USD",
+                "stock": "In Stock",
+                "description": "Botanical skincare products specializing in the benefits of Moringa oil.",
+                "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p15_i2_w1776.jpeg?width=640",
+                "image_urls": [
+                  "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p15_i2_w1776.jpeg?width=640",
+                  "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p15_i2_w1776.jpeg?width=640"
+                ]
+              }
+            ],
+            "diagnostics": {
+              "requested_domain": "www.oiluj.com",
+              "resolved_base_url": "https://www.oiluj.com",
+              "discovery_strategy": "seed_page",
+              "failure_category": null,
+              "block_provider": null,
+              "http_trace": [
+                {
+                  "url": "https://www.oiluj.com/",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/products.json?limit=1",
+                  "status": 404
+                },
+                {
+                  "url": "https://www.oiluj.com/",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/contact.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/our-story.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/contact.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/our-story.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p17/OIL%C3%99J%2C_%22Lip_Life%22.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p17/OIL%C3%99J%2C_%22Lip_Life%22.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p20/The_Trinity_Collection.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p20/The_Trinity_Collection.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p5/OIL%C3%99J%2C_Life_Oil.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p5/OIL%C3%99J%2C_Life_Oil.html",
+                  "status": 200
+                }
+              ]
+            },
+            "search_aliases": [
+              "OILÙJ, \"Eye Live\""
+            ],
+            "authority_source": {
+              "source_url": "https://www.oiluj.com",
+              "source_role": "primary",
+              "matched_preferred_titles": []
+            },
+            "source_validation": {
+              "source_type": "brand_owned",
+              "requires_multi_offer_merge_validation": false,
+              "source_host": "oiluj.com"
+            },
+            "commerce_facts_v1": {
+              "contract_version": "commerce_facts.v1",
+              "market_id": "US",
+              "country": "US",
+              "currency_target": "USD",
+              "source_authority": "catalog_extract_v2",
+              "captured_at": "2026-05-28T01:54:50.795Z",
+              "evidence_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+              "sellable_region": {
+                "status": "unknown",
+                "countries": [],
+                "evidence_source": "catalog_extract_v2",
+                "confidence": "low",
+                "checked_at": "2026-05-28T01:54:50.795Z",
+                "reason_codes": [
+                  "market_currency_not_verified",
+                  "shipping_destination_not_verified",
+                  "external_checkout_not_queried"
+                ],
+                "evidence_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html"
+              },
+              "regional_price": {
+                "amount": 35,
+                "currency": "USD",
+                "display_raw": "35",
+                "price_type": "list",
+                "compare_at_amount": null,
+                "compare_at_currency": null,
+                "compare_at_display_raw": null,
+                "tax_included": "unknown",
+                "confidence": "low",
+                "market_switch_status": "unknown",
+                "observed_currency": "USD",
+                "source_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+                "captured_at": "2026-05-28T01:54:50.795Z"
+              },
+              "availability": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "captured_at": "2026-05-28T01:54:50.795Z"
+              },
+              "shipping": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_checkout_not_queried"
+                ],
+                "checked_at": "2026-05-28T01:54:50.795Z"
+              },
+              "promotions": [],
+              "returns": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_returns_not_extracted"
+                ],
+                "checked_at": "2026-05-28T01:54:50.795Z"
+              }
+            },
+            "commerce_facts_gate": {
+              "status": "pass",
+              "market_id": "US",
+              "expected_currency": "USD",
+              "observed_currency": "USD",
+              "market_switch_status": "unknown",
+              "sellable_region_status": "unknown",
+              "shipping_status": "unknown",
+              "promotions_status": "unknown",
+              "availability_status": "unknown",
+              "problems": []
+            }
+          },
+          "search_aliases": [
+            "OILÙJ, \"Eye Live\""
+          ],
+          "authority_source": {
+            "source_url": "https://www.oiluj.com",
+            "source_role": "primary",
+            "matched_preferred_titles": []
+          },
+          "source_validation": {
+            "source_type": "brand_owned",
+            "requires_multi_offer_merge_validation": false,
+            "source_host": "oiluj.com"
+          },
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-28T01:54:50.795Z",
+            "evidence_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "low",
+              "checked_at": "2026-05-28T01:54:50.795Z",
+              "reason_codes": [
+                "market_currency_not_verified",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html"
+            },
+            "regional_price": {
+              "amount": 35,
+              "currency": "USD",
+              "display_raw": "35",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "low",
+              "market_switch_status": "unknown",
+              "observed_currency": "USD",
+              "source_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+              "captured_at": "2026-05-28T01:54:50.795Z"
+            },
+            "availability": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "captured_at": "2026-05-28T01:54:50.795Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-28T01:54:50.795Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-28T01:54:50.795Z"
+            }
+          },
+          "commerce_facts_gate": {
+            "status": "pass",
+            "market_id": "US",
+            "expected_currency": "USD",
+            "observed_currency": "USD",
+            "market_switch_status": "unknown",
+            "sellable_region_status": "unknown",
+            "shipping_status": "unknown",
+            "promotions_status": "unknown",
+            "availability_status": "unknown",
+            "problems": []
+          }
+        }
+      }
+    },
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "target_brand": "OILUJ",
+      "target_url": "http://www.oiluj.com/store/p17/OIL%C3%99J%2C_%22Lip_Life%22.html",
+      "extract_status": "brand_catalog_extract",
+      "market": "US",
+      "source_domain": "https://www.oiluj.com",
+      "source_role": "primary",
+      "matched_preferred_titles": [],
+      "alias_preferred_titles": [],
+      "seed_row": {
+        "ingredient_id": null,
+        "ingredient_name": null,
+        "seed_id": "eps_c7fd84cd5bb7e47f0d2eb06f",
+        "brand": "OILUJ",
+        "market": "US",
+        "tool": "creator_agents",
+        "status": "active",
+        "domain": "oiluj.com",
+        "external_product_id": "ext_79fc9f55f8b092590e168c8d",
+        "canonical_url": "http://www.oiluj.com/store/p17/OIL%C3%99J%2C_%22Lip_Life%22.html",
+        "destination_url": "http://www.oiluj.com/store/p17/OIL%C3%99J%2C_%22Lip_Life%22.html",
+        "title": "OILÙJ, \"Lip Life\"",
+        "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p17_i2_w1776.jpeg?width=640",
+        "price_amount": 15,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "attached_product_key": null,
+        "requires_seed_correction": false,
+        "seed_data": {
+          "brand": "OILUJ",
+          "title": "OILÙJ, \"Lip Life\"",
+          "description": "Botanical skincare products specializing in the benefits of Moringa oil.",
+          "external_product_id": "ext_79fc9f55f8b092590e168c8d",
+          "canonical_url": "http://www.oiluj.com/store/p17/OIL%C3%99J%2C_%22Lip_Life%22.html",
+          "destination_url": "http://www.oiluj.com/store/p17/OIL%C3%99J%2C_%22Lip_Life%22.html",
+          "price_amount": 15,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p17_i2_w1776.jpeg?width=640",
+          "image_urls": [
+            "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p17_i2_w1776.jpeg?width=640",
+            "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p17_i2_w1776.jpeg?width=640"
+          ],
+          "images": [
+            "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p17_i2_w1776.jpeg?width=640",
+            "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p17_i2_w1776.jpeg?width=640"
+          ],
+          "variants": [
+            {
+              "sku": "AUTO-91a3f39c",
+              "variant_id": "91a3f39c4fc2",
+              "url": "http://www.oiluj.com/store/p17/OIL%C3%99J%2C_%22Lip_Life%22.html",
+              "option_name": "Offer",
+              "option_value": "Default",
+              "price": "15",
+              "currency": "USD",
+              "stock": "In Stock",
+              "description": "Botanical skincare products specializing in the benefits of Moringa oil.",
+              "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p17_i2_w1776.jpeg?width=640",
+              "image_urls": [
+                "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p17_i2_w1776.jpeg?width=640",
+                "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p17_i2_w1776.jpeg?width=640"
+              ]
+            }
+          ],
+          "snapshot": {
+            "source": "catalog_intelligence_seed_creation_manifest",
+            "extracted_at": "2026-05-28T01:54:59.292Z",
+            "canonical_url": "http://www.oiluj.com/store/p17/OIL%C3%99J%2C_%22Lip_Life%22.html",
+            "destination_url": "http://www.oiluj.com/store/p17/OIL%C3%99J%2C_%22Lip_Life%22.html",
+            "title": "OILÙJ, \"Lip Life\"",
+            "description": "Botanical skincare products specializing in the benefits of Moringa oil.",
+            "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p17_i2_w1776.jpeg?width=640",
+            "image_urls": [
+              "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p17_i2_w1776.jpeg?width=640",
+              "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p17_i2_w1776.jpeg?width=640"
+            ],
+            "images": [
+              "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p17_i2_w1776.jpeg?width=640",
+              "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p17_i2_w1776.jpeg?width=640"
+            ],
+            "variants": [
+              {
+                "sku": "AUTO-91a3f39c",
+                "variant_id": "91a3f39c4fc2",
+                "url": "http://www.oiluj.com/store/p17/OIL%C3%99J%2C_%22Lip_Life%22.html",
+                "option_name": "Offer",
+                "option_value": "Default",
+                "price": "15",
+                "currency": "USD",
+                "stock": "In Stock",
+                "description": "Botanical skincare products specializing in the benefits of Moringa oil.",
+                "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p17_i2_w1776.jpeg?width=640",
+                "image_urls": [
+                  "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p17_i2_w1776.jpeg?width=640",
+                  "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p17_i2_w1776.jpeg?width=640"
+                ]
+              }
+            ],
+            "diagnostics": {
+              "requested_domain": "www.oiluj.com",
+              "resolved_base_url": "https://www.oiluj.com",
+              "discovery_strategy": "seed_page",
+              "failure_category": null,
+              "block_provider": null,
+              "http_trace": [
+                {
+                  "url": "https://www.oiluj.com/",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/products.json?limit=1",
+                  "status": 404
+                },
+                {
+                  "url": "https://www.oiluj.com/",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/contact.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/our-story.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/contact.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/our-story.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p17/OIL%C3%99J%2C_%22Lip_Life%22.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p17/OIL%C3%99J%2C_%22Lip_Life%22.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p20/The_Trinity_Collection.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p20/The_Trinity_Collection.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p5/OIL%C3%99J%2C_Life_Oil.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p5/OIL%C3%99J%2C_Life_Oil.html",
+                  "status": 200
+                }
+              ]
+            },
+            "search_aliases": [
+              "OILÙJ, \"Lip Life\""
+            ],
+            "authority_source": {
+              "source_url": "https://www.oiluj.com",
+              "source_role": "primary",
+              "matched_preferred_titles": []
+            },
+            "source_validation": {
+              "source_type": "brand_owned",
+              "requires_multi_offer_merge_validation": false,
+              "source_host": "oiluj.com"
+            },
+            "commerce_facts_v1": {
+              "contract_version": "commerce_facts.v1",
+              "market_id": "US",
+              "country": "US",
+              "currency_target": "USD",
+              "source_authority": "catalog_extract_v2",
+              "captured_at": "2026-05-28T01:54:50.795Z",
+              "evidence_url": "http://www.oiluj.com/store/p17/OIL%C3%99J%2C_%22Lip_Life%22.html",
+              "sellable_region": {
+                "status": "unknown",
+                "countries": [],
+                "evidence_source": "catalog_extract_v2",
+                "confidence": "low",
+                "checked_at": "2026-05-28T01:54:50.795Z",
+                "reason_codes": [
+                  "market_currency_not_verified",
+                  "shipping_destination_not_verified",
+                  "external_checkout_not_queried"
+                ],
+                "evidence_url": "http://www.oiluj.com/store/p17/OIL%C3%99J%2C_%22Lip_Life%22.html"
+              },
+              "regional_price": {
+                "amount": 15,
+                "currency": "USD",
+                "display_raw": "15",
+                "price_type": "list",
+                "compare_at_amount": null,
+                "compare_at_currency": null,
+                "compare_at_display_raw": null,
+                "tax_included": "unknown",
+                "confidence": "low",
+                "market_switch_status": "unknown",
+                "observed_currency": "USD",
+                "source_url": "http://www.oiluj.com/store/p17/OIL%C3%99J%2C_%22Lip_Life%22.html",
+                "captured_at": "2026-05-28T01:54:50.795Z"
+              },
+              "availability": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "captured_at": "2026-05-28T01:54:50.795Z"
+              },
+              "shipping": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_checkout_not_queried"
+                ],
+                "checked_at": "2026-05-28T01:54:50.795Z"
+              },
+              "promotions": [],
+              "returns": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_returns_not_extracted"
+                ],
+                "checked_at": "2026-05-28T01:54:50.795Z"
+              }
+            },
+            "commerce_facts_gate": {
+              "status": "pass",
+              "market_id": "US",
+              "expected_currency": "USD",
+              "observed_currency": "USD",
+              "market_switch_status": "unknown",
+              "sellable_region_status": "unknown",
+              "shipping_status": "unknown",
+              "promotions_status": "unknown",
+              "availability_status": "unknown",
+              "problems": []
+            }
+          },
+          "search_aliases": [
+            "OILÙJ, \"Lip Life\""
+          ],
+          "authority_source": {
+            "source_url": "https://www.oiluj.com",
+            "source_role": "primary",
+            "matched_preferred_titles": []
+          },
+          "source_validation": {
+            "source_type": "brand_owned",
+            "requires_multi_offer_merge_validation": false,
+            "source_host": "oiluj.com"
+          },
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-28T01:54:50.795Z",
+            "evidence_url": "http://www.oiluj.com/store/p17/OIL%C3%99J%2C_%22Lip_Life%22.html",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "low",
+              "checked_at": "2026-05-28T01:54:50.795Z",
+              "reason_codes": [
+                "market_currency_not_verified",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "http://www.oiluj.com/store/p17/OIL%C3%99J%2C_%22Lip_Life%22.html"
+            },
+            "regional_price": {
+              "amount": 15,
+              "currency": "USD",
+              "display_raw": "15",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "low",
+              "market_switch_status": "unknown",
+              "observed_currency": "USD",
+              "source_url": "http://www.oiluj.com/store/p17/OIL%C3%99J%2C_%22Lip_Life%22.html",
+              "captured_at": "2026-05-28T01:54:50.795Z"
+            },
+            "availability": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "captured_at": "2026-05-28T01:54:50.795Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-28T01:54:50.795Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-28T01:54:50.795Z"
+            }
+          },
+          "commerce_facts_gate": {
+            "status": "pass",
+            "market_id": "US",
+            "expected_currency": "USD",
+            "observed_currency": "USD",
+            "market_switch_status": "unknown",
+            "sellable_region_status": "unknown",
+            "shipping_status": "unknown",
+            "promotions_status": "unknown",
+            "availability_status": "unknown",
+            "problems": []
+          }
+        }
+      }
+    },
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "target_brand": "OILUJ",
+      "target_url": "http://www.oiluj.com/store/p5/OIL%C3%99J%2C_Life_Oil.html",
+      "extract_status": "brand_catalog_extract",
+      "market": "US",
+      "source_domain": "https://www.oiluj.com",
+      "source_role": "primary",
+      "matched_preferred_titles": [],
+      "alias_preferred_titles": [],
+      "seed_row": {
+        "ingredient_id": null,
+        "ingredient_name": null,
+        "seed_id": "eps_b7a050ba2f78906f4c033659",
+        "brand": "OILUJ",
+        "market": "US",
+        "tool": "creator_agents",
+        "status": "active",
+        "domain": "oiluj.com",
+        "external_product_id": "ext_ab35eb07e8635bb1e1be3ebf",
+        "canonical_url": "http://www.oiluj.com/store/p5/OIL%C3%99J%2C_Life_Oil.html",
+        "destination_url": "http://www.oiluj.com/store/p5/OIL%C3%99J%2C_Life_Oil.html",
+        "title": "OILÙJ, Life Oil",
+        "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p5_i5_w1776.jpeg?width=640",
+        "price_amount": 65,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "attached_product_key": null,
+        "requires_seed_correction": false,
+        "seed_data": {
+          "brand": "OILUJ",
+          "title": "OILÙJ, Life Oil",
+          "description": "Botanical skincare products specializing in the benefits of Moringa oil.",
+          "external_product_id": "ext_ab35eb07e8635bb1e1be3ebf",
+          "canonical_url": "http://www.oiluj.com/store/p5/OIL%C3%99J%2C_Life_Oil.html",
+          "destination_url": "http://www.oiluj.com/store/p5/OIL%C3%99J%2C_Life_Oil.html",
+          "price_amount": 65,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p5_i5_w1776.jpeg?width=640",
+          "image_urls": [
+            "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p5_i5_w1776.jpeg?width=640",
+            "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p5_i5_w1776.jpeg?width=640"
+          ],
+          "images": [
+            "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p5_i5_w1776.jpeg?width=640",
+            "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p5_i5_w1776.jpeg?width=640"
+          ],
+          "variants": [
+            {
+              "sku": "AUTO-a6607ba9",
+              "variant_id": "a6607ba9188b",
+              "url": "http://www.oiluj.com/store/p5/OIL%C3%99J%2C_Life_Oil.html",
+              "option_name": "Offer",
+              "option_value": "Default",
+              "price": "65",
+              "currency": "USD",
+              "stock": "In Stock",
+              "description": "Botanical skincare products specializing in the benefits of Moringa oil.",
+              "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p5_i5_w1776.jpeg?width=640",
+              "image_urls": [
+                "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p5_i5_w1776.jpeg?width=640",
+                "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p5_i5_w1776.jpeg?width=640"
+              ]
+            }
+          ],
+          "snapshot": {
+            "source": "catalog_intelligence_seed_creation_manifest",
+            "extracted_at": "2026-05-28T01:54:59.292Z",
+            "canonical_url": "http://www.oiluj.com/store/p5/OIL%C3%99J%2C_Life_Oil.html",
+            "destination_url": "http://www.oiluj.com/store/p5/OIL%C3%99J%2C_Life_Oil.html",
+            "title": "OILÙJ, Life Oil",
+            "description": "Botanical skincare products specializing in the benefits of Moringa oil.",
+            "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p5_i5_w1776.jpeg?width=640",
+            "image_urls": [
+              "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p5_i5_w1776.jpeg?width=640",
+              "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p5_i5_w1776.jpeg?width=640"
+            ],
+            "images": [
+              "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p5_i5_w1776.jpeg?width=640",
+              "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p5_i5_w1776.jpeg?width=640"
+            ],
+            "variants": [
+              {
+                "sku": "AUTO-a6607ba9",
+                "variant_id": "a6607ba9188b",
+                "url": "http://www.oiluj.com/store/p5/OIL%C3%99J%2C_Life_Oil.html",
+                "option_name": "Offer",
+                "option_value": "Default",
+                "price": "65",
+                "currency": "USD",
+                "stock": "In Stock",
+                "description": "Botanical skincare products specializing in the benefits of Moringa oil.",
+                "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p5_i5_w1776.jpeg?width=640",
+                "image_urls": [
+                  "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p5_i5_w1776.jpeg?width=640",
+                  "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p5_i5_w1776.jpeg?width=640"
+                ]
+              }
+            ],
+            "diagnostics": {
+              "requested_domain": "www.oiluj.com",
+              "resolved_base_url": "https://www.oiluj.com",
+              "discovery_strategy": "seed_page",
+              "failure_category": null,
+              "block_provider": null,
+              "http_trace": [
+                {
+                  "url": "https://www.oiluj.com/",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/products.json?limit=1",
+                  "status": 404
+                },
+                {
+                  "url": "https://www.oiluj.com/",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/contact.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/our-story.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/contact.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/our-story.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p17/OIL%C3%99J%2C_%22Lip_Life%22.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p17/OIL%C3%99J%2C_%22Lip_Life%22.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p20/The_Trinity_Collection.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p20/The_Trinity_Collection.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p5/OIL%C3%99J%2C_Life_Oil.html",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.oiluj.com/store/p5/OIL%C3%99J%2C_Life_Oil.html",
+                  "status": 200
+                }
+              ]
+            },
+            "search_aliases": [
+              "OILÙJ, Life Oil"
+            ],
+            "authority_source": {
+              "source_url": "https://www.oiluj.com",
+              "source_role": "primary",
+              "matched_preferred_titles": []
+            },
+            "source_validation": {
+              "source_type": "brand_owned",
+              "requires_multi_offer_merge_validation": false,
+              "source_host": "oiluj.com"
+            },
+            "commerce_facts_v1": {
+              "contract_version": "commerce_facts.v1",
+              "market_id": "US",
+              "country": "US",
+              "currency_target": "USD",
+              "source_authority": "catalog_extract_v2",
+              "captured_at": "2026-05-28T01:54:50.795Z",
+              "evidence_url": "http://www.oiluj.com/store/p5/OIL%C3%99J%2C_Life_Oil.html",
+              "sellable_region": {
+                "status": "unknown",
+                "countries": [],
+                "evidence_source": "catalog_extract_v2",
+                "confidence": "low",
+                "checked_at": "2026-05-28T01:54:50.795Z",
+                "reason_codes": [
+                  "market_currency_not_verified",
+                  "shipping_destination_not_verified",
+                  "external_checkout_not_queried"
+                ],
+                "evidence_url": "http://www.oiluj.com/store/p5/OIL%C3%99J%2C_Life_Oil.html"
+              },
+              "regional_price": {
+                "amount": 65,
+                "currency": "USD",
+                "display_raw": "65",
+                "price_type": "list",
+                "compare_at_amount": null,
+                "compare_at_currency": null,
+                "compare_at_display_raw": null,
+                "tax_included": "unknown",
+                "confidence": "low",
+                "market_switch_status": "unknown",
+                "observed_currency": "USD",
+                "source_url": "http://www.oiluj.com/store/p5/OIL%C3%99J%2C_Life_Oil.html",
+                "captured_at": "2026-05-28T01:54:50.795Z"
+              },
+              "availability": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "captured_at": "2026-05-28T01:54:50.795Z"
+              },
+              "shipping": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_checkout_not_queried"
+                ],
+                "checked_at": "2026-05-28T01:54:50.795Z"
+              },
+              "promotions": [],
+              "returns": {
+                "status": "unknown",
+                "source": "catalog_extract_v2",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_returns_not_extracted"
+                ],
+                "checked_at": "2026-05-28T01:54:50.795Z"
+              }
+            },
+            "commerce_facts_gate": {
+              "status": "pass",
+              "market_id": "US",
+              "expected_currency": "USD",
+              "observed_currency": "USD",
+              "market_switch_status": "unknown",
+              "sellable_region_status": "unknown",
+              "shipping_status": "unknown",
+              "promotions_status": "unknown",
+              "availability_status": "unknown",
+              "problems": []
+            }
+          },
+          "search_aliases": [
+            "OILÙJ, Life Oil"
+          ],
+          "authority_source": {
+            "source_url": "https://www.oiluj.com",
+            "source_role": "primary",
+            "matched_preferred_titles": []
+          },
+          "source_validation": {
+            "source_type": "brand_owned",
+            "requires_multi_offer_merge_validation": false,
+            "source_host": "oiluj.com"
+          },
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-28T01:54:50.795Z",
+            "evidence_url": "http://www.oiluj.com/store/p5/OIL%C3%99J%2C_Life_Oil.html",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "low",
+              "checked_at": "2026-05-28T01:54:50.795Z",
+              "reason_codes": [
+                "market_currency_not_verified",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "http://www.oiluj.com/store/p5/OIL%C3%99J%2C_Life_Oil.html"
+            },
+            "regional_price": {
+              "amount": 65,
+              "currency": "USD",
+              "display_raw": "65",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "low",
+              "market_switch_status": "unknown",
+              "observed_currency": "USD",
+              "source_url": "http://www.oiluj.com/store/p5/OIL%C3%99J%2C_Life_Oil.html",
+              "captured_at": "2026-05-28T01:54:50.795Z"
+            },
+            "availability": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "captured_at": "2026-05-28T01:54:50.795Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-28T01:54:50.795Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-28T01:54:50.795Z"
+            }
+          },
+          "commerce_facts_gate": {
+            "status": "pass",
+            "market_id": "US",
+            "expected_currency": "USD",
+            "observed_currency": "USD",
+            "market_switch_status": "unknown",
+            "sellable_region_status": "unknown",
+            "shipping_status": "unknown",
+            "promotions_status": "unknown",
+            "availability_status": "unknown",
+            "problems": []
+          }
+        }
+      }
+    }
+  ]
+}

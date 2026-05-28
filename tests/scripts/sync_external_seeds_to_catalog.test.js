@@ -125,6 +125,64 @@ describe('sync-external-seeds-to-catalog category inference', () => {
     });
   });
 
+  test('keeps single makeup remover wipes out of generic set category', () => {
+    const category = inferCatalogMirrorCategory({
+      title: 'Makeup Remover | Ultimate Makeup Remover Wipe',
+      domain: 'rmsbeauty.com',
+      seed_data: {
+        product_kind: 'set_or_collection',
+        category: 'Beauty Set',
+        description: 'Pure, clean, and simple make-up remover and cleansing wipes.',
+        snapshot: {},
+      },
+    });
+
+    expect(category).toEqual({
+      productType: 'Makeup Remover Wipes',
+      category: 'Makeup Remover Wipes',
+      categoryPath: 'beauty/skincare/cleanser',
+    });
+  });
+
+  test('overrides stale bundle product kind in mirror payload for single makeup remover wipes', () => {
+    const mirror = buildMirror({
+      id: 'eps_rms_wipe',
+      external_product_id: 'ext_rms_wipe',
+      market: 'US',
+      domain: 'rmsbeauty.com',
+      title: 'Makeup Remover | Ultimate Makeup Remover Wipe',
+      image_url: 'https://cdn.example.com/wipe.jpg',
+      price_amount: 6,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      canonical_url: 'https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe',
+      status: 'active',
+      identity_listing: {
+        identity_status: 'approved',
+        live_read_enabled: true,
+        review_required: false,
+        source_tier: 'brand',
+      },
+      seed_data: {
+        brand: 'RMS Beauty',
+        product_kind: 'bundle',
+        category: 'Beauty Set',
+        description: 'Pure, clean, and simple make-up remover and cleansing wipes.',
+        snapshot: {
+          product_kind: 'bundle',
+          category: 'Beauty Set',
+        },
+      },
+    });
+
+    expect(mirror.product.product_payload.product_type).toBe('Makeup Remover Wipes');
+    expect(mirror.product.product_payload.product_kind).toBe('single_formula');
+    expect(mirror.product.product_payload.product_family).toBe('single_formula');
+    expect(mirror.product.product_payload.external_seed_product_family).toBe('single_formula');
+    expect(mirror.product.product_payload.snapshot.product_kind).toBe('single_formula');
+    expect(mirror.product.product_payload.snapshot.product_family).toBe('single_formula');
+  });
+
   test('keeps skincare bundles out of single-formula skincare categories', () => {
     const category = inferCatalogMirrorCategory({
       title: 'The Daily Duo: Foaming Face Wash + Moisturiser',

@@ -1,0 +1,167 @@
+{
+  "generated_at": "2026-05-28T02:02:08.537Z",
+  "dry_run": true,
+  "manifest": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave39_new_brand_source_recovery_20260528/oiluj_reviewed_pdp_content_patch_manifest.json",
+  "summary": {
+    "scanned_rows": 5,
+    "missing_rows": 0,
+    "blocked_rows": 5,
+    "change_candidates": 0,
+    "updated_rows": 0,
+    "catalog_product_updates": 0,
+    "identity_updates": 0
+  },
+  "apply_results": [],
+  "plans": [
+    {
+      "external_product_id": "ext_07cfaab25950196c3ec1b5f3",
+      "seed_id": "eps_dc72b5d18cbbbffe502bfa20",
+      "title": "OILÙJ, Life Oil: Organic Moringa/Sandalwood Blend",
+      "canonical_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+      "status": "blocked",
+      "changed": false,
+      "blockers": [
+        "description_polluted"
+      ],
+      "skipped_fields": [],
+      "patched_fields": [],
+      "before": {
+        "description": "Botanical skincare products specializing in the benefits of Moringa oil.",
+        "pdp_description_raw": "",
+        "pdp_ingredients_raw": "",
+        "pdp_how_to_use_raw": "",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "Botanical skincare products specializing in the benefits of Moringa oil.",
+        "pdp_description_raw": "",
+        "pdp_how_to_use_raw": "",
+        "pdp_ingredients_raw": "",
+        "ingredients_polluted": false,
+        "detail_section_count": 0,
+        "polluted_detail_section_count": 0
+      }
+    },
+    {
+      "external_product_id": "ext_1493a61baf165a6c00e4977b",
+      "seed_id": "eps_788807b1346798f50430e971",
+      "title": "OILÙJ, Life Oil: Organic Moringa/ French Lavender Blend",
+      "canonical_url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+      "status": "blocked",
+      "changed": false,
+      "blockers": [
+        "description_polluted"
+      ],
+      "skipped_fields": [],
+      "patched_fields": [],
+      "before": {
+        "description": "Botanical skincare products specializing in the benefits of Moringa oil.",
+        "pdp_description_raw": "",
+        "pdp_ingredients_raw": "",
+        "pdp_how_to_use_raw": "",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "Botanical skincare products specializing in the benefits of Moringa oil.",
+        "pdp_description_raw": "",
+        "pdp_how_to_use_raw": "",
+        "pdp_ingredients_raw": "",
+        "ingredients_polluted": false,
+        "detail_section_count": 0,
+        "polluted_detail_section_count": 0
+      }
+    },
+    {
+      "external_product_id": "ext_3a16e6a6300af832ae3ccdb7",
+      "seed_id": "eps_f44441b9491577f7041972cc",
+      "title": "OILÙJ, \"Eye Live\"",
+      "canonical_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+      "status": "blocked",
+      "changed": false,
+      "blockers": [
+        "description_polluted"
+      ],
+      "skipped_fields": [],
+      "patched_fields": [],
+      "before": {
+        "description": "Botanical skincare products specializing in the benefits of Moringa oil.",
+        "pdp_description_raw": "",
+        "pdp_ingredients_raw": "",
+        "pdp_how_to_use_raw": "",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "Botanical skincare products specializing in the benefits of Moringa oil.",
+        "pdp_description_raw": "",
+        "pdp_how_to_use_raw": "",
+        "pdp_ingredients_raw": "",
+        "ingredients_polluted": false,
+        "detail_section_count": 0,
+        "polluted_detail_section_count": 0
+      }
+    },
+    {
+      "external_product_id": "ext_79fc9f55f8b092590e168c8d",
+      "seed_id": "eps_c7fd84cd5bb7e47f0d2eb06f",
+      "title": "OILÙJ, \"Lip Life\"",
+      "canonical_url": "http://www.oiluj.com/store/p17/OIL%C3%99J%2C_%22Lip_Life%22.html",
+      "status": "blocked",
+      "changed": false,
+      "blockers": [
+        "description_polluted"
+      ],
+      "skipped_fields": [],
+      "patched_fields": [],
+      "before": {
+        "description": "Botanical skincare products specializing in the benefits of Moringa oil.",
+        "pdp_description_raw": "",
+        "pdp_ingredients_raw": "",
+        "pdp_how_to_use_raw": "",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "Botanical skincare products specializing in the benefits of Moringa oil.",
+        "pdp_description_raw": "",
+        "pdp_how_to_use_raw": "",
+        "pdp_ingredients_raw": "",
+        "ingredients_polluted": false,
+        "detail_section_count": 0,
+        "polluted_detail_section_count": 0
+      }
+    },
+    {
+      "external_product_id": "ext_ab35eb07e8635bb1e1be3ebf",
+      "seed_id": "eps_b7a050ba2f78906f4c033659",
+      "title": "OILÙJ, Life Oil",
+      "canonical_url": "http://www.oiluj.com/store/p5/OIL%C3%99J%2C_Life_Oil.html",
+      "status": "blocked",
+      "changed": false,
+      "blockers": [
+        "description_polluted"
+      ],
+      "skipped_fields": [],
+      "patched_fields": [],
+      "before": {
+        "description": "Botanical skincare products specializing in the benefits of Moringa oil.",
+        "pdp_description_raw": "",
+        "pdp_ingredients_raw": "",
+        "pdp_how_to_use_raw": "",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "Botanical skincare products specializing in the benefits of Moringa oil.",
+        "pdp_description_raw": "",
+        "pdp_how_to_use_raw": "",
+        "pdp_ingredients_raw": "",
+        "ingredients_polluted": false,
+        "detail_section_count": 0,
+        "polluted_detail_section_count": 0
+      }
+    }
+  ]
+}

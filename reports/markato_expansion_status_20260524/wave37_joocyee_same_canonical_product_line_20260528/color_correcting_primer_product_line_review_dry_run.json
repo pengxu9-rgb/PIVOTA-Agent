@@ -1,0 +1,82 @@
+{
+  "generated_at": "2026-05-28T01:19:27.732Z",
+  "dry_run": true,
+  "write_requested": false,
+  "write_confirmed": false,
+  "filters": {
+    "external_product_ids": [
+      "ext_3ca7c85748b01b4bc8e2f3bb",
+      "ext_794deab047eb4a75225329df",
+      "ext_8bced3f34a8100c3cfa62377"
+    ],
+    "target_external_product_id": "ext_794deab047eb4a75225329df",
+    "market": "US"
+  },
+  "summary": {
+    "seeds_seen": 3,
+    "identities_seen": 3,
+    "action": "hold_manual_review",
+    "blocker_count": 1,
+    "warning_count": 1,
+    "candidates_to_update": 0,
+    "identity_rows_updated": 0,
+    "overrides_written": 0
+  },
+  "review": {
+    "action": "hold_manual_review",
+    "blockers": [
+      "exact_merge_review_required"
+    ],
+    "warnings": [
+      "variant_axes_do_not_prove_distinct_sellable_items"
+    ],
+    "reviewed_by": "codex_wave37",
+    "target_external_product_id": "ext_794deab047eb4a75225329df",
+    "target_source_listing_ref": "external_seed:ext_794deab047eb4a75225329df",
+    "canonical_url": "https://joocyee.com/products/color-correcting-primer",
+    "normalized_canonical_url": "https://joocyee.com/products/color-correcting-primer",
+    "brand_key": "joocyee",
+    "raw_title_keys": [
+      "color correcting primer"
+    ],
+    "title_line_key": "color correcting primer",
+    "axis_signatures": [
+      "{\"multi_variant\":true}"
+    ],
+    "sig_ids": [
+      "sig_e2bf9c22b9d22163de32e589",
+      "sig_de2c100382224878790af271"
+    ],
+    "target_sellable_item_group_id": "sig_de2c100382224878790af271",
+    "target_product_line_id": "pl_b135453a63032cf132dc4c3d",
+    "target_review_family_id": "rf_b135453a63032cf132dc4c3d",
+    "candidates": [
+      {
+        "source_listing_ref": "external_seed:ext_3ca7c85748b01b4bc8e2f3bb",
+        "external_product_id": "ext_3ca7c85748b01b4bc8e2f3bb",
+        "source_sellable_item_group_id": "sig_e2bf9c22b9d22163de32e589",
+        "source_product_line_id": "pl_b135453a63032cf132dc4c3d",
+        "target_product_line_id": "pl_b135453a63032cf132dc4c3d",
+        "source_review_family_id": "rf_b135453a63032cf132dc4c3d",
+        "target_review_family_id": "rf_b135453a63032cf132dc4c3d",
+        "official_url_before": "https://joocyee.com/products/color-correcting-primer",
+        "official_url_after": "https://joocyee.com/products/color-correcting-primer",
+        "variant_axis_signature": "",
+        "needs_update": false
+      },
+      {
+        "source_listing_ref": "external_seed:ext_8bced3f34a8100c3cfa62377",
+        "external_product_id": "ext_8bced3f34a8100c3cfa62377",
+        "source_sellable_item_group_id": "sig_e2bf9c22b9d22163de32e589",
+        "source_product_line_id": "pl_b135453a63032cf132dc4c3d",
+        "target_product_line_id": "pl_b135453a63032cf132dc4c3d",
+        "source_review_family_id": "rf_b135453a63032cf132dc4c3d",
+        "target_review_family_id": "rf_b135453a63032cf132dc4c3d",
+        "official_url_before": "https://joocyee.com/products/color-correcting-primer",
+        "official_url_after": "https://joocyee.com/products/color-correcting-primer",
+        "variant_axis_signature": "",
+        "needs_update": false
+      }
+    ]
+  }
+}

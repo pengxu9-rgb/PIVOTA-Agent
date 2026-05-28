@@ -1,0 +1,55 @@
+{
+  "market": "US",
+  "reviewed_by": "codex_review",
+  "reason": "reviewed_source_backed_oiluj_category_patch",
+  "source_kind": "official_pdp_title_description_review",
+  "evidence": "OILUJ PDP titles and product descriptions reviewed on 2026-05-28 show Life Oil products as face/body/hair oils, Eye Live as an eye-contour treatment, and Lip Life as a lip balm.",
+  "confidence": 0.95,
+  "entries": [
+    {
+      "external_product_id": "ext_07cfaab25950196c3ec1b5f3",
+      "title": "OILUJ, Life Oil: Organic Moringa/Sandalwood Blend",
+      "source_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+      "category": "Body Oil",
+      "product_type": "Body Oil",
+      "category_path": "beauty/skincare/body/body-oil",
+      "catalog_category_path": "beauty/skincare/body/body-oil"
+    },
+    {
+      "external_product_id": "ext_1493a61baf165a6c00e4977b",
+      "title": "OILUJ, Life Oil: Organic Moringa/ French Lavender Blend",
+      "source_url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+      "category": "Body Oil",
+      "product_type": "Body Oil",
+      "category_path": "beauty/skincare/body/body-oil",
+      "catalog_category_path": "beauty/skincare/body/body-oil"
+    },
+    {
+      "external_product_id": "ext_3a16e6a6300af832ae3ccdb7",
+      "title": "OILUJ, Eye Live",
+      "source_url": "http://www.oiluj.com/store/p15/OIL%C3%99J%2C_%22Eye_Live%22.html",
+      "category": "Eye Treatment",
+      "product_type": "Eye Treatment",
+      "category_path": "beauty/skincare/eye/treatment",
+      "catalog_category_path": "beauty/skincare/eye/treatment"
+    },
+    {
+      "external_product_id": "ext_79fc9f55f8b092590e168c8d",
+      "title": "OILUJ, Lip Life",
+      "source_url": "http://www.oiluj.com/store/p17/OIL%C3%99J%2C_%22Lip_Life%22.html",
+      "category": "Lip Balm",
+      "product_type": "Lip Balm",
+      "category_path": "beauty/makeup/lip/balm",
+      "catalog_category_path": "beauty/makeup/lip/balm"
+    },
+    {
+      "external_product_id": "ext_ab35eb07e8635bb1e1be3ebf",
+      "title": "OILUJ, Life Oil",
+      "source_url": "http://www.oiluj.com/store/p5/OIL%C3%99J%2C_Life_Oil.html",
+      "category": "Body Oil",
+      "product_type": "Body Oil",
+      "category_path": "beauty/skincare/body/body-oil",
+      "catalog_category_path": "beauty/skincare/body/body-oil"
+    }
+  ]
+}

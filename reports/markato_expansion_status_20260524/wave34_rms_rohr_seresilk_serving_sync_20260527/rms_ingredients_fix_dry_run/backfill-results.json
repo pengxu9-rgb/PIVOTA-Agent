@@ -1,0 +1,1156 @@
+[
+  {
+    "status": "dry_run",
+    "reason": "",
+    "target_url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe",
+    "row": {
+      "id": "eps_0f62b1951364d06db98ab494",
+      "external_product_id": "ext_9247e1285fadd4b02bc33aad",
+      "title": "Makeup Remover | Ultimate Makeup Remover Wipe",
+      "brand": "",
+      "domain": "rmsbeauty.com",
+      "canonical_url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe",
+      "destination_url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe",
+      "seed_snapshot_contract": {
+        "source": "catalog_intelligence",
+        "updated_at": "2026-05-14T23:09:38.874Z",
+        "authoritative": true,
+        "contract_version": "external_seed.snapshot_contract.v1",
+        "replace_strategy": "replace_not_merge",
+        "legacy_fields_quarantined": true,
+        "structured_fields_authoritative": true
+      }
+    },
+    "payload": {
+      "changed": true,
+      "next_row": {
+        "title": "Makeup Remover | Ultimate Makeup Remover Wipe",
+        "canonical_url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe",
+        "destination_url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe",
+        "image_url": "https://www.rmsbeauty.com/cdn/shop/files/MakeupWipes-PackShot.jpg?v=1762198164",
+        "price_amount": 25,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "seed_data": {
+          "brand": "RMS Beauty",
+          "title": "Makeup Remover | Ultimate Makeup Remover Wipe",
+          "images": [
+            "https://www.rmsbeauty.com/cdn/shop/files/MakeupWipes-PackShot.jpg?v=1762198164",
+            "https://www.rmsbeauty.com/cdn/shop/files/MakeupWipes-Lifestyle1.jpg?v=1767268765",
+            "https://www.rmsbeauty.com/cdn/shop/files/UltimateMakeupremoverwipes-Anni-Hover-900x1084.jpg?v=1767268765",
+            "https://cdn.shopify.com/s/files/1/0642/6399/files/MakeupWIpes-Lifestyle2.jpg?v=1767268765",
+            "https://cdn.shopify.com/s/files/1/0642/6399/files/MakeupWipes-Callouts.jpg?v=1767268765",
+            "https://www.rmsbeauty.com/cdn/shop/files/RMS_Blush_10.jpg?v=1737581200",
+            "https://www.rmsbeauty.com/cdn/shop/files/RMS-LOGO-BLACK.png?v=1676461026",
+            "https://www.rmsbeauty.com/cdn/shop/files/HydraEyesQuartet-810170741524-PEP1-WildVelvet-Pack-Shot-900x1084.jpg?v=1770695747",
+            "https://www.rmsbeauty.com/cdn/shop/files/untitled_design_2.png?v=1767266703",
+            "https://www.rmsbeauty.com/cdn/shop/files/810170741685-chameleon-lip-oil-pack-shot-900x1084_.com.jpg?v=1776298798",
+            "https://www.rmsbeauty.com/cdn/shop/files/MASCARA-900X1084.png?v=1762281009",
+            "https://www.rmsbeauty.com/cdn/shop/files/810170740183-SSP1-PACK-SHOT.jpg?v=1762290924",
+            "https://www.rmsbeauty.com/cdn/shop/files/816248028986-rhc4-c05-pack-shot-900x1084_1.jpg?v=1753885001",
+            "https://www.rmsbeauty.com/cdn/shop/files/hydrabronzer-900x1084-ppage-pack-beachwalkbetty_2x_7e5fd7ee-5c2e-41ef-8c3d-2665521ad05e.jpg?v=1762288392",
+            "https://www.rmsbeauty.com/cdn/shop/files/LIPNIGHTS_1.jpg?v=1762287787",
+            "https://www.rmsbeauty.com/cdn/shop/files/LIP2CHEEK-DEMURE-NEW_CAP_1.jpg?v=1776177560",
+            "https://www.rmsbeauty.com/cdn/shop/files/GoNude-PPAGE-900x1084-Pack-MidnightNude_2x_80f4fa6d-b840-429d-8461-48a35b4b6e58.jpg?v=1763578340",
+            "https://www.rmsbeauty.com/cdn/shop/files/eyelights-ppage-900x1084-strobe-pack_2x_74f5cdf1-480a-4adf-bab5-5e69a13a633b.jpg?v=1776177634",
+            "https://www.rmsbeauty.com/cdn/shop/products/900X1084-POWDER-BLUSH-BRUSH.png?v=1762274480",
+            "https://www.rmsbeauty.com/cdn/shop/files/Skin2SkinEverythingBrush-PPAGE-900x1084-Pack2x.jpg?v=1762287921",
+            "https://www.rmsbeauty.com/cdn/shop/products/SPONGE-900X1084.png?v=1776101648",
+            "https://www.rmsbeauty.com/cdn/shop/files/Mist-PrimerPackShot.jpg?v=1762291732"
+          ],
+          "derived": {
+            "recall": {
+              "retrieval_title": "Makeup Remover | Ultimate Makeup Remover Wipe",
+              "retrieval_summary": "Pure, clean, and simple make-up remover and cleansing wipes. Your new everyday living essential.",
+              "retrieval_body": "Pure, clean, and simple make-up remover and cleansing wipes. Your new everyday living essential. What It Does: Gently and thoroughly cleanses and freshens skin. What Makes It Special: Melts away stubborn face and eye makeup with ease, as it softens and hydrates without stripping away moisture.",
+              "brand": "RMS Beauty",
+              "category": "Makeup Remover Wipes",
+              "vertical": "beauty",
+              "ingredient_tokens": [],
+              "locality_tokens": [
+                "available market US",
+                "local purchase US"
+              ],
+              "alias_tokens": [
+                "Makeup Remover | Ultimate Makeup Remover Wipe",
+                "makeup remover ultimate makeup remover wipe",
+                "makeupremoverultimatemakeupremoverwipe",
+                "remover ultimate makeup remover wipe",
+                "ultimate makeup remover wipe",
+                "makeup remover wipe",
+                "remover wipe",
+                "makeup remover",
+                "remover ultimate",
+                "ultimate makeup",
+                "Makeup Remover Wipes",
+                "makeupremoverwipes",
+                "available market US",
+                "availablemarketus",
+                "market us",
+                "available market",
+                "local purchase US",
+                "localpurchaseus",
+                "purchase us",
+                "local purchase",
+                "makeup",
+                "remover",
+                "ultimate",
+                "wipe",
+                "wipes",
+                "available",
+                "market",
+                "us",
+                "local",
+                "purchase"
+              ],
+              "locality_facts_v1": {
+                "contract_version": "external_seed.locality_facts.v1",
+                "brand": "RMS Beauty",
+                "brand_origin": {
+                  "country": null,
+                  "home_market": null,
+                  "source": null
+                },
+                "brand_origin_country": null,
+                "brand_home_market": null,
+                "market_availability": {
+                  "available_markets": [
+                    "US"
+                  ],
+                  "local_purchase_markets": [
+                    "US"
+                  ],
+                  "source_market": "US",
+                  "retail_channel_markets": [],
+                  "availability_status": "in_stock"
+                },
+                "available_markets": [
+                  "US"
+                ],
+                "local_purchase_markets": [
+                  "US"
+                ],
+                "local_retail_channels": [],
+                "travel_size": null,
+                "travel_size_evidence": null,
+                "creator_local_reason": null,
+                "local_authority_level": "product_market",
+                "sources": [
+                  "existing_seed_data",
+                  "seed_row_market"
+                ]
+              },
+              "exclusion_flags": {
+                "gift_card": false,
+                "donation_bundle": false,
+                "non_merchandise": false
+              },
+              "quality_signals": {
+                "template_polluted": false,
+                "synthetic_summary": false,
+                "extractor_description_present": true
+              },
+              "quality_state": "eligible",
+              "suppression_flags": {
+                "exclude_from_recall": false,
+                "exclude_from_similar": false,
+                "suppress_ingredients": false,
+                "suppress_active_ingredients": false,
+                "suppress_facts": false
+              },
+              "version": "v1"
+            },
+            "backfill_guardrails_v1": {
+              "commerce_preserved": true,
+              "media_preserved": true,
+              "mode": "content_only",
+              "updated_at": "2026-05-27T16:19:17.178Z"
+            }
+          },
+          "snapshot": {
+            "title": "Makeup Remover | Ultimate Makeup Remover Wipe",
+            "images": [
+              "https://www.rmsbeauty.com/cdn/shop/files/MakeupWipes-PackShot.jpg?v=1762198164",
+              "https://www.rmsbeauty.com/cdn/shop/files/MakeupWipes-Lifestyle1.jpg?v=1767268765",
+              "https://www.rmsbeauty.com/cdn/shop/files/UltimateMakeupremoverwipes-Anni-Hover-900x1084.jpg?v=1767268765",
+              "https://cdn.shopify.com/s/files/1/0642/6399/files/MakeupWIpes-Lifestyle2.jpg?v=1767268765",
+              "https://cdn.shopify.com/s/files/1/0642/6399/files/MakeupWipes-Callouts.jpg?v=1767268765",
+              "https://www.rmsbeauty.com/cdn/shop/files/RMS_Blush_10.jpg?v=1737581200",
+              "https://www.rmsbeauty.com/cdn/shop/files/RMS-LOGO-BLACK.png?v=1676461026",
+              "https://www.rmsbeauty.com/cdn/shop/files/HydraEyesQuartet-810170741524-PEP1-WildVelvet-Pack-Shot-900x1084.jpg?v=1770695747",
+              "https://www.rmsbeauty.com/cdn/shop/files/untitled_design_2.png?v=1767266703",
+              "https://www.rmsbeauty.com/cdn/shop/files/810170741685-chameleon-lip-oil-pack-shot-900x1084_.com.jpg?v=1776298798",
+              "https://www.rmsbeauty.com/cdn/shop/files/MASCARA-900X1084.png?v=1762281009",
+              "https://www.rmsbeauty.com/cdn/shop/files/810170740183-SSP1-PACK-SHOT.jpg?v=1762290924",
+              "https://www.rmsbeauty.com/cdn/shop/files/816248028986-rhc4-c05-pack-shot-900x1084_1.jpg?v=1753885001",
+              "https://www.rmsbeauty.com/cdn/shop/files/hydrabronzer-900x1084-ppage-pack-beachwalkbetty_2x_7e5fd7ee-5c2e-41ef-8c3d-2665521ad05e.jpg?v=1762288392",
+              "https://www.rmsbeauty.com/cdn/shop/files/LIPNIGHTS_1.jpg?v=1762287787",
+              "https://www.rmsbeauty.com/cdn/shop/files/LIP2CHEEK-DEMURE-NEW_CAP_1.jpg?v=1776177560",
+              "https://www.rmsbeauty.com/cdn/shop/files/GoNude-PPAGE-900x1084-Pack-MidnightNude_2x_80f4fa6d-b840-429d-8461-48a35b4b6e58.jpg?v=1763578340",
+              "https://www.rmsbeauty.com/cdn/shop/files/eyelights-ppage-900x1084-strobe-pack_2x_74f5cdf1-480a-4adf-bab5-5e69a13a633b.jpg?v=1776177634",
+              "https://www.rmsbeauty.com/cdn/shop/products/900X1084-POWDER-BLUSH-BRUSH.png?v=1762274480",
+              "https://www.rmsbeauty.com/cdn/shop/files/Skin2SkinEverythingBrush-PPAGE-900x1084-Pack2x.jpg?v=1762287921",
+              "https://www.rmsbeauty.com/cdn/shop/products/SPONGE-900X1084.png?v=1776101648",
+              "https://www.rmsbeauty.com/cdn/shop/files/Mist-PrimerPackShot.jpg?v=1762291732"
+            ],
+            "source": "catalog_intelligence",
+            "variants": [
+              {
+                "sku": "RCC4",
+                "url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe?variant=5935622403&utm_source=pivota&utm_medium=affiliate",
+                "price": "25.00",
+                "stock": "In Stock",
+                "title": "20 Pack",
+                "options": [
+                  {
+                    "name": "Size",
+                    "value": "20 Pack",
+                    "axis_kind": "size"
+                  }
+                ],
+                "currency": "USD",
+                "axis_kind": "size",
+                "deep_link": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe?variant=5935622403&utm_source=pivota&utm_medium=affiliate",
+                "image_url": "https://www.rmsbeauty.com/cdn/shop/files/MakeupWipes-PackShot.jpg?v=1762198164",
+                "image_urls": [
+                  "https://www.rmsbeauty.com/cdn/shop/files/MakeupWipes-PackShot.jpg?v=1762198164",
+                  "https://www.rmsbeauty.com/cdn/shop/files/MakeupWipes-Lifestyle1.jpg?v=1767268765",
+                  "https://www.rmsbeauty.com/cdn/shop/files/UltimateMakeupremoverwipes-Anni-Hover-900x1084.jpg?v=1767268765",
+                  "https://cdn.shopify.com/s/files/1/0642/6399/files/MakeupWIpes-Lifestyle2.jpg?v=1767268765",
+                  "https://cdn.shopify.com/s/files/1/0642/6399/files/MakeupWipes-Callouts.jpg?v=1767268765",
+                  "https://www.rmsbeauty.com/cdn/shop/files/RMS_Blush_10.jpg?v=1737581200",
+                  "https://www.rmsbeauty.com/cdn/shop/files/RMS-LOGO-BLACK.png?v=1676461026",
+                  "https://www.rmsbeauty.com/cdn/shop/files/HydraEyesQuartet-810170741524-PEP1-WildVelvet-Pack-Shot-900x1084.jpg?v=1770695747",
+                  "https://www.rmsbeauty.com/cdn/shop/files/untitled_design_2.png?v=1767266703",
+                  "https://www.rmsbeauty.com/cdn/shop/files/810170741685-chameleon-lip-oil-pack-shot-900x1084_.com.jpg?v=1776298798",
+                  "https://www.rmsbeauty.com/cdn/shop/files/MASCARA-900X1084.png?v=1762281009",
+                  "https://www.rmsbeauty.com/cdn/shop/files/810170740183-SSP1-PACK-SHOT.jpg?v=1762290924",
+                  "https://www.rmsbeauty.com/cdn/shop/files/816248028986-rhc4-c05-pack-shot-900x1084_1.jpg?v=1753885001",
+                  "https://www.rmsbeauty.com/cdn/shop/files/hydrabronzer-900x1084-ppage-pack-beachwalkbetty_2x_7e5fd7ee-5c2e-41ef-8c3d-2665521ad05e.jpg?v=1762288392",
+                  "https://www.rmsbeauty.com/cdn/shop/files/LIPNIGHTS_1.jpg?v=1762287787",
+                  "https://www.rmsbeauty.com/cdn/shop/files/LIP2CHEEK-DEMURE-NEW_CAP_1.jpg?v=1776177560",
+                  "https://www.rmsbeauty.com/cdn/shop/files/GoNude-PPAGE-900x1084-Pack-MidnightNude_2x_80f4fa6d-b840-429d-8461-48a35b4b6e58.jpg?v=1763578340",
+                  "https://www.rmsbeauty.com/cdn/shop/files/eyelights-ppage-900x1084-strobe-pack_2x_74f5cdf1-480a-4adf-bab5-5e69a13a633b.jpg?v=1776177634",
+                  "https://www.rmsbeauty.com/cdn/shop/products/900X1084-POWDER-BLUSH-BRUSH.png?v=1762274480",
+                  "https://www.rmsbeauty.com/cdn/shop/files/Skin2SkinEverythingBrush-PPAGE-900x1084-Pack2x.jpg?v=1762287921",
+                  "https://www.rmsbeauty.com/cdn/shop/products/SPONGE-900X1084.png?v=1776101648",
+                  "https://www.rmsbeauty.com/cdn/shop/files/Mist-PrimerPackShot.jpg?v=1762291732"
+                ],
+                "variant_id": "5935622403",
+                "description": "What It Is:\nPure, clean, and simple make-up remover and cleansing wipes. Your new everyday living essential.\n\nWhat It Does:\nGently and thoroughly cleanses and freshens skin.\n\nWhat Makes It Special:\nMelts away stubborn face and eye makeup with ease, as it softens and hydrates without stripping away moisture.\n\nIngredients:\n*Cocos Nucifera (Coconut) Oil\n\n*Organic\nNon-GMO, non-nano, soy free, gluten free, cruelty-free",
+                "option_name": "Size",
+                "product_url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe",
+                "option_value": "20 Pack",
+                "display_label": "Size: 20 Pack",
+                "source_quality_status": "reviewed_deterministic"
+              }
+            ],
+            "image_url": "https://www.rmsbeauty.com/cdn/shop/files/MakeupWipes-PackShot.jpg?v=1762198164",
+            "image_urls": [
+              "https://www.rmsbeauty.com/cdn/shop/files/MakeupWipes-PackShot.jpg?v=1762198164",
+              "https://www.rmsbeauty.com/cdn/shop/files/MakeupWipes-Lifestyle1.jpg?v=1767268765",
+              "https://www.rmsbeauty.com/cdn/shop/files/UltimateMakeupremoverwipes-Anni-Hover-900x1084.jpg?v=1767268765",
+              "https://cdn.shopify.com/s/files/1/0642/6399/files/MakeupWIpes-Lifestyle2.jpg?v=1767268765",
+              "https://cdn.shopify.com/s/files/1/0642/6399/files/MakeupWipes-Callouts.jpg?v=1767268765",
+              "https://www.rmsbeauty.com/cdn/shop/files/RMS_Blush_10.jpg?v=1737581200",
+              "https://www.rmsbeauty.com/cdn/shop/files/RMS-LOGO-BLACK.png?v=1676461026",
+              "https://www.rmsbeauty.com/cdn/shop/files/HydraEyesQuartet-810170741524-PEP1-WildVelvet-Pack-Shot-900x1084.jpg?v=1770695747",
+              "https://www.rmsbeauty.com/cdn/shop/files/untitled_design_2.png?v=1767266703",
+              "https://www.rmsbeauty.com/cdn/shop/files/810170741685-chameleon-lip-oil-pack-shot-900x1084_.com.jpg?v=1776298798",
+              "https://www.rmsbeauty.com/cdn/shop/files/MASCARA-900X1084.png?v=1762281009",
+              "https://www.rmsbeauty.com/cdn/shop/files/810170740183-SSP1-PACK-SHOT.jpg?v=1762290924",
+              "https://www.rmsbeauty.com/cdn/shop/files/816248028986-rhc4-c05-pack-shot-900x1084_1.jpg?v=1753885001",
+              "https://www.rmsbeauty.com/cdn/shop/files/hydrabronzer-900x1084-ppage-pack-beachwalkbetty_2x_7e5fd7ee-5c2e-41ef-8c3d-2665521ad05e.jpg?v=1762288392",
+              "https://www.rmsbeauty.com/cdn/shop/files/LIPNIGHTS_1.jpg?v=1762287787",
+              "https://www.rmsbeauty.com/cdn/shop/files/LIP2CHEEK-DEMURE-NEW_CAP_1.jpg?v=1776177560",
+              "https://www.rmsbeauty.com/cdn/shop/files/GoNude-PPAGE-900x1084-Pack-MidnightNude_2x_80f4fa6d-b840-429d-8461-48a35b4b6e58.jpg?v=1763578340",
+              "https://www.rmsbeauty.com/cdn/shop/files/eyelights-ppage-900x1084-strobe-pack_2x_74f5cdf1-480a-4adf-bab5-5e69a13a633b.jpg?v=1776177634",
+              "https://www.rmsbeauty.com/cdn/shop/products/900X1084-POWDER-BLUSH-BRUSH.png?v=1762274480",
+              "https://www.rmsbeauty.com/cdn/shop/files/Skin2SkinEverythingBrush-PPAGE-900x1084-Pack2x.jpg?v=1762287921",
+              "https://www.rmsbeauty.com/cdn/shop/products/SPONGE-900X1084.png?v=1776101648",
+              "https://www.rmsbeauty.com/cdn/shop/files/Mist-PrimerPackShot.jpg?v=1762291732"
+            ],
+            "description": "What It Is:\nPure, clean, and simple make-up remover and cleansing wipes. Your new everyday living essential.\n\nWhat It Does:\nGently and thoroughly cleanses and freshens skin.\n\nWhat Makes It Special:\nMelts away stubborn face and eye makeup with ease, as it softens and hydrates without stripping away moisture.",
+            "diagnostics": {
+              "requested_domain": "www.rmsbeauty.com",
+              "resolved_base_url": "https://www.rmsbeauty.com",
+              "discovery_strategy": "shopify_json",
+              "failure_category": null,
+              "block_provider": null,
+              "http_trace": [
+                {
+                  "url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe.js",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe",
+                  "status": 200
+                },
+                {
+                  "url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe",
+                  "status": 200
+                }
+              ]
+            },
+            "availability": "in_stock",
+            "brand_origin": {
+              "country": null,
+              "home_market": null,
+              "source": null
+            },
+            "extracted_at": "2026-05-27T16:19:17.160Z",
+            "price_amount": 25,
+            "product_kind": "bundle",
+            "variant_skus": [
+              "RCC4"
+            ],
+            "canonical_url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe",
+            "price_currency": "USD",
+            "search_aliases": [
+              "Makeup Remover | Ultimate Makeup Remover Wipe"
+            ],
+            "destination_url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe",
+            "authority_source": {
+              "source_url": "https://www.rmsbeauty.com",
+              "source_role": "primary",
+              "matched_preferred_titles": []
+            },
+            "ingredient_intel": {
+              "external_seed_enrichment": {
+                "source": "pdp_ingredient_fields",
+                "version": "external_seed_ingredient_writeback_v1",
+                "synced_at": "2026-05-27T16:19:18.871Z",
+                "quarantine_reason": null,
+                "url_anchor_conflict": false,
+                "parsed_from_pdp_fields": true,
+                "quarantined_from_wave1": false,
+                "seed_quarantine_bucket": null,
+                "seed_anchor_source_kind": "description_parse",
+                "contamination_signal_source": null,
+                "seed_anchor_conflict_status": "none"
+              }
+            },
+            "available_markets": [
+              "US"
+            ],
+            "bundle_components": [
+              {
+                "name": "What It Is:",
+                "source_kind": "bundle_component_description_candidate",
+                "raw_text": "What It Is:"
+              },
+              {
+                "name": "Pure",
+                "source_kind": "bundle_component_description_candidate",
+                "raw_text": "Pure"
+              },
+              {
+                "name": "clean,",
+                "source_kind": "bundle_component_description_candidate",
+                "raw_text": "clean,"
+              },
+              {
+                "name": "simple make-up remover",
+                "source_kind": "bundle_component_description_candidate",
+                "raw_text": "simple make-up remover"
+              },
+              {
+                "name": "cleansing wipes. Your new everyday living essential",
+                "source_kind": "bundle_component_description_candidate",
+                "raw_text": "cleansing wipes. Your new everyday living essential."
+              },
+              {
+                "name": "What It Does:",
+                "source_kind": "bundle_component_description_candidate",
+                "raw_text": "What It Does:"
+              },
+              {
+                "name": "Gently",
+                "source_kind": "bundle_component_description_candidate",
+                "raw_text": "Gently"
+              },
+              {
+                "name": "thoroughly cleanses",
+                "source_kind": "bundle_component_description_candidate",
+                "raw_text": "thoroughly cleanses"
+              },
+              {
+                "name": "freshens skin",
+                "source_kind": "bundle_component_description_candidate",
+                "raw_text": "freshens skin."
+              },
+              {
+                "name": "What Makes It Special:",
+                "source_kind": "bundle_component_description_candidate",
+                "raw_text": "What Makes It Special:"
+              },
+              {
+                "name": "Melts away stubborn face",
+                "source_kind": "bundle_component_description_candidate",
+                "raw_text": "Melts away stubborn face"
+              },
+              {
+                "name": "eye makeup with ease",
+                "source_kind": "bundle_component_description_candidate",
+                "raw_text": "eye makeup with ease"
+              }
+            ],
+            "commerce_facts_v1": {
+              "country": "US",
+              "returns": {
+                "source": "catalog_extract_v2",
+                "status": "unknown",
+                "checked_at": "2026-05-14T23:09:38.806Z",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_returns_not_extracted"
+                ]
+              },
+              "shipping": {
+                "source": "catalog_extract_v2",
+                "status": "unknown",
+                "checked_at": "2026-05-14T23:09:38.806Z",
+                "confidence": "unknown",
+                "reason_codes": [
+                  "external_checkout_not_queried"
+                ]
+              },
+              "market_id": "US",
+              "promotions": [],
+              "captured_at": "2026-05-14T23:09:38.806Z",
+              "availability": {
+                "source": "catalog_extract_v2",
+                "status": "in_stock",
+                "confidence": "medium",
+                "captured_at": "2026-05-14T23:09:38.806Z"
+              },
+              "evidence_url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe",
+              "regional_price": {
+                "amount": 25,
+                "currency": "USD",
+                "confidence": "medium",
+                "price_type": "list",
+                "source_url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe",
+                "captured_at": "2026-05-14T23:09:38.806Z",
+                "display_raw": "25.00",
+                "tax_included": "unknown",
+                "compare_at_amount": null,
+                "observed_currency": "USD",
+                "compare_at_currency": null,
+                "market_switch_status": "ok",
+                "compare_at_display_raw": null
+              },
+              "currency_target": "USD",
+              "sellable_region": {
+                "status": "unknown",
+                "countries": [],
+                "checked_at": "2026-05-14T23:09:38.806Z",
+                "confidence": "medium",
+                "evidence_url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe",
+                "reason_codes": [
+                  "market_currency_observed",
+                  "shipping_destination_not_verified",
+                  "external_checkout_not_queried"
+                ],
+                "evidence_source": "catalog_extract_v2"
+              },
+              "contract_version": "commerce_facts.v1",
+              "source_authority": "catalog_extract_v2"
+            },
+            "locality_facts_v1": {
+              "contract_version": "external_seed.locality_facts.v1",
+              "brand": "RMS Beauty",
+              "brand_origin": {
+                "country": null,
+                "home_market": null,
+                "source": null
+              },
+              "brand_origin_country": null,
+              "brand_home_market": null,
+              "market_availability": {
+                "available_markets": [
+                  "US"
+                ],
+                "local_purchase_markets": [
+                  "US"
+                ],
+                "source_market": "US",
+                "retail_channel_markets": [],
+                "availability_status": "in_stock"
+              },
+              "available_markets": [
+                "US"
+              ],
+              "local_purchase_markets": [
+                "US"
+              ],
+              "local_retail_channels": [],
+              "travel_size": null,
+              "travel_size_evidence": null,
+              "creator_local_reason": null,
+              "local_authority_level": "product_market",
+              "sources": [
+                "existing_seed_data",
+                "seed_row_market"
+              ]
+            },
+            "size_detail_label": "20 Pack",
+            "source_validation": {
+              "source_host": "rmsbeauty.com",
+              "source_type": "brand_owned",
+              "requires_multi_offer_merge_validation": false
+            },
+            "pdp_how_to_use_raw": "Gently wipe face with unfolded towelette, and remove all traces of even the thickest makeup. For the feel of a traditional wipe, dampen with pure water.\nIn colder temperatures coconut oil will solidify. Hold unopened packet between the palms of your hands for 10-20 seconds to liquefy and evenly distribute the oil.\n- *Rose-Marie Tip: \"These wipes are what I've always wished I had in my kit. They're saturated with raw organic coconut oil, so they're cleansing, moisturizing, and exfoliating. They're gentle on the skin, but powerful enough to remove heavy makeup, even professional or stage makeup. Intiallly it kind of feels dry to the touch, but then as you start wiping, it becomes more and more emollient. If you like the feel of a traditional wipe, you can also dampen it with a little bit of pure water.\"",
+            "commerce_facts_gate": {
+              "status": "pass",
+              "problems": [],
+              "market_id": "US",
+              "shipping_status": "unknown",
+              "expected_currency": "USD",
+              "observed_currency": "USD",
+              "promotions_status": "unknown",
+              "availability_status": "in_stock",
+              "market_switch_status": "ok",
+              "sellable_region_status": "unknown"
+            },
+            "market_availability": {
+              "available_markets": [
+                "US"
+              ],
+              "local_purchase_markets": [
+                "US"
+              ],
+              "source_market": "US",
+              "retail_channel_markets": [],
+              "availability_status": "in_stock"
+            },
+            "pdp_description_raw": "What It Is:\nPure, clean, and simple make-up remover and cleansing wipes. Your new everyday living essential.\n\nWhat It Does:\nGently and thoroughly cleanses and freshens skin.\n\nWhat Makes It Special:\nMelts away stubborn face and eye makeup with ease, as it softens and hydrates without stripping away moisture.",
+            "pdp_content_asset_v1": {
+              "contract_version": "pivota.pdp_content_asset.v1",
+              "owner": "pivota",
+              "fields": {
+                "description": {
+                  "review_state": "unreviewed",
+                  "overwrite_policy": "preserve_best_available",
+                  "source_quality_status": "high",
+                  "source_origin": "shopify_json",
+                  "content_hash": "9b072bc6e7781f3a",
+                  "updated_at": "2026-05-27T16:19:17.159Z"
+                },
+                "description_raw": {
+                  "review_state": "unreviewed",
+                  "overwrite_policy": "preserve_best_available",
+                  "source_quality_status": "high",
+                  "source_origin": "shopify_json",
+                  "content_hash": "9b072bc6e7781f3a",
+                  "updated_at": "2026-05-27T16:19:17.159Z"
+                },
+                "how_to_use_raw": {
+                  "review_state": "unreviewed",
+                  "overwrite_policy": "preserve_best_available",
+                  "source_quality_status": "high",
+                  "source_origin": "shopify_json",
+                  "content_hash": "f19aa14e345f0a79",
+                  "updated_at": "2026-05-27T16:19:17.159Z"
+                }
+              }
+            },
+            "price_size_repair_v1": {
+              "single_variant_detail_label_repair": {
+                "value": "20 Pack",
+                "source": "existing_single_variant_option",
+                "evidence": "20 Pack",
+                "axis_kind": "size",
+                "option_name": "Size",
+                "repaired_at": "2026-05-16T06:54:13.694Z"
+              }
+            },
+            "variant_detail_label": "Size: 20 Pack",
+            "local_purchase_markets": [
+              "US"
+            ],
+            "seed_description_origin": "pdp_variant_description",
+            "pdp_field_capture_status": {
+              "description_raw": "present",
+              "details_sections": "missing",
+              "ingredients_raw": "missing",
+              "active_ingredients_raw": "missing",
+              "how_to_use_raw": "present",
+              "faq_items": "missing"
+            },
+            "pdp_field_quality_summary": {
+              "description_raw": {
+                "source_origin": "shopify_json",
+                "source_quality_status": "high",
+                "source_kinds": [
+                  "shopify_description"
+                ],
+                "reason_codes": []
+              },
+              "details_sections": {
+                "source_origin": "unknown",
+                "source_quality_status": "low",
+                "source_kinds": [
+                  "heading_sibling"
+                ],
+                "reason_codes": []
+              },
+              "ingredients_raw": {
+                "source_origin": "shopify_json",
+                "source_quality_status": "high",
+                "source_kinds": [
+                  "shopify_body_html_labeled_ingredients",
+                  "shopify_direct_pdp_html_labeled_ingredients"
+                ],
+                "reason_codes": []
+              },
+              "active_ingredients_raw": {
+                "source_origin": "unknown",
+                "source_quality_status": "low",
+                "source_kinds": [],
+                "reason_codes": [
+                  "missing_source_kind"
+                ]
+              },
+              "how_to_use_raw": {
+                "source_origin": "shopify_json",
+                "source_quality_status": "high",
+                "source_kinds": [
+                  "shopify_direct_pdp_html_labeled_how_to_use"
+                ],
+                "reason_codes": []
+              },
+              "faq_items": {
+                "source_origin": "unknown",
+                "source_quality_status": "low",
+                "source_kinds": [],
+                "reason_codes": [
+                  "missing_source_kind"
+                ]
+              }
+            },
+            "external_seed_snapshot_contract": {
+              "contract_version": "external_seed.snapshot_contract.v1",
+              "source": "catalog_intelligence",
+              "authoritative": true,
+              "structured_fields_authoritative": true,
+              "legacy_fields_quarantined": true,
+              "replace_strategy": "replace_not_merge",
+              "updated_at": "2026-05-27T16:19:17.160Z"
+            },
+            "category": "Makeup Remover Wipes",
+            "shopify_product_json_metadata_v1": {
+              "source_kind": "shopify_product_json_metadata",
+              "source_url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe.js",
+              "fields": [
+                "product_type"
+              ]
+            }
+          },
+          "variants": [
+            {
+              "sku": "RCC4",
+              "url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe?variant=5935622403&utm_source=pivota&utm_medium=affiliate",
+              "price": "25.00",
+              "stock": "In Stock",
+              "title": "20 Pack",
+              "options": [
+                {
+                  "name": "Size",
+                  "value": "20 Pack",
+                  "axis_kind": "size"
+                }
+              ],
+              "currency": "USD",
+              "axis_kind": "size",
+              "deep_link": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe?variant=5935622403&utm_source=pivota&utm_medium=affiliate",
+              "image_url": "https://www.rmsbeauty.com/cdn/shop/files/MakeupWipes-PackShot.jpg?v=1762198164",
+              "image_urls": [
+                "https://www.rmsbeauty.com/cdn/shop/files/MakeupWipes-PackShot.jpg?v=1762198164",
+                "https://www.rmsbeauty.com/cdn/shop/files/MakeupWipes-Lifestyle1.jpg?v=1767268765",
+                "https://www.rmsbeauty.com/cdn/shop/files/UltimateMakeupremoverwipes-Anni-Hover-900x1084.jpg?v=1767268765",
+                "https://cdn.shopify.com/s/files/1/0642/6399/files/MakeupWIpes-Lifestyle2.jpg?v=1767268765",
+                "https://cdn.shopify.com/s/files/1/0642/6399/files/MakeupWipes-Callouts.jpg?v=1767268765",
+                "https://www.rmsbeauty.com/cdn/shop/files/RMS_Blush_10.jpg?v=1737581200",
+                "https://www.rmsbeauty.com/cdn/shop/files/RMS-LOGO-BLACK.png?v=1676461026",
+                "https://www.rmsbeauty.com/cdn/shop/files/HydraEyesQuartet-810170741524-PEP1-WildVelvet-Pack-Shot-900x1084.jpg?v=1770695747",
+                "https://www.rmsbeauty.com/cdn/shop/files/untitled_design_2.png?v=1767266703",
+                "https://www.rmsbeauty.com/cdn/shop/files/810170741685-chameleon-lip-oil-pack-shot-900x1084_.com.jpg?v=1776298798",
+                "https://www.rmsbeauty.com/cdn/shop/files/MASCARA-900X1084.png?v=1762281009",
+                "https://www.rmsbeauty.com/cdn/shop/files/810170740183-SSP1-PACK-SHOT.jpg?v=1762290924",
+                "https://www.rmsbeauty.com/cdn/shop/files/816248028986-rhc4-c05-pack-shot-900x1084_1.jpg?v=1753885001",
+                "https://www.rmsbeauty.com/cdn/shop/files/hydrabronzer-900x1084-ppage-pack-beachwalkbetty_2x_7e5fd7ee-5c2e-41ef-8c3d-2665521ad05e.jpg?v=1762288392",
+                "https://www.rmsbeauty.com/cdn/shop/files/LIPNIGHTS_1.jpg?v=1762287787",
+                "https://www.rmsbeauty.com/cdn/shop/files/LIP2CHEEK-DEMURE-NEW_CAP_1.jpg?v=1776177560",
+                "https://www.rmsbeauty.com/cdn/shop/files/GoNude-PPAGE-900x1084-Pack-MidnightNude_2x_80f4fa6d-b840-429d-8461-48a35b4b6e58.jpg?v=1763578340",
+                "https://www.rmsbeauty.com/cdn/shop/files/eyelights-ppage-900x1084-strobe-pack_2x_74f5cdf1-480a-4adf-bab5-5e69a13a633b.jpg?v=1776177634",
+                "https://www.rmsbeauty.com/cdn/shop/products/900X1084-POWDER-BLUSH-BRUSH.png?v=1762274480",
+                "https://www.rmsbeauty.com/cdn/shop/files/Skin2SkinEverythingBrush-PPAGE-900x1084-Pack2x.jpg?v=1762287921",
+                "https://www.rmsbeauty.com/cdn/shop/products/SPONGE-900X1084.png?v=1776101648",
+                "https://www.rmsbeauty.com/cdn/shop/files/Mist-PrimerPackShot.jpg?v=1762291732"
+              ],
+              "variant_id": "5935622403",
+              "description": "What It Is:\nPure, clean, and simple make-up remover and cleansing wipes. Your new everyday living essential.\n\nWhat It Does:\nGently and thoroughly cleanses and freshens skin.\n\nWhat Makes It Special:\nMelts away stubborn face and eye makeup with ease, as it softens and hydrates without stripping away moisture.\n\nIngredients:\n*Cocos Nucifera (Coconut) Oil\n\n*Organic\nNon-GMO, non-nano, soy free, gluten free, cruelty-free",
+              "option_name": "Size",
+              "product_url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe",
+              "option_value": "20 Pack",
+              "display_label": "Size: 20 Pack",
+              "source_quality_status": "reviewed_deterministic"
+            }
+          ],
+          "image_url": "https://www.rmsbeauty.com/cdn/shop/files/MakeupWipes-PackShot.jpg?v=1762198164",
+          "image_urls": [
+            "https://www.rmsbeauty.com/cdn/shop/files/MakeupWipes-PackShot.jpg?v=1762198164",
+            "https://www.rmsbeauty.com/cdn/shop/files/MakeupWipes-Lifestyle1.jpg?v=1767268765",
+            "https://www.rmsbeauty.com/cdn/shop/files/UltimateMakeupremoverwipes-Anni-Hover-900x1084.jpg?v=1767268765",
+            "https://cdn.shopify.com/s/files/1/0642/6399/files/MakeupWIpes-Lifestyle2.jpg?v=1767268765",
+            "https://cdn.shopify.com/s/files/1/0642/6399/files/MakeupWipes-Callouts.jpg?v=1767268765",
+            "https://www.rmsbeauty.com/cdn/shop/files/RMS_Blush_10.jpg?v=1737581200",
+            "https://www.rmsbeauty.com/cdn/shop/files/RMS-LOGO-BLACK.png?v=1676461026",
+            "https://www.rmsbeauty.com/cdn/shop/files/HydraEyesQuartet-810170741524-PEP1-WildVelvet-Pack-Shot-900x1084.jpg?v=1770695747",
+            "https://www.rmsbeauty.com/cdn/shop/files/untitled_design_2.png?v=1767266703",
+            "https://www.rmsbeauty.com/cdn/shop/files/810170741685-chameleon-lip-oil-pack-shot-900x1084_.com.jpg?v=1776298798",
+            "https://www.rmsbeauty.com/cdn/shop/files/MASCARA-900X1084.png?v=1762281009",
+            "https://www.rmsbeauty.com/cdn/shop/files/810170740183-SSP1-PACK-SHOT.jpg?v=1762290924",
+            "https://www.rmsbeauty.com/cdn/shop/files/816248028986-rhc4-c05-pack-shot-900x1084_1.jpg?v=1753885001",
+            "https://www.rmsbeauty.com/cdn/shop/files/hydrabronzer-900x1084-ppage-pack-beachwalkbetty_2x_7e5fd7ee-5c2e-41ef-8c3d-2665521ad05e.jpg?v=1762288392",
+            "https://www.rmsbeauty.com/cdn/shop/files/LIPNIGHTS_1.jpg?v=1762287787",
+            "https://www.rmsbeauty.com/cdn/shop/files/LIP2CHEEK-DEMURE-NEW_CAP_1.jpg?v=1776177560",
+            "https://www.rmsbeauty.com/cdn/shop/files/GoNude-PPAGE-900x1084-Pack-MidnightNude_2x_80f4fa6d-b840-429d-8461-48a35b4b6e58.jpg?v=1763578340",
+            "https://www.rmsbeauty.com/cdn/shop/files/eyelights-ppage-900x1084-strobe-pack_2x_74f5cdf1-480a-4adf-bab5-5e69a13a633b.jpg?v=1776177634",
+            "https://www.rmsbeauty.com/cdn/shop/products/900X1084-POWDER-BLUSH-BRUSH.png?v=1762274480",
+            "https://www.rmsbeauty.com/cdn/shop/files/Skin2SkinEverythingBrush-PPAGE-900x1084-Pack2x.jpg?v=1762287921",
+            "https://www.rmsbeauty.com/cdn/shop/products/SPONGE-900X1084.png?v=1776101648",
+            "https://www.rmsbeauty.com/cdn/shop/files/Mist-PrimerPackShot.jpg?v=1762291732"
+          ],
+          "description": "What It Is:\nPure, clean, and simple make-up remover and cleansing wipes. Your new everyday living essential.\n\nWhat It Does:\nGently and thoroughly cleanses and freshens skin.\n\nWhat Makes It Special:\nMelts away stubborn face and eye makeup with ease, as it softens and hydrates without stripping away moisture.",
+          "availability": "in_stock",
+          "brand_origin": {
+            "country": null,
+            "home_market": null,
+            "source": null
+          },
+          "price_amount": 25,
+          "product_kind": "bundle",
+          "canonical_url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe",
+          "price_currency": "USD",
+          "search_aliases": [
+            "Makeup Remover | Ultimate Makeup Remover Wipe"
+          ],
+          "destination_url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe",
+          "authority_source": {
+            "source_url": "https://www.rmsbeauty.com",
+            "source_role": "primary",
+            "matched_preferred_titles": []
+          },
+          "ingredient_intel": {
+            "external_seed_enrichment": {
+              "source": "pdp_ingredient_fields",
+              "version": "external_seed_ingredient_writeback_v1",
+              "synced_at": "2026-05-27T16:19:18.871Z",
+              "quarantine_reason": null,
+              "url_anchor_conflict": false,
+              "parsed_from_pdp_fields": true,
+              "quarantined_from_wave1": false,
+              "seed_quarantine_bucket": null,
+              "seed_anchor_source_kind": "description_parse",
+              "contamination_signal_source": null,
+              "seed_anchor_conflict_status": "none"
+            }
+          },
+          "available_markets": [
+            "US"
+          ],
+          "bundle_components": [
+            {
+              "name": "What It Is:",
+              "source_kind": "bundle_component_description_candidate",
+              "raw_text": "What It Is:"
+            },
+            {
+              "name": "Pure",
+              "source_kind": "bundle_component_description_candidate",
+              "raw_text": "Pure"
+            },
+            {
+              "name": "clean,",
+              "source_kind": "bundle_component_description_candidate",
+              "raw_text": "clean,"
+            },
+            {
+              "name": "simple make-up remover",
+              "source_kind": "bundle_component_description_candidate",
+              "raw_text": "simple make-up remover"
+            },
+            {
+              "name": "cleansing wipes. Your new everyday living essential",
+              "source_kind": "bundle_component_description_candidate",
+              "raw_text": "cleansing wipes. Your new everyday living essential."
+            },
+            {
+              "name": "What It Does:",
+              "source_kind": "bundle_component_description_candidate",
+              "raw_text": "What It Does:"
+            },
+            {
+              "name": "Gently",
+              "source_kind": "bundle_component_description_candidate",
+              "raw_text": "Gently"
+            },
+            {
+              "name": "thoroughly cleanses",
+              "source_kind": "bundle_component_description_candidate",
+              "raw_text": "thoroughly cleanses"
+            },
+            {
+              "name": "freshens skin",
+              "source_kind": "bundle_component_description_candidate",
+              "raw_text": "freshens skin."
+            },
+            {
+              "name": "What Makes It Special:",
+              "source_kind": "bundle_component_description_candidate",
+              "raw_text": "What Makes It Special:"
+            },
+            {
+              "name": "Melts away stubborn face",
+              "source_kind": "bundle_component_description_candidate",
+              "raw_text": "Melts away stubborn face"
+            },
+            {
+              "name": "eye makeup with ease",
+              "source_kind": "bundle_component_description_candidate",
+              "raw_text": "eye makeup with ease"
+            }
+          ],
+          "commerce_facts_v1": {
+            "country": "US",
+            "returns": {
+              "source": "catalog_extract_v2",
+              "status": "unknown",
+              "checked_at": "2026-05-14T23:09:38.806Z",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ]
+            },
+            "shipping": {
+              "source": "catalog_extract_v2",
+              "status": "unknown",
+              "checked_at": "2026-05-14T23:09:38.806Z",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ]
+            },
+            "market_id": "US",
+            "promotions": [],
+            "captured_at": "2026-05-14T23:09:38.806Z",
+            "availability": {
+              "source": "catalog_extract_v2",
+              "status": "in_stock",
+              "confidence": "medium",
+              "captured_at": "2026-05-14T23:09:38.806Z"
+            },
+            "evidence_url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe",
+            "regional_price": {
+              "amount": 25,
+              "currency": "USD",
+              "confidence": "medium",
+              "price_type": "list",
+              "source_url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe",
+              "captured_at": "2026-05-14T23:09:38.806Z",
+              "display_raw": "25.00",
+              "tax_included": "unknown",
+              "compare_at_amount": null,
+              "observed_currency": "USD",
+              "compare_at_currency": null,
+              "market_switch_status": "ok",
+              "compare_at_display_raw": null
+            },
+            "currency_target": "USD",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "checked_at": "2026-05-14T23:09:38.806Z",
+              "confidence": "medium",
+              "evidence_url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_source": "catalog_extract_v2"
+            },
+            "contract_version": "commerce_facts.v1",
+            "source_authority": "catalog_extract_v2"
+          },
+          "locality_facts_v1": {
+            "contract_version": "external_seed.locality_facts.v1",
+            "brand": "RMS Beauty",
+            "brand_origin": {
+              "country": null,
+              "home_market": null,
+              "source": null
+            },
+            "brand_origin_country": null,
+            "brand_home_market": null,
+            "market_availability": {
+              "available_markets": [
+                "US"
+              ],
+              "local_purchase_markets": [
+                "US"
+              ],
+              "source_market": "US",
+              "retail_channel_markets": [],
+              "availability_status": "in_stock"
+            },
+            "available_markets": [
+              "US"
+            ],
+            "local_purchase_markets": [
+              "US"
+            ],
+            "local_retail_channels": [],
+            "travel_size": null,
+            "travel_size_evidence": null,
+            "creator_local_reason": null,
+            "local_authority_level": "product_market",
+            "sources": [
+              "existing_seed_data",
+              "seed_row_market"
+            ]
+          },
+          "size_detail_label": "20 Pack",
+          "source_validation": {
+            "source_host": "rmsbeauty.com",
+            "source_type": "brand_owned",
+            "requires_multi_offer_merge_validation": false
+          },
+          "pdp_how_to_use_raw": "Gently wipe face with unfolded towelette, and remove all traces of even the thickest makeup. For the feel of a traditional wipe, dampen with pure water.\nIn colder temperatures coconut oil will solidify. Hold unopened packet between the palms of your hands for 10-20 seconds to liquefy and evenly distribute the oil.\n- *Rose-Marie Tip: \"These wipes are what I've always wished I had in my kit. They're saturated with raw organic coconut oil, so they're cleansing, moisturizing, and exfoliating. They're gentle on the skin, but powerful enough to remove heavy makeup, even professional or stage makeup. Intiallly it kind of feels dry to the touch, but then as you start wiping, it becomes more and more emollient. If you like the feel of a traditional wipe, you can also dampen it with a little bit of pure water.\"",
+          "commerce_facts_gate": {
+            "status": "pass",
+            "problems": [],
+            "market_id": "US",
+            "shipping_status": "unknown",
+            "expected_currency": "USD",
+            "observed_currency": "USD",
+            "promotions_status": "unknown",
+            "availability_status": "in_stock",
+            "market_switch_status": "ok",
+            "sellable_region_status": "unknown"
+          },
+          "external_product_id": "ext_9247e1285fadd4b02bc33aad",
+          "market_availability": {
+            "available_markets": [
+              "US"
+            ],
+            "local_purchase_markets": [
+              "US"
+            ],
+            "source_market": "US",
+            "retail_channel_markets": [],
+            "availability_status": "in_stock"
+          },
+          "pdp_description_raw": "What It Is:\nPure, clean, and simple make-up remover and cleansing wipes. Your new everyday living essential.\n\nWhat It Does:\nGently and thoroughly cleanses and freshens skin.\n\nWhat Makes It Special:\nMelts away stubborn face and eye makeup with ease, as it softens and hydrates without stripping away moisture.",
+          "snapshot_quarantine": {
+            "fields": {
+              "details_sections": [
+                {
+                  "heading": "Benefits & Uses",
+                  "body": "Gently removes makeup\n\nCleanses and freshens skin\n\nSoftens and Hydrates",
+                  "source_kind": "heading_sibling"
+                },
+                {
+                  "heading": "Details",
+                  "body": "What It Is:\nPure, clean, and simple make-up remover and cleansing wipes. Your new everyday living essential.\n\nWhat It Does:\nGently and thoroughly cleanses and freshens skin.\n\nWhat Makes It Special:\nMelts away stubborn face and eye makeup with ease, as it softens and hydrates without stripping away moisture.",
+                  "source_kind": "heading_sibling"
+                },
+                {
+                  "heading": "Ingredients",
+                  "body": "*Cocos Nucifera (Coconut) Oil *CERTIFIED ORGANIC\nNon-GMO, non-nano, soy free, gluten free,",
+                  "source_kind": "heading_sibling"
+                },
+                {
+                  "heading": "How to Use",
+                  "body": "Gently wipe face with unfolded towelette, and remove all traces of even the thickest makeup. For the feel of a traditional wipe, dampen with pure water.\n\nIn colder temperatures coconut oil will solidify. Hold unopened packet between the palms of your hands for 10-20 seconds to liquefy and evenly distribute the oil.\n\n- *Rose-Marie Tip: \"These wipes are what I've always wished I had in my kit. They're saturated with raw organic coconut oil, so they're cleansing, moisturizing, and exfoliating. They're gentle on the skin, but powerful enough to remove heavy makeup, even professional or stage makeup. Intiallly it kind of feels dry to the touch, but then as you start wiping, it becomes more and more emollient. If you like the feel of a traditional wipe, you can also dampen it with a little bit of pure water.\"",
+                  "source_kind": "heading_sibling"
+                }
+              ]
+            },
+            "source": "catalog_intelligence",
+            "updated_at": "2026-05-27T16:19:17.155Z",
+            "extractor_mode": "puppeteer",
+            "contract_version": "external_seed.snapshot_quarantine.v1",
+            "source_origin_by_field": {
+              "details_sections": "unknown"
+            },
+            "source_quality_status_by_field": {
+              "details_sections": "low"
+            }
+          },
+          "pdp_content_asset_v1": {
+            "contract_version": "pivota.pdp_content_asset.v1",
+            "owner": "pivota",
+            "fields": {
+              "description": {
+                "review_state": "unreviewed",
+                "overwrite_policy": "preserve_best_available",
+                "source_quality_status": "high",
+                "source_origin": "shopify_json",
+                "content_hash": "9b072bc6e7781f3a",
+                "updated_at": "2026-05-27T16:19:17.159Z"
+              },
+              "description_raw": {
+                "review_state": "unreviewed",
+                "overwrite_policy": "preserve_best_available",
+                "source_quality_status": "high",
+                "source_origin": "shopify_json",
+                "content_hash": "9b072bc6e7781f3a",
+                "updated_at": "2026-05-27T16:19:17.159Z"
+              },
+              "how_to_use_raw": {
+                "review_state": "unreviewed",
+                "overwrite_policy": "preserve_best_available",
+                "source_quality_status": "high",
+                "source_origin": "shopify_json",
+                "content_hash": "f19aa14e345f0a79",
+                "updated_at": "2026-05-27T16:19:17.159Z"
+              }
+            }
+          },
+          "price_size_repair_v1": {
+            "single_variant_detail_label_repair": {
+              "value": "20 Pack",
+              "source": "existing_single_variant_option",
+              "evidence": "20 Pack",
+              "axis_kind": "size",
+              "option_name": "Size",
+              "repaired_at": "2026-05-16T06:54:13.694Z"
+            }
+          },
+          "variant_detail_label": "Size: 20 Pack",
+          "local_purchase_markets": [
+            "US"
+          ],
+          "seed_description_origin": "pdp_variant_description",
+          "pdp_field_capture_status": {
+            "description_raw": "present",
+            "details_sections": "missing",
+            "ingredients_raw": "missing",
+            "active_ingredients_raw": "missing",
+            "how_to_use_raw": "present",
+            "faq_items": "missing"
+          },
+          "pdp_field_quality_summary": {
+            "description_raw": {
+              "source_origin": "shopify_json",
+              "source_quality_status": "high",
+              "source_kinds": [
+                "shopify_description"
+              ],
+              "reason_codes": []
+            },
+            "details_sections": {
+              "source_origin": "unknown",
+              "source_quality_status": "low",
+              "source_kinds": [
+                "heading_sibling"
+              ],
+              "reason_codes": []
+            },
+            "ingredients_raw": {
+              "source_origin": "shopify_json",
+              "source_quality_status": "high",
+              "source_kinds": [
+                "shopify_body_html_labeled_ingredients",
+                "shopify_direct_pdp_html_labeled_ingredients"
+              ],
+              "reason_codes": []
+            },
+            "active_ingredients_raw": {
+              "source_origin": "unknown",
+              "source_quality_status": "low",
+              "source_kinds": [],
+              "reason_codes": [
+                "missing_source_kind"
+              ]
+            },
+            "how_to_use_raw": {
+              "source_origin": "shopify_json",
+              "source_quality_status": "high",
+              "source_kinds": [
+                "shopify_direct_pdp_html_labeled_how_to_use"
+              ],
+              "reason_codes": []
+            },
+            "faq_items": {
+              "source_origin": "unknown",
+              "source_quality_status": "low",
+              "source_kinds": [],
+              "reason_codes": [
+                "missing_source_kind"
+              ]
+            }
+          },
+          "external_seed_snapshot_contract": {
+            "contract_version": "external_seed.snapshot_contract.v1",
+            "source": "catalog_intelligence",
+            "authoritative": true,
+            "structured_fields_authoritative": true,
+            "legacy_fields_quarantined": true,
+            "replace_strategy": "replace_not_merge",
+            "updated_at": "2026-05-27T16:19:17.160Z"
+          },
+          "category": "Makeup Remover Wipes",
+          "shopify_product_json_metadata_v1": {
+            "source_kind": "shopify_product_json_metadata",
+            "source_url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe.js",
+            "fields": [
+              "product_type"
+            ]
+          },
+          "variant_skus": [
+            "RCC4"
+          ]
+        }
+      },
+      "next_row_summary": {
+        "external_product_id": "",
+        "title": "Makeup Remover | Ultimate Makeup Remover Wipe",
+        "canonical_url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe",
+        "destination_url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe",
+        "image_url": "https://www.rmsbeauty.com/cdn/shop/files/MakeupWipes-PackShot.jpg?v=1762198164",
+        "image_count": 22,
+        "variant_count": 1,
+        "details_section_count": 0,
+        "faq_count": 0,
+        "how_to_use_present": true,
+        "ingredients_present": false,
+        "active_ingredients_present": false,
+        "seed_snapshot_contract": {
+          "contract_version": "external_seed.snapshot_contract.v1",
+          "source": "catalog_intelligence",
+          "authoritative": true,
+          "structured_fields_authoritative": true,
+          "legacy_fields_quarantined": true,
+          "replace_strategy": "replace_not_merge",
+          "updated_at": "2026-05-27T16:19:17.160Z"
+        },
+        "content_image_count": 0,
+        "section_media_count": 0
+      },
+      "variant_seed_rows": [],
+      "identity_listing_refresh": null,
+      "image_health_validation": null,
+      "diagnostics": null,
+      "commerce_facts_v2": null
+    },
+    "error": null
+  }
+]
