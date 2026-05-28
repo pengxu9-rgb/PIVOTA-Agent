@@ -1,0 +1,1815 @@
+{
+  "generated_at": "2026-05-28T10:01:07.103Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": "sokoglam.com",
+    "externalProductIds": [],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": null,
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json",
+    "chunkByDomain": false
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 15,
+    "by_market": {
+      "US": 15
+    },
+    "by_domain": [
+      {
+        "key": "sokoglam.com",
+        "count": 15
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 15
+      }
+    ],
+    "coverage": {
+      "missing_inci": 0,
+      "missing_active_raw": 0,
+      "missing_details": 0,
+      "missing_how_to": 0,
+      "missing_faq": 15
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 14,
+        "high_quality_ready": 13,
+        "missing_kb": 0,
+        "not_displayable": 1
+      },
+      "effective": {
+        "displayable": 14,
+        "high_quality_ready": 13,
+        "missing_kb": 0,
+        "not_displayable": 1,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [
+        {
+          "key": "empty_watchouts",
+          "count": 7
+        },
+        {
+          "key": "generic_copy_signal",
+          "count": 1
+        },
+        {
+          "key": "not_displayable_gate",
+          "count": 1
+        },
+        {
+          "key": "not_reviewed",
+          "count": 1
+        }
+      ],
+      "effective_issue_domains": [
+        {
+          "key": "sokoglam.com::empty_watchouts",
+          "count": 7
+        },
+        {
+          "key": "sokoglam.com::generic_copy_signal",
+          "count": 1
+        },
+        {
+          "key": "sokoglam.com::not_displayable_gate",
+          "count": 1
+        },
+        {
+          "key": "sokoglam.com::not_reviewed",
+          "count": 1
+        }
+      ],
+      "quality_state": [
+        {
+          "key": "reviewed",
+          "count": 15
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "seller_plus_formula",
+          "count": 13
+        },
+        {
+          "key": "seller_plus_external_review",
+          "count": 2
+        }
+      ],
+      "samples": {
+        "not_reviewed": [
+          {
+            "external_product_id": "ext_1760b13d2f661f9cedc880fe",
+            "domain": "sokoglam.com",
+            "title": "Alpha-Arbutin 2 Discoloration Care Serum",
+            "used_product_id": "ext_1760b13d2f661f9cedc880fe",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula"
+          }
+        ],
+        "not_displayable_gate": [
+          {
+            "external_product_id": "ext_1760b13d2f661f9cedc880fe",
+            "domain": "sokoglam.com",
+            "title": "Alpha-Arbutin 2 Discoloration Care Serum",
+            "used_product_id": "ext_1760b13d2f661f9cedc880fe",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula"
+          }
+        ],
+        "generic_copy_signal": [
+          {
+            "external_product_id": "ext_579267447e3e9688411a851c",
+            "domain": "sokoglam.com",
+            "title": "The Giving Essence",
+            "used_product_id": "ext_579267447e3e9688411a851c",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula"
+          }
+        ]
+      }
+    },
+    "active_ingredients": {
+      "regulatory_expected": 1,
+      "hero_expected": 11,
+      "any_active_items": 14,
+      "status": [
+        {
+          "key": "ready_hero",
+          "count": 10
+        },
+        {
+          "key": "possibly_inci_guess",
+          "count": 3
+        },
+        {
+          "key": "missing_hero",
+          "count": 1
+        },
+        {
+          "key": "ready_regulatory",
+          "count": 1
+        }
+      ],
+      "issues": [
+        {
+          "key": "possibly_inci_guess",
+          "count": 3
+        },
+        {
+          "key": "missing_hero",
+          "count": 1
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "sokoglam.com::possibly_inci_guess",
+          "count": 3
+        },
+        {
+          "key": "sokoglam.com::missing_hero",
+          "count": 1
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "pdp_section",
+          "count": 11
+        },
+        {
+          "key": "reviewed_source_backed_pdp_content_patch",
+          "count": 4
+        }
+      ],
+      "samples": {
+        "possibly_inci_guess": [
+          {
+            "external_product_id": "ext_289011ef838665373b9d55ca",
+            "domain": "sokoglam.com",
+            "title": "Low-pH Good Morning Gel Cleanser",
+            "status": "possibly_inci_guess",
+            "active_items": [
+              "Betaine Salicylate",
+              "Tea Tree Oil",
+              "Melaleuca Alternifolia (Tea Tree) Leaf Oil"
+            ],
+            "source_origin": "reviewed_source_backed_pdp_content_patch"
+          },
+          {
+            "external_product_id": "ext_cf5a47a5d4a28c3b7203e1e3",
+            "domain": "sokoglam.com",
+            "title": "Living Cleansing Balm",
+            "status": "possibly_inci_guess",
+            "active_items": [
+              "Sea buckthorn oil",
+              "Persimmon extract",
+              "Olive oil",
+              "Vitamin E"
+            ],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_d03b58b4cf51e6a58688e578",
+            "domain": "sokoglam.com",
+            "title": "Green Tea Real Fresh Foam Cleanser",
+            "status": "possibly_inci_guess",
+            "active_items": [
+              "Green tea leaf water",
+              "Green tea leaf extract",
+              "Moringa oleifera seed extract",
+              "Papaya fruit water",
+              "Orange fruit extract"
+            ],
+            "source_origin": "pdp_section"
+          }
+        ],
+        "missing_hero": [
+          {
+            "external_product_id": "ext_297949f25e5e699ae1bde074",
+            "domain": "sokoglam.com",
+            "title": "The 6 Peptide Skin Booster Serum",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 15
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_84a42680b2873aab85e91c84",
+      "external_product_id": "ext_168590ab880a51bc9573dc3f",
+      "market": "US",
+      "domain": "sokoglam.com",
+      "title": "Bio-Peel Gauze Peeling Wine",
+      "canonical_url": "https://sokoglam.com/products/neogen-bio-peel-gauze-peeling-wine",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_168590ab880a51bc9573dc3f",
+          "kb_key": "product:ext_168590ab880a51bc9573dc3f",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_168590ab880a51bc9573dc3f",
+          "kb_key": "product:ext_168590ab880a51bc9573dc3f",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Resveratrol",
+          "Wine extract",
+          "Grape seed extract",
+          "Blackberry fruit extract",
+          "Raspberry fruit extract",
+          "Blueberry fruit extract",
+          "Glycolic acid",
+          "Lactic acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 0,
+          "how_to_chars": 250,
+          "inci_chars": 566,
+          "active_ingredients_chars": 149,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 566,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 0,
+        "how_to_chars": 250,
+        "inci_chars": 566,
+        "active_ingredients_chars": 149,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 566,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_9aeb6f51c7ab0c29a43d923f",
+      "external_product_id": "ext_1760b13d2f661f9cedc880fe",
+      "market": "US",
+      "domain": "sokoglam.com",
+      "title": "Alpha-Arbutin 2 Discoloration Care Serum",
+      "canonical_url": "https://sokoglam.com/products/cosrx-alpha-arbutin-2-discoloration-care-serum",
+      "product_family": "single_formula",
+      "product_line_id": "pl_ec866cfa4302a2809282f51c",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_1760b13d2f661f9cedc880fe",
+          "kb_key": "product:ext_1760b13d2f661f9cedc880fe",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_1760b13d2f661f9cedc880fe",
+          "kb_key": "product:ext_1760b13d2f661f9cedc880fe",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_ec866cfa4302a2809282f51c",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Alpha-Arbutin",
+          "Tranexamic Acid",
+          "Niacinamide",
+          "N-Acetylglucosamine",
+          "Ferulic Acid",
+          "Glutathione"
+        ],
+        "source_origin": "reviewed_source_backed_pdp_content_patch",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 0,
+          "how_to_chars": 122,
+          "inci_chars": 716,
+          "active_ingredients_chars": 91,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 716,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 0,
+        "how_to_chars": 122,
+        "inci_chars": 716,
+        "active_ingredients_chars": 91,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 716,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_595fafcf8d6f9932524761c1",
+      "external_product_id": "ext_289011ef838665373b9d55ca",
+      "market": "US",
+      "domain": "sokoglam.com",
+      "title": "Low-pH Good Morning Gel Cleanser",
+      "canonical_url": "https://sokoglam.com/products/cosrx-low-ph-good-morning-cleanser",
+      "product_family": "single_formula",
+      "product_line_id": "pl_a4e6a80b863b64eca92e1c55",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_289011ef838665373b9d55ca",
+          "kb_key": "product:ext_289011ef838665373b9d55ca",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_external_review",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_289011ef838665373b9d55ca",
+          "kb_key": "product:ext_289011ef838665373b9d55ca",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_external_review",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_a4e6a80b863b64eca92e1c55",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "possibly_inci_guess",
+        "issues": [
+          "possibly_inci_guess"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [
+          "Betaine Salicylate",
+          "Tea Tree Oil",
+          "Melaleuca Alternifolia (Tea Tree) Leaf Oil"
+        ],
+        "source_origin": "reviewed_source_backed_pdp_content_patch",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 0,
+          "how_to_chars": 222,
+          "inci_chars": 620,
+          "active_ingredients_chars": 32,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 620,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 0,
+        "how_to_chars": 222,
+        "inci_chars": 620,
+        "active_ingredients_chars": 32,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 620,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_ba7be52ba29da6ccfa9fa168",
+      "external_product_id": "ext_297949f25e5e699ae1bde074",
+      "market": "US",
+      "domain": "sokoglam.com",
+      "title": "The 6 Peptide Skin Booster Serum",
+      "canonical_url": "https://sokoglam.com/products/cosrx-the-6-peptide-skin-booster-serum",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_297949f25e5e699ae1bde074",
+          "kb_key": "product:ext_297949f25e5e699ae1bde074",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_297949f25e5e699ae1bde074",
+          "kb_key": "product:ext_297949f25e5e699ae1bde074",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 0,
+          "how_to_chars": 191,
+          "inci_chars": 735,
+          "active_ingredients_chars": 48,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 735,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_not_displayable"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 0,
+        "how_to_chars": 191,
+        "inci_chars": 735,
+        "active_ingredients_chars": 48,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 735,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_ac51db31b1ee08991a4d4e46",
+      "external_product_id": "ext_2bfede2bb4e64da1a1589892",
+      "market": "US",
+      "domain": "sokoglam.com",
+      "title": "Dermalogy Double Vita Spot Toning Serum",
+      "canonical_url": "https://sokoglam.com/products/neogen-dermalogy-double-vita-spot-toning-serum",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_2bfede2bb4e64da1a1589892",
+          "kb_key": "product:ext_2bfede2bb4e64da1a1589892",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_2bfede2bb4e64da1a1589892",
+          "kb_key": "product:ext_2bfede2bb4e64da1a1589892",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Tranexamic acid",
+          "Niacinamide",
+          "Ascorbyl tetraisopalmitate",
+          "Yuzu extract",
+          "Lime extract",
+          "Glycolic acid",
+          "Citric acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 0,
+          "how_to_chars": 91,
+          "inci_chars": 1503,
+          "active_ingredients_chars": 112,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1503,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 0,
+        "how_to_chars": 91,
+        "inci_chars": 1503,
+        "active_ingredients_chars": 112,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1503,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_4409d49b627e411b3be61666",
+      "external_product_id": "ext_2c6633c97cd9bed1d7e0f74d",
+      "market": "US",
+      "domain": "sokoglam.com",
+      "title": "Birch Milk Refining Toner",
+      "canonical_url": "https://sokoglam.com/products/then-i-met-you-birch-milk-refining-toner",
+      "product_family": "single_formula",
+      "product_line_id": "pl_1701923c49c4abb2f02ef29f",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_2c6633c97cd9bed1d7e0f74d",
+          "kb_key": "product:ext_2c6633c97cd9bed1d7e0f74d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_2c6633c97cd9bed1d7e0f74d",
+          "kb_key": "product:ext_2c6633c97cd9bed1d7e0f74d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_1701923c49c4abb2f02ef29f",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Birch juice",
+          "Squalane",
+          "Glycerin",
+          "Sodium hyaluronate",
+          "Glycolic acid",
+          "Lactic acid",
+          "Gluconolactone (PHA)"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 0,
+          "how_to_chars": 81,
+          "inci_chars": 764,
+          "active_ingredients_chars": 101,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 764,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 0,
+        "how_to_chars": 81,
+        "inci_chars": 764,
+        "active_ingredients_chars": 101,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 764,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_1f8c32eae42e6d02300b810b",
+      "external_product_id": "ext_3d38f80bd3f17400a88fb9c4",
+      "market": "US",
+      "domain": "sokoglam.com",
+      "title": "Soothing Tea Cleansing Gel",
+      "canonical_url": "https://sokoglam.com/products/then-i-met-you-soothing-tea-cleansing-gel",
+      "product_family": "single_formula",
+      "product_line_id": "pl_a8a3e5a94d60a4cbc0a04e17",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_3d38f80bd3f17400a88fb9c4",
+          "kb_key": "product:ext_3d38f80bd3f17400a88fb9c4",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_3d38f80bd3f17400a88fb9c4",
+          "kb_key": "product:ext_3d38f80bd3f17400a88fb9c4",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_a8a3e5a94d60a4cbc0a04e17",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Rice ferment filtrate",
+          "Green tea",
+          "Licorice root",
+          "Tea tree leaf",
+          "Centella asiatica",
+          "Gluconolactone (PHA)",
+          "Sodium hyaluronate"
+        ],
+        "source_origin": "reviewed_source_backed_pdp_content_patch",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 0,
+          "how_to_chars": 233,
+          "inci_chars": 888,
+          "active_ingredients_chars": 123,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 888,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 0,
+        "how_to_chars": 233,
+        "inci_chars": 888,
+        "active_ingredients_chars": 123,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 888,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_2bccffc29e0594bb68c8d7f6",
+      "external_product_id": "ext_465831482a5a21e9d922ca60",
+      "market": "US",
+      "domain": "sokoglam.com",
+      "title": "Real Ferment Micro Essence",
+      "canonical_url": "https://sokoglam.com/products/neogen-real-ferment-micro-essence",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_465831482a5a21e9d922ca60",
+          "kb_key": "product:ext_465831482a5a21e9d922ca60",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_465831482a5a21e9d922ca60",
+          "kb_key": "product:ext_465831482a5a21e9d922ca60",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Bifida ferment lysate",
+          "Saccharomyces ferment filtrate",
+          "Birch juice",
+          "Rice ferment filtrate"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 0,
+          "how_to_chars": 156,
+          "inci_chars": 793,
+          "active_ingredients_chars": 89,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 793,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 0,
+        "how_to_chars": 156,
+        "inci_chars": 793,
+        "active_ingredients_chars": 89,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 793,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_3b7e11ab2ac74aa7275e3725",
+      "external_product_id": "ext_579267447e3e9688411a851c",
+      "market": "US",
+      "domain": "sokoglam.com",
+      "title": "The Giving Essence",
+      "canonical_url": "https://sokoglam.com/products/then-i-met-you-the-giving-essence",
+      "product_family": "single_formula",
+      "product_line_id": "pl_e5fd7daf7961504f2a06e550",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_579267447e3e9688411a851c",
+          "kb_key": "product:ext_579267447e3e9688411a851c",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "generic_copy_signal",
+            "empty_watchouts"
+          ],
+          "blocking_issues": [
+            "generic_copy_signal"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_579267447e3e9688411a851c",
+          "kb_key": "product:ext_579267447e3e9688411a851c",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "generic_copy_signal",
+            "empty_watchouts"
+          ],
+          "blocking_issues": [
+            "generic_copy_signal"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_e5fd7daf7961504f2a06e550",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Galactomyces ferment filtrate",
+          "Saccharomyces ferment lysate filtrate",
+          "5% niacinamide",
+          "Black chokeberry",
+          "Ellagic acid",
+          "Polyglutamic acid",
+          "Red algae"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 0,
+          "how_to_chars": 94,
+          "inci_chars": 1056,
+          "active_ingredients_chars": 146,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1056,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 0,
+        "how_to_chars": 94,
+        "inci_chars": 1056,
+        "active_ingredients_chars": 146,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1056,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_b60e8d38977297381febb8ca",
+      "external_product_id": "ext_8e3303506e188f00dc594bc9",
+      "market": "US",
+      "domain": "sokoglam.com",
+      "title": "Bong² Bounce Cream",
+      "canonical_url": "https://sokoglam.com/products/then-i-met-you-bong2-bounce-cream",
+      "product_family": "single_formula",
+      "product_line_id": "pl_5fb20805496f6e756db02427",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_8e3303506e188f00dc594bc9",
+          "kb_key": "product:ext_8e3303506e188f00dc594bc9",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_8e3303506e188f00dc594bc9",
+          "kb_key": "product:ext_8e3303506e188f00dc594bc9",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_5fb20805496f6e756db02427",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Hallabong extract",
+          "Ceramide NP",
+          "Squalane",
+          "Omega fatty acids",
+          "Sea buckthorn fruit oil",
+          "Persimmon extract"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 0,
+          "how_to_chars": 104,
+          "inci_chars": 1044,
+          "active_ingredients_chars": 103,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1044,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 0,
+        "how_to_chars": 104,
+        "inci_chars": 1044,
+        "active_ingredients_chars": 103,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1044,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_730aa615e392eb908b7b48ea",
+      "external_product_id": "ext_971b523fca123feb23159e1a",
+      "market": "US",
+      "domain": "sokoglam.com",
+      "title": "Low pH Niacinamide Micellar Cleansing Water",
+      "canonical_url": "https://sokoglam.com/products/low-ph-niacinamide-micellar-cleansing-water",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_971b523fca123feb23159e1a",
+          "kb_key": "product:ext_971b523fca123feb23159e1a",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_971b523fca123feb23159e1a",
+          "kb_key": "product:ext_971b523fca123feb23159e1a",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Niacinamide",
+          "Zinc PCA",
+          "Allantoin",
+          "Madecassoside",
+          "Hyaluronic Acid",
+          "Panthenol"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 0,
+          "how_to_chars": 202,
+          "inci_chars": 248,
+          "active_ingredients_chars": 75,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 248,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 0,
+        "how_to_chars": 202,
+        "inci_chars": 248,
+        "active_ingredients_chars": 75,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 248,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_8045d0e7d7ae595e85f7f006",
+      "external_product_id": "ext_cf5a47a5d4a28c3b7203e1e3",
+      "market": "US",
+      "domain": "sokoglam.com",
+      "title": "Living Cleansing Balm",
+      "canonical_url": "https://sokoglam.com/products/then-i-met-you-living-cleansing-balm",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_cf5a47a5d4a28c3b7203e1e3",
+          "kb_key": "product:ext_cf5a47a5d4a28c3b7203e1e3",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_cf5a47a5d4a28c3b7203e1e3",
+          "kb_key": "product:ext_cf5a47a5d4a28c3b7203e1e3",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "possibly_inci_guess",
+        "issues": [
+          "possibly_inci_guess"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [
+          "Sea buckthorn oil",
+          "Persimmon extract",
+          "Olive oil",
+          "Vitamin E"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 0,
+          "how_to_chars": 187,
+          "inci_chars": 537,
+          "active_ingredients_chars": 58,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 537,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 0,
+        "how_to_chars": 187,
+        "inci_chars": 537,
+        "active_ingredients_chars": 58,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 537,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_60dc02962f4c989e1a85f51c",
+      "external_product_id": "ext_d03b58b4cf51e6a58688e578",
+      "market": "US",
+      "domain": "sokoglam.com",
+      "title": "Green Tea Real Fresh Foam Cleanser",
+      "canonical_url": "https://sokoglam.com/products/neogen-real-fresh-foaming-cleanser",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_d03b58b4cf51e6a58688e578",
+          "kb_key": "product:ext_d03b58b4cf51e6a58688e578",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_d03b58b4cf51e6a58688e578",
+          "kb_key": "product:ext_d03b58b4cf51e6a58688e578",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "possibly_inci_guess",
+        "issues": [
+          "possibly_inci_guess"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [
+          "Green tea leaf water",
+          "Green tea leaf extract",
+          "Moringa oleifera seed extract",
+          "Papaya fruit water",
+          "Orange fruit extract"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 0,
+          "how_to_chars": 98,
+          "inci_chars": 3580,
+          "active_ingredients_chars": 117,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 3580,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 0,
+        "how_to_chars": 98,
+        "inci_chars": 3580,
+        "active_ingredients_chars": 117,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 3580,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_2fc7092a786ee179fd2cc36e",
+      "external_product_id": "ext_d112f7429dcb89f7923b269b",
+      "market": "US",
+      "domain": "sokoglam.com",
+      "title": "Day-Light Protection Airy Sunscreen",
+      "canonical_url": "https://sokoglam.com/products/neogen-day-light-protection-airy-sunscreen",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_d112f7429dcb89f7923b269b",
+          "kb_key": "product:ext_d112f7429dcb89f7923b269b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_d112f7429dcb89f7923b269b",
+          "kb_key": "product:ext_d112f7429dcb89f7923b269b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Avobenzone",
+          "Homosalate",
+          "Octocrylene"
+        ],
+        "source_origin": "reviewed_source_backed_pdp_content_patch",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 0,
+          "how_to_chars": 183,
+          "inci_chars": 1406,
+          "active_ingredients_chars": 35,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1406,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 0,
+        "how_to_chars": 183,
+        "inci_chars": 1406,
+        "active_ingredients_chars": 35,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1406,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_bc46ad403c588d17e4187a4d",
+      "external_product_id": "ext_db10285b875616e21b4e3cf4",
+      "market": "US",
+      "domain": "sokoglam.com",
+      "title": "Ceramide Skin Barrier Moisturizer",
+      "canonical_url": "https://sokoglam.com/products/cosrx-ceramide-skin-barrier-moisturizer",
+      "product_family": "single_formula",
+      "product_line_id": "pl_de031a0a5f6ecc8ccf7de6dc",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_db10285b875616e21b4e3cf4",
+          "kb_key": "product:ext_db10285b875616e21b4e3cf4",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_external_review",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_db10285b875616e21b4e3cf4",
+          "kb_key": "product:ext_db10285b875616e21b4e3cf4",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_external_review",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_de031a0a5f6ecc8ccf7de6dc",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP",
+          "NS",
+          "AP",
+          "AS",
+          "EOP",
+          "Hydroxypropyl Bispalmitamide MEA",
+          "Hydroxypropyl Bislauramide MEA",
+          "Cholesterol",
+          "Fatty Acid",
+          "Vitamin B5, 5 multi-functional Hyaluronic Acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 0,
+          "how_to_chars": 52,
+          "inci_chars": 918,
+          "active_ingredients_chars": 167,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 918,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 0,
+        "how_to_chars": 52,
+        "inci_chars": 918,
+        "active_ingredients_chars": 167,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 918,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

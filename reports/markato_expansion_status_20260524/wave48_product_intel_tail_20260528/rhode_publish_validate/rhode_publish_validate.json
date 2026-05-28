@@ -1,0 +1,24 @@
+{
+  "status": "ok",
+  "mode": "dry_run_validate_replacements",
+  "report": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/rhode_official_seed_report/rhode_product_intel_report.json",
+  "rows": [
+    "live_ext_1042d177a365881339fa11a9",
+    "live_ext_2a9f633e57e1bd8131d024f8",
+    "live_ext_4d65feee5bf1b7dc8b0b41f4",
+    "live_ext_9261891ed91656b4b5fc305d",
+    "live_ext_a138fbf50be4e0a1397d8360",
+    "live_ext_a3fe088697c9d38c775bb787",
+    "live_ext_c9b3a9db13e9dca2fd5311de"
+  ],
+  "entries": [
+    "product:ext_1042d177a365881339fa11a9",
+    "product:ext_2a9f633e57e1bd8131d024f8",
+    "product:ext_4d65feee5bf1b7dc8b0b41f4",
+    "product:ext_9261891ed91656b4b5fc305d",
+    "product:ext_a138fbf50be4e0a1397d8360",
+    "product:ext_a3fe088697c9d38c775bb787",
+    "product:ext_c9b3a9db13e9dca2fd5311de"
+  ],
+  "skipped_rows": []
+}

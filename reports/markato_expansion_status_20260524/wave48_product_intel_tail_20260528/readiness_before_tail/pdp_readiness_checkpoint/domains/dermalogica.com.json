@@ -1,0 +1,2724 @@
+{
+  "generated_at": "2026-05-28T10:00:57.398Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": "dermalogica.com",
+    "externalProductIds": [],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": null,
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json",
+    "chunkByDomain": false
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 17,
+    "by_market": {
+      "US": 17
+    },
+    "by_domain": [
+      {
+        "key": "dermalogica.com",
+        "count": 17
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 10
+      },
+      {
+        "key": "set_or_collection",
+        "count": 6
+      },
+      {
+        "key": "unknown_product",
+        "count": 1
+      }
+    ],
+    "coverage": {
+      "missing_inci": 7,
+      "missing_active_raw": 6,
+      "missing_details": 4,
+      "missing_how_to": 0,
+      "missing_faq": 15
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 1,
+        "high_quality_ready": 0,
+        "missing_kb": 0,
+        "not_displayable": 16
+      },
+      "effective": {
+        "displayable": 1,
+        "high_quality_ready": 0,
+        "missing_kb": 0,
+        "not_displayable": 16,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [
+        {
+          "key": "not_displayable_gate",
+          "count": 16
+        },
+        {
+          "key": "not_reviewed",
+          "count": 16
+        },
+        {
+          "key": "quality_limited",
+          "count": 13
+        },
+        {
+          "key": "seller_only_evidence",
+          "count": 13
+        },
+        {
+          "key": "empty_watchouts",
+          "count": 9
+        },
+        {
+          "key": "generic_copy_signal",
+          "count": 7
+        },
+        {
+          "key": "ellipsis_or_truncated",
+          "count": 4
+        },
+        {
+          "key": "missing_card_highlight",
+          "count": 4
+        },
+        {
+          "key": "public_truncated_copy",
+          "count": 4
+        },
+        {
+          "key": "quality_eligible",
+          "count": 4
+        },
+        {
+          "key": "public_sensitive_claim",
+          "count": 1
+        }
+      ],
+      "effective_issue_domains": [
+        {
+          "key": "dermalogica.com::not_displayable_gate",
+          "count": 16
+        },
+        {
+          "key": "dermalogica.com::not_reviewed",
+          "count": 16
+        },
+        {
+          "key": "dermalogica.com::quality_limited",
+          "count": 13
+        },
+        {
+          "key": "dermalogica.com::seller_only_evidence",
+          "count": 13
+        },
+        {
+          "key": "dermalogica.com::empty_watchouts",
+          "count": 9
+        },
+        {
+          "key": "dermalogica.com::generic_copy_signal",
+          "count": 7
+        },
+        {
+          "key": "dermalogica.com::ellipsis_or_truncated",
+          "count": 4
+        },
+        {
+          "key": "dermalogica.com::missing_card_highlight",
+          "count": 4
+        },
+        {
+          "key": "dermalogica.com::public_truncated_copy",
+          "count": 4
+        },
+        {
+          "key": "dermalogica.com::quality_eligible",
+          "count": 4
+        },
+        {
+          "key": "dermalogica.com::public_sensitive_claim",
+          "count": 1
+        }
+      ],
+      "quality_state": [
+        {
+          "key": "limited",
+          "count": 13
+        },
+        {
+          "key": "eligible",
+          "count": 4
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "seller_only",
+          "count": 13
+        },
+        {
+          "key": "seller_plus_formula",
+          "count": 4
+        }
+      ],
+      "samples": {
+        "missing_card_highlight": [
+          {
+            "external_product_id": "ext_1801ae9a114e9c0a75d570a5",
+            "domain": "dermalogica.com",
+            "title": "daily microfoliant exfoliator refill",
+            "used_product_id": "ext_1801ae9a114e9c0a75d570a5",
+            "quality_state": "eligible",
+            "evidence_profile": "seller_plus_formula"
+          },
+          {
+            "external_product_id": "ext_406df819ae18fad866eff5b8",
+            "domain": "dermalogica.com",
+            "title": "daily microfoliant exfoliator",
+            "used_product_id": "ext_406df819ae18fad866eff5b8",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_41364d441031f658a7c1d79b",
+            "domain": "dermalogica.com",
+            "title": "liquid peelfoliant",
+            "used_product_id": "ext_41364d441031f658a7c1d79b",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_aa489dd969983a349615d211",
+            "domain": "dermalogica.com",
+            "title": "daily glycolic cleanser",
+            "used_product_id": "ext_aa489dd969983a349615d211",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "not_reviewed": [
+          {
+            "external_product_id": "ext_22ae54f3dfb815278f10a338",
+            "domain": "dermalogica.com",
+            "title": "am radiance + pm renewal kit (2 full-size)",
+            "used_product_id": "ext_22ae54f3dfb815278f10a338",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_2e3eabd6564cfaa8c200836b",
+            "domain": "dermalogica.com",
+            "title": "daily brightness boosters kit",
+            "used_product_id": "ext_2e3eabd6564cfaa8c200836b",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_406df819ae18fad866eff5b8",
+            "domain": "dermalogica.com",
+            "title": "daily microfoliant exfoliator",
+            "used_product_id": "ext_406df819ae18fad866eff5b8",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_41364d441031f658a7c1d79b",
+            "domain": "dermalogica.com",
+            "title": "liquid peelfoliant",
+            "used_product_id": "ext_41364d441031f658a7c1d79b",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_539c5068c2d9cc9f5f471093",
+            "domain": "dermalogica.com",
+            "title": "biolumin-c night restore serum",
+            "used_product_id": "ext_539c5068c2d9cc9f5f471093",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_797f9aaf5658ec1733d86e52",
+            "domain": "dermalogica.com",
+            "title": "biolumin-c vitamin c gel moisturizer",
+            "used_product_id": "ext_797f9aaf5658ec1733d86e52",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_7d2e609bb0e8b213c6881552",
+            "domain": "dermalogica.com",
+            "title": "stress positive eye lift mask",
+            "used_product_id": "ext_7d2e609bb0e8b213c6881552",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_9b77bf54c12fde61f957eaf5",
+            "domain": "dermalogica.com",
+            "title": "smart response serum",
+            "used_product_id": "ext_9b77bf54c12fde61f957eaf5",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_aa489dd969983a349615d211",
+            "domain": "dermalogica.com",
+            "title": "daily glycolic cleanser",
+            "used_product_id": "ext_aa489dd969983a349615d211",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_b3a14ad8201131b244a9d180",
+            "domain": "dermalogica.com",
+            "title": "discover healthy skin kit",
+            "used_product_id": "ext_b3a14ad8201131b244a9d180",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "not_displayable_gate": [
+          {
+            "external_product_id": "ext_22ae54f3dfb815278f10a338",
+            "domain": "dermalogica.com",
+            "title": "am radiance + pm renewal kit (2 full-size)",
+            "used_product_id": "ext_22ae54f3dfb815278f10a338",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_2e3eabd6564cfaa8c200836b",
+            "domain": "dermalogica.com",
+            "title": "daily brightness boosters kit",
+            "used_product_id": "ext_2e3eabd6564cfaa8c200836b",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_406df819ae18fad866eff5b8",
+            "domain": "dermalogica.com",
+            "title": "daily microfoliant exfoliator",
+            "used_product_id": "ext_406df819ae18fad866eff5b8",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_41364d441031f658a7c1d79b",
+            "domain": "dermalogica.com",
+            "title": "liquid peelfoliant",
+            "used_product_id": "ext_41364d441031f658a7c1d79b",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_539c5068c2d9cc9f5f471093",
+            "domain": "dermalogica.com",
+            "title": "biolumin-c night restore serum",
+            "used_product_id": "ext_539c5068c2d9cc9f5f471093",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_797f9aaf5658ec1733d86e52",
+            "domain": "dermalogica.com",
+            "title": "biolumin-c vitamin c gel moisturizer",
+            "used_product_id": "ext_797f9aaf5658ec1733d86e52",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_7d2e609bb0e8b213c6881552",
+            "domain": "dermalogica.com",
+            "title": "stress positive eye lift mask",
+            "used_product_id": "ext_7d2e609bb0e8b213c6881552",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_9b77bf54c12fde61f957eaf5",
+            "domain": "dermalogica.com",
+            "title": "smart response serum",
+            "used_product_id": "ext_9b77bf54c12fde61f957eaf5",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_aa489dd969983a349615d211",
+            "domain": "dermalogica.com",
+            "title": "daily glycolic cleanser",
+            "used_product_id": "ext_aa489dd969983a349615d211",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_b3a14ad8201131b244a9d180",
+            "domain": "dermalogica.com",
+            "title": "discover healthy skin kit",
+            "used_product_id": "ext_b3a14ad8201131b244a9d180",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "seller_only_evidence": [
+          {
+            "external_product_id": "ext_22ae54f3dfb815278f10a338",
+            "domain": "dermalogica.com",
+            "title": "am radiance + pm renewal kit (2 full-size)",
+            "used_product_id": "ext_22ae54f3dfb815278f10a338",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_2e3eabd6564cfaa8c200836b",
+            "domain": "dermalogica.com",
+            "title": "daily brightness boosters kit",
+            "used_product_id": "ext_2e3eabd6564cfaa8c200836b",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_406df819ae18fad866eff5b8",
+            "domain": "dermalogica.com",
+            "title": "daily microfoliant exfoliator",
+            "used_product_id": "ext_406df819ae18fad866eff5b8",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_41364d441031f658a7c1d79b",
+            "domain": "dermalogica.com",
+            "title": "liquid peelfoliant",
+            "used_product_id": "ext_41364d441031f658a7c1d79b",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_539c5068c2d9cc9f5f471093",
+            "domain": "dermalogica.com",
+            "title": "biolumin-c night restore serum",
+            "used_product_id": "ext_539c5068c2d9cc9f5f471093",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_797f9aaf5658ec1733d86e52",
+            "domain": "dermalogica.com",
+            "title": "biolumin-c vitamin c gel moisturizer",
+            "used_product_id": "ext_797f9aaf5658ec1733d86e52",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_7d2e609bb0e8b213c6881552",
+            "domain": "dermalogica.com",
+            "title": "stress positive eye lift mask",
+            "used_product_id": "ext_7d2e609bb0e8b213c6881552",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_9b77bf54c12fde61f957eaf5",
+            "domain": "dermalogica.com",
+            "title": "smart response serum",
+            "used_product_id": "ext_9b77bf54c12fde61f957eaf5",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_aa489dd969983a349615d211",
+            "domain": "dermalogica.com",
+            "title": "daily glycolic cleanser",
+            "used_product_id": "ext_aa489dd969983a349615d211",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_b3a14ad8201131b244a9d180",
+            "domain": "dermalogica.com",
+            "title": "discover healthy skin kit",
+            "used_product_id": "ext_b3a14ad8201131b244a9d180",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "ellipsis_or_truncated": [
+          {
+            "external_product_id": "ext_539c5068c2d9cc9f5f471093",
+            "domain": "dermalogica.com",
+            "title": "biolumin-c night restore serum",
+            "used_product_id": "ext_539c5068c2d9cc9f5f471093",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_797f9aaf5658ec1733d86e52",
+            "domain": "dermalogica.com",
+            "title": "biolumin-c vitamin c gel moisturizer",
+            "used_product_id": "ext_797f9aaf5658ec1733d86e52",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_e8c621b40932284ae276bcff",
+            "domain": "dermalogica.com",
+            "title": "biolumin-c vitamin c serum",
+            "used_product_id": "ext_e8c621b40932284ae276bcff",
+            "quality_state": "eligible",
+            "evidence_profile": "seller_plus_formula"
+          },
+          {
+            "external_product_id": "ext_eca8959862245d5af16ab206",
+            "domain": "dermalogica.com",
+            "title": "daily milkfoliant exfoliator",
+            "used_product_id": "ext_eca8959862245d5af16ab206",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "public_truncated_copy": [
+          {
+            "external_product_id": "ext_539c5068c2d9cc9f5f471093",
+            "domain": "dermalogica.com",
+            "title": "biolumin-c night restore serum",
+            "used_product_id": "ext_539c5068c2d9cc9f5f471093",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_797f9aaf5658ec1733d86e52",
+            "domain": "dermalogica.com",
+            "title": "biolumin-c vitamin c gel moisturizer",
+            "used_product_id": "ext_797f9aaf5658ec1733d86e52",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_e8c621b40932284ae276bcff",
+            "domain": "dermalogica.com",
+            "title": "biolumin-c vitamin c serum",
+            "used_product_id": "ext_e8c621b40932284ae276bcff",
+            "quality_state": "eligible",
+            "evidence_profile": "seller_plus_formula"
+          },
+          {
+            "external_product_id": "ext_eca8959862245d5af16ab206",
+            "domain": "dermalogica.com",
+            "title": "daily milkfoliant exfoliator",
+            "used_product_id": "ext_eca8959862245d5af16ab206",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "generic_copy_signal": [
+          {
+            "external_product_id": "ext_797f9aaf5658ec1733d86e52",
+            "domain": "dermalogica.com",
+            "title": "biolumin-c vitamin c gel moisturizer",
+            "used_product_id": "ext_797f9aaf5658ec1733d86e52",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_7d2e609bb0e8b213c6881552",
+            "domain": "dermalogica.com",
+            "title": "stress positive eye lift mask",
+            "used_product_id": "ext_7d2e609bb0e8b213c6881552",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_9b77bf54c12fde61f957eaf5",
+            "domain": "dermalogica.com",
+            "title": "smart response serum",
+            "used_product_id": "ext_9b77bf54c12fde61f957eaf5",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_b3a14ad8201131b244a9d180",
+            "domain": "dermalogica.com",
+            "title": "discover healthy skin kit",
+            "used_product_id": "ext_b3a14ad8201131b244a9d180",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_e8c621b40932284ae276bcff",
+            "domain": "dermalogica.com",
+            "title": "biolumin-c vitamin c serum",
+            "used_product_id": "ext_e8c621b40932284ae276bcff",
+            "quality_state": "eligible",
+            "evidence_profile": "seller_plus_formula"
+          },
+          {
+            "external_product_id": "ext_e9366ce39ac8c46f82a45619",
+            "domain": "dermalogica.com",
+            "title": "biolumin-c vitamin c eye serum",
+            "used_product_id": "ext_e9366ce39ac8c46f82a45619",
+            "quality_state": "eligible",
+            "evidence_profile": "seller_plus_formula"
+          },
+          {
+            "external_product_id": "ext_eca8959862245d5af16ab206",
+            "domain": "dermalogica.com",
+            "title": "daily milkfoliant exfoliator",
+            "used_product_id": "ext_eca8959862245d5af16ab206",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "public_sensitive_claim": [
+          {
+            "external_product_id": "ext_eca8959862245d5af16ab206",
+            "domain": "dermalogica.com",
+            "title": "daily milkfoliant exfoliator",
+            "used_product_id": "ext_eca8959862245d5af16ab206",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ]
+      }
+    },
+    "active_ingredients": {
+      "regulatory_expected": 1,
+      "hero_expected": 11,
+      "any_active_items": 9,
+      "status": [
+        {
+          "key": "ready_hero",
+          "count": 8
+        },
+        {
+          "key": "not_applicable_product_family",
+          "count": 6
+        },
+        {
+          "key": "missing_hero",
+          "count": 1
+        },
+        {
+          "key": "missing_regulatory",
+          "count": 1
+        },
+        {
+          "key": "ready_other",
+          "count": 1
+        }
+      ],
+      "issues": [
+        {
+          "key": "missing_hero",
+          "count": 1
+        },
+        {
+          "key": "missing_regulatory",
+          "count": 1
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "dermalogica.com::missing_hero",
+          "count": 1
+        },
+        {
+          "key": "dermalogica.com::missing_regulatory",
+          "count": 1
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "pdp_section",
+          "count": 9
+        },
+        {
+          "key": "none",
+          "count": 8
+        }
+      ],
+      "samples": {
+        "missing_hero": [
+          {
+            "external_product_id": "ext_41364d441031f658a7c1d79b",
+            "domain": "dermalogica.com",
+            "title": "liquid peelfoliant",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "none"
+          }
+        ],
+        "missing_regulatory": [
+          {
+            "external_product_id": "ext_eecb7261c96b5e7f13ea2a03",
+            "domain": "dermalogica.com",
+            "title": "skinperfect primer spf30",
+            "status": "missing_regulatory",
+            "active_items": [],
+            "source_origin": "none"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 17
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_2189b732ef6f49caa46c4e9f",
+      "external_product_id": "ext_1801ae9a114e9c0a75d570a5",
+      "market": "US",
+      "domain": "dermalogica.com",
+      "title": "daily microfoliant exfoliator refill",
+      "canonical_url": "https://dermalogica.com/products/daily-microfoliant-refill",
+      "product_family": "single_formula",
+      "product_line_id": "pl_dbdf27f47158896504518f3d",
+      "identity_variant_axes": {
+        "size": "2 6 oz refill",
+        "volume": "6oz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_1801ae9a114e9c0a75d570a5",
+          "kb_key": "product:ext_1801ae9a114e9c0a75d570a5",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_1801ae9a114e9c0a75d570a5",
+          "kb_key": "product:ext_1801ae9a114e9c0a75d570a5",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_dbdf27f47158896504518f3d",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_other",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Salicylic acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 0,
+          "how_to_chars": 369,
+          "inci_chars": 1027,
+          "active_ingredients_chars": 14,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1027,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 0,
+        "how_to_chars": 369,
+        "inci_chars": 1027,
+        "active_ingredients_chars": 14,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1027,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_9db570197d334f68bdd1514e",
+      "external_product_id": "ext_22ae54f3dfb815278f10a338",
+      "market": "US",
+      "domain": "dermalogica.com",
+      "title": "am radiance + pm renewal kit (2 full-size)",
+      "canonical_url": "https://dermalogica.com/products/am-radiance-pm-renewal-kit",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_7d8d94ecf453b325b8a9d5d7",
+      "identity_variant_axes": {
+        "size": "kit",
+        "shade": "kit",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_22ae54f3dfb815278f10a338",
+          "kb_key": "product:ext_22ae54f3dfb815278f10a338",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_22ae54f3dfb815278f10a338",
+          "kb_key": "product:ext_22ae54f3dfb815278f10a338",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_7d8d94ecf453b325b8a9d5d7",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 155,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "component_ref_review_required",
+          "ingredient_remediation_action": "component_ref_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 155,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "component_ref_review_required",
+        "ingredient_remediation_action": "component_ref_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_a7e4e1fac066475d80a2b640",
+      "external_product_id": "ext_2e3eabd6564cfaa8c200836b",
+      "market": "US",
+      "domain": "dermalogica.com",
+      "title": "daily brightness boosters kit",
+      "canonical_url": "https://dermalogica.com/products/daily-brightness-boosters-kit",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_319ab62930ded1ec2266a127",
+      "identity_variant_axes": {
+        "size": "kit",
+        "shade": "kit",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_2e3eabd6564cfaa8c200836b",
+          "kb_key": "product:ext_2e3eabd6564cfaa8c200836b",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_2e3eabd6564cfaa8c200836b",
+          "kb_key": "product:ext_2e3eabd6564cfaa8c200836b",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_319ab62930ded1ec2266a127",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 109,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "component_ref_review_required",
+          "ingredient_remediation_action": "component_ref_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 109,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "component_ref_review_required",
+        "ingredient_remediation_action": "component_ref_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_54c753fff1cf4af883add0a8",
+      "external_product_id": "ext_406df819ae18fad866eff5b8",
+      "market": "US",
+      "domain": "dermalogica.com",
+      "title": "daily microfoliant exfoliator",
+      "canonical_url": "https://dermalogica.com/products/daily-microfoliant",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_049ecf4e07637fdc01e75479",
+      "identity_variant_axes": {
+        "size": "0 45 oz",
+        "volume": "45oz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_406df819ae18fad866eff5b8",
+          "kb_key": "product:ext_406df819ae18fad866eff5b8",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_406df819ae18fad866eff5b8",
+          "kb_key": "product:ext_406df819ae18fad866eff5b8",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_049ecf4e07637fdc01e75479",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 155,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 5,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 155,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_cc73832233834f8386231657",
+      "external_product_id": "ext_41364d441031f658a7c1d79b",
+      "market": "US",
+      "domain": "dermalogica.com",
+      "title": "liquid peelfoliant",
+      "canonical_url": "https://dermalogica.com/products/liquid-peelfoliant",
+      "product_family": "unknown_product",
+      "product_line_id": "pl_7e962b82a3a7beb80b205ddc",
+      "identity_variant_axes": {
+        "size": "2 0 oz",
+        "shade": "2 0 oz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_41364d441031f658a7c1d79b",
+          "kb_key": "product:ext_41364d441031f658a7c1d79b",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_41364d441031f658a7c1d79b",
+          "kb_key": "product:ext_41364d441031f658a7c1d79b",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_7e962b82a3a7beb80b205ddc",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 155,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 155,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_8c0032d7b8644420954d0df2",
+      "external_product_id": "ext_539c5068c2d9cc9f5f471093",
+      "market": "US",
+      "domain": "dermalogica.com",
+      "title": "biolumin-c night restore serum",
+      "canonical_url": "https://dermalogica.com/products/biolumin-c-night-restore-serum",
+      "product_family": "single_formula",
+      "product_line_id": "pl_3a82e8e889d147eb9bc8d441",
+      "identity_variant_axes": {
+        "size": "0 85 oz",
+        "volume": "85oz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_539c5068c2d9cc9f5f471093",
+          "kb_key": "product:ext_539c5068c2d9cc9f5f471093",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "ellipsis_or_truncated",
+            "public_truncated_copy",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "ellipsis_or_truncated",
+            "public_truncated_copy"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_539c5068c2d9cc9f5f471093",
+          "kb_key": "product:ext_539c5068c2d9cc9f5f471093",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "ellipsis_or_truncated",
+            "public_truncated_copy",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "ellipsis_or_truncated",
+            "public_truncated_copy"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_3a82e8e889d147eb9bc8d441",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Squalane",
+          "Tranexamic acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 28,
+          "how_to_chars": 155,
+          "inci_chars": 1175,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1175,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 28,
+        "how_to_chars": 155,
+        "inci_chars": 1175,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1175,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_13139f4101be4dbb927158c8",
+      "external_product_id": "ext_797f9aaf5658ec1733d86e52",
+      "market": "US",
+      "domain": "dermalogica.com",
+      "title": "biolumin-c vitamin c gel moisturizer",
+      "canonical_url": "https://dermalogica.com/products/biolumin-c-gel-moisturizer",
+      "product_family": "single_formula",
+      "product_line_id": "pl_f001c0c488acfe08b421d961",
+      "identity_variant_axes": {
+        "size": "1 7 oz",
+        "volume": "7oz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_797f9aaf5658ec1733d86e52",
+          "kb_key": "product:ext_797f9aaf5658ec1733d86e52",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "ellipsis_or_truncated",
+            "generic_copy_signal",
+            "public_truncated_copy",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "ellipsis_or_truncated",
+            "generic_copy_signal",
+            "public_truncated_copy"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_797f9aaf5658ec1733d86e52",
+          "kb_key": "product:ext_797f9aaf5658ec1733d86e52",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "ellipsis_or_truncated",
+            "generic_copy_signal",
+            "public_truncated_copy",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "ellipsis_or_truncated",
+            "generic_copy_signal",
+            "public_truncated_copy"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_f001c0c488acfe08b421d961",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Vitamin C (Ascorbic acid)",
+          "Hyaluronic acid",
+          "Squalane",
+          "Centella asiatica"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 155,
+          "inci_chars": 1497,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1497,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 155,
+        "inci_chars": 1497,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1497,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_56000947235543cb827e4c05",
+      "external_product_id": "ext_7d2e609bb0e8b213c6881552",
+      "market": "US",
+      "domain": "dermalogica.com",
+      "title": "stress positive eye lift mask",
+      "canonical_url": "https://dermalogica.com/products/stress-positive-eye-lift",
+      "product_family": "single_formula",
+      "product_line_id": "pl_b0b90c3e78c918800d1f33e2",
+      "identity_variant_axes": {
+        "size": "0 85 oz",
+        "volume": "85oz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_7d2e609bb0e8b213c6881552",
+          "kb_key": "product:ext_7d2e609bb0e8b213c6881552",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "generic_copy_signal",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "generic_copy_signal"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_7d2e609bb0e8b213c6881552",
+          "kb_key": "product:ext_7d2e609bb0e8b213c6881552",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "generic_copy_signal",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "generic_copy_signal"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_b0b90c3e78c918800d1f33e2",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Niacinamide"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 18,
+          "faq_count": 0,
+          "how_to_chars": 183,
+          "inci_chars": 1265,
+          "active_ingredients_chars": 347,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1265,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 18,
+        "faq_count": 0,
+        "how_to_chars": 183,
+        "inci_chars": 1265,
+        "active_ingredients_chars": 347,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1265,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_d51a2ccff39c4c2891a7b697",
+      "external_product_id": "ext_9b77bf54c12fde61f957eaf5",
+      "market": "US",
+      "domain": "dermalogica.com",
+      "title": "smart response serum",
+      "canonical_url": "https://dermalogica.com/products/smart-response-serum",
+      "product_family": "single_formula",
+      "product_line_id": "pl_12f5d7a2a8e0d3fdbab9db22",
+      "identity_variant_axes": {
+        "size": "1 0 oz",
+        "shade": "1 0 oz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_9b77bf54c12fde61f957eaf5",
+          "kb_key": "product:ext_9b77bf54c12fde61f957eaf5",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "generic_copy_signal",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "generic_copy_signal"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_9b77bf54c12fde61f957eaf5",
+          "kb_key": "product:ext_9b77bf54c12fde61f957eaf5",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "generic_copy_signal",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "generic_copy_signal"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_12f5d7a2a8e0d3fdbab9db22",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Niacinamide",
+          "Lactic acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 18,
+          "faq_count": 0,
+          "how_to_chars": 97,
+          "inci_chars": 1645,
+          "active_ingredients_chars": 631,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1645,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 18,
+        "faq_count": 0,
+        "how_to_chars": 97,
+        "inci_chars": 1645,
+        "active_ingredients_chars": 631,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1645,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_26107e99aa95456585fb2546",
+      "external_product_id": "ext_aa489dd969983a349615d211",
+      "market": "US",
+      "domain": "dermalogica.com",
+      "title": "daily glycolic cleanser",
+      "canonical_url": "https://dermalogica.com/products/daily-glycolic-cleanser",
+      "product_family": "single_formula",
+      "product_line_id": "pl_3ecb43aa309b5fa1516f38fe",
+      "identity_variant_axes": {
+        "size": "5 1 oz",
+        "volume": "1oz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_aa489dd969983a349615d211",
+          "kb_key": "product:ext_aa489dd969983a349615d211",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_aa489dd969983a349615d211",
+          "kb_key": "product:ext_aa489dd969983a349615d211",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_3ecb43aa309b5fa1516f38fe",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Glycolic acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 87,
+          "inci_chars": 702,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 702,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 87,
+        "inci_chars": 702,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 702,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_ca5b66ec1d95423bb91278db",
+      "external_product_id": "ext_b3a14ad8201131b244a9d180",
+      "market": "US",
+      "domain": "dermalogica.com",
+      "title": "discover healthy skin kit",
+      "canonical_url": "https://dermalogica.com/products/discover-healthy-skin-kit",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_0c13bac847d6e39de9bde4a8",
+      "identity_variant_axes": {
+        "size": "kit",
+        "shade": "kit",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_b3a14ad8201131b244a9d180",
+          "kb_key": "product:ext_b3a14ad8201131b244a9d180",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "generic_copy_signal",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "generic_copy_signal"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_b3a14ad8201131b244a9d180",
+          "kb_key": "product:ext_b3a14ad8201131b244a9d180",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "generic_copy_signal",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "generic_copy_signal"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_0c13bac847d6e39de9bde4a8",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 109,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 109,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_b90a7654dbd84de491243082",
+      "external_product_id": "ext_d3def504d7f06538aeaa2cee",
+      "market": "US",
+      "domain": "dermalogica.com",
+      "title": "dark spot solutions kit",
+      "canonical_url": "https://dermalogica.com/products/dark-spot-solutions-kit",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_6557b0a14c535c31e640ad3a",
+      "identity_variant_axes": {
+        "size": "kit",
+        "shade": "kit",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_d3def504d7f06538aeaa2cee",
+          "kb_key": "product:ext_d3def504d7f06538aeaa2cee",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_d3def504d7f06538aeaa2cee",
+          "kb_key": "product:ext_d3def504d7f06538aeaa2cee",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_6557b0a14c535c31e640ad3a",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 109,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 109,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_e5b1efa7acdb401886abe6b4",
+      "external_product_id": "ext_e8c621b40932284ae276bcff",
+      "market": "US",
+      "domain": "dermalogica.com",
+      "title": "biolumin-c vitamin c serum",
+      "canonical_url": "https://dermalogica.com/products/biolumin-c-serum",
+      "product_family": "single_formula",
+      "product_line_id": "pl_ebf90c63ec1fb7e4535e2092",
+      "identity_variant_axes": {
+        "size": "0 34 oz",
+        "volume": "34oz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_e8c621b40932284ae276bcff",
+          "kb_key": "product:ext_e8c621b40932284ae276bcff",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "ellipsis_or_truncated",
+            "generic_copy_signal",
+            "public_truncated_copy",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "ellipsis_or_truncated",
+            "generic_copy_signal",
+            "public_truncated_copy"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_e8c621b40932284ae276bcff",
+          "kb_key": "product:ext_e8c621b40932284ae276bcff",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "ellipsis_or_truncated",
+            "generic_copy_signal",
+            "public_truncated_copy",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "ellipsis_or_truncated",
+            "generic_copy_signal",
+            "public_truncated_copy"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_ebf90c63ec1fb7e4535e2092",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Vitamin C (Ascorbic acid)",
+          "Panthenol (B5)",
+          "Hyaluronic acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 155,
+          "inci_chars": 1486,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1486,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 3,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 155,
+        "inci_chars": 1486,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1486,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_f579eb4b85d9405788c5b977",
+      "external_product_id": "ext_e9366ce39ac8c46f82a45619",
+      "market": "US",
+      "domain": "dermalogica.com",
+      "title": "biolumin-c vitamin c eye serum",
+      "canonical_url": "https://dermalogica.com/products/biolumin-c-eye-serum",
+      "product_family": "single_formula",
+      "product_line_id": "pl_25585e2f8b81177ed3dfefd2",
+      "identity_variant_axes": {
+        "size": "0 5 oz",
+        "volume": "5oz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_e9366ce39ac8c46f82a45619",
+          "kb_key": "product:ext_e9366ce39ac8c46f82a45619",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "generic_copy_signal",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "generic_copy_signal"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_e9366ce39ac8c46f82a45619",
+          "kb_key": "product:ext_e9366ce39ac8c46f82a45619",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "generic_copy_signal",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "generic_copy_signal"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_25585e2f8b81177ed3dfefd2",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Vitamin C (Ascorbic acid)",
+          "Panthenol (B5)",
+          "Peptides"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 18,
+          "faq_count": 0,
+          "how_to_chars": 85,
+          "inci_chars": 1373,
+          "active_ingredients_chars": 374,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1373,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 18,
+        "faq_count": 0,
+        "how_to_chars": 85,
+        "inci_chars": 1373,
+        "active_ingredients_chars": 374,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1373,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_e298555645764392a066dc9d",
+      "external_product_id": "ext_e97a6d50cce83288436c18fa",
+      "market": "US",
+      "domain": "dermalogica.com",
+      "title": "multivitamin power recovery cream",
+      "canonical_url": "https://dermalogica.com/products/multivitamin-power-recovery-cream",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_6172de4eec336d45f5f72ee1",
+      "identity_variant_axes": {
+        "size": "1 7 oz",
+        "volume": "7oz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_e97a6d50cce83288436c18fa",
+          "kb_key": "product:ext_e97a6d50cce83288436c18fa",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_e97a6d50cce83288436c18fa",
+          "kb_key": "product:ext_e97a6d50cce83288436c18fa",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_6172de4eec336d45f5f72ee1",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 155,
+          "inci_chars": 408,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 408,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 155,
+        "inci_chars": 408,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 408,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_62b6e0c4e016440088a58b45",
+      "external_product_id": "ext_eca8959862245d5af16ab206",
+      "market": "US",
+      "domain": "dermalogica.com",
+      "title": "daily milkfoliant exfoliator",
+      "canonical_url": "https://dermalogica.com/products/daily-milkfoliant",
+      "product_family": "single_formula",
+      "product_line_id": "pl_8d20d8e163cf4d377216614e",
+      "identity_variant_axes": {
+        "size": "0 45 oz",
+        "volume": "45oz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_eca8959862245d5af16ab206",
+          "kb_key": "product:ext_eca8959862245d5af16ab206",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "ellipsis_or_truncated",
+            "generic_copy_signal",
+            "public_sensitive_claim",
+            "public_truncated_copy",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "ellipsis_or_truncated",
+            "generic_copy_signal",
+            "public_sensitive_claim",
+            "public_truncated_copy"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_eca8959862245d5af16ab206",
+          "kb_key": "product:ext_eca8959862245d5af16ab206",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "ellipsis_or_truncated",
+            "generic_copy_signal",
+            "public_sensitive_claim",
+            "public_truncated_copy",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "ellipsis_or_truncated",
+            "generic_copy_signal",
+            "public_sensitive_claim",
+            "public_truncated_copy"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_8d20d8e163cf4d377216614e",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Hyaluronic acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 18,
+          "faq_count": 0,
+          "how_to_chars": 205,
+          "inci_chars": 1923,
+          "active_ingredients_chars": 595,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1923,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 3,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 18,
+        "faq_count": 0,
+        "how_to_chars": 205,
+        "inci_chars": 1923,
+        "active_ingredients_chars": 595,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1923,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_4b037774e8d046e9b6f0e6e7",
+      "external_product_id": "ext_eecb7261c96b5e7f13ea2a03",
+      "market": "US",
+      "domain": "dermalogica.com",
+      "title": "skinperfect primer spf30",
+      "canonical_url": "https://dermalogica.com/products/skinperfect-primer-spf30",
+      "product_family": "single_formula",
+      "product_line_id": "pl_aa68f86aa708470981c8a38b",
+      "identity_variant_axes": {
+        "size": "0 75 oz",
+        "volume": "75oz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_eecb7261c96b5e7f13ea2a03",
+          "kb_key": "product:ext_eecb7261c96b5e7f13ea2a03",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_eecb7261c96b5e7f13ea2a03",
+          "kb_key": "product:ext_eecb7261c96b5e7f13ea2a03",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_aa68f86aa708470981c8a38b",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_regulatory",
+        "issues": [
+          "missing_regulatory"
+        ],
+        "regulatory_expected": true,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 24,
+          "how_to_chars": 110,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 24,
+        "how_to_chars": 110,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

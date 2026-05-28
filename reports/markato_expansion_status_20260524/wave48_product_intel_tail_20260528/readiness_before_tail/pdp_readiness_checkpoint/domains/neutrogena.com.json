@@ -1,0 +1,515 @@
+{
+  "generated_at": "2026-05-28T10:02:15.376Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": "neutrogena.com",
+    "externalProductIds": [],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": null,
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json",
+    "chunkByDomain": false
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 3,
+    "by_market": {
+      "US": 3
+    },
+    "by_domain": [
+      {
+        "key": "neutrogena.com",
+        "count": 3
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 3
+      }
+    ],
+    "coverage": {
+      "missing_inci": 1,
+      "missing_active_raw": 2,
+      "missing_details": 1,
+      "missing_how_to": 0,
+      "missing_faq": 2
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 3,
+        "high_quality_ready": 1,
+        "missing_kb": 0,
+        "not_displayable": 0
+      },
+      "effective": {
+        "displayable": 3,
+        "high_quality_ready": 1,
+        "missing_kb": 0,
+        "not_displayable": 0,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [
+        {
+          "key": "quality_eligible",
+          "count": 3
+        },
+        {
+          "key": "missing_card_highlight",
+          "count": 2
+        },
+        {
+          "key": "empty_watchouts",
+          "count": 1
+        }
+      ],
+      "effective_issue_domains": [
+        {
+          "key": "neutrogena.com::quality_eligible",
+          "count": 3
+        },
+        {
+          "key": "neutrogena.com::missing_card_highlight",
+          "count": 2
+        },
+        {
+          "key": "neutrogena.com::empty_watchouts",
+          "count": 1
+        }
+      ],
+      "quality_state": [
+        {
+          "key": "eligible",
+          "count": 3
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "seller_plus_formula",
+          "count": 3
+        }
+      ],
+      "samples": {
+        "missing_card_highlight": [
+          {
+            "external_product_id": "ext_a49bab302414cd4d4c5789d2",
+            "domain": "neutrogena.com",
+            "title": "Neutrogena® Hydro Boost Hyaluronic Acid Water Gel with Signature Fragrance 1.7 Oz",
+            "used_product_id": "ext_a49bab302414cd4d4c5789d2",
+            "quality_state": "eligible",
+            "evidence_profile": "seller_plus_formula"
+          },
+          {
+            "external_product_id": "ext_f2c773d38fcd36279845d133",
+            "domain": "neutrogena.com",
+            "title": "Rapid Clear Stubborn Acne Spot Gel",
+            "used_product_id": "ext_f2c773d38fcd36279845d133",
+            "quality_state": "eligible",
+            "evidence_profile": "seller_plus_formula"
+          }
+        ]
+      }
+    },
+    "active_ingredients": {
+      "regulatory_expected": 1,
+      "hero_expected": 1,
+      "any_active_items": 1,
+      "status": [
+        {
+          "key": "low_signal_active",
+          "count": 1
+        },
+        {
+          "key": "missing_regulatory",
+          "count": 1
+        },
+        {
+          "key": "ready_other",
+          "count": 1
+        }
+      ],
+      "issues": [
+        {
+          "key": "low_signal_active",
+          "count": 1
+        },
+        {
+          "key": "missing_regulatory",
+          "count": 1
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "neutrogena.com::low_signal_active",
+          "count": 1
+        },
+        {
+          "key": "neutrogena.com::missing_regulatory",
+          "count": 1
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "pdp_section",
+          "count": 2
+        },
+        {
+          "key": "none",
+          "count": 1
+        }
+      ],
+      "samples": {
+        "low_signal_active": [
+          {
+            "external_product_id": "ext_a49bab302414cd4d4c5789d2",
+            "domain": "neutrogena.com",
+            "title": "Neutrogena® Hydro Boost Hyaluronic Acid Water Gel with Signature Fragrance 1.7 Oz",
+            "status": "low_signal_active",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          }
+        ],
+        "missing_regulatory": [
+          {
+            "external_product_id": "ext_d9934cedd140a4f55c786ada",
+            "domain": "neutrogena.com",
+            "title": "Invisible Daily Defense Face Serum SPF 60+",
+            "status": "missing_regulatory",
+            "active_items": [],
+            "source_origin": "none"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 3
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_bd3a15a6de094306d14ed745",
+      "external_product_id": "ext_a49bab302414cd4d4c5789d2",
+      "market": "US",
+      "domain": "neutrogena.com",
+      "title": "Neutrogena® Hydro Boost Hyaluronic Acid Water Gel with Signature Fragrance 1.7 Oz",
+      "canonical_url": "https://www.neutrogena.com/products/skincare/neutrogena-hydro-boost-water-gel-with-hyaluronic-acid/6811047",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_a49bab302414cd4d4c5789d2",
+          "kb_key": "product:ext_a49bab302414cd4d4c5789d2",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_a49bab302414cd4d4c5789d2",
+          "kb_key": "product:ext_a49bab302414cd4d4c5789d2",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "low_signal_active",
+        "issues": [
+          "low_signal_active"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 2,
+          "how_to_chars": 155,
+          "inci_chars": 331,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 331,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_low_signal"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 2,
+        "how_to_chars": 155,
+        "inci_chars": 331,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 331,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_c69862174b9050163616661a",
+      "external_product_id": "ext_d9934cedd140a4f55c786ada",
+      "market": "US",
+      "domain": "neutrogena.com",
+      "title": "Invisible Daily Defense Face Serum SPF 60+",
+      "canonical_url": "https://www.neutrogena.com/products/sun/invisible-daily-defense-face-serum-spf-60/6811153",
+      "product_family": "single_formula",
+      "product_line_id": "pl_205d2adfab4004cd5f6838d4",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_d9934cedd140a4f55c786ada",
+          "kb_key": "product:ext_d9934cedd140a4f55c786ada",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "quality_eligible"
+          ],
+          "blocking_issues": [],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_d9934cedd140a4f55c786ada",
+          "kb_key": "product:ext_d9934cedd140a4f55c786ada",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "quality_eligible"
+          ],
+          "blocking_issues": [],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_205d2adfab4004cd5f6838d4",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_regulatory",
+        "issues": [
+          "missing_regulatory"
+        ],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 177,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_not_displayable"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 177,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_e8a4df2a1ee2cace58c6b5e3",
+      "external_product_id": "ext_f2c773d38fcd36279845d133",
+      "market": "US",
+      "domain": "neutrogena.com",
+      "title": "Rapid Clear Stubborn Acne Spot Gel",
+      "canonical_url": "https://www.neutrogena.com/products/skincare/rapid-clear-stubborn-acne-spot-gel/6802461",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_f2c773d38fcd36279845d133",
+          "kb_key": "product:ext_f2c773d38fcd36279845d133",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_f2c773d38fcd36279845d133",
+          "kb_key": "product:ext_f2c773d38fcd36279845d133",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_other",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [
+          "Benzoyl Peroxide"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 0,
+          "how_to_chars": 109,
+          "inci_chars": 693,
+          "active_ingredients_chars": 38,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 693,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 0,
+        "how_to_chars": 109,
+        "inci_chars": 693,
+        "active_ingredients_chars": 38,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 693,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

@@ -1,0 +1,3152 @@
+{
+  "generated_at": "2026-05-28T10:00:50.187Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": "us.laneige.com",
+    "externalProductIds": [],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": null,
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json",
+    "chunkByDomain": false
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 27,
+    "by_market": {
+      "US": 27
+    },
+    "by_domain": [
+      {
+        "key": "us.laneige.com",
+        "count": 27
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 23
+      },
+      {
+        "key": "set_or_collection",
+        "count": 2
+      },
+      {
+        "key": "accessory",
+        "count": 1
+      },
+      {
+        "key": "unknown_product",
+        "count": 1
+      }
+    ],
+    "coverage": {
+      "missing_inci": 2,
+      "missing_active_raw": 7,
+      "missing_details": 1,
+      "missing_how_to": 0,
+      "missing_faq": 27
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 27,
+        "high_quality_ready": 17,
+        "missing_kb": 0,
+        "not_displayable": 0
+      },
+      "effective": {
+        "displayable": 27,
+        "high_quality_ready": 17,
+        "missing_kb": 0,
+        "not_displayable": 0,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [
+        {
+          "key": "seller_only_evidence",
+          "count": 6
+        },
+        {
+          "key": "public_sensitive_claim",
+          "count": 3
+        },
+        {
+          "key": "public_generic_marketing_copy",
+          "count": 2
+        }
+      ],
+      "effective_issue_domains": [
+        {
+          "key": "us.laneige.com::seller_only_evidence",
+          "count": 6
+        },
+        {
+          "key": "us.laneige.com::public_sensitive_claim",
+          "count": 3
+        },
+        {
+          "key": "us.laneige.com::public_generic_marketing_copy",
+          "count": 2
+        }
+      ],
+      "quality_state": [
+        {
+          "key": "reviewed",
+          "count": 27
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "official_pdp_reviewed_line",
+          "count": 21
+        },
+        {
+          "key": "seller_only",
+          "count": 6
+        }
+      ],
+      "samples": {
+        "seller_only_evidence": [
+          {
+            "external_product_id": "ext_14f3a869849b1b7f2f2ca44c",
+            "domain": "us.laneige.com",
+            "title": "Bouncy & Firm Lip Treatment",
+            "used_product_id": "ext_14f3a869849b1b7f2f2ca44c",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_183611945bf0f8890085a9f3",
+            "domain": "us.laneige.com",
+            "title": "Lip Sleeping Mask Topper",
+            "used_product_id": "ext_183611945bf0f8890085a9f3",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_24328cc33fabbe9a5bfbf460",
+            "domain": "us.laneige.com",
+            "title": "Bouncy & Firm Sleeping Mask",
+            "used_product_id": "ext_24328cc33fabbe9a5bfbf460",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_548e2ce796238ef8bff7c55e",
+            "domain": "us.laneige.com",
+            "title": "Lip Glowy Balm",
+            "used_product_id": "ext_548e2ce796238ef8bff7c55e",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_92bf7943c113bc689db4e263",
+            "domain": "us.laneige.com",
+            "title": "Water Bank Aqua Facial",
+            "used_product_id": "ext_92bf7943c113bc689db4e263",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_ff7f4fcd1e538fce0891f1cd",
+            "domain": "us.laneige.com",
+            "title": "JuicePop Box Lip Tint",
+            "used_product_id": "ext_ff7f4fcd1e538fce0891f1cd",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "public_generic_marketing_copy": [
+          {
+            "external_product_id": "ext_64ccd400933ee6c3d5c726d1",
+            "domain": "us.laneige.com",
+            "title": "Water Bank Blue Hyaluronic Gel Moisturizer",
+            "used_product_id": "ext_64ccd400933ee6c3d5c726d1",
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line"
+          },
+          {
+            "external_product_id": "ext_d0324503b4b2406d0b8bfdef",
+            "domain": "us.laneige.com",
+            "title": "Perfect Renew 3x Cream Advanced",
+            "used_product_id": "ext_d0324503b4b2406d0b8bfdef",
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line"
+          }
+        ],
+        "public_sensitive_claim": [
+          {
+            "external_product_id": "ext_64ccd400933ee6c3d5c726d1",
+            "domain": "us.laneige.com",
+            "title": "Water Bank Blue Hyaluronic Gel Moisturizer",
+            "used_product_id": "ext_64ccd400933ee6c3d5c726d1",
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line"
+          },
+          {
+            "external_product_id": "ext_8c7bb22213f0dd0b6877f5ef",
+            "domain": "us.laneige.com",
+            "title": "Water Bank Blue Hyaluronic Eye Cream",
+            "used_product_id": "ext_8c7bb22213f0dd0b6877f5ef",
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line"
+          },
+          {
+            "external_product_id": "ext_b0e80c9a374ba97315671b4c",
+            "domain": "us.laneige.com",
+            "title": "Water Bank Blue Hyaluronic Serum",
+            "used_product_id": "ext_b0e80c9a374ba97315671b4c",
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line"
+          }
+        ]
+      }
+    },
+    "active_ingredients": {
+      "regulatory_expected": 1,
+      "hero_expected": 22,
+      "any_active_items": 22,
+      "status": [
+        {
+          "key": "ready_hero",
+          "count": 20
+        },
+        {
+          "key": "not_applicable_product_family",
+          "count": 3
+        },
+        {
+          "key": "missing_hero",
+          "count": 1
+        },
+        {
+          "key": "not_expected_missing",
+          "count": 1
+        },
+        {
+          "key": "ready_other",
+          "count": 1
+        },
+        {
+          "key": "ready_regulatory",
+          "count": 1
+        }
+      ],
+      "issues": [
+        {
+          "key": "active_raw_may_be_full_inci",
+          "count": 1
+        },
+        {
+          "key": "active_raw_too_long",
+          "count": 1
+        },
+        {
+          "key": "missing_hero",
+          "count": 1
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "us.laneige.com::active_raw_may_be_full_inci",
+          "count": 1
+        },
+        {
+          "key": "us.laneige.com::active_raw_too_long",
+          "count": 1
+        },
+        {
+          "key": "us.laneige.com::missing_hero",
+          "count": 1
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "pdp_section",
+          "count": 23
+        },
+        {
+          "key": "none",
+          "count": 4
+        }
+      ],
+      "samples": {
+        "missing_hero": [
+          {
+            "external_product_id": "ext_92bf7943c113bc689db4e263",
+            "domain": "us.laneige.com",
+            "title": "Water Bank Aqua Facial",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "none"
+          }
+        ],
+        "active_raw_too_long": [
+          {
+            "external_product_id": "ext_dea57b05463e18d14d4f95d7",
+            "domain": "us.laneige.com",
+            "title": "Hydro UV Defense Sunscreen Broad Spectrum SPF 50+",
+            "status": "ready_regulatory",
+            "active_items": [
+              "Avobenzone",
+              "Homosalate",
+              "Octisalate",
+              "Octocrylene",
+              "PROPANEDIOL",
+              "BUTYLOCTYL SALICYLATE",
+              "GLYCERIN",
+              "DIPHENYLSILOXY PHENYL TRIMETHICONE"
+            ],
+            "source_origin": "pdp_section"
+          }
+        ],
+        "active_raw_may_be_full_inci": [
+          {
+            "external_product_id": "ext_dea57b05463e18d14d4f95d7",
+            "domain": "us.laneige.com",
+            "title": "Hydro UV Defense Sunscreen Broad Spectrum SPF 50+",
+            "status": "ready_regulatory",
+            "active_items": [
+              "Avobenzone",
+              "Homosalate",
+              "Octisalate",
+              "Octocrylene",
+              "PROPANEDIOL",
+              "BUTYLOCTYL SALICYLATE",
+              "GLYCERIN",
+              "DIPHENYLSILOXY PHENYL TRIMETHICONE"
+            ],
+            "source_origin": "pdp_section"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 24
+        },
+        {
+          "key": "flagged",
+          "count": 3
+        }
+      ],
+      "issues": [
+        {
+          "key": "wrong_axis_for_category",
+          "count": 3
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "us.laneige.com::wrong_axis_for_category",
+          "count": 3
+        }
+      ],
+      "samples": {
+        "wrong_axis_for_category": [
+          {
+            "external_product_id": "ext_183611945bf0f8890085a9f3",
+            "domain": "us.laneige.com",
+            "title": "Lip Sleeping Mask Topper",
+            "status": "flagged",
+            "examples": [
+              {
+                "axis_name": "shade",
+                "axis_kind": "shade",
+                "value": "pumpkin pie",
+                "visual": true
+              },
+              {
+                "axis_name": "shade",
+                "axis_kind": "shade",
+                "value": "hot cocoa",
+                "visual": true
+              }
+            ]
+          },
+          {
+            "external_product_id": "ext_548e2ce796238ef8bff7c55e",
+            "domain": "us.laneige.com",
+            "title": "Lip Glowy Balm",
+            "status": "flagged",
+            "examples": [
+              {
+                "axis_name": "color",
+                "axis_kind": "color",
+                "value": "berry (pink tint)",
+                "visual": true
+              },
+              {
+                "axis_name": "color",
+                "axis_kind": "color",
+                "value": "blueberry (blue tint)",
+                "visual": true
+              },
+              {
+                "axis_name": "color",
+                "axis_kind": "color",
+                "value": "mango (yellow tint)",
+                "visual": true
+              },
+              {
+                "axis_name": "color",
+                "axis_kind": "color",
+                "value": "matcha bubble tea",
+                "visual": true
+              }
+            ]
+          },
+          {
+            "external_product_id": "ext_f599f564e1b64bd51877cf79",
+            "domain": "us.laneige.com",
+            "title": "Lip Sleeping Mask",
+            "status": "flagged",
+            "examples": [
+              {
+                "axis_name": "color",
+                "axis_kind": "color",
+                "value": "berry (original)",
+                "visual": true
+              },
+              {
+                "axis_name": "color",
+                "axis_kind": "color",
+                "value": "strawberry shortcake",
+                "visual": true
+              },
+              {
+                "axis_name": "color",
+                "axis_kind": "color",
+                "value": "pink lemonade",
+                "visual": true
+              },
+              {
+                "axis_name": "color",
+                "axis_kind": "color",
+                "value": "matcha bubble tea",
+                "visual": true
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_6fa974a225f48e5a124a86f3",
+      "external_product_id": "ext_01fd3bd79d15fad9f4f6f94b",
+      "market": "US",
+      "domain": "us.laneige.com",
+      "title": "Water Bank Blue Hyaluronic Intensive Moisturizer",
+      "canonical_url": "https://us.laneige.com/products/water-bank-blue-hyaluronic-intensive-moisturizer",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_01fd3bd79d15fad9f4f6f94b",
+          "kb_key": "product:ext_01fd3bd79d15fad9f4f6f94b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_01fd3bd79d15fad9f4f6f94b",
+          "kb_key": "product:ext_01fd3bd79d15fad9f4f6f94b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP",
+          "Niacinamide",
+          "Hyaluronic acid",
+          "Squalane",
+          "Peptides"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 0,
+          "how_to_chars": 66,
+          "inci_chars": 1330,
+          "active_ingredients_chars": 71,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1330,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 3,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 0,
+        "how_to_chars": 66,
+        "inci_chars": 1330,
+        "active_ingredients_chars": 71,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1330,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_4d4f27a950a2d086d2fb61d8",
+      "external_product_id": "ext_14f3a869849b1b7f2f2ca44c",
+      "market": "US",
+      "domain": "us.laneige.com",
+      "title": "Bouncy & Firm Lip Treatment",
+      "canonical_url": "https://us.laneige.com/products/bouncy-firm-lip-treatment",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_14f3a869849b1b7f2f2ca44c",
+          "kb_key": "product:ext_14f3a869849b1b7f2f2ca44c",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_14f3a869849b1b7f2f2ca44c",
+          "kb_key": "product:ext_14f3a869849b1b7f2f2ca44c",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Caffeine",
+          "Niacinamide",
+          "Peony & Collagen Complex + Peptides"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 783,
+          "inci_chars": 962,
+          "active_ingredients_chars": 58,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 962,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 783,
+        "inci_chars": 962,
+        "active_ingredients_chars": 58,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 962,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_0a57cb22565a8d72043a05bc",
+      "external_product_id": "ext_17f9d9f0c1ca949d98390166",
+      "market": "US",
+      "domain": "us.laneige.com",
+      "title": "Water Sleeping Mask",
+      "canonical_url": "https://us.laneige.com/products/water-sleeping-mask",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_17f9d9f0c1ca949d98390166",
+          "kb_key": "product:ext_17f9d9f0c1ca949d98390166",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_17f9d9f0c1ca949d98390166",
+          "kb_key": "product:ext_17f9d9f0c1ca949d98390166",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP",
+          "Niacinamide",
+          "Hyaluronic acid",
+          "Squalane"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 18,
+          "faq_count": 0,
+          "how_to_chars": 102,
+          "inci_chars": 853,
+          "active_ingredients_chars": 61,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 853,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 18,
+        "faq_count": 0,
+        "how_to_chars": 102,
+        "inci_chars": 853,
+        "active_ingredients_chars": 61,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 853,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_5fc11667cabde1c451b3feae",
+      "external_product_id": "ext_183611945bf0f8890085a9f3",
+      "market": "US",
+      "domain": "us.laneige.com",
+      "title": "Lip Sleeping Mask Topper",
+      "canonical_url": "https://us.laneige.com/products/lip-sleeping-mask-topper",
+      "product_family": "accessory",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_183611945bf0f8890085a9f3",
+          "kb_key": "product:ext_183611945bf0f8890085a9f3",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_183611945bf0f8890085a9f3",
+          "kb_key": "product:ext_183611945bf0f8890085a9f3",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 108,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "not_applicable",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "mark_inci_not_applicable",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "accessory"
+      },
+      "variants": {
+        "status": "flagged",
+        "issues": [
+          "wrong_axis_for_category"
+        ],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [
+            {
+              "axis_name": "shade",
+              "axis_kind": "shade",
+              "value": "pumpkin pie",
+              "visual": true
+            },
+            {
+              "axis_name": "shade",
+              "axis_kind": "shade",
+              "value": "hot cocoa",
+              "visual": true
+            }
+          ],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 108,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "not_applicable",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "mark_inci_not_applicable",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_c12abd97fa27eab41358c6db",
+      "external_product_id": "ext_24328cc33fabbe9a5bfbf460",
+      "market": "US",
+      "domain": "us.laneige.com",
+      "title": "Bouncy & Firm Sleeping Mask",
+      "canonical_url": "https://us.laneige.com/products/bouncy-firm-sleeping-mask",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_24328cc33fabbe9a5bfbf460",
+          "kb_key": "product:ext_24328cc33fabbe9a5bfbf460",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_24328cc33fabbe9a5bfbf460",
+          "kb_key": "product:ext_24328cc33fabbe9a5bfbf460",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_other",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [
+          "Green Tea Probiotic lysate",
+          "Hyaluronic Acids",
+          "Hydro-Melt Glow Capsules",
+          "Peony & Collagen Complex + Peptides"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 102,
+          "inci_chars": 768,
+          "active_ingredients_chars": 107,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 768,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 102,
+        "inci_chars": 768,
+        "active_ingredients_chars": 107,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 768,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_57b6160048b4e2a29d1e5160",
+      "external_product_id": "ext_2a4bc85df370070ac2d268cf",
+      "market": "US",
+      "domain": "us.laneige.com",
+      "title": "Water Bank Blue Hyaluronic Cleansing Foam",
+      "canonical_url": "https://us.laneige.com/products/water-bank-blue-hyaluronic-cleansing-foam",
+      "product_family": "set_or_collection",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_2a4bc85df370070ac2d268cf",
+          "kb_key": "product:ext_2a4bc85df370070ac2d268cf",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_2a4bc85df370070ac2d268cf",
+          "kb_key": "product:ext_2a4bc85df370070ac2d268cf",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 0,
+          "how_to_chars": 87,
+          "inci_chars": 20,
+          "active_ingredients_chars": 15,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 20,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 0,
+        "how_to_chars": 87,
+        "inci_chars": 20,
+        "active_ingredients_chars": 15,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 20,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_9915b69f30b696fcec23b71d",
+      "external_product_id": "ext_548e2ce796238ef8bff7c55e",
+      "market": "US",
+      "domain": "us.laneige.com",
+      "title": "Lip Glowy Balm",
+      "canonical_url": "https://us.laneige.com/products/lip-glowy-balm",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_548e2ce796238ef8bff7c55e",
+          "kb_key": "product:ext_548e2ce796238ef8bff7c55e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_548e2ce796238ef8bff7c55e",
+          "kb_key": "product:ext_548e2ce796238ef8bff7c55e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 99,
+          "inci_chars": 10421,
+          "active_ingredients_chars": 28,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 10421,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_not_displayable"
+      },
+      "variants": {
+        "status": "flagged",
+        "issues": [
+          "wrong_axis_for_category"
+        ],
+        "visible_variant_rows": 10,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [
+            {
+              "axis_name": "color",
+              "axis_kind": "color",
+              "value": "berry (pink tint)",
+              "visual": true
+            },
+            {
+              "axis_name": "color",
+              "axis_kind": "color",
+              "value": "blueberry (blue tint)",
+              "visual": true
+            },
+            {
+              "axis_name": "color",
+              "axis_kind": "color",
+              "value": "mango (yellow tint)",
+              "visual": true
+            },
+            {
+              "axis_name": "color",
+              "axis_kind": "color",
+              "value": "matcha bubble tea",
+              "visual": true
+            }
+          ],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 99,
+        "inci_chars": 10421,
+        "active_ingredients_chars": 28,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 10421,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_bccecd4faa9fac1e33d16619",
+      "external_product_id": "ext_5aee18f3e740b5ebcc1e712c",
+      "market": "US",
+      "domain": "us.laneige.com",
+      "title": "Water Bank Gentle Gel Cleanser",
+      "canonical_url": "https://us.laneige.com/products/water-bank-gentle-gel-cleanser",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_5aee18f3e740b5ebcc1e712c",
+          "kb_key": "product:ext_5aee18f3e740b5ebcc1e712c",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_5aee18f3e740b5ebcc1e712c",
+          "kb_key": "product:ext_5aee18f3e740b5ebcc1e712c",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Hyaluronic acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 0,
+          "how_to_chars": 226,
+          "inci_chars": 514,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 514,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 0,
+        "how_to_chars": 226,
+        "inci_chars": 514,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 514,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_75303acf6e85ed7971054a88",
+      "external_product_id": "ext_64ccd400933ee6c3d5c726d1",
+      "market": "US",
+      "domain": "us.laneige.com",
+      "title": "Water Bank Blue Hyaluronic Gel Moisturizer",
+      "canonical_url": "https://us.laneige.com/products/water-bank-blue-hyaluronic-gel-moisturizer",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_64ccd400933ee6c3d5c726d1",
+          "kb_key": "product:ext_64ccd400933ee6c3d5c726d1",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_generic_marketing_copy",
+            "public_sensitive_claim"
+          ],
+          "blocking_issues": [
+            "public_generic_marketing_copy",
+            "public_sensitive_claim"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_64ccd400933ee6c3d5c726d1",
+          "kb_key": "product:ext_64ccd400933ee6c3d5c726d1",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_generic_marketing_copy",
+            "public_sensitive_claim"
+          ],
+          "blocking_issues": [
+            "public_generic_marketing_copy",
+            "public_sensitive_claim"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Hyaluronic acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 0,
+          "how_to_chars": 97,
+          "inci_chars": 672,
+          "active_ingredients_chars": 25,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 672,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 3,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 0,
+        "how_to_chars": 97,
+        "inci_chars": 672,
+        "active_ingredients_chars": 25,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 672,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_054d6bea73fec66a6a42e9e9",
+      "external_product_id": "ext_654d684f03430b23ceefc4cc",
+      "market": "US",
+      "domain": "us.laneige.com",
+      "title": "Perfect Renew 3X Signature Serum",
+      "canonical_url": "https://us.laneige.com/products/perfect-renew-3x-signature-serum",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_654d684f03430b23ceefc4cc",
+          "kb_key": "product:ext_654d684f03430b23ceefc4cc",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_654d684f03430b23ceefc4cc",
+          "kb_key": "product:ext_654d684f03430b23ceefc4cc",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP",
+          "Retinol",
+          "Peptides"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 20,
+          "faq_count": 0,
+          "how_to_chars": 228,
+          "inci_chars": 1624,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1624,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 20,
+        "faq_count": 0,
+        "how_to_chars": 228,
+        "inci_chars": 1624,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1624,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_c95d4ba1a8b6109754f2ff3d",
+      "external_product_id": "ext_8c7bb22213f0dd0b6877f5ef",
+      "market": "US",
+      "domain": "us.laneige.com",
+      "title": "Water Bank Blue Hyaluronic Eye Cream",
+      "canonical_url": "https://us.laneige.com/products/water-bank-blue-hyaluronic-acid-eye-cream",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_8c7bb22213f0dd0b6877f5ef",
+          "kb_key": "product:ext_8c7bb22213f0dd0b6877f5ef",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_sensitive_claim"
+          ],
+          "blocking_issues": [
+            "public_sensitive_claim"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_8c7bb22213f0dd0b6877f5ef",
+          "kb_key": "product:ext_8c7bb22213f0dd0b6877f5ef",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_sensitive_claim"
+          ],
+          "blocking_issues": [
+            "public_sensitive_claim"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Niacinamide",
+          "Hyaluronic acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 0,
+          "how_to_chars": 90,
+          "inci_chars": 1135,
+          "active_ingredients_chars": 38,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1135,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 0,
+        "how_to_chars": 90,
+        "inci_chars": 1135,
+        "active_ingredients_chars": 38,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1135,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_c119f7e1bcc4e898855ee5cc",
+      "external_product_id": "ext_92bf7943c113bc689db4e263",
+      "market": "US",
+      "domain": "us.laneige.com",
+      "title": "Water Bank Aqua Facial",
+      "canonical_url": "https://us.laneige.com/products/water-bank-aqua-facial",
+      "product_family": "unknown_product",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_92bf7943c113bc689db4e263",
+          "kb_key": "product:ext_92bf7943c113bc689db4e263",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_92bf7943c113bc689db4e263",
+          "kb_key": "product:ext_92bf7943c113bc689db4e263",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 155,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 155,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_f8fed7a45897c42ee6d8146f",
+      "external_product_id": "ext_987a58f4d6fefbad81a147f2",
+      "market": "US",
+      "domain": "us.laneige.com",
+      "title": "Glaze Craze Tinted Lip Serum",
+      "canonical_url": "https://us.laneige.com/products/glaze-craze-tinted-lip-serum",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_987a58f4d6fefbad81a147f2",
+          "kb_key": "product:ext_987a58f4d6fefbad81a147f2",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_987a58f4d6fefbad81a147f2",
+          "kb_key": "product:ext_987a58f4d6fefbad81a147f2",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 0,
+          "how_to_chars": 64,
+          "inci_chars": 8188,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 8188,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 11,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 0,
+        "how_to_chars": 64,
+        "inci_chars": 8188,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 8188,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_f694c3281e1d74013716103b",
+      "external_product_id": "ext_9d55519a0cf42ab9cb7699c0",
+      "market": "US",
+      "domain": "us.laneige.com",
+      "title": "Radian-C Cream",
+      "canonical_url": "https://us.laneige.com/products/radian-c-cream",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_9d55519a0cf42ab9cb7699c0",
+          "kb_key": "product:ext_9d55519a0cf42ab9cb7699c0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_9d55519a0cf42ab9cb7699c0",
+          "kb_key": "product:ext_9d55519a0cf42ab9cb7699c0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Vitamin C (Ascorbic acid)"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 0,
+          "how_to_chars": 74,
+          "inci_chars": 640,
+          "active_ingredients_chars": 54,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 640,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 0,
+        "how_to_chars": 74,
+        "inci_chars": 640,
+        "active_ingredients_chars": 54,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 640,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_7808e0f7a3de63c37cb792bb",
+      "external_product_id": "ext_9ecbc144f1865e90167ccfec",
+      "market": "US",
+      "domain": "us.laneige.com",
+      "title": "Cream Skin Toner & Moisturizer",
+      "canonical_url": "https://us.laneige.com/products/cream-skin-toner-moisturizer",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_9ecbc144f1865e90167ccfec",
+          "kb_key": "product:ext_9ecbc144f1865e90167ccfec",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_9ecbc144f1865e90167ccfec",
+          "kb_key": "product:ext_9ecbc144f1865e90167ccfec",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP",
+          "Peptides"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 0,
+          "how_to_chars": 267,
+          "inci_chars": 545,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 545,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 5,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 0,
+        "how_to_chars": 267,
+        "inci_chars": 545,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 545,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_42c17cd0ad0a2862c7fdfaa8",
+      "external_product_id": "ext_a8e6f943ebacd308b608ce50",
+      "market": "US",
+      "domain": "us.laneige.com",
+      "title": "Perfect Renew Nourishing Oil-to-Foam Cleanser",
+      "canonical_url": "https://us.laneige.com/products/perfect-renew-nourishing-oil-to-foam-cleanser",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_a8e6f943ebacd308b608ce50",
+          "kb_key": "product:ext_a8e6f943ebacd308b608ce50",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_a8e6f943ebacd308b608ce50",
+          "kb_key": "product:ext_a8e6f943ebacd308b608ce50",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP",
+          "Vitamin C (Ascorbic acid)"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 0,
+          "how_to_chars": 107,
+          "inci_chars": 748,
+          "active_ingredients_chars": 48,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 748,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 0,
+        "how_to_chars": 107,
+        "inci_chars": 748,
+        "active_ingredients_chars": 48,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 748,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_94f71ffe91b353d70c57cc27",
+      "external_product_id": "ext_ab3aa40d379dc1204075f94f",
+      "market": "US",
+      "domain": "us.laneige.com",
+      "title": "Cica Sleeping Mask with Centella Asiatica for Moisture Barrier Support",
+      "canonical_url": "https://us.laneige.com/products/cica-sleeping-mask",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_ab3aa40d379dc1204075f94f",
+          "kb_key": "product:ext_ab3aa40d379dc1204075f94f",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_ab3aa40d379dc1204075f94f",
+          "kb_key": "product:ext_ab3aa40d379dc1204075f94f",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Centella asiatica"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 955,
+          "inci_chars": 894,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 894,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 955,
+        "inci_chars": 894,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 894,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_2533586ff51f98719b65f1f1",
+      "external_product_id": "ext_ad53d44951c66525eea5687c",
+      "market": "US",
+      "domain": "us.laneige.com",
+      "title": "Water Bank Blue Hyaluronic Cream Moisturizer",
+      "canonical_url": "https://us.laneige.com/products/water-bank-blue-hyaluronic-cream-moisturizer",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_ad53d44951c66525eea5687c",
+          "kb_key": "product:ext_ad53d44951c66525eea5687c",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_ad53d44951c66525eea5687c",
+          "kb_key": "product:ext_ad53d44951c66525eea5687c",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP",
+          "Panthenol (B5)",
+          "Hyaluronic acid",
+          "Squalane",
+          "Peptides"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 0,
+          "how_to_chars": 108,
+          "inci_chars": 802,
+          "active_ingredients_chars": 74,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 802,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 3,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 0,
+        "how_to_chars": 108,
+        "inci_chars": 802,
+        "active_ingredients_chars": 74,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 802,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_1cd04b739eb4bfc5588b7b44",
+      "external_product_id": "ext_b0e80c9a374ba97315671b4c",
+      "market": "US",
+      "domain": "us.laneige.com",
+      "title": "Water Bank Blue Hyaluronic Serum",
+      "canonical_url": "https://us.laneige.com/products/water-bank-blue-hyaluronic-serum",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_b0e80c9a374ba97315671b4c",
+          "kb_key": "product:ext_b0e80c9a374ba97315671b4c",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_sensitive_claim"
+          ],
+          "blocking_issues": [
+            "public_sensitive_claim"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_b0e80c9a374ba97315671b4c",
+          "kb_key": "product:ext_b0e80c9a374ba97315671b4c",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_sensitive_claim"
+          ],
+          "blocking_issues": [
+            "public_sensitive_claim"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Hyaluronic acid",
+          "Squalane",
+          "Peptides"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 0,
+          "how_to_chars": 80,
+          "inci_chars": 869,
+          "active_ingredients_chars": 45,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 869,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 0,
+        "how_to_chars": 80,
+        "inci_chars": 869,
+        "active_ingredients_chars": 45,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 869,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_fc158717497c2b3d26456ffd",
+      "external_product_id": "ext_b3bb783b2312b5328828b2cc",
+      "market": "US",
+      "domain": "us.laneige.com",
+      "title": "Bouncy & Firm Eye Sleeping Mask",
+      "canonical_url": "https://us.laneige.com/products/bouncy-firm-eye-sleeping-mask",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_b3bb783b2312b5328828b2cc",
+          "kb_key": "product:ext_b3bb783b2312b5328828b2cc",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_b3bb783b2312b5328828b2cc",
+          "kb_key": "product:ext_b3bb783b2312b5328828b2cc",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Panthenol (B5)",
+          "Niacinamide",
+          "Hyaluronic acid",
+          "Peptides"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 0,
+          "how_to_chars": 354,
+          "inci_chars": 691,
+          "active_ingredients_chars": 64,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 691,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 0,
+        "how_to_chars": 354,
+        "inci_chars": 691,
+        "active_ingredients_chars": 64,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 691,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_6adbd7adab8d45c0c739cebc",
+      "external_product_id": "ext_c01cb88e70442a01052a468d",
+      "market": "US",
+      "domain": "us.laneige.com",
+      "title": "Water Bank Blue Hyaluronic Exfoliating Toner",
+      "canonical_url": "https://us.laneige.com/products/water-bank-blue-hyaluronic-exfoliating-toner",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_c01cb88e70442a01052a468d",
+          "kb_key": "product:ext_c01cb88e70442a01052a468d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_c01cb88e70442a01052a468d",
+          "kb_key": "product:ext_c01cb88e70442a01052a468d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Hyaluronic acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 0,
+          "how_to_chars": 83,
+          "inci_chars": 701,
+          "active_ingredients_chars": 15,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 701,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 0,
+        "how_to_chars": 83,
+        "inci_chars": 701,
+        "active_ingredients_chars": 15,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 701,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_236e0ad13ac0d0bbf6fd7d9d",
+      "external_product_id": "ext_c1215cfa83ed8723e58c9dc0",
+      "market": "US",
+      "domain": "us.laneige.com",
+      "title": "Neo Blurring Powder",
+      "canonical_url": "https://us.laneige.com/products/neo-blurring-powder",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_c1215cfa83ed8723e58c9dc0",
+          "kb_key": "product:ext_c1215cfa83ed8723e58c9dc0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_c1215cfa83ed8723e58c9dc0",
+          "kb_key": "product:ext_c1215cfa83ed8723e58c9dc0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Hyaluronic acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 232,
+          "inci_chars": 398,
+          "active_ingredients_chars": 15,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 398,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 232,
+        "inci_chars": 398,
+        "active_ingredients_chars": 15,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 398,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_ddedbaea3c1bf283bf5397a3",
+      "external_product_id": "ext_d0324503b4b2406d0b8bfdef",
+      "market": "US",
+      "domain": "us.laneige.com",
+      "title": "Perfect Renew 3x Cream Advanced",
+      "canonical_url": "https://us.laneige.com/products/perfect-renew-3x-cream-advanced",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_d0324503b4b2406d0b8bfdef",
+          "kb_key": "product:ext_d0324503b4b2406d0b8bfdef",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_generic_marketing_copy"
+          ],
+          "blocking_issues": [
+            "public_generic_marketing_copy"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_d0324503b4b2406d0b8bfdef",
+          "kb_key": "product:ext_d0324503b4b2406d0b8bfdef",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_generic_marketing_copy"
+          ],
+          "blocking_issues": [
+            "public_generic_marketing_copy"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP",
+          "Panthenol (B5)",
+          "Retinol",
+          "Squalane"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 0,
+          "how_to_chars": 47,
+          "inci_chars": 1139,
+          "active_ingredients_chars": 83,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1139,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 0,
+        "how_to_chars": 47,
+        "inci_chars": 1139,
+        "active_ingredients_chars": 83,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1139,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_e60f3d846981a6a7e19f36c9",
+      "external_product_id": "ext_dea57b05463e18d14d4f95d7",
+      "market": "US",
+      "domain": "us.laneige.com",
+      "title": "Hydro UV Defense Sunscreen Broad Spectrum SPF 50+",
+      "canonical_url": "https://us.laneige.com/products/hydro-uv-defense-sunscreen-broad-spectrum-spf-50",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_dea57b05463e18d14d4f95d7",
+          "kb_key": "product:ext_dea57b05463e18d14d4f95d7",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_dea57b05463e18d14d4f95d7",
+          "kb_key": "product:ext_dea57b05463e18d14d4f95d7",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [
+          "active_raw_too_long",
+          "active_raw_may_be_full_inci"
+        ],
+        "regulatory_expected": true,
+        "hero_expected": true,
+        "active_items": [
+          "Avobenzone",
+          "Homosalate",
+          "Octisalate",
+          "Octocrylene",
+          "PROPANEDIOL",
+          "BUTYLOCTYL SALICYLATE",
+          "GLYCERIN",
+          "DIPHENYLSILOXY PHENYL TRIMETHICONE",
+          "SILICA",
+          "PHENYL TRIMETHICONE",
+          "CAPRYLYL METHICONE",
+          "BEHENYL ALCOHOL",
+          "VP/EICOSENE COPOLYMER",
+          "TRIMETHYLSILOXYSILICATE",
+          "C14-22 ALCOHOLS",
+          "GLYCERYL STEARATE"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 0,
+          "how_to_chars": 127,
+          "inci_chars": 978,
+          "active_ingredients_chars": 978,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 978,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 0,
+        "how_to_chars": 127,
+        "inci_chars": 978,
+        "active_ingredients_chars": 978,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 978,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_17a34f48ed404126a2970a5e",
+      "external_product_id": "ext_f599f564e1b64bd51877cf79",
+      "market": "US",
+      "domain": "us.laneige.com",
+      "title": "Lip Sleeping Mask",
+      "canonical_url": "https://us.laneige.com/products/lip-sleeping-mask",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_f599f564e1b64bd51877cf79",
+          "kb_key": "product:ext_f599f564e1b64bd51877cf79",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_f599f564e1b64bd51877cf79",
+          "kb_key": "product:ext_f599f564e1b64bd51877cf79",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Vitamin C (Ascorbic acid)"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 155,
+          "inci_chars": 249,
+          "active_ingredients_chars": 25,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 249,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "flagged",
+        "issues": [
+          "wrong_axis_for_category"
+        ],
+        "visible_variant_rows": 14,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [
+            {
+              "axis_name": "color",
+              "axis_kind": "color",
+              "value": "berry (original)",
+              "visual": true
+            },
+            {
+              "axis_name": "color",
+              "axis_kind": "color",
+              "value": "strawberry shortcake",
+              "visual": true
+            },
+            {
+              "axis_name": "color",
+              "axis_kind": "color",
+              "value": "pink lemonade",
+              "visual": true
+            },
+            {
+              "axis_name": "color",
+              "axis_kind": "color",
+              "value": "matcha bubble tea",
+              "visual": true
+            }
+          ],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 155,
+        "inci_chars": 249,
+        "active_ingredients_chars": 25,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 249,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_50409e328458e361d7cfed8a",
+      "external_product_id": "ext_f9c4ae7f19768b23d690ea14",
+      "market": "US",
+      "domain": "us.laneige.com",
+      "title": "Bouncy & Firm Serum",
+      "canonical_url": "https://us.laneige.com/products/bouncy-firm-serum",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_f9c4ae7f19768b23d690ea14",
+          "kb_key": "product:ext_f9c4ae7f19768b23d690ea14",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_f9c4ae7f19768b23d690ea14",
+          "kb_key": "product:ext_f9c4ae7f19768b23d690ea14",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Vitamin C (Ascorbic acid)",
+          "Peptides"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 1469,
+          "inci_chars": 933,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 933,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 1469,
+        "inci_chars": 933,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 933,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_3933829fd256951b26004954",
+      "external_product_id": "ext_ff7f4fcd1e538fce0891f1cd",
+      "market": "US",
+      "domain": "us.laneige.com",
+      "title": "JuicePop Box Lip Tint",
+      "canonical_url": "https://us.laneige.com/products/juicepop-box-lip-tint",
+      "product_family": "set_or_collection",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_ff7f4fcd1e538fce0891f1cd",
+          "kb_key": "product:ext_ff7f4fcd1e538fce0891f1cd",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_ff7f4fcd1e538fce0891f1cd",
+          "kb_key": "product:ext_ff7f4fcd1e538fce0891f1cd",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 0,
+          "how_to_chars": 223,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 9,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 0,
+        "how_to_chars": 223,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

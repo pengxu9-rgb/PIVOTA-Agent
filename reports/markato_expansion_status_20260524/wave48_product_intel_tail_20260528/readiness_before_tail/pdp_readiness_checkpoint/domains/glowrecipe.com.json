@@ -1,0 +1,705 @@
+{
+  "generated_at": "2026-05-28T10:02:05.546Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": "glowrecipe.com",
+    "externalProductIds": [],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": null,
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json",
+    "chunkByDomain": false
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 4,
+    "by_market": {
+      "US": 4
+    },
+    "by_domain": [
+      {
+        "key": "glowrecipe.com",
+        "count": 4
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 4
+      }
+    ],
+    "coverage": {
+      "missing_inci": 3,
+      "missing_active_raw": 3,
+      "missing_details": 1,
+      "missing_how_to": 0,
+      "missing_faq": 4
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 3,
+        "high_quality_ready": 2,
+        "missing_kb": 0,
+        "not_displayable": 1
+      },
+      "effective": {
+        "displayable": 3,
+        "high_quality_ready": 2,
+        "missing_kb": 0,
+        "not_displayable": 1,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [
+        {
+          "key": "empty_watchouts",
+          "count": 3
+        },
+        {
+          "key": "missing_card_highlight",
+          "count": 1
+        },
+        {
+          "key": "public_sensitive_claim",
+          "count": 1
+        },
+        {
+          "key": "quality_eligible",
+          "count": 1
+        },
+        {
+          "key": "quality_limited",
+          "count": 1
+        },
+        {
+          "key": "reviewed_not_displayable",
+          "count": 1
+        },
+        {
+          "key": "seller_only_evidence",
+          "count": 1
+        }
+      ],
+      "effective_issue_domains": [
+        {
+          "key": "glowrecipe.com::empty_watchouts",
+          "count": 3
+        },
+        {
+          "key": "glowrecipe.com::missing_card_highlight",
+          "count": 1
+        },
+        {
+          "key": "glowrecipe.com::public_sensitive_claim",
+          "count": 1
+        },
+        {
+          "key": "glowrecipe.com::quality_eligible",
+          "count": 1
+        },
+        {
+          "key": "glowrecipe.com::quality_limited",
+          "count": 1
+        },
+        {
+          "key": "glowrecipe.com::reviewed_not_displayable",
+          "count": 1
+        },
+        {
+          "key": "glowrecipe.com::seller_only_evidence",
+          "count": 1
+        }
+      ],
+      "quality_state": [
+        {
+          "key": "verified",
+          "count": 2
+        },
+        {
+          "key": "eligible",
+          "count": 1
+        },
+        {
+          "key": "limited",
+          "count": 1
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "seller_plus_formula",
+          "count": 3
+        },
+        {
+          "key": "seller_only",
+          "count": 1
+        }
+      ],
+      "samples": {
+        "reviewed_not_displayable": [
+          {
+            "external_product_id": "ext_00c167e98d8492fe4db5267e",
+            "domain": "glowrecipe.com",
+            "title": "Watermelon Glow Niacinamide Dew Balm SPF 45",
+            "used_product_id": "ext_00c167e98d8492fe4db5267e",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "public_sensitive_claim": [
+          {
+            "external_product_id": "ext_00c167e98d8492fe4db5267e",
+            "domain": "glowrecipe.com",
+            "title": "Watermelon Glow Niacinamide Dew Balm SPF 45",
+            "used_product_id": "ext_00c167e98d8492fe4db5267e",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "seller_only_evidence": [
+          {
+            "external_product_id": "ext_00c167e98d8492fe4db5267e",
+            "domain": "glowrecipe.com",
+            "title": "Watermelon Glow Niacinamide Dew Balm SPF 45",
+            "used_product_id": "ext_00c167e98d8492fe4db5267e",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "missing_card_highlight": [
+          {
+            "external_product_id": "ext_6dfac1b57e6748969079805b",
+            "domain": "glowrecipe.com",
+            "title": "Plum Plump Hyaluronic Cream",
+            "used_product_id": "ext_6dfac1b57e6748969079805b",
+            "quality_state": "eligible",
+            "evidence_profile": "seller_plus_formula"
+          }
+        ]
+      }
+    },
+    "active_ingredients": {
+      "regulatory_expected": 1,
+      "hero_expected": 4,
+      "any_active_items": 1,
+      "status": [
+        {
+          "key": "missing_hero",
+          "count": 2
+        },
+        {
+          "key": "missing_regulatory",
+          "count": 1
+        },
+        {
+          "key": "ready_hero",
+          "count": 1
+        }
+      ],
+      "issues": [
+        {
+          "key": "missing_hero",
+          "count": 2
+        },
+        {
+          "key": "missing_regulatory",
+          "count": 1
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "glowrecipe.com::missing_hero",
+          "count": 2
+        },
+        {
+          "key": "glowrecipe.com::missing_regulatory",
+          "count": 1
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "none",
+          "count": 3
+        },
+        {
+          "key": "pdp_section",
+          "count": 1
+        }
+      ],
+      "samples": {
+        "missing_regulatory": [
+          {
+            "external_product_id": "ext_00c167e98d8492fe4db5267e",
+            "domain": "glowrecipe.com",
+            "title": "Watermelon Glow Niacinamide Dew Balm SPF 45",
+            "status": "missing_regulatory",
+            "active_items": [],
+            "source_origin": "none"
+          }
+        ],
+        "missing_hero": [
+          {
+            "external_product_id": "ext_9e296aeef0292782abc4293f",
+            "domain": "glowrecipe.com",
+            "title": "Watermelon Pink Juice Moisturizer 10ml",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "none"
+          },
+          {
+            "external_product_id": "ext_fcc82f4185af2e0b036c3ed7",
+            "domain": "glowrecipe.com",
+            "title": "Watermelon Pink Juice Moisturizer 10ml",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "none"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 4
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_5b36d1928bff13523fbb3f15",
+      "external_product_id": "ext_00c167e98d8492fe4db5267e",
+      "market": "US",
+      "domain": "glowrecipe.com",
+      "title": "Watermelon Glow Niacinamide Dew Balm SPF 45",
+      "canonical_url": "https://glowrecipe.com/products/watermelon-glow-dew-balm-spf-45",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_00c167e98d8492fe4db5267e",
+          "kb_key": "product:ext_00c167e98d8492fe4db5267e",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "public_sensitive_claim",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "public_sensitive_claim"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_00c167e98d8492fe4db5267e",
+          "kb_key": "product:ext_00c167e98d8492fe4db5267e",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "public_sensitive_claim",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "public_sensitive_claim"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_regulatory",
+        "issues": [
+          "missing_regulatory"
+        ],
+        "regulatory_expected": true,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 177,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 177,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_6fd0fbd7afbb69c6cf058994",
+      "external_product_id": "ext_6dfac1b57e6748969079805b",
+      "market": "US",
+      "domain": "glowrecipe.com",
+      "title": "Plum Plump Hyaluronic Cream",
+      "canonical_url": "https://www.glowrecipe.com/products/plum-plump-hyaluronic-cream",
+      "product_family": "single_formula",
+      "product_line_id": "pl_d5a204e6c38d3f18abbd4897",
+      "identity_variant_axes": {
+        "size": "full size 50ml",
+        "volume": "50ml",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_6dfac1b57e6748969079805b",
+          "kb_key": "product:ext_6dfac1b57e6748969079805b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_6dfac1b57e6748969079805b",
+          "kb_key": "product:ext_6dfac1b57e6748969079805b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_d5a204e6c38d3f18abbd4897",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Niacinamide",
+          "Hyaluronic acid",
+          "Squalane"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 155,
+          "inci_chars": 1162,
+          "active_ingredients_chars": 48,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1162,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 3,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 155,
+        "inci_chars": 1162,
+        "active_ingredients_chars": 48,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1162,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_4946b270b85c1b810f393fc8",
+      "external_product_id": "ext_9e296aeef0292782abc4293f",
+      "market": "US",
+      "domain": "glowrecipe.com",
+      "title": "Watermelon Pink Juice Moisturizer 10ml",
+      "canonical_url": "https://glowrecipe.com/products/watermelon-glow-pink-juice-moisturizer-deluxe",
+      "product_family": "single_formula",
+      "product_line_id": "pl_ae30bdb644521c064660289e",
+      "identity_variant_axes": {
+        "volume": "10ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_9e296aeef0292782abc4293f",
+          "kb_key": "product:ext_9e296aeef0292782abc4293f",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_9e296aeef0292782abc4293f",
+          "kb_key": "product:ext_9e296aeef0292782abc4293f",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_ae30bdb644521c064660289e",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 155,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 155,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_191cd0db65f6be844d92c966",
+      "external_product_id": "ext_fcc82f4185af2e0b036c3ed7",
+      "market": "US",
+      "domain": "glowrecipe.com",
+      "title": "Watermelon Pink Juice Moisturizer 10ml",
+      "canonical_url": "https://www.glowrecipe.com/products/watermelon-glow-pink-juice-moisturizer-deluxe",
+      "product_family": "single_formula",
+      "product_line_id": "pl_ae30bdb644521c064660289e",
+      "identity_variant_axes": {
+        "volume": "10ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_fcc82f4185af2e0b036c3ed7",
+          "kb_key": "product:ext_fcc82f4185af2e0b036c3ed7",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_fcc82f4185af2e0b036c3ed7",
+          "kb_key": "product:ext_fcc82f4185af2e0b036c3ed7",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_ae30bdb644521c064660289e",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 155,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 155,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

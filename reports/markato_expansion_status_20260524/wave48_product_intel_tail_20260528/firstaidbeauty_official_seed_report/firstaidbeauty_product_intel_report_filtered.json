@@ -1,0 +1,3604 @@
+{
+  "meta": {
+    "generated_at": "2026-05-28T10:50:59.843Z",
+    "source": "reviewed_official_seed_product_intel_report",
+    "batch_name": "wave48_firstaidbeauty_product_intel_tail_20260528",
+    "inventory": "reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/firstaidbeauty_domain_audit_before/commerce_index_kb_readiness_inventory.filtered_no_ext_94c4c0eb238cedb76438f01d.json",
+    "selected_cases": 14,
+    "reviewer": "codex_quality_reviewer_owner_delegated",
+    "reviewer_kind": "assistant",
+    "candidate_quality_summary": {
+      "public_ready": 14,
+      "high_quality_ready": 14,
+      "evidence_profile": {
+        "seller_plus_formula": 14
+      }
+    }
+  },
+  "rows": [
+    {
+      "case_id": "live_ext_27541ddaefa99c1185fd9677",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-28T10:50:59.843Z",
+      "notes": "Approved official-PDP-seed rewrite for After-Shower Nourishing Body Oil; evidence_profile=seller_plus_formula; source_url=https://www.firstaidbeauty.com/products/after-shower-nourishing-body-oil",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_27541ddaefa99c1185fd9677",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_27541ddaefa99c1185fd9677",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_40b2ae3fe9fb71bf7ee5a9f15104954d",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Body oil identity",
+              "body": "A First Aid Beauty body oil listed on the brand source page as After-Shower Nourishing Body Oil. The source description identifies: Nourishing hydration to lock in skin's moisture post-shower and strengthens the skin's moisture barrier for a healthy glow."
+            },
+            "best_for": [
+              {
+                "tag": "body_oil_shoppers",
+                "label": "Body oil shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "Nourishing hydration to lock in skin's moisture post-shower and strengthens the skin's moisture barrier for a healthy glow.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Caprylic/Capric Triglyceride, Citrus Aurantium Dulcis (Orange) Peel Oil, Limonene, Citrus Limon (Lemon) Peel Oil, Citrus Reticulata (Tangerine) Peel Oil. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "body_care",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the body oil context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-28T10:50:59.843Z",
+              "source_version": "wave48_firstaidbeauty_product_intel_tail_20260528"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.firstaidbeauty.com/products/after-shower-nourishing-body-oil"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 18,
+                "source_url": "https://www.firstaidbeauty.com/products/after-shower-nourishing-body-oil"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "body oil",
+            "texture": "body_oil",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.firstaidbeauty.com/products/after-shower-nourishing-body-oil"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 18,
+              "source_url": "https://www.firstaidbeauty.com/products/after-shower-nourishing-body-oil"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-28T10:50:59.843Z",
+            "source_version": "wave48_firstaidbeauty_product_intel_tail_20260528"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-28T10:50:59.843Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave48_firstaidbeauty_product_intel_tail_20260528",
+            "official_source_url": "https://www.firstaidbeauty.com/products/after-shower-nourishing-body-oil",
+            "official_source_ingredient_count": 18,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "After-Shower Nourishing Body Oil",
+            "subtitle": "Body Oil",
+            "highlight": "Body oil formula detail",
+            "intro": "A First Aid Beauty body oil listed on the brand source page as After-Shower Nourishing Body Oil. The source description identifies: Nourishing hydration to lock in skin's moisture post-shower and strengthens the skin's moisture barrier for a healthy glow.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "After-Shower Nourishing Body Oil",
+            "compact_candidate": "Body Oil",
+            "highlight_candidate": "Body oil formula detail",
+            "intro_candidate": "A First Aid Beauty body oil listed on the brand source page as After-Shower Nourishing Body Oil. The source description identifies: Nourishing hydration to lock in skin's moisture post-shower and strengthens the skin's moisture barrier for a healthy glow.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_3a8ab0e88713143fd1df39ed",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-28T10:50:59.843Z",
+      "notes": "Approved official-PDP-seed rewrite for KP Bump Eraser Body Scrub 10% AHA Fresh Peach; evidence_profile=seller_plus_formula; source_url=https://www.firstaidbeauty.com/products/kp-bump-eraser-body-scrub-10-aha-fresh-peach",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_3a8ab0e88713143fd1df39ed",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_3a8ab0e88713143fd1df39ed",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_01f4484aaf4f2117ecee6852",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Body scrub identity",
+              "body": "A First Aid Beauty body scrub listed on the brand source page as KP Bump Eraser Body Scrub 10% AHA Fresh Peach. The source description identifies: A body scrub with a juicy, peach scent that exfoliates away uneven skin texture associated with K P to reveal exceptionally smooth + touchable skin after just one use."
+            },
+            "best_for": [
+              {
+                "tag": "body_scrub_shoppers",
+                "label": "Body scrub shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "A body scrub with a juicy, peach scent that exfoliates away uneven skin texture associated with K P to reveal exceptionally smooth + touchable skin after just one use.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Pumice, Aqua/ Water/ Eau, Glycolic Acid, Sodium Cocoyl Isethionate, Lactic Acid. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "body_care",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the body scrub context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-28T10:50:59.843Z",
+              "source_version": "wave48_firstaidbeauty_product_intel_tail_20260528"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.firstaidbeauty.com/products/kp-bump-eraser-body-scrub-10-aha-fresh-peach"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 37,
+                "source_url": "https://www.firstaidbeauty.com/products/kp-bump-eraser-body-scrub-10-aha-fresh-peach"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "body scrub",
+            "texture": "body_scrub",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.firstaidbeauty.com/products/kp-bump-eraser-body-scrub-10-aha-fresh-peach"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 37,
+              "source_url": "https://www.firstaidbeauty.com/products/kp-bump-eraser-body-scrub-10-aha-fresh-peach"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-28T10:50:59.843Z",
+            "source_version": "wave48_firstaidbeauty_product_intel_tail_20260528"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-28T10:50:59.843Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave48_firstaidbeauty_product_intel_tail_20260528",
+            "official_source_url": "https://www.firstaidbeauty.com/products/kp-bump-eraser-body-scrub-10-aha-fresh-peach",
+            "official_source_ingredient_count": 37,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "KP Bump Eraser Body Scrub 10% AHA Fresh Peach",
+            "subtitle": "Body Scrub",
+            "highlight": "Body polish format detail",
+            "intro": "A First Aid Beauty body scrub listed on the brand source page as KP Bump Eraser Body Scrub 10% AHA Fresh Peach. The source description identifies: A body scrub with a juicy, peach scent that exfoliates away uneven skin texture associated with K P to reveal exceptionally smooth + touchable skin after just one use.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "KP Bump Eraser Body Scrub 10% AHA Fresh Peach",
+            "compact_candidate": "Body Scrub",
+            "highlight_candidate": "Body polish format detail",
+            "intro_candidate": "A First Aid Beauty body scrub listed on the brand source page as KP Bump Eraser Body Scrub 10% AHA Fresh Peach. The source description identifies: A body scrub with a juicy, peach scent that exfoliates away uneven skin texture associated with K P to reveal exceptionally smooth + touchable skin after just one use.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_5a941eb383f5c65705b4b130",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-28T10:50:59.843Z",
+      "notes": "Approved official-PDP-seed rewrite for KP Bump Eraser Body Scrub 10% AHA Travel Size; evidence_profile=seller_plus_formula; source_url=https://www.firstaidbeauty.com/products/kp-bump-eraser-body-scrub-aha-travel-size",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_5a941eb383f5c65705b4b130",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_5a941eb383f5c65705b4b130",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_9424af22dd39287cdad0bd06",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Body scrub identity",
+              "body": "A First Aid Beauty body scrub listed on the brand source page as KP Bump Eraser Body Scrub 10% AHA Travel Size. The source description identifies: A body scrub that exfoliates away uneven skin texture associated with Keratosis Pilaris to reveal exceptionally smooth + touchable skin."
+            },
+            "best_for": [
+              {
+                "tag": "body_scrub_shoppers",
+                "label": "Body scrub shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "A body scrub that exfoliates away uneven skin texture associated with Keratosis Pilaris to reveal exceptionally smooth + touchable skin.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Pumice, Aqua/Water/Eau, Glycolic Acid, Sodium Cocoyl Isethionate, Lactic Acid. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "body_care",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the body scrub context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-28T10:50:59.843Z",
+              "source_version": "wave48_firstaidbeauty_product_intel_tail_20260528"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.firstaidbeauty.com/products/kp-bump-eraser-body-scrub-aha-travel-size"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 31,
+                "source_url": "https://www.firstaidbeauty.com/products/kp-bump-eraser-body-scrub-aha-travel-size"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "body scrub",
+            "texture": "body_scrub",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.firstaidbeauty.com/products/kp-bump-eraser-body-scrub-aha-travel-size"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 31,
+              "source_url": "https://www.firstaidbeauty.com/products/kp-bump-eraser-body-scrub-aha-travel-size"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-28T10:50:59.843Z",
+            "source_version": "wave48_firstaidbeauty_product_intel_tail_20260528"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-28T10:50:59.843Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave48_firstaidbeauty_product_intel_tail_20260528",
+            "official_source_url": "https://www.firstaidbeauty.com/products/kp-bump-eraser-body-scrub-aha-travel-size",
+            "official_source_ingredient_count": 31,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "KP Bump Eraser Body Scrub 10% AHA Travel Size",
+            "subtitle": "Body Scrub",
+            "highlight": "Body polish format detail",
+            "intro": "A First Aid Beauty body scrub listed on the brand source page as KP Bump Eraser Body Scrub 10% AHA Travel Size. The source description identifies: A body scrub that exfoliates away uneven skin texture associated with Keratosis Pilaris to reveal exceptionally smooth + touchable skin.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "KP Bump Eraser Body Scrub 10% AHA Travel Size",
+            "compact_candidate": "Body Scrub",
+            "highlight_candidate": "Body polish format detail",
+            "intro_candidate": "A First Aid Beauty body scrub listed on the brand source page as KP Bump Eraser Body Scrub 10% AHA Travel Size. The source description identifies: A body scrub that exfoliates away uneven skin texture associated with Keratosis Pilaris to reveal exceptionally smooth + touchable skin.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_684ef08faa23d138a2222481",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-28T10:50:59.843Z",
+      "notes": "Approved official-PDP-seed rewrite for KP Bump Eraser Body Scrub 10% AHA Fresh Strawberry; evidence_profile=seller_plus_formula; source_url=https://www.firstaidbeauty.com/products/kp-bump-eraser-body-scrub-aha-fresh-strawberry",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_684ef08faa23d138a2222481",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_684ef08faa23d138a2222481",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_639c0acb5f107e6fce18d23b",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Body scrub identity",
+              "body": "A First Aid Beauty body scrub listed on the brand source page as KP Bump Eraser Body Scrub 10% AHA Fresh Strawberry. The source description identifies: A body scrub with a juicy, strawberry scent that exfoliates away uneven skin texture associated with K P to reveal exceptionally smooth + touchable skin after just one use."
+            },
+            "best_for": [
+              {
+                "tag": "body_scrub_shoppers",
+                "label": "Body scrub shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "A body scrub with a juicy, strawberry scent that exfoliates away uneven skin texture associated with K P to reveal exceptionally smooth + touchable skin after just one use.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Pumice, Aqua/Water/Eau, Glycolic Acid, Sodium Cocoyl Isethionate, Lactic Acid. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "body_care",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the body scrub context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-28T10:50:59.843Z",
+              "source_version": "wave48_firstaidbeauty_product_intel_tail_20260528"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.firstaidbeauty.com/products/kp-bump-eraser-body-scrub-aha-fresh-strawberry"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 36,
+                "source_url": "https://www.firstaidbeauty.com/products/kp-bump-eraser-body-scrub-aha-fresh-strawberry"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "body scrub",
+            "texture": "body_scrub",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.firstaidbeauty.com/products/kp-bump-eraser-body-scrub-aha-fresh-strawberry"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 36,
+              "source_url": "https://www.firstaidbeauty.com/products/kp-bump-eraser-body-scrub-aha-fresh-strawberry"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-28T10:50:59.843Z",
+            "source_version": "wave48_firstaidbeauty_product_intel_tail_20260528"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-28T10:50:59.843Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave48_firstaidbeauty_product_intel_tail_20260528",
+            "official_source_url": "https://www.firstaidbeauty.com/products/kp-bump-eraser-body-scrub-aha-fresh-strawberry",
+            "official_source_ingredient_count": 36,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "KP Bump Eraser Body Scrub 10% AHA Fresh Strawberry",
+            "subtitle": "Body Scrub",
+            "highlight": "Body polish format detail",
+            "intro": "A First Aid Beauty body scrub listed on the brand source page as KP Bump Eraser Body Scrub 10% AHA Fresh Strawberry. The source description identifies: A body scrub with a juicy, strawberry scent that exfoliates away uneven skin texture associated with K P to reveal exceptionally smooth + touchable skin after just one use.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "KP Bump Eraser Body Scrub 10% AHA Fresh Strawberry",
+            "compact_candidate": "Body Scrub",
+            "highlight_candidate": "Body polish format detail",
+            "intro_candidate": "A First Aid Beauty body scrub listed on the brand source page as KP Bump Eraser Body Scrub 10% AHA Fresh Strawberry. The source description identifies: A body scrub with a juicy, strawberry scent that exfoliates away uneven skin texture associated with K P to reveal exceptionally smooth + touchable skin after just one use.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_6c2feb5d6e43c9362d6a2254",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-28T10:50:59.843Z",
+      "notes": "Approved official-PDP-seed rewrite for Whole Body Deodorant Cream; evidence_profile=seller_plus_formula; source_url=https://www.firstaidbeauty.com/products/whole-body-deodorant-cream",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_6c2feb5d6e43c9362d6a2254",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_6c2feb5d6e43c9362d6a2254",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_279362093239bdacf0de0329",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Deodorant identity",
+              "body": "A First Aid Beauty deodorant listed on the brand source page as Whole Body Deodorant Cream. The source description identifies: Sweat-activated cream with odor-fighting AHA's targets odor at the source where you experience unwanted body odor."
+            },
+            "best_for": [
+              {
+                "tag": "deodorant_shoppers",
+                "label": "Deodorant shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "Sweat-activated cream with odor-fighting AHA's targets odor at the source where you experience unwanted body odor.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Aqua (Water, Eau), Zea Mays (Corn) Starch, Glycerin, Isohexadecane. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "body_care",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the deodorant context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-28T10:50:59.843Z",
+              "source_version": "wave48_firstaidbeauty_product_intel_tail_20260528"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.firstaidbeauty.com/products/whole-body-deodorant-cream"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 27,
+                "source_url": "https://www.firstaidbeauty.com/products/whole-body-deodorant-cream"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "deodorant",
+            "texture": "deodorant",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.firstaidbeauty.com/products/whole-body-deodorant-cream"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 27,
+              "source_url": "https://www.firstaidbeauty.com/products/whole-body-deodorant-cream"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-28T10:50:59.843Z",
+            "source_version": "wave48_firstaidbeauty_product_intel_tail_20260528"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-28T10:50:59.843Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave48_firstaidbeauty_product_intel_tail_20260528",
+            "official_source_url": "https://www.firstaidbeauty.com/products/whole-body-deodorant-cream",
+            "official_source_ingredient_count": 27,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Whole Body Deodorant Cream",
+            "subtitle": "Deodorant",
+            "highlight": "Deodorant format detail",
+            "intro": "A First Aid Beauty deodorant listed on the brand source page as Whole Body Deodorant Cream. The source description identifies: Sweat-activated cream with odor-fighting AHA's targets odor at the source where you experience unwanted body odor.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Whole Body Deodorant Cream",
+            "compact_candidate": "Deodorant",
+            "highlight_candidate": "Deodorant format detail",
+            "intro_candidate": "A First Aid Beauty deodorant listed on the brand source page as Whole Body Deodorant Cream. The source description identifies: Sweat-activated cream with odor-fighting AHA's targets odor at the source where you experience unwanted body odor.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_84593a93fbe72818eb9f87d3",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-28T10:50:59.843Z",
+      "notes": "Approved official-PDP-seed rewrite for Ultra Gentle Cream-to-Foam Face Cleanser with Colloidal Oatmeal + Glycerin Travel Size; evidence_profile=seller_plus_formula; source_url=https://www.firstaidbeauty.com/products/face-cleanser-travel-size",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_84593a93fbe72818eb9f87d3",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_84593a93fbe72818eb9f87d3",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_9338dd2b6714f99532a380bf",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Cleanser identity",
+              "body": "A First Aid Beauty cleanser listed on the brand source page as Ultra Gentle Cream-to-Foam Face Cleanser with Colloidal Oatmeal + Glycerin Travel Size. The source description identifies: A daily cleanser that's gentle enough for sensitive and blemish-prone skin and effectively removes makeup, dirt, and SPF, leaving skin soft and supple."
+            },
+            "best_for": [
+              {
+                "tag": "cleanser_shoppers",
+                "label": "Cleanser shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "A daily cleanser that's gentle enough for sensitive and blemish-prone skin and effectively removes makeup, dirt, and SPF, leaving skin soft and supple.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Aqua/Water/Eau, Sodium Cocoyl Isethionate, Glycerin, Stearic Acid, Coconut Acid. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "cleanse",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the cleanser context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-28T10:50:59.843Z",
+              "source_version": "wave48_firstaidbeauty_product_intel_tail_20260528"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.firstaidbeauty.com/products/face-cleanser-travel-size"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 23,
+                "source_url": "https://www.firstaidbeauty.com/products/face-cleanser-travel-size"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "cleanser",
+            "texture": "cleanser",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.firstaidbeauty.com/products/face-cleanser-travel-size"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 23,
+              "source_url": "https://www.firstaidbeauty.com/products/face-cleanser-travel-size"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-28T10:50:59.843Z",
+            "source_version": "wave48_firstaidbeauty_product_intel_tail_20260528"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-28T10:50:59.843Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave48_firstaidbeauty_product_intel_tail_20260528",
+            "official_source_url": "https://www.firstaidbeauty.com/products/face-cleanser-travel-size",
+            "official_source_ingredient_count": 23,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Ultra Gentle Cream-to-Foam Face Cleanser with Colloidal Oatmeal + Glycerin Travel Size",
+            "subtitle": "Cleanser",
+            "highlight": "Cleanser formula detail",
+            "intro": "A First Aid Beauty cleanser listed on the brand source page as Ultra Gentle Cream-to-Foam Face Cleanser with Colloidal Oatmeal + Glycerin Travel Size. The source description identifies: A daily cleanser that's gentle enough for sensitive and blemish-prone skin and effectively removes makeup, dirt, and SPF, leaving skin soft and supple.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Ultra Gentle Cream-to-Foam Face Cleanser with Colloidal Oatmeal + Glycerin Travel Size",
+            "compact_candidate": "Cleanser",
+            "highlight_candidate": "Cleanser formula detail",
+            "intro_candidate": "A First Aid Beauty cleanser listed on the brand source page as Ultra Gentle Cream-to-Foam Face Cleanser with Colloidal Oatmeal + Glycerin Travel Size. The source description identifies: A daily cleanser that's gentle enough for sensitive and blemish-prone skin and effectively removes makeup, dirt, and SPF, leaving skin soft and supple.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_8753278741a1169f5466840f",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-28T10:50:59.843Z",
+      "notes": "Approved official-PDP-seed rewrite for Anti-Chafe Stick with Shea Butter + Colloidal Oatmeal; evidence_profile=seller_plus_formula; source_url=https://www.firstaidbeauty.com/products/anti-chafe-stick-with-shea-butter-colloidal-oatmeal",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_8753278741a1169f5466840f",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_8753278741a1169f5466840f",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_fda3d239d442df73d74dfdd8",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Beauty product identity",
+              "body": "A First Aid Beauty beauty product listed on the brand source page as Anti-Chafe Stick with Shea Butter + Colloidal Oatmeal. The source description identifies: Glide easily with less friction + discomfort with this non-sticky, no-mess formula that creates a sweat-resistant shield over delicate skin on inner thighs, underarms or wherever you experience chafing."
+            },
+            "best_for": [
+              {
+                "tag": "beauty_product_shoppers",
+                "label": "Beauty product shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "Glide easily with less friction + discomfort with this non-sticky, no-mess formula that creates a sweat-resistant shield over delicate skin on inner thighs, underarms or wherever you experience chafing.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Caprylic/Capric Triglyceride, Ozokerite, Tapioca Starch, Magnesium Hydroxide, Cocos Nucifera (Coconut) Oil. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "beauty",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the beauty product context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-28T10:50:59.843Z",
+              "source_version": "wave48_firstaidbeauty_product_intel_tail_20260528"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.firstaidbeauty.com/products/anti-chafe-stick-with-shea-butter-colloidal-oatmeal"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 11,
+                "source_url": "https://www.firstaidbeauty.com/products/anti-chafe-stick-with-shea-butter-colloidal-oatmeal"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "beauty product",
+            "texture": "beauty_product",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.firstaidbeauty.com/products/anti-chafe-stick-with-shea-butter-colloidal-oatmeal"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 11,
+              "source_url": "https://www.firstaidbeauty.com/products/anti-chafe-stick-with-shea-butter-colloidal-oatmeal"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-28T10:50:59.843Z",
+            "source_version": "wave48_firstaidbeauty_product_intel_tail_20260528"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-28T10:50:59.843Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave48_firstaidbeauty_product_intel_tail_20260528",
+            "official_source_url": "https://www.firstaidbeauty.com/products/anti-chafe-stick-with-shea-butter-colloidal-oatmeal",
+            "official_source_ingredient_count": 11,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Anti-Chafe Stick with Shea Butter + Colloidal Oatmeal",
+            "subtitle": "Beauty Product",
+            "highlight": "Beauty Product format detail",
+            "intro": "A First Aid Beauty beauty product listed on the brand source page as Anti-Chafe Stick with Shea Butter + Colloidal Oatmeal. The source description identifies: Glide easily with less friction + discomfort with this non-sticky, no-mess formula that creates a sweat-resistant shield over delicate skin on inner thighs, underarms or wherever you experience chafing.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Anti-Chafe Stick with Shea Butter + Colloidal Oatmeal",
+            "compact_candidate": "Beauty Product",
+            "highlight_candidate": "Beauty Product format detail",
+            "intro_candidate": "A First Aid Beauty beauty product listed on the brand source page as Anti-Chafe Stick with Shea Butter + Colloidal Oatmeal. The source description identifies: Glide easily with less friction + discomfort with this non-sticky, no-mess formula that creates a sweat-resistant shield over delicate skin on inner thighs, underarms or wherever you experience chafing.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_8e21eb216b27854ddea6e0fa",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-28T10:50:59.843Z",
+      "notes": "Approved official-PDP-seed rewrite for Ultra Gentle Cream-to-Foam Face Cleanser Jumbo; evidence_profile=seller_plus_formula; source_url=https://www.firstaidbeauty.com/products/face-cleanser-jumbo",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_8e21eb216b27854ddea6e0fa",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_8e21eb216b27854ddea6e0fa",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_0880816a4286272a8eca3b73",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Cleanser identity",
+              "body": "A First Aid Beauty cleanser listed on the brand source page as Ultra Gentle Cream-to-Foam Face Cleanser Jumbo. The source description identifies: A daily cleanser that's gentle enough for sensitive and blemish-prone skin and effectively removes makeup, dirt, and SPF, leaving skin soft and supple."
+            },
+            "best_for": [
+              {
+                "tag": "cleanser_shoppers",
+                "label": "Cleanser shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "A daily cleanser that's gentle enough for sensitive and blemish-prone skin and effectively removes makeup, dirt, and SPF, leaving skin soft and supple.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Aqua/Water/Eau, Sodium Cocoyl Isethionate, Glycerin, Stearic Acid, Hydrogenated Coconut Acid. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "cleanse",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the cleanser context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-28T10:50:59.843Z",
+              "source_version": "wave48_firstaidbeauty_product_intel_tail_20260528"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.firstaidbeauty.com/products/face-cleanser-jumbo"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 27,
+                "source_url": "https://www.firstaidbeauty.com/products/face-cleanser-jumbo"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "cleanser",
+            "texture": "cleanser",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.firstaidbeauty.com/products/face-cleanser-jumbo"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 27,
+              "source_url": "https://www.firstaidbeauty.com/products/face-cleanser-jumbo"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-28T10:50:59.843Z",
+            "source_version": "wave48_firstaidbeauty_product_intel_tail_20260528"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-28T10:50:59.843Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave48_firstaidbeauty_product_intel_tail_20260528",
+            "official_source_url": "https://www.firstaidbeauty.com/products/face-cleanser-jumbo",
+            "official_source_ingredient_count": 27,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Ultra Gentle Cream-to-Foam Face Cleanser Jumbo",
+            "subtitle": "Cleanser",
+            "highlight": "Cleanser formula detail",
+            "intro": "A First Aid Beauty cleanser listed on the brand source page as Ultra Gentle Cream-to-Foam Face Cleanser Jumbo. The source description identifies: A daily cleanser that's gentle enough for sensitive and blemish-prone skin and effectively removes makeup, dirt, and SPF, leaving skin soft and supple.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Ultra Gentle Cream-to-Foam Face Cleanser Jumbo",
+            "compact_candidate": "Cleanser",
+            "highlight_candidate": "Cleanser formula detail",
+            "intro_candidate": "A First Aid Beauty cleanser listed on the brand source page as Ultra Gentle Cream-to-Foam Face Cleanser Jumbo. The source description identifies: A daily cleanser that's gentle enough for sensitive and blemish-prone skin and effectively removes makeup, dirt, and SPF, leaving skin soft and supple.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_92987efc90e7844dfa9d1899",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-28T10:50:59.843Z",
+      "notes": "Approved official-PDP-seed rewrite for Smooth Shave Cream; evidence_profile=seller_plus_formula; source_url=https://www.firstaidbeauty.com/products/smooth-shave-cream",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_92987efc90e7844dfa9d1899",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_92987efc90e7844dfa9d1899",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_f7f8615f0e9a7ece06f246cf",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Skincare product identity",
+              "body": "A First Aid Beauty skincare product listed on the brand source page as Smooth Shave Cream. The source description identifies: The First Aid Beauty Smooth Shaving Cream is a fragrance-free, skin-loving shaving cream that provides a protective layer of glide while you shave."
+            },
+            "best_for": [
+              {
+                "tag": "skincare_shoppers",
+                "label": "Skincare product shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "The First Aid Beauty Smooth Shaving Cream is a fragrance-free, skin-loving shaving cream that provides a protective layer of glide while you shave.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Aqua/Water/Eau, Sodium Cocoyl Isethionate, Glycerin, Stearic Acid, Hydrogenated Coconut Acid. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "skin_care",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the skincare product context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-28T10:50:59.843Z",
+              "source_version": "wave48_firstaidbeauty_product_intel_tail_20260528"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.firstaidbeauty.com/products/smooth-shave-cream"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 27,
+                "source_url": "https://www.firstaidbeauty.com/products/smooth-shave-cream"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "skincare product",
+            "texture": "skincare",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.firstaidbeauty.com/products/smooth-shave-cream"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 27,
+              "source_url": "https://www.firstaidbeauty.com/products/smooth-shave-cream"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-28T10:50:59.843Z",
+            "source_version": "wave48_firstaidbeauty_product_intel_tail_20260528"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-28T10:50:59.843Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave48_firstaidbeauty_product_intel_tail_20260528",
+            "official_source_url": "https://www.firstaidbeauty.com/products/smooth-shave-cream",
+            "official_source_ingredient_count": 27,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Smooth Shave Cream",
+            "subtitle": "Skincare",
+            "highlight": "Skincare formula detail",
+            "intro": "A First Aid Beauty skincare product listed on the brand source page as Smooth Shave Cream. The source description identifies: The First Aid Beauty Smooth Shaving Cream is a fragrance-free, skin-loving shaving cream that provides a protective layer of glide while you shave.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Smooth Shave Cream",
+            "compact_candidate": "Skincare",
+            "highlight_candidate": "Skincare formula detail",
+            "intro_candidate": "A First Aid Beauty skincare product listed on the brand source page as Smooth Shave Cream. The source description identifies: The First Aid Beauty Smooth Shaving Cream is a fragrance-free, skin-loving shaving cream that provides a protective layer of glide while you shave.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_9383dd326e07694ef444ca7c",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-28T10:50:59.843Z",
+      "notes": "Approved official-PDP-seed rewrite for Ingrown Hair Pads with BHA + AHA 60 count; evidence_profile=seller_plus_formula; source_url=https://www.firstaidbeauty.com/products/ingrown-hair-pads-with-bha-aha-60-count",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_9383dd326e07694ef444ca7c",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_9383dd326e07694ef444ca7c",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_32ec09f261187cda90611537",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Serum identity",
+              "body": "A First Aid Beauty serum listed on the brand source page as Ingrown Hair Pads with BHA + AHA 60 count. The source description identifies: Gentle daily ingrown treatment pads that exfoliate the dead skin cells that trap hairs and help prevent the creation of razor bumps + ingrown hairs."
+            },
+            "best_for": [
+              {
+                "tag": "serum_shoppers",
+                "label": "Serum shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "Gentle daily ingrown treatment pads that exfoliate the dead skin cells that trap hairs and help prevent the creation of razor bumps + ingrown hairs.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Aqua (Water, Eau), Polysorbate 20, Glycerin, Hamamelis Virginiana (Witch Hazel) Water. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "skin_care",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the serum context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-28T10:50:59.843Z",
+              "source_version": "wave48_firstaidbeauty_product_intel_tail_20260528"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.firstaidbeauty.com/products/ingrown-hair-pads-with-bha-aha-60-count"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 20,
+                "source_url": "https://www.firstaidbeauty.com/products/ingrown-hair-pads-with-bha-aha-60-count"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "serum",
+            "texture": "serum",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.firstaidbeauty.com/products/ingrown-hair-pads-with-bha-aha-60-count"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 20,
+              "source_url": "https://www.firstaidbeauty.com/products/ingrown-hair-pads-with-bha-aha-60-count"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-28T10:50:59.843Z",
+            "source_version": "wave48_firstaidbeauty_product_intel_tail_20260528"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-28T10:50:59.843Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave48_firstaidbeauty_product_intel_tail_20260528",
+            "official_source_url": "https://www.firstaidbeauty.com/products/ingrown-hair-pads-with-bha-aha-60-count",
+            "official_source_ingredient_count": 20,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Ingrown Hair Pads with BHA + AHA 60 count",
+            "subtitle": "Serum",
+            "highlight": "AHA serum detail",
+            "intro": "A First Aid Beauty serum listed on the brand source page as Ingrown Hair Pads with BHA + AHA 60 count. The source description identifies: Gentle daily ingrown treatment pads that exfoliate the dead skin cells that trap hairs and help prevent the creation of razor bumps + ingrown hairs.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Ingrown Hair Pads with BHA + AHA 60 count",
+            "compact_candidate": "Serum",
+            "highlight_candidate": "AHA serum detail",
+            "intro_candidate": "A First Aid Beauty serum listed on the brand source page as Ingrown Hair Pads with BHA + AHA 60 count. The source description identifies: Gentle daily ingrown treatment pads that exfoliate the dead skin cells that trap hairs and help prevent the creation of razor bumps + ingrown hairs.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_9452ba1fbc20ef7afc51e8a4",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-28T10:50:59.843Z",
+      "notes": "Approved official-PDP-seed rewrite for Ultra Light Liquid Mineral Sunscreen with Zinc Oxide SPF 30; evidence_profile=seller_plus_formula; source_url=https://www.firstaidbeauty.com/products/weightless-liquid-mineral-sunscreen-with-zinc-oxide-spf-30",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_9452ba1fbc20ef7afc51e8a4",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_9452ba1fbc20ef7afc51e8a4",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_8404a39cab777fd3359769139904f31d",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Sunscreen identity",
+              "body": "A First Aid Beauty sunscreen listed on the brand source page as Ultra Light Liquid Mineral Sunscreen with Zinc Oxide SPF 30. The source description identifies: This silky liquid formula provides weightless sun protection with SPF 30."
+            },
+            "best_for": [
+              {
+                "tag": "sunscreen_shoppers",
+                "label": "Sunscreen shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "This silky liquid formula provides weightless sun protection with SPF 30.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Active ingredient: 22% Zinc Oxide Inactive Ingredients: Ethylhexyl Olivate, Isododecane, Coconut Alkanes, Aluminum Starch Octenylsuccinate, Caprylic/Capric Triglyceride. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "skin_care",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the sunscreen context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-28T10:50:59.843Z",
+              "source_version": "wave48_firstaidbeauty_product_intel_tail_20260528"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.firstaidbeauty.com/products/weightless-liquid-mineral-sunscreen-with-zinc-oxide-spf-30"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 37,
+                "source_url": "https://www.firstaidbeauty.com/products/weightless-liquid-mineral-sunscreen-with-zinc-oxide-spf-30"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "sunscreen",
+            "texture": "sunscreen",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.firstaidbeauty.com/products/weightless-liquid-mineral-sunscreen-with-zinc-oxide-spf-30"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 37,
+              "source_url": "https://www.firstaidbeauty.com/products/weightless-liquid-mineral-sunscreen-with-zinc-oxide-spf-30"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-28T10:50:59.843Z",
+            "source_version": "wave48_firstaidbeauty_product_intel_tail_20260528"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-28T10:50:59.843Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave48_firstaidbeauty_product_intel_tail_20260528",
+            "official_source_url": "https://www.firstaidbeauty.com/products/weightless-liquid-mineral-sunscreen-with-zinc-oxide-spf-30",
+            "official_source_ingredient_count": 37,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Ultra Light Liquid Mineral Sunscreen with Zinc Oxide SPF 30",
+            "subtitle": "Sunscreen",
+            "highlight": "Sunscreen format detail",
+            "intro": "A First Aid Beauty sunscreen listed on the brand source page as Ultra Light Liquid Mineral Sunscreen with Zinc Oxide SPF 30. The source description identifies: This silky liquid formula provides weightless sun protection with SPF 30.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Ultra Light Liquid Mineral Sunscreen with Zinc Oxide SPF 30",
+            "compact_candidate": "Sunscreen",
+            "highlight_candidate": "Sunscreen format detail",
+            "intro_candidate": "A First Aid Beauty sunscreen listed on the brand source page as Ultra Light Liquid Mineral Sunscreen with Zinc Oxide SPF 30. The source description identifies: This silky liquid formula provides weightless sun protection with SPF 30.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_a18b2d9e55d6b0dfd8c117be",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-28T10:50:59.843Z",
+      "notes": "Approved official-PDP-seed rewrite for Body Acne Clearing Mist with 2% Salicylic Acid; evidence_profile=seller_plus_formula; source_url=https://www.firstaidbeauty.com/products/body-acne-mist",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_a18b2d9e55d6b0dfd8c117be",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_a18b2d9e55d6b0dfd8c117be",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_bab8b1a5b74866eb82b1dfe4",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Serum identity",
+              "body": "A First Aid Beauty serum listed on the brand source page as Body Acne Clearing Mist with 2% Salicylic Acid. The source page lists Body Acne Clearing Mist with 2% Salicylic Acid as a serum with formula fields including Medicinal Ingredient Salicylic Acid 2% Non-medicinal Ingredients Water/Aqua/Eau, Glycereth-26, Glycerin, Sodium Hydroxide, Phenoxyethanol."
+            },
+            "best_for": [
+              {
+                "tag": "serum_shoppers",
+                "label": "Serum shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "The source page lists Body Acne Clearing Mist with 2% Salicylic Acid as a serum with formula fields including Medicinal Ingredient Salicylic Acid 2% Non-medicinal Ingredients Water/Aqua/Eau, Glycereth-26, Glycerin, Sodium Hydroxide, Phenoxyethanol.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Medicinal Ingredient Salicylic Acid 2% Non-medicinal Ingredients Water/Aqua/Eau, Glycereth-26, Glycerin, Sodium Hydroxide, Phenoxyethanol. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "skin_care",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the serum context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-28T10:50:59.843Z",
+              "source_version": "wave48_firstaidbeauty_product_intel_tail_20260528"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.firstaidbeauty.com/products/body-acne-mist"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 11,
+                "source_url": "https://www.firstaidbeauty.com/products/body-acne-mist"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "serum",
+            "texture": "serum",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.firstaidbeauty.com/products/body-acne-mist"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 11,
+              "source_url": "https://www.firstaidbeauty.com/products/body-acne-mist"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-28T10:50:59.843Z",
+            "source_version": "wave48_firstaidbeauty_product_intel_tail_20260528"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-28T10:50:59.843Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave48_firstaidbeauty_product_intel_tail_20260528",
+            "official_source_url": "https://www.firstaidbeauty.com/products/body-acne-mist",
+            "official_source_ingredient_count": 11,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Body Acne Clearing Mist with 2% Salicylic Acid",
+            "subtitle": "Serum",
+            "highlight": "Treatment formula detail",
+            "intro": "A First Aid Beauty serum listed on the brand source page as Body Acne Clearing Mist with 2% Salicylic Acid. The source page lists Body Acne Clearing Mist with 2% Salicylic Acid as a serum with formula fields including Medicinal Ingredient Salicylic Acid 2% Non-medicinal Ingredients Water/Aqua/Eau, Glycereth-26, Glycerin, Sodium Hydroxide, Phenoxyethanol.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Body Acne Clearing Mist with 2% Salicylic Acid",
+            "compact_candidate": "Serum",
+            "highlight_candidate": "Treatment formula detail",
+            "intro_candidate": "A First Aid Beauty serum listed on the brand source page as Body Acne Clearing Mist with 2% Salicylic Acid. The source page lists Body Acne Clearing Mist with 2% Salicylic Acid as a serum with formula fields including Medicinal Ingredient Salicylic Acid 2% Non-medicinal Ingredients Water/Aqua/Eau, Glycereth-26, Glycerin, Sodium Hydroxide, Phenoxyethanol.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_da2a42e85f3684796734f2d0",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-28T10:50:59.843Z",
+      "notes": "Approved official-PDP-seed rewrite for Facial Radiance Pads with Glycolic + Lactic Acids Travel Size; evidence_profile=seller_plus_formula; source_url=https://www.firstaidbeauty.com/products/facial-radiance-pads-with-glycolic-lactic-acids-travel-size",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_da2a42e85f3684796734f2d0",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_da2a42e85f3684796734f2d0",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_187528fd3f120503b8bc22c1",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Serum identity",
+              "body": "A First Aid Beauty serum listed on the brand source page as Facial Radiance Pads with Glycolic + Lactic Acids Travel Size. The source description identifies: Sensitive skin-friendly & gentle face exfoliating pads with a blend of AHAs designed for daily use to help brighten, smooth and prep skin for makeup."
+            },
+            "best_for": [
+              {
+                "tag": "serum_shoppers",
+                "label": "Serum shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "Sensitive skin-friendly & gentle face exfoliating pads with a blend of AHAs designed for daily use to help brighten, smooth and prep skin for makeup.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Aqua/Water/ Eau, Aloe Barbadensis Leaf Juice, Glycerin, Cucumis Sativus Fruit Water, Lactic Acid. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "skin_care",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the serum context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-28T10:50:59.843Z",
+              "source_version": "wave48_firstaidbeauty_product_intel_tail_20260528"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.firstaidbeauty.com/products/facial-radiance-pads-with-glycolic-lactic-acids-travel-size"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 21,
+                "source_url": "https://www.firstaidbeauty.com/products/facial-radiance-pads-with-glycolic-lactic-acids-travel-size"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "serum",
+            "texture": "serum",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.firstaidbeauty.com/products/facial-radiance-pads-with-glycolic-lactic-acids-travel-size"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 21,
+              "source_url": "https://www.firstaidbeauty.com/products/facial-radiance-pads-with-glycolic-lactic-acids-travel-size"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-28T10:50:59.843Z",
+            "source_version": "wave48_firstaidbeauty_product_intel_tail_20260528"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-28T10:50:59.843Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave48_firstaidbeauty_product_intel_tail_20260528",
+            "official_source_url": "https://www.firstaidbeauty.com/products/facial-radiance-pads-with-glycolic-lactic-acids-travel-size",
+            "official_source_ingredient_count": 21,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Facial Radiance Pads with Glycolic + Lactic Acids Travel Size",
+            "subtitle": "Serum",
+            "highlight": "AHA serum detail",
+            "intro": "A First Aid Beauty serum listed on the brand source page as Facial Radiance Pads with Glycolic + Lactic Acids Travel Size. The source description identifies: Sensitive skin-friendly & gentle face exfoliating pads with a blend of AHAs designed for daily use to help brighten, smooth and prep skin for makeup.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Facial Radiance Pads with Glycolic + Lactic Acids Travel Size",
+            "compact_candidate": "Serum",
+            "highlight_candidate": "AHA serum detail",
+            "intro_candidate": "A First Aid Beauty serum listed on the brand source page as Facial Radiance Pads with Glycolic + Lactic Acids Travel Size. The source description identifies: Sensitive skin-friendly & gentle face exfoliating pads with a blend of AHAs designed for daily use to help brighten, smooth and prep skin for makeup.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_de126466f82d6c2961c18986",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-28T10:50:59.843Z",
+      "notes": "Approved official-PDP-seed rewrite for KP Bump Eraser Body Scrub Mini; evidence_profile=seller_plus_formula; source_url=https://www.firstaidbeauty.com/products/kp-bump-eraser-body-scrub-mini",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_de126466f82d6c2961c18986",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_de126466f82d6c2961c18986",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_76f8a22d8b9c68b53927aadd",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Body scrub identity",
+              "body": "A First Aid Beauty body scrub listed on the brand source page as KP Bump Eraser Body Scrub Mini. The source description identifies: A body scrub that sweeps away dry, rough bumps associated with KP, strawberry skin and booty bumps to reveal healthier looking skin that feels exceptionally smooth."
+            },
+            "best_for": [
+              {
+                "tag": "body_scrub_shoppers",
+                "label": "Body scrub shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "A body scrub that sweeps away dry, rough bumps associated with KP, strawberry skin and booty bumps to reveal healthier looking skin that feels exceptionally smooth.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Pumice, Aqua/Water/Eau, Glycolic Acid, Sodium Cocoyl Isethionate, Lactic Acid. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "body_care",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the body scrub context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-28T10:50:59.843Z",
+              "source_version": "wave48_firstaidbeauty_product_intel_tail_20260528"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.firstaidbeauty.com/products/kp-bump-eraser-body-scrub-mini"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 31,
+                "source_url": "https://www.firstaidbeauty.com/products/kp-bump-eraser-body-scrub-mini"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "body scrub",
+            "texture": "body_scrub",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.firstaidbeauty.com/products/kp-bump-eraser-body-scrub-mini"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 31,
+              "source_url": "https://www.firstaidbeauty.com/products/kp-bump-eraser-body-scrub-mini"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-28T10:50:59.843Z",
+            "source_version": "wave48_firstaidbeauty_product_intel_tail_20260528"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-28T10:50:59.843Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave48_firstaidbeauty_product_intel_tail_20260528",
+            "official_source_url": "https://www.firstaidbeauty.com/products/kp-bump-eraser-body-scrub-mini",
+            "official_source_ingredient_count": 31,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "KP Bump Eraser Body Scrub Mini",
+            "subtitle": "Body Scrub",
+            "highlight": "Body polish format detail",
+            "intro": "A First Aid Beauty body scrub listed on the brand source page as KP Bump Eraser Body Scrub Mini. The source description identifies: A body scrub that sweeps away dry, rough bumps associated with KP, strawberry skin and booty bumps to reveal healthier looking skin that feels exceptionally smooth.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "KP Bump Eraser Body Scrub Mini",
+            "compact_candidate": "Body Scrub",
+            "highlight_candidate": "Body polish format detail",
+            "intro_candidate": "A First Aid Beauty body scrub listed on the brand source page as KP Bump Eraser Body Scrub Mini. The source description identifies: A body scrub that sweeps away dry, rough bumps associated with KP, strawberry skin and booty bumps to reveal healthier looking skin that feels exceptionally smooth.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,794 @@
+{
+  "generated_at": "2026-05-28T10:02:01.757Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": "wishtrend.com",
+    "externalProductIds": [],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": null,
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json",
+    "chunkByDomain": false
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 5,
+    "by_market": {
+      "US": 5
+    },
+    "by_domain": [
+      {
+        "key": "wishtrend.com",
+        "count": 5
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 5
+      }
+    ],
+    "coverage": {
+      "missing_inci": 2,
+      "missing_active_raw": 2,
+      "missing_details": 5,
+      "missing_how_to": 0,
+      "missing_faq": 5
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 0,
+        "high_quality_ready": 0,
+        "missing_kb": 0,
+        "not_displayable": 5
+      },
+      "effective": {
+        "displayable": 0,
+        "high_quality_ready": 0,
+        "missing_kb": 0,
+        "not_displayable": 5,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [
+        {
+          "key": "quality_limited",
+          "count": 5
+        },
+        {
+          "key": "reviewed_not_displayable",
+          "count": 5
+        },
+        {
+          "key": "seller_only_evidence",
+          "count": 5
+        }
+      ],
+      "effective_issue_domains": [
+        {
+          "key": "wishtrend.com::quality_limited",
+          "count": 5
+        },
+        {
+          "key": "wishtrend.com::reviewed_not_displayable",
+          "count": 5
+        },
+        {
+          "key": "wishtrend.com::seller_only_evidence",
+          "count": 5
+        }
+      ],
+      "quality_state": [
+        {
+          "key": "limited",
+          "count": 5
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "seller_only",
+          "count": 5
+        }
+      ],
+      "samples": {
+        "reviewed_not_displayable": [
+          {
+            "external_product_id": "ext_0c04d59c0ace5edcc145835e",
+            "domain": "wishtrend.com",
+            "title": "Licorice Calming Cream",
+            "used_product_id": "ext_0c04d59c0ace5edcc145835e",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_3c0dbbb87a1adc424fc22b3f",
+            "domain": "wishtrend.com",
+            "title": "Mandarin Honey Mask",
+            "used_product_id": "ext_3c0dbbb87a1adc424fc22b3f",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_45c8c9d8ce58d21faff9d39f",
+            "domain": "wishtrend.com",
+            "title": "Gentle Black Fresh Cleansing Oil",
+            "used_product_id": "ext_45c8c9d8ce58d21faff9d39f",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_c01f497f94a0b7ae1f9d8c31",
+            "domain": "wishtrend.com",
+            "title": "Hug Mask",
+            "used_product_id": "ext_c01f497f94a0b7ae1f9d8c31",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_de65e3b6901907eb235c98ad",
+            "domain": "wishtrend.com",
+            "title": "Licorice Soothing Ampoule",
+            "used_product_id": "ext_de65e3b6901907eb235c98ad",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "seller_only_evidence": [
+          {
+            "external_product_id": "ext_0c04d59c0ace5edcc145835e",
+            "domain": "wishtrend.com",
+            "title": "Licorice Calming Cream",
+            "used_product_id": "ext_0c04d59c0ace5edcc145835e",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_3c0dbbb87a1adc424fc22b3f",
+            "domain": "wishtrend.com",
+            "title": "Mandarin Honey Mask",
+            "used_product_id": "ext_3c0dbbb87a1adc424fc22b3f",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_45c8c9d8ce58d21faff9d39f",
+            "domain": "wishtrend.com",
+            "title": "Gentle Black Fresh Cleansing Oil",
+            "used_product_id": "ext_45c8c9d8ce58d21faff9d39f",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_c01f497f94a0b7ae1f9d8c31",
+            "domain": "wishtrend.com",
+            "title": "Hug Mask",
+            "used_product_id": "ext_c01f497f94a0b7ae1f9d8c31",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_de65e3b6901907eb235c98ad",
+            "domain": "wishtrend.com",
+            "title": "Licorice Soothing Ampoule",
+            "used_product_id": "ext_de65e3b6901907eb235c98ad",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ]
+      }
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 2,
+      "any_active_items": 2,
+      "status": [
+        {
+          "key": "not_expected_missing",
+          "count": 2
+        },
+        {
+          "key": "ready_hero",
+          "count": 2
+        },
+        {
+          "key": "low_signal_active",
+          "count": 1
+        }
+      ],
+      "issues": [
+        {
+          "key": "low_signal_active",
+          "count": 1
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "wishtrend.com::low_signal_active",
+          "count": 1
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "pdp_section",
+          "count": 3
+        },
+        {
+          "key": "none",
+          "count": 2
+        }
+      ],
+      "samples": {
+        "low_signal_active": [
+          {
+            "external_product_id": "ext_c01f497f94a0b7ae1f9d8c31",
+            "domain": "wishtrend.com",
+            "title": "Hug Mask",
+            "status": "low_signal_active",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 5
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_c0d5e3167a425192cee49cd9",
+      "external_product_id": "ext_0c04d59c0ace5edcc145835e",
+      "market": "US",
+      "domain": "wishtrend.com",
+      "title": "Licorice Calming Cream",
+      "canonical_url": "https://wishtrend.com/products/licorice-calming-cream",
+      "product_family": "single_formula",
+      "product_line_id": "pl_b54500c16fca8e3585b88294",
+      "identity_variant_axes": {
+        "size": "50ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_0c04d59c0ace5edcc145835e",
+          "kb_key": "product:ext_0c04d59c0ace5edcc145835e",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_0c04d59c0ace5edcc145835e",
+          "kb_key": "product:ext_0c04d59c0ace5edcc145835e",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_b54500c16fca8e3585b88294",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP",
+          "Panthenol (B5)"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 143,
+          "inci_chars": 937,
+          "active_ingredients_chars": 37,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 937,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 143,
+        "inci_chars": 937,
+        "active_ingredients_chars": 37,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 937,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_3f4bc92c27c201cd04248c9c",
+      "external_product_id": "ext_3c0dbbb87a1adc424fc22b3f",
+      "market": "US",
+      "domain": "wishtrend.com",
+      "title": "Mandarin Honey Mask",
+      "canonical_url": "https://wishtrend.com/products/mandarin-honey-mask",
+      "product_family": "single_formula",
+      "product_line_id": "pl_2d32b1ab56c87694035a3b32",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_3c0dbbb87a1adc424fc22b3f",
+          "kb_key": "product:ext_3c0dbbb87a1adc424fc22b3f",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_3c0dbbb87a1adc424fc22b3f",
+          "kb_key": "product:ext_3c0dbbb87a1adc424fc22b3f",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_2d32b1ab56c87694035a3b32",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 108,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 108,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_e0404e490bbd2fd4ddec08aa",
+      "external_product_id": "ext_45c8c9d8ce58d21faff9d39f",
+      "market": "US",
+      "domain": "wishtrend.com",
+      "title": "Gentle Black Fresh Cleansing Oil",
+      "canonical_url": "https://wishtrend.com/products/gentle-black-fresh-cleansing-oil",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_45c8c9d8ce58d21faff9d39f",
+          "kb_key": "product:ext_45c8c9d8ce58d21faff9d39f",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_45c8c9d8ce58d21faff9d39f",
+          "kb_key": "product:ext_45c8c9d8ce58d21faff9d39f",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 87,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 87,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_1bbe0acc3bd95dad6a7a93e2",
+      "external_product_id": "ext_c01f497f94a0b7ae1f9d8c31",
+      "market": "US",
+      "domain": "wishtrend.com",
+      "title": "Hug Mask",
+      "canonical_url": "https://wishtrend.com/products/hug-mask",
+      "product_family": "single_formula",
+      "product_line_id": "pl_403dd75e9acd367c96233ea4",
+      "identity_variant_axes": {
+        "size": "120g",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_c01f497f94a0b7ae1f9d8c31",
+          "kb_key": "product:ext_c01f497f94a0b7ae1f9d8c31",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_c01f497f94a0b7ae1f9d8c31",
+          "kb_key": "product:ext_c01f497f94a0b7ae1f9d8c31",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_403dd75e9acd367c96233ea4",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "low_signal_active",
+        "issues": [
+          "low_signal_active"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 208,
+          "inci_chars": 564,
+          "active_ingredients_chars": 8,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 564,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_low_signal"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 208,
+        "inci_chars": 564,
+        "active_ingredients_chars": 8,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 564,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_7dcdf94d3258d1dda0be4fb1",
+      "external_product_id": "ext_de65e3b6901907eb235c98ad",
+      "market": "US",
+      "domain": "wishtrend.com",
+      "title": "Licorice Soothing Ampoule",
+      "canonical_url": "https://wishtrend.com/products/licorice-soothing-ampoule",
+      "product_family": "single_formula",
+      "product_line_id": "pl_8571a27442a0c2c5dcca19e1",
+      "identity_variant_axes": {
+        "size": "30ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_de65e3b6901907eb235c98ad",
+          "kb_key": "product:ext_de65e3b6901907eb235c98ad",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_de65e3b6901907eb235c98ad",
+          "kb_key": "product:ext_de65e3b6901907eb235c98ad",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_8571a27442a0c2c5dcca19e1",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Panthenol (B5)"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 150,
+          "inci_chars": 340,
+          "active_ingredients_chars": 41,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 340,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 150,
+        "inci_chars": 340,
+        "active_ingredients_chars": 41,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 340,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

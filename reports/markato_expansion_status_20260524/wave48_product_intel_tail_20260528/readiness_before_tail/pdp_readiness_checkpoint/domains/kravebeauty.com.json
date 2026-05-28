@@ -1,0 +1,3699 @@
+{
+  "generated_at": "2026-05-28T10:00:43.957Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": "kravebeauty.com",
+    "externalProductIds": [],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": null,
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json",
+    "chunkByDomain": false
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 35,
+    "by_market": {
+      "US": 35
+    },
+    "by_domain": [
+      {
+        "key": "kravebeauty.com",
+        "count": 35
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "set_or_collection",
+        "count": 17
+      },
+      {
+        "key": "single_formula",
+        "count": 14
+      },
+      {
+        "key": "accessory",
+        "count": 3
+      },
+      {
+        "key": "unknown_product",
+        "count": 1
+      }
+    ],
+    "coverage": {
+      "missing_inci": 12,
+      "missing_active_raw": 1,
+      "missing_details": 10,
+      "missing_how_to": 5,
+      "missing_faq": 12
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 35,
+        "high_quality_ready": 31,
+        "missing_kb": 0,
+        "not_displayable": 0
+      },
+      "effective": {
+        "displayable": 35,
+        "high_quality_ready": 31,
+        "missing_kb": 0,
+        "not_displayable": 0,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [
+        {
+          "key": "generic_copy_signal",
+          "count": 2
+        },
+        {
+          "key": "public_sensitive_claim",
+          "count": 2
+        }
+      ],
+      "effective_issue_domains": [
+        {
+          "key": "kravebeauty.com::generic_copy_signal",
+          "count": 2
+        },
+        {
+          "key": "kravebeauty.com::public_sensitive_claim",
+          "count": 2
+        }
+      ],
+      "quality_state": [
+        {
+          "key": "reviewed",
+          "count": 35
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "seller_plus_component",
+          "count": 16
+        },
+        {
+          "key": "seller_plus_formula",
+          "count": 13
+        },
+        {
+          "key": "seller_plus_refill",
+          "count": 5
+        },
+        {
+          "key": "seller_plus_accessory",
+          "count": 1
+        }
+      ],
+      "samples": {
+        "generic_copy_signal": [
+          {
+            "external_product_id": "ext_593de56f9237926b73ba43ef",
+            "domain": "kravebeauty.com",
+            "title": "Jumbo Great Barrier Relief",
+            "used_product_id": "ext_593de56f9237926b73ba43ef",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_refill"
+          },
+          {
+            "external_product_id": "ext_641f2733f776db71e5ed3fe7",
+            "domain": "kravebeauty.com",
+            "title": "Plumptuous Lip Jelly Refill",
+            "used_product_id": "ext_641f2733f776db71e5ed3fe7",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula"
+          }
+        ],
+        "public_sensitive_claim": [
+          {
+            "external_product_id": "ext_5ffe1c0b5195b36d2bdcffa9",
+            "domain": "kravebeauty.com",
+            "title": "Oil La La",
+            "used_product_id": "ext_5ffe1c0b5195b36d2bdcffa9",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula"
+          },
+          {
+            "external_product_id": "ext_8bfea10f1af2ab628a5ad6ba",
+            "domain": "kravebeauty.com",
+            "title": "Duo Oil La La",
+            "used_product_id": "ext_8bfea10f1af2ab628a5ad6ba",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_refill"
+          }
+        ]
+      }
+    },
+    "active_ingredients": {
+      "regulatory_expected": 1,
+      "hero_expected": 9,
+      "any_active_items": 12,
+      "status": [
+        {
+          "key": "not_applicable_product_family",
+          "count": 20
+        },
+        {
+          "key": "ready_hero",
+          "count": 7
+        },
+        {
+          "key": "not_expected_missing",
+          "count": 3
+        },
+        {
+          "key": "possibly_inci_guess",
+          "count": 2
+        },
+        {
+          "key": "ready_other",
+          "count": 2
+        },
+        {
+          "key": "ready_regulatory",
+          "count": 1
+        }
+      ],
+      "issues": [
+        {
+          "key": "possibly_inci_guess",
+          "count": 2
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "kravebeauty.com::possibly_inci_guess",
+          "count": 2
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "none",
+          "count": 21
+        },
+        {
+          "key": "pdp_section",
+          "count": 10
+        },
+        {
+          "key": "official_pdp",
+          "count": 4
+        }
+      ],
+      "samples": {
+        "possibly_inci_guess": [
+          {
+            "external_product_id": "ext_670fd3f47ecd319d143f8c65",
+            "domain": "kravebeauty.com",
+            "title": "Great Barrier Relief",
+            "status": "possibly_inci_guess",
+            "active_items": [
+              "Tamanu Oil"
+            ],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_ea1aa5fbba3b1b4539684fe2",
+            "domain": "kravebeauty.com",
+            "title": "100% Cold-Pressed Tamanu Oil",
+            "status": "possibly_inci_guess",
+            "active_items": [
+              "Calophyllum Inophyllum (Tamanu) Seed Oil",
+              "Tamanu Oil"
+            ],
+            "source_origin": "official_pdp"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 35
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_2a87464004ba6c21f09abf4a",
+      "external_product_id": "ext_0a5be24891a6fef6680d0990",
+      "market": "US",
+      "domain": "kravebeauty.com",
+      "title": "Great Body Relief",
+      "canonical_url": "https://kravebeauty.com/products/great-body-relief",
+      "product_family": "single_formula",
+      "product_line_id": "pl_03d8d69a6a5829757f2e90a9",
+      "identity_variant_axes": {
+        "size": "6 76 oz 200 ml",
+        "volume": "76oz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_0a5be24891a6fef6680d0990",
+          "kb_key": "product:ext_0a5be24891a6fef6680d0990",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_0a5be24891a6fef6680d0990",
+          "kb_key": "product:ext_0a5be24891a6fef6680d0990",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_03d8d69a6a5829757f2e90a9",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP",
+          "Panthenol (B5)",
+          "Squalane"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 8,
+          "how_to_chars": 110,
+          "inci_chars": 868,
+          "active_ingredients_chars": 47,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 868,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 8,
+        "how_to_chars": 110,
+        "inci_chars": 868,
+        "active_ingredients_chars": 47,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 868,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_3a528921984288bd4009b361",
+      "external_product_id": "ext_169a110da5dc593de5887a37",
+      "market": "US",
+      "domain": "kravebeauty.com",
+      "title": "Oat So Simple Water Cream",
+      "canonical_url": "https://kravebeauty.com/products/oat-so-simple-water-cream",
+      "product_family": "single_formula",
+      "product_line_id": "pl_5005ae4e442f71532c34b32e",
+      "identity_variant_axes": {
+        "size": "jar 80 ml",
+        "volume": "80ml",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_169a110da5dc593de5887a37",
+          "kb_key": "product:ext_169a110da5dc593de5887a37",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_169a110da5dc593de5887a37",
+          "kb_key": "product:ext_169a110da5dc593de5887a37",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_5005ae4e442f71532c34b32e",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Squalane"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 8,
+          "how_to_chars": 110,
+          "inci_chars": 197,
+          "active_ingredients_chars": 8,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 197,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 8,
+        "how_to_chars": 110,
+        "inci_chars": 197,
+        "active_ingredients_chars": 8,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 197,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_caeb68ad6abe517b0a2d9a81",
+      "external_product_id": "ext_2dfda58c06dbee03ac7a2b0e",
+      "market": "US",
+      "domain": "kravebeauty.com",
+      "title": "Barrier Builder",
+      "canonical_url": "https://kravebeauty.com/products/bestseller-duo",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_09bf6418e938bb52f95454a2",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_2dfda58c06dbee03ac7a2b0e",
+          "kb_key": "product:ext_2dfda58c06dbee03ac7a2b0e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_component",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_2dfda58c06dbee03ac7a2b0e",
+          "kb_key": "product:ext_2dfda58c06dbee03ac7a2b0e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_component",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_09bf6418e938bb52f95454a2",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 18,
+          "how_to_chars": 87,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 2,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 18,
+        "how_to_chars": 87,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 2,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_d93fdeb09b418f16986bf8e3",
+      "external_product_id": "ext_2e1ff092192800ccd098c4ec",
+      "market": "US",
+      "domain": "kravebeauty.com",
+      "title": "Breakout Balancer",
+      "canonical_url": "https://kravebeauty.com/products/breakout-balancer",
+      "product_family": "single_formula",
+      "product_line_id": "pl_a379bb236b31ab84d4eabf00",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_2e1ff092192800ccd098c4ec",
+          "kb_key": "product:ext_2e1ff092192800ccd098c4ec",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_component",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_2e1ff092192800ccd098c4ec",
+          "kb_key": "product:ext_2e1ff092192800ccd098c4ec",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_component",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_a379bb236b31ab84d4eabf00",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Squalane"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 18,
+          "how_to_chars": 197,
+          "inci_chars": 197,
+          "active_ingredients_chars": 8,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 3,
+          "effective_inci_chars": 197,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 18,
+        "how_to_chars": 197,
+        "inci_chars": 197,
+        "active_ingredients_chars": 8,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 3,
+        "effective_inci_chars": 197,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_3029849a06c2a9bd2d48f025",
+      "external_product_id": "ext_2f17bb7217ea76640d14d226",
+      "market": "US",
+      "domain": "kravebeauty.com",
+      "title": "Barrier On-The-Go Kit",
+      "canonical_url": "https://kravebeauty.com/products/barrier-on-the-go-kit",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_a8e9ef15ad64dc5dc21851a4",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_2f17bb7217ea76640d14d226",
+          "kb_key": "product:ext_2f17bb7217ea76640d14d226",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_component",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_2f17bb7217ea76640d14d226",
+          "kb_key": "product:ext_2f17bb7217ea76640d14d226",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_component",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_a8e9ef15ad64dc5dc21851a4",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 18,
+          "how_to_chars": 520,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 5,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 18,
+        "how_to_chars": 520,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 5,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_0da34fb4eb83d4694af00fe0",
+      "external_product_id": "ext_36bbbf19c72d8ead58dbf926",
+      "market": "US",
+      "domain": "kravebeauty.com",
+      "title": "Oat So Simple Water Cream Refill Pouch",
+      "canonical_url": "https://kravebeauty.com/products/oat-so-simple-refill",
+      "product_family": "accessory",
+      "product_line_id": "pl_7f766815f0e1c75dd2027d0d",
+      "identity_variant_axes": {
+        "size": "6 76 oz 200 ml",
+        "volume": "76oz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_36bbbf19c72d8ead58dbf926",
+          "kb_key": "product:ext_36bbbf19c72d8ead58dbf926",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_refill",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_36bbbf19c72d8ead58dbf926",
+          "kb_key": "product:ext_36bbbf19c72d8ead58dbf926",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_refill",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_7f766815f0e1c75dd2027d0d",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 8,
+          "how_to_chars": 110,
+          "inci_chars": 198,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 1,
+          "effective_inci_chars": 198,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "accessory"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 8,
+        "how_to_chars": 110,
+        "inci_chars": 198,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 1,
+        "effective_inci_chars": 198,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_e1e0b1ac4b7e76ad0c4c3996",
+      "external_product_id": "ext_3e6db6ab9ff14b9fb21f45a8",
+      "market": "US",
+      "domain": "kravebeauty.com",
+      "title": "Matcha Hemp Hydrating Cleanser",
+      "canonical_url": "https://kravebeauty.com/products/matcha-hemp-hydrating-cleanser",
+      "product_family": "single_formula",
+      "product_line_id": "pl_3e94cc31a5f38c268bb22f38",
+      "identity_variant_axes": {
+        "pack": "1pack",
+        "size": "1 pack 120 ml",
+        "volume": "120ml",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_3e6db6ab9ff14b9fb21f45a8",
+          "kb_key": "product:ext_3e6db6ab9ff14b9fb21f45a8",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_3e6db6ab9ff14b9fb21f45a8",
+          "kb_key": "product:ext_3e6db6ab9ff14b9fb21f45a8",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_3e94cc31a5f38c268bb22f38",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 87,
+          "inci_chars": 720,
+          "active_ingredients_chars": 53,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 720,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_not_displayable"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 87,
+        "inci_chars": 720,
+        "active_ingredients_chars": 53,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 720,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_ef59c710c105012081268572",
+      "external_product_id": "ext_451e8daf57884c4adbfbfccf",
+      "market": "US",
+      "domain": "kravebeauty.com",
+      "title": "Pore Refiner",
+      "canonical_url": "https://kravebeauty.com/products/pore-refiner",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_27b06f571221040d4ed4020b",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_451e8daf57884c4adbfbfccf",
+          "kb_key": "product:ext_451e8daf57884c4adbfbfccf",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_component",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_451e8daf57884c4adbfbfccf",
+          "kb_key": "product:ext_451e8daf57884c4adbfbfccf",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_component",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_27b06f571221040d4ed4020b",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 0,
+          "how_to_chars": 484,
+          "inci_chars": 439,
+          "active_ingredients_chars": 58,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 3,
+          "effective_inci_chars": 439,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 0,
+        "how_to_chars": 484,
+        "inci_chars": 439,
+        "active_ingredients_chars": 58,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 3,
+        "effective_inci_chars": 439,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_fc9ca12cdd578ad1c83b4568",
+      "external_product_id": "ext_4e3293639308495d88d29a03",
+      "market": "US",
+      "domain": "kravebeauty.com",
+      "title": "Barrier Calm",
+      "canonical_url": "https://kravebeauty.com/products/barrier-calm",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_6b3824e9d9a2f993739afce2",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_4e3293639308495d88d29a03",
+          "kb_key": "product:ext_4e3293639308495d88d29a03",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_component",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_4e3293639308495d88d29a03",
+          "kb_key": "product:ext_4e3293639308495d88d29a03",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_component",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_6b3824e9d9a2f993739afce2",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 20,
+          "how_to_chars": 87,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 2,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 20,
+        "how_to_chars": 87,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 2,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_0adca583cd6cbe57ab3d1042",
+      "external_product_id": "ext_50de077cf1a091485e9b98d1",
+      "market": "US",
+      "domain": "kravebeauty.com",
+      "title": "Evergreen Influencer PR Bundle",
+      "canonical_url": "https://kravebeauty.com/products/evergreen-influencer-pr-bundle",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_c2af9c0564814a10e6f41976",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_50de077cf1a091485e9b98d1",
+          "kb_key": "product:ext_50de077cf1a091485e9b98d1",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_component",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_50de077cf1a091485e9b98d1",
+          "kb_key": "product:ext_50de077cf1a091485e9b98d1",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_component",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_c2af9c0564814a10e6f41976",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 177,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 5,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 177,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 5,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_7338f07c9e7b0874c97368cc",
+      "external_product_id": "ext_57c0f0c8f74b65d8b626eee6",
+      "market": "US",
+      "domain": "kravebeauty.com",
+      "title": "Barrier Protector",
+      "canonical_url": "https://kravebeauty.com/products/barrier-protector",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_7235e87f957a129fc4a7411e",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_57c0f0c8f74b65d8b626eee6",
+          "kb_key": "product:ext_57c0f0c8f74b65d8b626eee6",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_component",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_57c0f0c8f74b65d8b626eee6",
+          "kb_key": "product:ext_57c0f0c8f74b65d8b626eee6",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_component",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_7235e87f957a129fc4a7411e",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 22,
+          "how_to_chars": 177,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 2,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 22,
+        "how_to_chars": 177,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 2,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_8a6b6bd4736869d09a776301",
+      "external_product_id": "ext_593de56f9237926b73ba43ef",
+      "market": "US",
+      "domain": "kravebeauty.com",
+      "title": "Jumbo Great Barrier Relief",
+      "canonical_url": "https://kravebeauty.com/products/jumbo-great-barrier-evergreen",
+      "product_family": "unknown_product",
+      "product_line_id": "pl_14a37185d05ed6470739584f",
+      "identity_variant_axes": {
+        "size": "jumbo 100 ml",
+        "volume": "100ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_593de56f9237926b73ba43ef",
+          "kb_key": "product:ext_593de56f9237926b73ba43ef",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "generic_copy_signal"
+          ],
+          "blocking_issues": [
+            "generic_copy_signal"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_refill",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_593de56f9237926b73ba43ef",
+          "kb_key": "product:ext_593de56f9237926b73ba43ef",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "generic_copy_signal"
+          ],
+          "blocking_issues": [
+            "generic_copy_signal"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_refill",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_14a37185d05ed6470739584f",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 155,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 1,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 155,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 1,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_f54dcf7532358e96d129e3fa",
+      "external_product_id": "ext_5ffe1c0b5195b36d2bdcffa9",
+      "market": "US",
+      "domain": "kravebeauty.com",
+      "title": "Oil La La",
+      "canonical_url": "https://kravebeauty.com/products/oil-la-la",
+      "product_family": "single_formula",
+      "product_line_id": "pl_0a351d12f980b932df6e9432",
+      "identity_variant_axes": {
+        "pack": "1pack",
+        "size": "1 pack 45 ml",
+        "volume": "45ml",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_5ffe1c0b5195b36d2bdcffa9",
+          "kb_key": "product:ext_5ffe1c0b5195b36d2bdcffa9",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_sensitive_claim"
+          ],
+          "blocking_issues": [
+            "public_sensitive_claim"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_5ffe1c0b5195b36d2bdcffa9",
+          "kb_key": "product:ext_5ffe1c0b5195b36d2bdcffa9",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_sensitive_claim"
+          ],
+          "blocking_issues": [
+            "public_sensitive_claim"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_0a351d12f980b932df6e9432",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Madecassoside",
+          "Asiaticoside",
+          "Rosehip Oil",
+          "Grape Seed Oil",
+          "Hyaluronic Acid",
+          "Jojoba Seed Oil"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 20,
+          "how_to_chars": 155,
+          "inci_chars": 1094,
+          "active_ingredients_chars": 90,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1094,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 20,
+        "how_to_chars": 155,
+        "inci_chars": 1094,
+        "active_ingredients_chars": 90,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1094,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_2f341873729d9b039c2737bc",
+      "external_product_id": "ext_641f2733f776db71e5ed3fe7",
+      "market": "US",
+      "domain": "kravebeauty.com",
+      "title": "Plumptuous Lip Jelly Refill",
+      "canonical_url": "https://kravebeauty.com/products/plumptuous-lip-jelly-refill",
+      "product_family": "single_formula",
+      "product_line_id": "pl_1d513b847f130f5e97ec1b9c",
+      "identity_variant_axes": {
+        "color": "iced persimmon refill",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_641f2733f776db71e5ed3fe7",
+          "kb_key": "product:ext_641f2733f776db71e5ed3fe7",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "generic_copy_signal"
+          ],
+          "blocking_issues": [
+            "generic_copy_signal"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_641f2733f776db71e5ed3fe7",
+          "kb_key": "product:ext_641f2733f776db71e5ed3fe7",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "generic_copy_signal"
+          ],
+          "blocking_issues": [
+            "generic_copy_signal"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_1d513b847f130f5e97ec1b9c",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Squalane",
+          "Peptides"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 8,
+          "how_to_chars": 242,
+          "inci_chars": 1868,
+          "active_ingredients_chars": 31,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 1,
+          "effective_inci_chars": 1868,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 4,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 8,
+        "how_to_chars": 242,
+        "inci_chars": 1868,
+        "active_ingredients_chars": 31,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 1,
+        "effective_inci_chars": 1868,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_e9a4d6d47335ed8d7c8bd111",
+      "external_product_id": "ext_670fd3f47ecd319d143f8c65",
+      "market": "US",
+      "domain": "kravebeauty.com",
+      "title": "Great Barrier Relief",
+      "canonical_url": "https://kravebeauty.com/products/great-barrier-relief",
+      "product_family": "single_formula",
+      "product_line_id": "pl_b1014560d2d74f314198c094",
+      "identity_variant_axes": {
+        "size": "standard 45 ml",
+        "volume": "45ml",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_670fd3f47ecd319d143f8c65",
+          "kb_key": "product:ext_670fd3f47ecd319d143f8c65",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_670fd3f47ecd319d143f8c65",
+          "kb_key": "product:ext_670fd3f47ecd319d143f8c65",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_b1014560d2d74f314198c094",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "possibly_inci_guess",
+        "issues": [
+          "possibly_inci_guess"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Tamanu Oil"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 16,
+          "how_to_chars": 155,
+          "inci_chars": 836,
+          "active_ingredients_chars": 258,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 836,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 16,
+        "how_to_chars": 155,
+        "inci_chars": 836,
+        "active_ingredients_chars": 258,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 836,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_09689a7dea371de206642e35",
+      "external_product_id": "ext_6ce0fab2134b8a6048b601b8",
+      "market": "US",
+      "domain": "kravebeauty.com",
+      "title": "Kale Your Way Kit",
+      "canonical_url": "https://kravebeauty.com/products/kale-your-way-kit",
+      "product_family": "accessory",
+      "product_line_id": "pl_1ca3458e9ea087f6fc815f09",
+      "identity_variant_axes": {
+        "size": "kale your way kit",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_6ce0fab2134b8a6048b601b8",
+          "kb_key": "product:ext_6ce0fab2134b8a6048b601b8",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_component",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_6ce0fab2134b8a6048b601b8",
+          "kb_key": "product:ext_6ce0fab2134b8a6048b601b8",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_component",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_1ca3458e9ea087f6fc815f09",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 89,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "not_applicable",
+          "ingredient_review_status": "component_ref_review_required",
+          "ingredient_remediation_action": "mark_inci_not_applicable",
+          "bundle_component_refs_count": 1,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "accessory"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 89,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "not_applicable",
+        "ingredient_review_status": "component_ref_review_required",
+        "ingredient_remediation_action": "mark_inci_not_applicable",
+        "bundle_component_refs_count": 1,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_684005f3e731c8675a2364ff",
+      "external_product_id": "ext_6fd4a0b9fee620a59f351372",
+      "market": "US",
+      "domain": "kravebeauty.com",
+      "title": "Duo Beet The Sun SPF 40 PA+++",
+      "canonical_url": "https://kravebeauty.com/products/duo-beet-the-sun-spf-40-sunscreen",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_c936ac12ca34afdca33433f7",
+      "identity_variant_axes": {
+        "pack": "2pack",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_6fd4a0b9fee620a59f351372",
+          "kb_key": "product:ext_6fd4a0b9fee620a59f351372",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_refill",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_6fd4a0b9fee620a59f351372",
+          "kb_key": "product:ext_6fd4a0b9fee620a59f351372",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_refill",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_c936ac12ca34afdca33433f7",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 22,
+          "how_to_chars": 177,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "component_refs_linked",
+          "ingredient_remediation_action": "component_refs_linked",
+          "bundle_component_refs_count": 1,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 22,
+        "how_to_chars": 177,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "component_refs_linked",
+        "ingredient_remediation_action": "component_refs_linked",
+        "bundle_component_refs_count": 1,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_7965aad107cc2482c20239d0",
+      "external_product_id": "ext_7fb2b6f43a8121bf5489b540",
+      "market": "US",
+      "domain": "kravebeauty.com",
+      "title": "Makeup Re-Wined",
+      "canonical_url": "https://kravebeauty.com/products/makeup-rewined",
+      "product_family": "single_formula",
+      "product_line_id": "pl_6062c81c07cc3e3f87b4fa31",
+      "identity_variant_axes": {
+        "size": "3 38 oz 100 ml",
+        "volume": "38oz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_7fb2b6f43a8121bf5489b540",
+          "kb_key": "product:ext_7fb2b6f43a8121bf5489b540",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_7fb2b6f43a8121bf5489b540",
+          "kb_key": "product:ext_7fb2b6f43a8121bf5489b540",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_6062c81c07cc3e3f87b4fa31",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "official_pdp",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 177,
+          "inci_chars": 439,
+          "active_ingredients_chars": 53,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 439,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 177,
+        "inci_chars": 439,
+        "active_ingredients_chars": 53,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 439,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_04b37644555aa41f94f847db",
+      "external_product_id": "ext_8026e90301d17f1f7745b5c7",
+      "market": "US",
+      "domain": "kravebeauty.com",
+      "title": "24 Carrot Retinal",
+      "canonical_url": "https://kravebeauty.com/products/24-carrot-retinal",
+      "product_family": "single_formula",
+      "product_line_id": "pl_d25f0e4a2318ddd8bff40818",
+      "identity_variant_axes": {
+        "size": "1 01 oz 30 ml",
+        "volume": "1oz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_8026e90301d17f1f7745b5c7",
+          "kb_key": "product:ext_8026e90301d17f1f7745b5c7",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_8026e90301d17f1f7745b5c7",
+          "kb_key": "product:ext_8026e90301d17f1f7745b5c7",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_d25f0e4a2318ddd8bff40818",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Retinal",
+          "Squalane",
+          "Glycerin"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 155,
+          "inci_chars": 627,
+          "active_ingredients_chars": 27,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 627,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 155,
+        "inci_chars": 627,
+        "active_ingredients_chars": 27,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 627,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_ea1f536b0bf2bdfd3adbba6d",
+      "external_product_id": "ext_812e105eac3068997396f992",
+      "market": "US",
+      "domain": "kravebeauty.com",
+      "title": "Barrier Rescue",
+      "canonical_url": "https://kravebeauty.com/products/barrier-rescue",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_05d07011badda908d1e1a046",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_812e105eac3068997396f992",
+          "kb_key": "product:ext_812e105eac3068997396f992",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_component",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_812e105eac3068997396f992",
+          "kb_key": "product:ext_812e105eac3068997396f992",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_component",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_05d07011badda908d1e1a046",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 18,
+          "how_to_chars": 0,
+          "inci_chars": 868,
+          "active_ingredients_chars": 47,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 2,
+          "effective_inci_chars": 868,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 18,
+        "how_to_chars": 0,
+        "inci_chars": 868,
+        "active_ingredients_chars": 47,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 2,
+        "effective_inci_chars": 868,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_6a09cff753b91fda088bafb2",
+      "external_product_id": "ext_8bfea10f1af2ab628a5ad6ba",
+      "market": "US",
+      "domain": "kravebeauty.com",
+      "title": "Duo Oil La La",
+      "canonical_url": "https://kravebeauty.com/products/duo-oil-la-la",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_fe095f5829a6d7724401bd81",
+      "identity_variant_axes": {
+        "pack": "2pack",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_8bfea10f1af2ab628a5ad6ba",
+          "kb_key": "product:ext_8bfea10f1af2ab628a5ad6ba",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_sensitive_claim"
+          ],
+          "blocking_issues": [
+            "public_sensitive_claim"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_refill",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_8bfea10f1af2ab628a5ad6ba",
+          "kb_key": "product:ext_8bfea10f1af2ab628a5ad6ba",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_sensitive_claim"
+          ],
+          "blocking_issues": [
+            "public_sensitive_claim"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_refill",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_fe095f5829a6d7724401bd81",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 20,
+          "how_to_chars": 155,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 1,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 20,
+        "how_to_chars": 155,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 1,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_bce55a09e103b20063fe01b9",
+      "external_product_id": "ext_8cb8a6c9b6be935be54b9ab6",
+      "market": "US",
+      "domain": "kravebeauty.com",
+      "title": "Plumptuous Lip Jelly",
+      "canonical_url": "https://kravebeauty.com/products/plumptuous-lip-jelly",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_0ab22faf05e8911724a9e9a2",
+      "identity_variant_axes": {
+        "color": "iced persimmon",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_8cb8a6c9b6be935be54b9ab6",
+          "kb_key": "product:ext_8cb8a6c9b6be935be54b9ab6",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_8cb8a6c9b6be935be54b9ab6",
+          "kb_key": "product:ext_8cb8a6c9b6be935be54b9ab6",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_0ab22faf05e8911724a9e9a2",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 8,
+          "how_to_chars": 0,
+          "inci_chars": 2357,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 2357,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 8,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 8,
+        "how_to_chars": 0,
+        "inci_chars": 2357,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 2357,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_d4862f1874c922ab04159866",
+      "external_product_id": "ext_8ccd593d2a408808a4d442ed",
+      "market": "US",
+      "domain": "kravebeauty.com",
+      "title": "Double Cleanse",
+      "canonical_url": "https://kravebeauty.com/products/double-cleanse-duo",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_7c3be3b6ac3406e61c6ef7cb",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_8ccd593d2a408808a4d442ed",
+          "kb_key": "product:ext_8ccd593d2a408808a4d442ed",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_component",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_8ccd593d2a408808a4d442ed",
+          "kb_key": "product:ext_8ccd593d2a408808a4d442ed",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_component",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_7c3be3b6ac3406e61c6ef7cb",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 22,
+          "how_to_chars": 177,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 2,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 22,
+        "how_to_chars": 177,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 2,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_c4f2d9894134ba6f4a8126bc",
+      "external_product_id": "ext_9a8b533c9047aec228a17dc9",
+      "market": "US",
+      "domain": "kravebeauty.com",
+      "title": "Barrier Healer",
+      "canonical_url": "https://kravebeauty.com/products/barrier-healer",
+      "product_family": "single_formula",
+      "product_line_id": "pl_6a343d856fee4e0152b929d3",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_9a8b533c9047aec228a17dc9",
+          "kb_key": "product:ext_9a8b533c9047aec228a17dc9",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_component",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_9a8b533c9047aec228a17dc9",
+          "kb_key": "product:ext_9a8b533c9047aec228a17dc9",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_component",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_6a343d856fee4e0152b929d3",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP",
+          "Niacinamide",
+          "Squalane"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 18,
+          "how_to_chars": 247,
+          "inci_chars": 836,
+          "active_ingredients_chars": 74,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 3,
+          "effective_inci_chars": 836,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 18,
+        "how_to_chars": 247,
+        "inci_chars": 836,
+        "active_ingredients_chars": 74,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 3,
+        "effective_inci_chars": 836,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_f6105974eb9c329c129282a8",
+      "external_product_id": "ext_9f9e2dd32bfe54d5d36a4585",
+      "market": "US",
+      "domain": "kravebeauty.com",
+      "title": "Beet The Sun SPF 40 PA+++",
+      "canonical_url": "https://kravebeauty.com/products/beet-the-sun-spf-40-sunscreen",
+      "product_family": "single_formula",
+      "product_line_id": "pl_fcfdc0e78dd7b9ba69ae636b",
+      "identity_variant_axes": {
+        "pack": "1pack",
+        "size": "1 pack 50 ml",
+        "volume": "50ml",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_9f9e2dd32bfe54d5d36a4585",
+          "kb_key": "product:ext_9f9e2dd32bfe54d5d36a4585",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_9f9e2dd32bfe54d5d36a4585",
+          "kb_key": "product:ext_9f9e2dd32bfe54d5d36a4585",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_fcfdc0e78dd7b9ba69ae636b",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": true,
+        "active_items": [
+          "Avobenzone",
+          "Homosalate",
+          "Octisalate",
+          "Octocrylene"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 177,
+          "inci_chars": 1744,
+          "active_ingredients_chars": 60,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1744,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 177,
+        "inci_chars": 1744,
+        "active_ingredients_chars": 60,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1744,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_95736ae56c3ce0b0de04b86d",
+      "external_product_id": "ext_adc518fe91a4d100c48818b9",
+      "market": "US",
+      "domain": "kravebeauty.com",
+      "title": "Duo Matcha Hemp Hydrating Cleanser",
+      "canonical_url": "https://kravebeauty.com/products/duo-matcha-hemp-hydrating-cleanser",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_827bf665da9f12db06c3c653",
+      "identity_variant_axes": {
+        "pack": "2pack",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_adc518fe91a4d100c48818b9",
+          "kb_key": "product:ext_adc518fe91a4d100c48818b9",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_refill",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_adc518fe91a4d100c48818b9",
+          "kb_key": "product:ext_adc518fe91a4d100c48818b9",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_refill",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_827bf665da9f12db06c3c653",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 22,
+          "how_to_chars": 87,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "component_refs_linked",
+          "ingredient_remediation_action": "component_refs_linked",
+          "bundle_component_refs_count": 1,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 22,
+        "how_to_chars": 87,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "component_refs_linked",
+        "ingredient_remediation_action": "component_refs_linked",
+        "bundle_component_refs_count": 1,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_47460a1ad3e89b99f7ab6b9f",
+      "external_product_id": "ext_bf7772522a27852485c3bc18",
+      "market": "US",
+      "domain": "kravebeauty.com",
+      "title": "Smooth Strategist",
+      "canonical_url": "https://kravebeauty.com/products/smooth-strategist",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_68a90c3bbe495bee6327da14",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_bf7772522a27852485c3bc18",
+          "kb_key": "product:ext_bf7772522a27852485c3bc18",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_component",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_bf7772522a27852485c3bc18",
+          "kb_key": "product:ext_bf7772522a27852485c3bc18",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_component",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_68a90c3bbe495bee6327da14",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 12,
+          "how_to_chars": 87,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 3,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 12,
+        "how_to_chars": 87,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 3,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_3dfbf82ad774d8e8af747d4a",
+      "external_product_id": "ext_d1dc342ce89cc0291bbd29f0",
+      "market": "US",
+      "domain": "kravebeauty.com",
+      "title": "Kale-Lalu-yAHA",
+      "canonical_url": "https://kravebeauty.com/products/kale-lalu-yaha",
+      "product_family": "single_formula",
+      "product_line_id": "pl_0be2453b95148014eff8d936",
+      "identity_variant_axes": {
+        "size": "6 76 fl oz 200 ml",
+        "volume": "76floz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_d1dc342ce89cc0291bbd29f0",
+          "kb_key": "product:ext_d1dc342ce89cc0291bbd29f0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_d1dc342ce89cc0291bbd29f0",
+          "kb_key": "product:ext_d1dc342ce89cc0291bbd29f0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_0be2453b95148014eff8d936",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_other",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [
+          "Glycolic Acid",
+          "Betaine Salicylate",
+          "kale",
+          "spinach",
+          "and parsley extracts",
+          "Hyaluronic Acid"
+        ],
+        "source_origin": "official_pdp",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 159,
+          "inci_chars": 668,
+          "active_ingredients_chars": 73,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 668,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 159,
+        "inci_chars": 668,
+        "active_ingredients_chars": 73,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 668,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_76ad40e70c7d5c1c41d61227",
+      "external_product_id": "ext_db9ce575116e514d0e930504",
+      "market": "US",
+      "domain": "kravebeauty.com",
+      "title": "Intro Kit",
+      "canonical_url": "https://kravebeauty.com/products/intro-kit",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_27badd373207864a76aac69c",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_db9ce575116e514d0e930504",
+          "kb_key": "product:ext_db9ce575116e514d0e930504",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_component",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_db9ce575116e514d0e930504",
+          "kb_key": "product:ext_db9ce575116e514d0e930504",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_component",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_27badd373207864a76aac69c",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 22,
+          "how_to_chars": 515,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 3,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 22,
+        "how_to_chars": 515,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 3,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_078f8215edea9a05de571fb6",
+      "external_product_id": "ext_e2af66facc5e48bc0c3d2ed8",
+      "market": "US",
+      "domain": "kravebeauty.com",
+      "title": "Clear Skin Barrier",
+      "canonical_url": "https://kravebeauty.com/products/clear-skin-duo",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_f381cbbd87b701fa40914921",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_e2af66facc5e48bc0c3d2ed8",
+          "kb_key": "product:ext_e2af66facc5e48bc0c3d2ed8",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_component",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_e2af66facc5e48bc0c3d2ed8",
+          "kb_key": "product:ext_e2af66facc5e48bc0c3d2ed8",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_component",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_f381cbbd87b701fa40914921",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 18,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "component_refs_linked",
+          "ingredient_remediation_action": "component_refs_linked",
+          "bundle_component_refs_count": 2,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 18,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "component_refs_linked",
+        "ingredient_remediation_action": "component_refs_linked",
+        "bundle_component_refs_count": 2,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_bdc5912e41c415dd601ebd27",
+      "external_product_id": "ext_ea1aa5fbba3b1b4539684fe2",
+      "market": "US",
+      "domain": "kravebeauty.com",
+      "title": "100% Cold-Pressed Tamanu Oil",
+      "canonical_url": "https://kravebeauty.com/products/100-cold-pressed-tamanu-oil",
+      "product_family": "single_formula",
+      "product_line_id": "pl_55c48a973fddc314c83c6dea",
+      "identity_variant_axes": {
+        "size": "1 01 oz 30 ml",
+        "volume": "1oz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_ea1aa5fbba3b1b4539684fe2",
+          "kb_key": "product:ext_ea1aa5fbba3b1b4539684fe2",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_ea1aa5fbba3b1b4539684fe2",
+          "kb_key": "product:ext_ea1aa5fbba3b1b4539684fe2",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_55c48a973fddc314c83c6dea",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "possibly_inci_guess",
+        "issues": [
+          "possibly_inci_guess"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [
+          "Calophyllum Inophyllum (Tamanu) Seed Oil",
+          "Tamanu Oil"
+        ],
+        "source_origin": "official_pdp",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 179,
+          "inci_chars": 31,
+          "active_ingredients_chars": 36,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 31,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 179,
+        "inci_chars": 31,
+        "active_ingredients_chars": 36,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 31,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_3988ea3f246f66c615f8d236",
+      "external_product_id": "ext_ee4148447753011237174e05",
+      "market": "US",
+      "domain": "kravebeauty.com",
+      "title": "Barrier Renew",
+      "canonical_url": "https://kravebeauty.com/products/barrier-renew",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_7c69da3cebf3634d904eae79",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_ee4148447753011237174e05",
+          "kb_key": "product:ext_ee4148447753011237174e05",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_component",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_ee4148447753011237174e05",
+          "kb_key": "product:ext_ee4148447753011237174e05",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_component",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_7c69da3cebf3634d904eae79",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 12,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 12,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_6703a2480c9422fa1d1dece1",
+      "external_product_id": "ext_f495a58dbc9861b6bc91b38e",
+      "market": "US",
+      "domain": "kravebeauty.com",
+      "title": "Lip Barrier Relief",
+      "canonical_url": "https://kravebeauty.com/products/limited-lip-barrier-relief",
+      "product_family": "single_formula",
+      "product_line_id": "pl_478b9f5c1b6d589f20f2db84",
+      "identity_variant_axes": {
+        "pack": "1pack",
+        "size": "1 pack 10 ml",
+        "volume": "10ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_f495a58dbc9861b6bc91b38e",
+          "kb_key": "product:ext_f495a58dbc9861b6bc91b38e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_f495a58dbc9861b6bc91b38e",
+          "kb_key": "product:ext_f495a58dbc9861b6bc91b38e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_478b9f5c1b6d589f20f2db84",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_other",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [
+          "Simmondsia Chinensis (Jojoba) Seed Oil",
+          "Rosa Canina (Rosehip) Fruit Oil",
+          "Limnanthes Alba (Meadowfoam) Seed Oil",
+          "Butyrospermum Parkii (Shea) Butter",
+          "Ceramide NP",
+          "Prunus Amygdalus Dulcis (Sweet Almond) Seedcoat Extract",
+          "Upcycled Almond Shell Extract",
+          "jojoba",
+          "rosehip",
+          "and meadowfoam seed oil blend",
+          "Shea Butter"
+        ],
+        "source_origin": "official_pdp",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 155,
+          "inci_chars": 674,
+          "active_ingredients_chars": 103,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 674,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 155,
+        "inci_chars": 674,
+        "active_ingredients_chars": 103,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 674,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_04454358664dbb8c4141b686",
+      "external_product_id": "ext_f8e656cb9ef4aef62f17a576",
+      "market": "US",
+      "domain": "kravebeauty.com",
+      "title": "Barrier Care Kit",
+      "canonical_url": "https://kravebeauty.com/products/holiday-barrier-care-kit",
+      "product_family": "set_or_collection",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_f8e656cb9ef4aef62f17a576",
+          "kb_key": "product:ext_f8e656cb9ef4aef62f17a576",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_component",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_f8e656cb9ef4aef62f17a576",
+          "kb_key": "product:ext_f8e656cb9ef4aef62f17a576",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_component",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 18,
+          "how_to_chars": 87,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "component_refs_linked",
+          "ingredient_remediation_action": "component_refs_linked",
+          "bundle_component_refs_count": 3,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 18,
+        "how_to_chars": 87,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "component_refs_linked",
+        "ingredient_remediation_action": "component_refs_linked",
+        "bundle_component_refs_count": 3,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_0faa8e2aab8fbb179f909af9",
+      "external_product_id": "ext_feb5a66e19655f13921a2c0e",
+      "market": "US",
+      "domain": "kravebeauty.com",
+      "title": "Puffy Pouch",
+      "canonical_url": "https://kravebeauty.com/products/puffy-pouch",
+      "product_family": "accessory",
+      "product_line_id": "pl_492c1910df9f0727ec62ea34",
+      "identity_variant_axes": {
+        "size": "6 in x 3 in x 8 in",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_feb5a66e19655f13921a2c0e",
+          "kb_key": "product:ext_feb5a66e19655f13921a2c0e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_accessory",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_feb5a66e19655f13921a2c0e",
+          "kb_key": "product:ext_feb5a66e19655f13921a2c0e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_accessory",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_492c1910df9f0727ec62ea34",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "accessory"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}
