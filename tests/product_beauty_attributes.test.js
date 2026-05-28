@@ -63,7 +63,7 @@ describe('product beauty attributes helpers', () => {
   });
 
   test('validateExtractionPayload accepts every documented target_area value', () => {
-    for (const area of ['face', 'lips', 'body', 'hair', 'eyes', 'brows', 'cheeks', 'hands', 'nails', 'scalp', 'fragrance', 'multi_area', 'unknown']) {
+    for (const area of ['face', 'lips', 'body', 'hair', 'eyes', 'brows', 'cheeks', 'hands', 'nails', 'scalp', 'oral', 'fragrance', 'multi_area', 'unknown']) {
       const r = validateExtractionPayload({ product_key: 'ext_x', target_area: area });
       expect(r.ok).toBe(true);
     }
