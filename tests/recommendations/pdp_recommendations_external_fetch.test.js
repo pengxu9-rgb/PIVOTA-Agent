@@ -764,10 +764,9 @@ describe('RecommendationEngine external candidate fetch', () => {
     );
   });
 
-  test('identity dedupe lookup gates on identity_status/live_read when catalog_row_trust flag is off', async () => {
+  test('identity dedupe lookup gates on catalog_row_trust.serving_decision=public', async () => {
     jest.resetModules();
-    process.env.DATABASE_URL = 'postgres://example.test/recs-trust-flag-off';
-    delete process.env.RECOMMENDATIONS_USES_CATALOG_ROW_TRUST;
+    process.env.DATABASE_URL = 'postgres://example.test/recs-trust';
     let capturedSql = null;
     const queryWithStatementTimeoutMock = jest.fn(async (sql) => {
       capturedSql = sql;
@@ -785,51 +784,19 @@ describe('RecommendationEngine external candidate fetch', () => {
     ]);
 
     expect(queryWithStatementTimeoutMock).toHaveBeenCalledTimes(1);
-    expect(capturedSql).toMatch(/FROM\s+pdp_identity_listing\s*$/m);
-    expect(capturedSql).toMatch(/identity_status\s*=\s*'approved'/i);
-    expect(capturedSql).toMatch(/live_read_enabled\s*=\s*true/i);
-    expect(capturedSql).not.toMatch(/catalog_row_trust/i);
-  });
-
-  test('identity dedupe lookup gates on catalog_row_trust when flag is on', async () => {
-    jest.resetModules();
-    process.env.DATABASE_URL = 'postgres://example.test/recs-trust-flag-on';
-    process.env.RECOMMENDATIONS_USES_CATALOG_ROW_TRUST = 'true';
-    let capturedSql = null;
-    const queryWithStatementTimeoutMock = jest.fn(async (sql) => {
-      capturedSql = sql;
-      return { rows: [] };
-    });
-    jest.doMock('../../src/db', () => ({
-      query: jest.fn(async () => ({ rows: [] })),
-      queryWithStatementTimeout: queryWithStatementTimeoutMock,
-    }));
-    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
-
-    try {
-      const { _internals } = require('../../src/services/RecommendationEngine');
-      await _internals.loadLiveIdentityRowsForRecommendationProducts([
-        { merchant_id: 'external_seed', product_id: 'ext_1' },
-      ]);
-
-      expect(queryWithStatementTimeoutMock).toHaveBeenCalledTimes(1);
-      expect(capturedSql).toMatch(/FROM\s+pdp_identity_listing\s+pil/i);
-      expect(capturedSql).toMatch(/catalog_row_trust\s+crt/i);
-      expect(capturedSql).toMatch(/crt\.subject_type\s*=\s*'product'/i);
-      expect(capturedSql).toMatch(/crt\.source_listing_ref\s*=\s*pil\.source_listing_ref/i);
-      expect(capturedSql).toMatch(/crt\.serving_decision\s*=\s*'public'/i);
-      // The legacy identity_status/live_read filters are replaced by the trust EXISTS.
-      expect(capturedSql).not.toMatch(/identity_status\s*=\s*'approved'/i);
-      expect(capturedSql).not.toMatch(/live_read_enabled\s*=\s*true/i);
-    } finally {
-      delete process.env.RECOMMENDATIONS_USES_CATALOG_ROW_TRUST;
-    }
+    expect(capturedSql).toMatch(/FROM\s+pdp_identity_listing\s+pil/i);
+    expect(capturedSql).toMatch(/catalog_row_trust\s+crt/i);
+    expect(capturedSql).toMatch(/crt\.subject_type\s*=\s*'product'/i);
+    expect(capturedSql).toMatch(/crt\.source_listing_ref\s*=\s*pil\.source_listing_ref/i);
+    expect(capturedSql).toMatch(/crt\.serving_decision\s*=\s*'public'/i);
+    // The legacy identity_status/live_read filters are replaced by the trust EXISTS.
+    expect(capturedSql).not.toMatch(/identity_status\s*=\s*'approved'/i);
+    expect(capturedSql).not.toMatch(/live_read_enabled\s*=\s*true/i);
   });
 
   test('identity dedupe lookup fails open when catalog_row_trust table is missing', async () => {
     jest.resetModules();
     process.env.DATABASE_URL = 'postgres://example.test/recs-trust-missing';
-    process.env.RECOMMENDATIONS_USES_CATALOG_ROW_TRUST = 'true';
     const queryWithStatementTimeoutMock = jest.fn(async () => {
       const err = new Error('relation "catalog_row_trust" does not exist');
       err.code = '42P01';
@@ -841,15 +808,11 @@ describe('RecommendationEngine external candidate fetch', () => {
     }));
     jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
 
-    try {
-      const { _internals } = require('../../src/services/RecommendationEngine');
-      const rows = await _internals.loadLiveIdentityRowsForRecommendationProducts([
-        { merchant_id: 'external_seed', product_id: 'ext_1' },
-      ]);
-      expect(rows).toEqual([]);
-    } finally {
-      delete process.env.RECOMMENDATIONS_USES_CATALOG_ROW_TRUST;
-    }
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const rows = await _internals.loadLiveIdentityRowsForRecommendationProducts([
+      { merchant_id: 'external_seed', product_id: 'ext_1' },
+    ]);
+    expect(rows).toEqual([]);
   });
 
   test('matches normalized brand fastpath and dedupes overlapping brand/category rows', async () => {
